@@ -17,5 +17,6 @@ required_files="/usr/local/etc/monitor-pfsense-agent.conf ${agent_loop}"
 
 load_rc_config "$name"
 : "${monitor_pfsense_agent_enable:=NO}"
+onecmd="YES"
 
 run_rc_command "$1"
