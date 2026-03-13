@@ -35,7 +35,7 @@ Inclui correcao do loop do agente (heartbeat a cada 30s sem parar) e alteracoes 
 ```bash
 fetch -o - https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main/packages/pfsense-package/bootstrap/install-from-release.sh | sh -s -- \
   --release-url https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main/dist/pfsense-package/monitor-pfsense-package-v0.1.7.tar.gz \
-  --sha256 3a8dcc01777aaf539bbe8e0453488f36b19f3f05b3ecd8ca4737fb4bd2ccd46b \
+  --sha256 4b0ab135381ec8bf46bcacdd3687fda5a554bf5e866e47b7bfa6cf36aed9caba \
   --controller-url https://pfs-monitor.systemup.inf.br \
   --node-uid lasalle-agro \
   --node-secret SEU_NODE_SECRET_DO_PAINEL \
