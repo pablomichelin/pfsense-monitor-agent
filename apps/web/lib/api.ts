@@ -349,6 +349,7 @@ export type NodeBootstrapCommandResponse = {
     ready: boolean;
   };
   command: string | null;
+  package_command: string | null;
   bootstrap: {
     node_secret: string;
     secret_hint: string;

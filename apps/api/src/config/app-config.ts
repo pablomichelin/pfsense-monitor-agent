@@ -125,6 +125,13 @@ export const appConfig = Object.freeze({
   agentBootstrap: {
     releaseBaseUrl: process.env.AGENT_BOOTSTRAP_RELEASE_BASE_URL?.trim() || '',
   },
+  packageRelease: {
+    version: process.env.PACKAGE_RELEASE_VERSION?.trim() || '',
+    sha256: process.env.PACKAGE_RELEASE_SHA256?.trim() || '',
+    repoRawBase:
+      process.env.PACKAGE_RELEASE_REPO_RAW_BASE?.trim() ||
+      'https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main',
+  },
   versionMatrix: {
     homologatedPfSenseVersions: (() => {
       const versions = parseList(process.env.HOMOLOGATED_PFSENSE_VERSIONS);

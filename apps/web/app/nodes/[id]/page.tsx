@@ -290,7 +290,7 @@ export default async function NodeDetailsPage({
       installerUrl: bootstrap.release.installer_url,
       releaseBaseUrl,
       controllerUrl,
-      bootstrapCommand: bootstrap.command,
+      bootstrapCommand: bootstrap.package_command ?? bootstrap.command,
     });
     const testConnectionAuditHref = buildAuditHref({
       action: 'ingest.test_connection',
@@ -616,16 +616,16 @@ export default async function NodeDetailsPage({
               />
             </div>
 
-            {bootstrap.command ? (
+            {(bootstrap.package_command ?? bootstrap.command) ? (
               <div className="space-y-2">
                 <p className="text-sm text-slate-400">
-                  Cole este comando em `Diagnostics &gt; Command Prompt`.
+                  Cole este comando em Diagnostics &gt; Command Prompt. Retorna na hora; instalação segue em segundo plano.
                 </p>
-                <CommandBlock value={bootstrap.command} />
+                <CommandBlock value={bootstrap.package_command ?? bootstrap.command ?? ''} />
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                  1. Abra o `Command Prompt` no pfSense.
-                  2. Cole o comando.
-                  3. Aguarde a instalacao.
+                  1. Abra o Command Prompt no pfSense.
+                  2. Cole o comando e execute.
+                  3. Em 1–2 min o firewall deve aparecer online. Acompanhe: tail -f /tmp/monitor-install.log
                 </div>
               </div>
             ) : (

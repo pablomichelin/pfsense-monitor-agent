@@ -1316,6 +1316,7 @@ export class AdminService {
       ready: boolean;
     };
     command: string | null;
+    package_command: string | null;
     bootstrap: {
       node_secret: string;
       secret_hint: string;
@@ -1380,6 +1381,21 @@ export class AdminService {
           `/tmp/install-from-release.sh --release-url ${shellQuote(artifactUrl!)} --sha256 "$SHA256_VALUE" --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)}`,
         ].join(' && ')
       : null;
+
+    const { packageRelease } = appConfig;
+    let package_command: string | null = null;
+    if (
+      packageRelease.version &&
+      packageRelease.sha256 &&
+      packageRelease.repoRawBase
+    ) {
+      const base = packageRelease.repoRawBase.replace(/\/+$/, '');
+      const installerUrlPkg = `${base}/packages/pfsense-package/bootstrap/install-from-release.sh`;
+      const artifactUrlPkg = `${base}/dist/pfsense-package/monitor-pfsense-package-v${packageRelease.version}.tar.gz`;
+      package_command =
+        `fetch -o /tmp/install-from-release.sh ${shellQuote(installerUrlPkg)} && chmod +x /tmp/install-from-release.sh && nohup /tmp/install-from-release.sh --release-url ${shellQuote(artifactUrlPkg)} --sha256 ${shellQuote(packageRelease.sha256)} --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)} </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'`;
+    }
+
     const postInstallSteps = [
       'service monitor_pfsense_agent status',
       '/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh print-config',
@@ -1408,6 +1424,7 @@ export class AdminService {
         ready,
       },
       command,
+      package_command,
       bootstrap: {
         node_secret: bootstrapSecret,
         secret_hint: credential.secretHint,

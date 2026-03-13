@@ -321,7 +321,7 @@ export default async function BootstrapPage({
           installerUrl: selectedBootstrap.release.installer_url,
           releaseBaseUrl,
           controllerUrl,
-          bootstrapCommand: selectedBootstrap.command,
+          bootstrapCommand: selectedBootstrap.package_command ?? selectedBootstrap.command,
         })
       : null;
   const runBootstrapPreflightCommand = selectedNode
@@ -469,8 +469,8 @@ export default async function BootstrapPage({
               </div>
               <div className="space-y-2">
                 <p className="text-sm text-slate-400">Use este comando no pfSense.</p>
-                {selectedBootstrap?.command ? (
-                  <CommandBlock value={selectedBootstrap.command} />
+                {(selectedBootstrap?.package_command ?? selectedBootstrap?.command) ? (
+                  <CommandBlock value={selectedBootstrap.package_command ?? selectedBootstrap.command ?? ''} />
                 ) : (
                   <CommandBlock value={verifyBootstrapCommand} />
                 )}
@@ -536,13 +536,13 @@ export default async function BootstrapPage({
               </div>
             </div>
 
-            {selectedBootstrap.command ? (
+            {(selectedBootstrap.package_command ?? selectedBootstrap.command) ? (
               <div className="mt-4 space-y-4">
                 <div className="space-y-2">
                   <p className="text-sm text-slate-400">
-                    Comando para colar em `Diagnostics &gt; Command Prompt`.
+                    Comando para colar em Diagnostics &gt; Command Prompt (retorna na hora; instalação em segundo plano).
                   </p>
-                  <CommandBlock value={selectedBootstrap.command} />
+                  <CommandBlock value={selectedBootstrap.package_command ?? selectedBootstrap.command ?? ''} />
                 </div>
                 <div className="space-y-2">
                   <p className="text-sm text-slate-400">

@@ -68,6 +68,7 @@ Situacao geral:
 - fluxo de limpeza total do package no pfSense agora esta documentado e validado
 - formato correto da assinatura HMAC do agente contra a API foi validado: `timestamp + "\n" + rawBody`
 - formato correto de `test-connection` e `heartbeat` contra a API foi validado e documentado
+- instalacao do agente no pfSense documentada e funcionando (v0.2.0): ver `docs/INSTALACAO-AGENTE-PFSENSE.md`; comando one-shot gerado automaticamente na pagina do firewall e apos rotacionar secret (API retorna `package_command` quando `PACKAGE_RELEASE_VERSION` e `PACKAGE_RELEASE_SHA256` estao em `.env.api`)
 
 ## O que ja esta decidido
 

@@ -2,6 +2,8 @@
 
 Sempre que for preciso instalar ou atualizar o package do SystemUp Monitor em um pfSense (Diagnostics > Command Prompt), use o comando **one-shot** abaixo.
 
+**Procedimento completo e forma correta:** ver `docs/INSTALACAO-AGENTE-PFSENSE.md`.
+
 ## Gerar comando automaticamente (no servidor)
 
 No servidor do projeto, o comando completo (com o **secret real** do node) é gerado pela API. Execute:
@@ -46,9 +48,9 @@ Substitua:
 - **NODE_SECRET** – secret do node (detalhe do firewall no painel; use Rekey se precisar gerar novo)
 - **CUSTOMER_CODE** – codigo do cliente (ex.: lasalle-agro)
 
-## Versao atual do client: **0.1.7**
+## Versao atual do client: **0.2.0**
 
-Inclui correcao do loop do agente (heartbeat a cada 30s sem parar) e alteracoes da Fase B.
+Inclui PATH com /usr/local/bin no loop e rc.d, build_payload resiliente, e inicio explicito do servico apos o install. Heartbeats a cada 30s em background.
 
 ---
 
