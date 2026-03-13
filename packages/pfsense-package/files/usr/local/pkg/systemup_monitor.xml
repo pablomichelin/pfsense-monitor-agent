@@ -73,11 +73,46 @@
       <size>8</size>
     </field>
     <field>
-      <fielddescr>Services list</fielddescr>
-      <fieldname>services_csv</fieldname>
-      <description>Lista CSV dos servicos observados pelo agente.</description>
-      <type>input</type>
-      <size>80</size>
+      <fielddescr>Monitor DNS Resolver</fielddescr>
+      <fieldname>service_unbound</fieldname>
+      <description>Inclui o unbound no calculo de saude deste firewall.</description>
+      <type>checkbox</type>
+    </field>
+    <field>
+      <fielddescr>Monitor DHCP Server</fielddescr>
+      <fieldname>service_dhcpd</fieldname>
+      <description>Inclui o dhcpd no calculo de saude deste firewall.</description>
+      <type>checkbox</type>
+    </field>
+    <field>
+      <fielddescr>Monitor Gateway Monitoring</fielddescr>
+      <fieldname>service_dpinger</fieldname>
+      <description>Inclui o dpinger no calculo de saude deste firewall.</description>
+      <type>checkbox</type>
+    </field>
+    <field>
+      <fielddescr>Monitor OpenVPN</fielddescr>
+      <fieldname>service_openvpn</fieldname>
+      <description>Inclui o OpenVPN no calculo de saude deste firewall.</description>
+      <type>checkbox</type>
+    </field>
+    <field>
+      <fielddescr>Monitor IPsec</fielddescr>
+      <fieldname>service_ipsec</fieldname>
+      <description>Inclui o IPsec no calculo de saude deste firewall.</description>
+      <type>checkbox</type>
+    </field>
+    <field>
+      <fielddescr>Monitor WireGuard</fielddescr>
+      <fieldname>service_wireguard</fieldname>
+      <description>Inclui o WireGuard no calculo de saude deste firewall.</description>
+      <type>checkbox</type>
+    </field>
+    <field>
+      <fielddescr>Monitor NTP sync</fielddescr>
+      <fieldname>service_ntpd</fieldname>
+      <description>Inclui o NTP no calculo de saude deste firewall.</description>
+      <type>checkbox</type>
     </field>
     <field>
       <fielddescr>Node secret</fielddescr>

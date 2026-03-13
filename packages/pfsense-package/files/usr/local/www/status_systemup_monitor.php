@@ -8,6 +8,7 @@ $page_title = array("Status", "SystemUp Monitor");
 $commands = systemup_monitor_local_commands();
 $secret_masked = systemup_monitor_mask_secret($pkg['node_secret']);
 $runtime = systemup_monitor_runtime_summary();
+$selected_services = systemup_monitor_selected_service_labels($pkg);
 
 include("head.inc");
 ?>
@@ -42,8 +43,8 @@ include("head.inc");
           <td><?=htmlspecialchars($pkg['interval_seconds'])?>s</td>
         </tr>
         <tr>
-          <th>Services CSV</th>
-          <td><?=htmlspecialchars($pkg['services_csv'])?></td>
+          <th>Selected services</th>
+          <td><?=htmlspecialchars(empty($selected_services) ? 'none' : implode(', ', $selected_services))?></td>
         </tr>
         <tr>
           <th>Node secret</th>

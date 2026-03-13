@@ -20,6 +20,7 @@ Pacote nativo do `SystemUp Monitor` para `pfSense CE 2.8.1`, estruturado como po
 - habilita ou desabilita o servico `monitor_pfsense_agent` via `sysrc`
 - reinicia o servico no `sync` quando o pacote esta habilitado e com configuracao minima valida
 - filtra automaticamente a lista padrao de servicos para monitorar apenas itens habilitados ou configurados no `config.xml` do pfSense
+- permite selecionar por firewall quais servicos nativos entram no calculo de saude, evitando falso `degraded` para recursos que o cliente nao usa
 
 Campos obrigatorios para o runtime:
 
@@ -43,7 +44,7 @@ make package
 O artefato gerado podera ser instalado no firewall com:
 
 ```sh
-pkg add ./pfSense-pkg-systemup-monitor-0.1.5.pkg
+pkg add ./pfSense-pkg-systemup-monitor-0.1.6.pkg
 ```
 
 Dependendo do builder, a extensao final pode sair como `.pkg` ou `.txz`.

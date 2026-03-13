@@ -13,6 +13,118 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_SERVICES")) {
     define("SYSTEMUP_MONITOR_DEFAULT_SERVICES", "unbound,dhcpd,openvpn,ipsec,wireguard,ntpd,dpinger");
 }
 
+function systemup_monitor_supported_services()
+{
+    return array(
+        'unbound' => array(
+            'label' => 'DNS Resolver (unbound)',
+            'description' => 'Servico de resolucao DNS local do pfSense.',
+        ),
+        'dhcpd' => array(
+            'label' => 'DHCP Server (dhcpd)',
+            'description' => 'Servico DHCP local do pfSense.',
+        ),
+        'dpinger' => array(
+            'label' => 'Gateway Monitoring (dpinger)',
+            'description' => 'Daemon de monitoramento de gateways.',
+        ),
+        'openvpn' => array(
+            'label' => 'OpenVPN',
+            'description' => 'Instancias OpenVPN do firewall.',
+        ),
+        'ipsec' => array(
+            'label' => 'IPsec',
+            'description' => 'Servico de tuneis IPsec.',
+        ),
+        'wireguard' => array(
+            'label' => 'WireGuard',
+            'description' => 'Instancias WireGuard configuradas no firewall.',
+        ),
+        'ntpd' => array(
+            'label' => 'NTP clock sync (ntpd)',
+            'description' => 'Sincronizacao de horario do firewall.',
+        ),
+    );
+}
+
+function systemup_monitor_service_checkbox_field($service_name)
+{
+    return 'service_' . preg_replace('/[^a-z0-9_]/', '_', strtolower((string) $service_name));
+}
+
+function systemup_monitor_normalize_services_csv($value)
+{
+    $supported = array_keys(systemup_monitor_supported_services());
+    $entries = preg_split('/\s*,\s*/', strtolower(trim((string) $value)));
+    $selected = array();
+
+    foreach ($entries as $entry) {
+        if ($entry === '' || !in_array($entry, $supported, true)) {
+            continue;
+        }
+
+        if (!in_array($entry, $selected, true)) {
+            $selected[] = $entry;
+        }
+    }
+
+    return implode(',', $selected);
+}
+
+function systemup_monitor_any_service_checkbox_present($pkg)
+{
+    foreach (array_keys(systemup_monitor_supported_services()) as $service_name) {
+        $field = systemup_monitor_service_checkbox_field($service_name);
+        if (array_key_exists($field, $pkg)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function systemup_monitor_selected_services($pkg)
+{
+    $selected = array();
+
+    if (systemup_monitor_any_service_checkbox_present($pkg)) {
+        foreach (array_keys(systemup_monitor_supported_services()) as $service_name) {
+            $field = systemup_monitor_service_checkbox_field($service_name);
+            if (($pkg[$field] ?? '') === 'on') {
+                $selected[] = $service_name;
+            }
+        }
+
+        return $selected;
+    }
+
+    $normalizedCsv = systemup_monitor_normalize_services_csv($pkg['services_csv'] ?? SYSTEMUP_MONITOR_DEFAULT_SERVICES);
+    return $normalizedCsv === '' ? array() : explode(',', $normalizedCsv);
+}
+
+function systemup_monitor_sync_service_fields(&$pkg)
+{
+    $selectedServices = systemup_monitor_selected_services($pkg);
+    $pkg['services_csv'] = implode(',', $selectedServices);
+
+    foreach (array_keys(systemup_monitor_supported_services()) as $service_name) {
+        $field = systemup_monitor_service_checkbox_field($service_name);
+        $pkg[$field] = in_array($service_name, $selectedServices, true) ? 'on' : '';
+    }
+}
+
+function systemup_monitor_selected_service_labels($pkg)
+{
+    $labels = array();
+    $supported = systemup_monitor_supported_services();
+
+    foreach (systemup_monitor_selected_services($pkg) as $service_name) {
+        $labels[] = $supported[$service_name]['label'] ?? $service_name;
+    }
+
+    return $labels;
+}
+
 function &systemup_monitor_config_ref()
 {
     global $config;
@@ -52,6 +164,9 @@ function systemup_monitor_apply_defaults()
             $pkg[$key] = $value;
         }
     }
+
+    $pkg['services_csv'] = systemup_monitor_normalize_services_csv($pkg['services_csv'] ?? SYSTEMUP_MONITOR_DEFAULT_SERVICES);
+    systemup_monitor_sync_service_fields($pkg);
 }
 
 function systemup_monitor_read_config()
@@ -165,16 +280,18 @@ function systemup_monitor_touch_log_file($path)
 
 function systemup_monitor_render_agent_config($pkg)
 {
+    $selectedServices = implode(',', systemup_monitor_selected_services($pkg));
+
     $lines = array(
         'CONTROLLER_URL="' . systemup_monitor_escape_shell_value($pkg['controller_url']) . '"',
         'NODE_UID="' . systemup_monitor_escape_shell_value($pkg['node_uid']) . '"',
         'NODE_SECRET="' . systemup_monitor_escape_shell_value($pkg['node_secret']) . '"',
         'CUSTOMER_CODE="' . systemup_monitor_escape_shell_value($pkg['customer_code']) . '"',
-        'AGENT_VERSION="0.1.5"',
+        'AGENT_VERSION="0.1.6"',
         'SCHEMA_VERSION="2026-01"',
         'MONITOR_AGENT_INTERVAL_SECONDS="' . systemup_monitor_escape_shell_value($pkg['interval_seconds']) . '"',
         'MONITOR_AGENT_LOG_FILE="/var/log/monitor-pfsense-agent.log"',
-        'MONITOR_AGENT_SERVICES="' . systemup_monitor_escape_shell_value($pkg['services_csv']) . '"',
+        'MONITOR_AGENT_SERVICES="' . systemup_monitor_escape_shell_value($selectedServices) . '"',
     );
 
     return implode("\n", $lines) . "\n";
@@ -240,6 +357,7 @@ function systemup_monitor_sync_config()
     systemup_monitor_apply_defaults();
     systemup_monitor_register_service();
     $pkg = systemup_monitor_read_config();
+    systemup_monitor_sync_service_fields($pkg);
     $missing_fields = array();
     $config_ready = systemup_monitor_has_required_runtime_config($pkg, $missing_fields);
 
