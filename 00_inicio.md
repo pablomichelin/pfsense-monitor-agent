@@ -199,6 +199,7 @@ Ao concluir uma iteracao relevante:
 - ajustar documentos impactados
 - manter visivel o percentual da fase atual e do plano total
 - **fazer commit e push para `origin main`** — este host e o servidor do projeto; o GitHub deve estar sempre atualizado
+- **apos push (ou quando relevante), executar `git pull origin main` neste host** — nao pedir ao usuario que de pull; o agente faz o pull
 
 ## Objetivo deste arquivo
 

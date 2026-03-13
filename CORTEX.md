@@ -156,6 +156,7 @@ Ao encerrar uma nova iteracao:
 - ajustar qualquer documento afetado por mudanca estrutural
 - registrar percentual da fase atual e percentual do plano total
 - **fazer commit e push para `origin main`** para manter o GitHub sempre atualizado (este host e o servidor do projeto)
+- **apos push, executar `git pull origin main` neste host** — o agente atualiza o repo local; nao delegar pull ao usuario
 
 ## Decisoes tecnicas atuais
 
