@@ -17,7 +17,7 @@ Exemplo para Lasalle Agro:
 ./scripts/generate-install-command.sh lasalle-agro
 ```
 
-A saída é o comando pronto para copiar e colar no Command Prompt do pfSense. O comando inclui **`--enable`**, que habilita o serviço do agente e inicia o loop de heartbeats (a cada 30 s). Requer `curl` e `jq`; usa credenciais de `.env.api` para login na API e obtém o secret ativo do node.
+A saída é o comando pronto para copiar e colar no Command Prompt do pfSense. O comando **roda a instalação em segundo plano** para o Command Prompt da GUI retornar na hora (evita carregamento infinito). Acompanhe o progresso com: `tail -f /tmp/monitor-install.log`. Requer `curl` e `jq`; usa credenciais de `.env.api` para login na API e obtém o secret ativo do node.
 
 ### Se já instalou sem `--enable` (heartbeat só ao rodar manualmente)
 

@@ -92,16 +92,15 @@ ARTIFACT_URL="${REPO_RAW_BASE}/dist/pfsense-package/monitor-pfsense-package-v${V
 # Colocar secret entre aspas simples no comando gerado para evitar quebra por caracteres especiais
 SECRET_QUOTED="'${NODE_SECRET//\'/\'\\\'\'}'"
 
-# Comando sem pipe: baixa o script para /tmp e executa com stdin=/dev/null para evitar travamento no Command Prompt
+# Comando roda a instalação em segundo plano para o Command Prompt da GUI retornar na hora (evita carregamento infinito)
 if [[ -z "$SHA256_VALUE" ]]; then
   echo "# SHA256 não encontrado localmente; preencha após publicar o artefato." >&2
-  CMD="fetch -o /tmp/install-from-release.sh $INSTALLER_URL && chmod +x /tmp/install-from-release.sh && /tmp/install-from-release.sh --release-url $ARTIFACT_URL --sha256 \${SHA256_DO_ARTEFATO} --controller-url $CONTROLLER_URL --node-uid $NODE_UID_RESOLVED --node-secret $SECRET_QUOTED --customer-code $CLIENT_CODE < /dev/null"
+  CMD="fetch -o /tmp/install-from-release.sh $INSTALLER_URL && chmod +x /tmp/install-from-release.sh && nohup /tmp/install-from-release.sh --release-url $ARTIFACT_URL --sha256 \${SHA256_DO_ARTEFATO} --controller-url $CONTROLLER_URL --node-uid $NODE_UID_RESOLVED --node-secret $SECRET_QUOTED --customer-code $CLIENT_CODE </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'"
 else
-  CMD="fetch -o /tmp/install-from-release.sh $INSTALLER_URL && chmod +x /tmp/install-from-release.sh && /tmp/install-from-release.sh --release-url $ARTIFACT_URL --sha256 $SHA256_VALUE --controller-url $CONTROLLER_URL --node-uid $NODE_UID_RESOLVED --node-secret $SECRET_QUOTED --customer-code $CLIENT_CODE < /dev/null"
+  CMD="fetch -o /tmp/install-from-release.sh $INSTALLER_URL && chmod +x /tmp/install-from-release.sh && nohup /tmp/install-from-release.sh --release-url $ARTIFACT_URL --sha256 $SHA256_VALUE --controller-url $CONTROLLER_URL --node-uid $NODE_UID_RESOLVED --node-secret $SECRET_QUOTED --customer-code $CLIENT_CODE </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'"
 fi
 
 echo "# Comando de instalação/atualização do package (node: $NODE_UID_RESOLVED, versão: $VERSION)"
-echo "# Cole no Command Prompt do pfSense (Diagnostics > Command Prompt)."
-echo "# (Sem pipe; executa de /tmp com stdin fechado para não travar.)"
+echo "# Cole no Command Prompt do pfSense (Diagnostics > Command Prompt). Retorna na hora; instalação segue em segundo plano."
 echo ""
 echo "$CMD"
