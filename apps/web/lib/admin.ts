@@ -44,7 +44,6 @@ export async function createClientAction(formData: FormData): Promise<void> {
   try {
     const response = await createClient({
       name: String(formData.get('name') ?? '').trim(),
-      code: String(formData.get('code') ?? '').trim(),
       status: (normalizeOptional(formData.get('status')) as 'active' | 'inactive' | undefined) ?? 'active',
     });
 
@@ -64,7 +63,6 @@ export async function createSiteAction(formData: FormData): Promise<void> {
     const response = await createSite({
       client_id: String(formData.get('client_id') ?? '').trim(),
       name: String(formData.get('name') ?? '').trim(),
-      code: String(formData.get('code') ?? '').trim(),
       city: normalizeOptional(formData.get('city')),
       state: normalizeOptional(formData.get('state')),
       timezone: normalizeOptional(formData.get('timezone')),
@@ -141,7 +139,6 @@ export async function createNodeAction(formData: FormData): Promise<void> {
   try {
     const response = await createNode({
       site_id: String(formData.get('site_id') ?? '').trim(),
-      node_uid: String(formData.get('node_uid') ?? '').trim(),
       hostname: String(formData.get('hostname') ?? '').trim(),
       display_name: normalizeOptional(formData.get('display_name')),
       management_ip: normalizeOptional(formData.get('management_ip')),

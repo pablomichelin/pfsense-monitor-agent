@@ -16,10 +16,10 @@ export class CreateSiteDto {
   @MaxLength(120)
   name!: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(32)
-  code!: string;
+  code?: string;
 
   @IsOptional()
   @IsString()

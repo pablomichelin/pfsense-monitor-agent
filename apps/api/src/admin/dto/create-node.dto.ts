@@ -12,10 +12,10 @@ export class CreateNodeDto {
   @IsUUID()
   site_id!: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(128)
-  node_uid!: string;
+  node_uid?: string;
 
   @IsString()
   @IsNotEmpty()

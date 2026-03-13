@@ -229,25 +229,14 @@ export default async function AdminPage({
             <input
               type="text"
               name="name"
-              placeholder="Nome do cliente"
+              placeholder="Amazon-Xxe"
               required
               className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
             />
-            <input
-              type="text"
-              name="code"
-              placeholder="CLIENTE-A"
-              required
-              className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-            />
-            <select
-              name="status"
-              defaultValue="active"
-              className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
-            >
-              <option value="active">active</option>
-              <option value="inactive">inactive</option>
-            </select>
+            <input type="hidden" name="status" value="active" />
+            <div className="rounded-2xl border border-slate-800 bg-panel-soft/50 px-4 py-3 text-xs text-slate-400">
+              O codigo tecnico do cliente sera gerado automaticamente.
+            </div>
             <button
               type="submit"
               className="w-full rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
@@ -279,21 +268,14 @@ export default async function AdminPage({
               </option>
               {filterOptions.clients.map((client) => (
                 <option key={client.id} value={client.id}>
-                  {client.name} ({client.code})
+                  {client.name}
                 </option>
               ))}
             </select>
             <input
               type="text"
               name="name"
-              placeholder="Filial SP"
-              required
-              className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-            />
-            <input
-              type="text"
-              name="code"
-              placeholder="FILIAL-SP"
+              placeholder="Matriz"
               required
               className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
             />
@@ -312,9 +294,14 @@ export default async function AdminPage({
             <input
               type="text"
               name="timezone"
+              defaultValue="America/Sao_Paulo"
               placeholder="America/Sao_Paulo"
               className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
             />
+            <input type="hidden" name="status" value="active" />
+            <div className="rounded-2xl border border-slate-800 bg-panel-soft/50 px-4 py-3 text-xs text-slate-400">
+              O codigo tecnico do site sera gerado automaticamente.
+            </div>
             <button
               type="submit"
               className="w-full rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
@@ -352,22 +339,15 @@ export default async function AdminPage({
             </select>
             <input
               type="text"
-              name="node_uid"
-              placeholder="fw-cliente-a-sp-01"
-              required
-              className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-            />
-            <input
-              type="text"
               name="hostname"
-              placeholder="fw-cliente-a"
+              placeholder="fw-amazon-xxe-matriz-01"
               required
               className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
             />
             <input
               type="text"
               name="display_name"
-              placeholder="Firewall Cliente A"
+              placeholder="Nome exibido no painel (opcional)"
               className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
             />
             <input
@@ -388,6 +368,9 @@ export default async function AdminPage({
               placeholder="2.8.1"
               className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
             />
+            <div className="rounded-2xl border border-slate-800 bg-panel-soft/50 px-4 py-3 text-xs text-slate-400">
+              O `node_uid` sera gerado automaticamente a partir do hostname.
+            </div>
             <label className="flex items-center gap-3 rounded-2xl border border-slate-800 bg-panel-soft/50 px-4 py-3 text-sm text-slate-300">
               <input type="checkbox" name="maintenance_mode" className="h-4 w-4" />
               Criar node em maintenance mode

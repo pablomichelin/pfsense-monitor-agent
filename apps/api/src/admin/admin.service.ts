@@ -29,8 +29,17 @@ import { UpdateSiteDto } from './dto/update-site.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAgentTokenDto } from './dto/create-agent-token.dto';
 
-const normalizeCode = (value: string): string =>
-  value.trim().toUpperCase().replace(/\s+/g, '-');
+const toSlug = (value: string): string =>
+  value
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+
+const normalizeCode = (value: string): string => toSlug(value).toUpperCase();
 
 const normalizeOptional = (value?: string): string | undefined => {
   const normalized = value?.trim();
@@ -46,6 +55,78 @@ export class AdminService {
     private readonly nodeSecretCrypto: NodeSecretCryptoService,
     private readonly authService: AuthService,
   ) {}
+
+  private ensureNonEmptySlug(value: string, fallback: string): string {
+    const normalized = toSlug(value);
+    return normalized || fallback;
+  }
+
+  private async buildUniqueClientCode(nameOrCode: string): Promise<string> {
+    const base = normalizeCode(nameOrCode || 'CLIENTE');
+
+    for (let attempt = 0; attempt < 1000; attempt++) {
+      const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
+      const existing = await this.prisma.client.findUnique({
+        where: {
+          code: candidate,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!existing) {
+        return candidate;
+      }
+    }
+
+    throw new ConflictException('unable to generate a unique client code');
+  }
+
+  private async buildUniqueSiteCode(clientId: string, nameOrCode: string): Promise<string> {
+    const base = normalizeCode(nameOrCode || 'SITE');
+
+    for (let attempt = 0; attempt < 1000; attempt++) {
+      const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
+      const existing = await this.prisma.site.findFirst({
+        where: {
+          clientId,
+          code: candidate,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!existing) {
+        return candidate;
+      }
+    }
+
+    throw new ConflictException('unable to generate a unique site code');
+  }
+
+  private async buildUniqueNodeUid(seed: string): Promise<string> {
+    const base = this.ensureNonEmptySlug(seed, 'firewall');
+
+    for (let attempt = 0; attempt < 1000; attempt++) {
+      const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
+      const existing = await this.prisma.node.findUnique({
+        where: {
+          nodeUid: candidate,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!existing) {
+        return candidate;
+      }
+    }
+
+    throw new ConflictException('unable to generate a unique node_uid');
+  }
 
   async listUsers(): Promise<{
     items: Array<{
@@ -482,7 +563,7 @@ export class AdminService {
     const client = await this.prisma.client.create({
       data: {
         name: dto.name.trim(),
-        code: normalizeCode(dto.code),
+        code: await this.buildUniqueClientCode(dto.code?.trim() || dto.name.trim()),
         status: dto.status === 'inactive' ? EntityStatus.inactive : EntityStatus.active,
       },
     });
@@ -535,7 +616,7 @@ export class AdminService {
       data: {
         clientId: dto.client_id,
         name: dto.name.trim(),
-        code: normalizeCode(dto.code),
+        code: await this.buildUniqueSiteCode(dto.client_id, dto.code?.trim() || dto.name.trim()),
         city: normalizeOptional(dto.city),
         state: normalizeOptional(dto.state),
         timezone: normalizeOptional(dto.timezone),
@@ -743,18 +824,10 @@ export class AdminService {
       throw new NotFoundException('site not found');
     }
 
-    const nodeUid = dto.node_uid.trim();
-    const existingNode = await this.prisma.node.findUnique({
-      where: {
-        nodeUid,
-      },
-      select: {
-        id: true,
-      },
-    });
-    if (existingNode) {
-      throw new ConflictException('node_uid already exists');
-    }
+    const hostname = dto.hostname.trim();
+    const nodeUid = await this.buildUniqueNodeUid(
+      dto.node_uid?.trim() || hostname || dto.display_name?.trim() || 'firewall',
+    );
 
     const bootstrapSecret = this.generateNodeSecret();
     const secretHint = this.buildSecretHint(bootstrapSecret);
@@ -766,7 +839,7 @@ export class AdminService {
         data: {
           siteId: dto.site_id,
           nodeUid,
-          hostname: dto.hostname.trim(),
+          hostname,
           displayName: normalizeOptional(dto.display_name),
           managementIp: normalizeOptional(dto.management_ip),
           wanIp: normalizeOptional(dto.wan_ip),

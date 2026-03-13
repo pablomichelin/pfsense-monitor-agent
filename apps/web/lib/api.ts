@@ -650,7 +650,7 @@ export async function resolveAlert(
 
 export async function createClient(input: {
   name: string;
-  code: string;
+  code?: string;
   status?: 'active' | 'inactive';
 }): Promise<CreateClientResponse> {
   return apiFetch<CreateClientResponse>('/api/v1/admin/clients', {
@@ -731,7 +731,7 @@ export async function updateClient(
 export async function createSite(input: {
   client_id: string;
   name: string;
-  code: string;
+  code?: string;
   city?: string;
   state?: string;
   timezone?: string;
@@ -764,7 +764,7 @@ export async function updateSite(
 
 export async function createNode(input: {
   site_id: string;
-  node_uid: string;
+  node_uid?: string;
   hostname: string;
   display_name?: string;
   management_ip?: string;

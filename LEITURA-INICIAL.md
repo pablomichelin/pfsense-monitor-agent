@@ -135,6 +135,7 @@ Status:
 - gestao de tokens auxiliares do agente adicionada no backend e no painel administrativo, com emissao, listagem, revogacao e auditoria por node
 - pacote nativo do pfSense evoluido em `packages/pfsense-package` para port empacotavel, com `Makefile`, `pkg-plist`, scripts de instalacao, runtime local do agente e GUI de configuracao/diagnostico
 - fluxo one-shot do pacote pfSense agora tambem esta versionado, com artefato `tar.gz`, instalador por release GitHub e bootstrap copiavel para `Diagnostics > Command Prompt`
+- cadastro inicial no painel administrativo agora esta simplificado: `client code`, `site code` e `node_uid` nascem automaticamente no backend, reduzindo o formulario ao minimo operacional
 - estrategia do pacote pfSense consolidada: usar o framework oficial de packages para menu/configuracao e manter pagina local em `/usr/local/www`, sem editar `head.inc` como solucao final
 - suite local `scripts/run-smoke-suite.sh` executada com sucesso no stack atual em `2026-03-12`, concluindo `realtime`, `admin` e `RBAC` em `14s`
 - smokes `admin` e `RBAC` reexecutados com sucesso apos a separacao `superadmin` x `admin` na gestao de usuarios
