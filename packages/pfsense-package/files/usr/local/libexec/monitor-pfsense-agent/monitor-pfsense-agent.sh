@@ -412,20 +412,14 @@ post_signed_request() {
   endpoint="$1"
   payload="${2:-}"
   timestamp="$(iso_now)"
-  signature_input="${NODE_UID}.${timestamp}.${payload}"
+  signature_input="$(printf '%s\n%s' "$timestamp" "$payload")"
   signature="$(printf '%s' "$signature_input" | hex_hmac "$NODE_SECRET")"
   request_url="${CONTROLLER_URL}${endpoint}"
 
   if command_exists curl; then
-    curl_args="
-      -fsS
-      -H Content-Type: application/json
-      -H X-Node-Uid: $NODE_UID
-      -H X-Timestamp: $timestamp
-      -H X-Signature: $signature
-    "
     if [ -n "$payload" ]; then
       curl -fsS \
+      -X POST \
       -H "Content-Type: application/json" \
       -H "X-Node-Uid: $NODE_UID" \
       -H "X-Timestamp: $timestamp" \
@@ -434,6 +428,7 @@ post_signed_request() {
       "$request_url"
     else
       curl -fsS \
+        -X POST \
         -H "Content-Type: application/json" \
         -H "X-Node-Uid: $NODE_UID" \
         -H "X-Timestamp: $timestamp" \
