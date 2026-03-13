@@ -73,7 +73,7 @@ if [[ -z "$NODE_SECRET" || "$NODE_SECRET" == "null" ]]; then
 fi
 
 # Versão e SHA256 do artefato no servidor
-VERSION="0.1.8"
+VERSION="0.1.9"
 SHA256_FILE="$PROJECT_ROOT/dist/pfsense-package/monitor-pfsense-package-v${VERSION}.tar.gz.sha256"
 if [[ -f "$SHA256_FILE" ]]; then
   SHA256_VALUE=$(awk '{print $1}' "$SHA256_FILE")

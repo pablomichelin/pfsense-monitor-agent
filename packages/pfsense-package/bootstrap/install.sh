@@ -90,6 +90,14 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
   fi
 
   /usr/local/bin/php -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php "$@" < /dev/null
+
+  # Garantir que o serviço está habilitado e rodando (o PHP pode falhar ao iniciar quando o install roda em background)
+  if [ -n "$CONTROLLER_URL" ] && [ -n "$NODE_UID" ] && [ -n "$NODE_SECRET" ] && [ -n "$CUSTOMER_CODE" ]; then
+    if [ -f /usr/local/etc/rc.d/monitor_pfsense_agent ]; then
+      /usr/sbin/sysrc monitor_pfsense_agent_enable=YES 2>/dev/null || true
+      /usr/sbin/service monitor_pfsense_agent start 2>/dev/null || true
+    fi
+  fi
 fi
 
 cat <<EOF
