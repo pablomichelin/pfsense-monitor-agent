@@ -11,6 +11,19 @@
     <tooltiptext>Configure o agente leve do Monitor-Pfsense.</tooltiptext>
     <url>/pkg.php?xml=systemup_monitor.xml</url>
   </menu>
+  <service>
+    <name>monitor_pfsense_agent</name>
+    <description>SystemUp Monitor Agent</description>
+    <rcfile>monitor_pfsense_agent</rcfile>
+    <custom_php_service_status_command>
+      <![CDATA[
+      $result = array();
+      $exitCode = 0;
+      exec('/usr/sbin/service monitor_pfsense_agent onestatus >/dev/null 2>&1', $result, $exitCode);
+      $rc = ($exitCode === 0);
+      ]]>
+    </custom_php_service_status_command>
+  </service>
   <tabs>
     <tab>
       <text>Configuracao</text>
