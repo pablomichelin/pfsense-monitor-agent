@@ -476,10 +476,15 @@ async function apiFetch<T>(path: string, options?: ApiFetchOptions): Promise<T> 
     }
   }
 
+  const method = options?.method ?? 'GET';
+  const hasBody = options?.body !== undefined && options?.body !== null;
+  const bodyPayload =
+    hasBody ? JSON.stringify(options.body) : (method !== 'GET' ? '{}' : undefined);
+
   const response = await fetch(`${requireEnv(apiBaseUrl, 'MONITOR_API_BASE_URL')}${path}`, {
-    method: options?.method ?? 'GET',
+    method,
     headers: requestHeaders,
-    body: options?.body ? JSON.stringify(options.body) : undefined,
+    body: bodyPayload,
     cache: 'no-store',
   });
 
