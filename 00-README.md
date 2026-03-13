@@ -1,0 +1,156 @@
+# Monitor-Pfsense
+
+Repositorio de planejamento e futura implementacao de uma plataforma de monitoramento centralizado para pfSense CE, com:
+
+- controlador central em Ubuntu 24
+- painel web para operacao e visibilidade
+- agente leve em cada pfSense
+- evolucao posterior para pacote proprio do pfSense com pagina no menu
+
+## Ordem de leitura recomendada
+
+1. `LEITURA-INICIAL.md`
+2. `CORTEX.md`
+3. `00-README.md`
+4. `01-objetivo-e-escopo.md`
+5. `12-roadmap-de-fases.md`
+6. `14-encerramento-da-fase-de-planejamento.md`
+
+## Indice da documentacao
+
+- [01-objetivo-e-escopo.md](./01-objetivo-e-escopo.md)
+- [02-prerequisitos-de-infraestrutura.md](./02-prerequisitos-de-infraestrutura.md)
+- [03-arquitetura-do-controlador-ubuntu.md](./03-arquitetura-do-controlador-ubuntu.md)
+- [04-stack-de-software.md](./04-stack-de-software.md)
+- [05-seguranca-e-endurecimento.md](./05-seguranca-e-endurecimento.md)
+- [06-modelo-de-dados-inicial.md](./06-modelo-de-dados-inicial.md)
+- [07-api-e-fluxos.md](./07-api-e-fluxos.md)
+- [08-painel-web-e-telas.md](./08-painel-web-e-telas.md)
+- [09-instalacao-base-ubuntu-24.md](./09-instalacao-base-ubuntu-24.md)
+- [10-deploy-com-docker-compose.md](./10-deploy-com-docker-compose.md)
+- [11-monitoramento-backup-e-operacao.md](./11-monitoramento-backup-e-operacao.md)
+- [12-roadmap-de-fases.md](./12-roadmap-de-fases.md)
+- [13-frontend-ui-ux-e-seguranca.md](./13-frontend-ui-ux-e-seguranca.md)
+- [14-encerramento-da-fase-de-planejamento.md](./14-encerramento-da-fase-de-planejamento.md)
+- [15-versionamento-e-branding.md](./15-versionamento-e-branding.md)
+- [16-status-e-progresso-do-projeto.md](./16-status-e-progresso-do-projeto.md)
+- [17-checklist-homologacao-bootstrap-pfsense-real.md](./17-checklist-homologacao-bootstrap-pfsense-real.md)
+
+## Arquivos de governanca do projeto
+
+- [CORTEX.md](./CORTEX.md): regras duraveis para orientar todas as decisoes tecnicas e de produto.
+- [LEITURA-INICIAL.md](./LEITURA-INICIAL.md): resumo do estado atual para retomar o projeto em um novo chat.
+- [PLANO.md](./PLANO.md): documento inicial de concepcao que originou esta estrutura.
+
+## Status atual do projeto
+
+Em `2026-03-12`, a `Fase 1 - MVP do controlador` esta operacionalmente concluida e registrada como `100%`, com `93%` do plano total entregue.
+
+Estado atual consolidado:
+
+- backend em `NestJS` com ingestao, leitura, alertas, RBAC e administracao
+- frontend em `Next.js` com `login`, `dashboard`, `nodes`, `alerts`, `admin` e `bootstrap`
+- governanca de sessoes humanas refinada para permitir que `superadmin` liste e revogue sessoes de outros usuarios pelo painel administrativo
+- fluxo de bootstrap refinado para permitir override temporario de `release_base_url` no detalhe do node durante homologacao operacional
+- fluxo de bootstrap refinado para permitir tambem override temporario de `controller_url` no detalhe do node
+- comando de bootstrap endurecido para usar checksum do release ao acionar `install-from-release.sh`
+- dashboard, inventario e detalhe do node agora destacam versoes pfSense fora da matriz homologada
+- bateria de smokes ampliada para validar tambem o release do agente com artefato, checksum e instalacao temporaria por `install-from-release.sh`
+- stack local validada com `docker compose`
+- gateway interno unificado em `:8088`
+- proxy externo de referencia do `ISPConfig` versionado
+- agente leve inicial versionado em `packages/pfsense-agent`
+- checklist operacional versionado para a proxima homologacao do bootstrap em pfSense real
+- detalhe do node agora centraliza tambem o bloco de verificacao pos-bootstrap para reduzir dependencia de consulta externa durante a rodada manual
+- detalhe do node agora centraliza tambem um bloco de evidencias minimas para registrar a rodada manual de homologacao
+- detalhe do node agora centraliza tambem criterios de aceite e classificacao inicial de falhas para a rodada manual
+- auditoria agora aceita filtro por `target_id`, com atalhos no detalhe do node para a trilha `ingest.test_connection` e eventos do proprio firewall
+- detalhe do node agora embute o pre-check da rodada, com conferencia de `node_uid`, `secret_hint`, URLs do release, overrides e atalho para abrir `/bootstrap` no mesmo contexto operacional
+- detalhe do node agora embute tambem um pre-check no pfSense, com bloco copiavel para validar versao, DNS e conectividade HTTP/HTTPS antes da execucao do bootstrap
+- detalhe do node agora embute tambem os sinais esperados durante a execucao do bootstrap e o roteiro minimo de triagem quando a instalacao falha
+- detalhe do node agora embute tambem o fechamento da rodada, consolidando o que atualizar quando a homologacao passa e como retornar ao fluxo versionado quando falha
+- rota `/bootstrap` agora centraliza tambem o preflight local do node, com montagem dos comandos `verify-bootstrap-release.sh` e `run-bootstrap-preflight.sh`
+- rota `/bootstrap` agora centraliza tambem o pacote operacional da rodada manual do node selecionado, com comando one-shot do backend, verificacao pos-bootstrap, pre-check no pfSense e bloco de evidencias
+- backup e restore do PostgreSQL do controlador agora estao versionados e validados com scripts dedicados
+- gestao de tokens auxiliares do agente agora esta operacional no backend e no painel administrativo, com emissao, listagem, revogacao e auditoria por node
+- pacote nativo do pfSense agora esta estruturado como port empacotavel em `packages/pfsense-package`, com runtime local do agente embutido
+- proximo bloco recomendado concentrado em homologacao do bootstrap em pfSense real
+- escopo do servidor/controlador considerado concluido no estado atual
+
+## Restricao principal do ambiente
+
+Este host ja executa o Zabbix Server. Isso vira uma regra central do projeto:
+
+- nunca estragar o Zabbix Server
+- nunca substituir componentes usados pelo Zabbix
+- nunca tomar portas do Zabbix
+- nunca alterar `apache2`, `mysql`, `zabbix-server` ou `zabbix-agent` sem necessidade explicita e janela controlada
+
+Estado observado neste host em `2026-03-12`:
+
+- `zabbix-server.service`: ativo
+- `zabbix-agent.service`: ativo
+- `apache2.service`: ativo
+- `mysql.service`: ativo
+
+Portas observadas em uso no host em `2026-03-12`:
+
+- `80/TCP`: `apache2`
+- `10050/TCP`: `zabbix_agentd`
+- `10051/TCP`: `zabbix_server`
+- `3306/TCP` em `127.0.0.1`: `mysqld`
+- `22/TCP`: `sshd`
+- `8088/TCP`: `docker-proxy` do gateway interno do Monitor-Pfsense
+
+Portas oficiais do ecossistema Zabbix que devem ser tratadas como reservadas:
+
+- `80/TCP` e `443/TCP`: frontend web
+- `10050/TCP`: Zabbix Agent
+- `10051/TCP`: Zabbix Server e trapper
+- `10052/TCP`: Zabbix Java Gateway
+- `10053/TCP`: Zabbix Web Service
+
+Ja definido:
+
+- modelo centralizado com `push` do pfSense para o controlador
+- controlador em Ubuntu 24
+- stack base com `NestJS`, `PostgreSQL`, `Next.js`, `Nginx` e `Docker Compose`
+- estrategia de MVP primeiro e pacote pfSense depois
+- frontend dark-first e sessao server-side com cookie seguro
+
+Ainda nao concluido:
+
+- homologacao final do bootstrap em pfSense real
+- homologacao do agente leve em pelo menos um `pfSense CE 2.8.1`
+- pacote nativo do pfSense com GUI propria
+- pipelines de build e release mais maduros
+- ampliacao adicional da bateria de testes operacionais
+
+Marco atual:
+
+- fundacao documental concluida
+- `Fase 1 - MVP do controlador` concluida no escopo atual
+- backend do controlador ativo em `apps/api`
+- frontend operacional em `apps/web`
+- `compose.yaml` e `Dockerfile` mantidos como base de deploy local
+- configuracoes de proxy interno e externo versionadas
+- bootstrap inicial do agente pronto para a proxima rodada de homologacao
+
+## Objetivo pratico
+
+Entregar um sistema que permita:
+
+- visualizar todos os firewalls pfSense em um unico painel
+- saber rapidamente quem esta online, offline ou degradado
+- ver versao, uptime, IPs, gateways e servicos
+- receber alertas por indisponibilidade ou servico parado
+- instalar um agente leve no pfSense e evoluir para um pacote proprio com menu local
+
+## Principios deste repositorio
+
+- arquitetura antes de automacao pesada
+- seguranca antes de controle remoto
+- `heartbeat HTTPS` antes de telemetria complexa
+- documentacao viva em paralelo ao codigo
+- compatibilidade controlada por matriz de versoes
+- coexistencia obrigatoria com o Zabbix do host

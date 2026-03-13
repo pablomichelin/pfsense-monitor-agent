@@ -1,0 +1,8 @@
+<pfsensepkgs>
+  <package>
+    <name>systemup-monitor</name>
+    <descr><![CDATA[SystemUp Monitor package scaffold for Monitor-Pfsense agent configuration and diagnostics.]]></descr>
+    <version>%%PKGVERSION%%</version>
+    <configurationfile>systemup_monitor.xml</configurationfile>
+  </package>
+</pfsensepkgs>

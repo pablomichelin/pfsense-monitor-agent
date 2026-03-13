@@ -1,0 +1,6 @@
+SystemUp Monitor native pfSense package.
+
+Installs the local agent runtime, exposes package configuration under
+Services, writes the agent configuration file, and manages the rc.d
+service used to send authenticated heartbeats to the Monitor-Pfsense
+controller.

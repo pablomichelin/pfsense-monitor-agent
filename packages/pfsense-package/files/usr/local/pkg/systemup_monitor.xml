@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<packagegui>
+  <copyright>SystemUp</copyright>
+  <name>SystemUp Monitor</name>
+  <title>Services: SystemUp Monitor</title>
+  <include_file>/usr/local/pkg/systemup_monitor.inc</include_file>
+  <menu>
+    <name>SystemUp Monitor</name>
+    <section>Services</section>
+    <configfile>systemup_monitor.xml</configfile>
+    <tooltiptext>Configure o agente leve do Monitor-Pfsense.</tooltiptext>
+    <url>/pkg.php?xml=systemup_monitor.xml</url>
+  </menu>
+  <tabs>
+    <tab>
+      <text>Configuracao</text>
+      <url>/pkg.php?xml=systemup_monitor.xml</url>
+      <active/>
+    </tab>
+    <tab>
+      <text>Diagnostico</text>
+      <url>/status_systemup_monitor.php</url>
+    </tab>
+  </tabs>
+  <custom_php_global_functions>systemup_monitor_apply_defaults();</custom_php_global_functions>
+  <custom_php_resync_config_command>systemup_monitor_sync_config();</custom_php_resync_config_command>
+  <fields>
+    <field>
+      <fielddescr>Enable package</fielddescr>
+      <fieldname>enabled</fieldname>
+      <description>Habilita o agente local, grava a configuracao e inicia o servico rc.d.</description>
+      <type>checkbox</type>
+    </field>
+    <field>
+      <fielddescr>Controller URL</fielddescr>
+      <fieldname>controller_url</fieldname>
+      <description>URL publica do controlador central.</description>
+      <type>input</type>
+      <size>60</size>
+    </field>
+    <field>
+      <fielddescr>Node UID</fielddescr>
+      <fieldname>node_uid</fieldname>
+      <description>Identidade estavel do firewall no controlador. Obrigatorio para o runtime.</description>
+      <type>input</type>
+      <size>48</size>
+    </field>
+    <field>
+      <fielddescr>Customer code</fielddescr>
+      <fieldname>customer_code</fieldname>
+      <description>Codigo do cliente no controlador. Obrigatorio para o runtime.</description>
+      <type>input</type>
+      <size>32</size>
+    </field>
+    <field>
+      <fielddescr>Heartbeat interval</fielddescr>
+      <fieldname>interval_seconds</fieldname>
+      <description>Intervalo em segundos entre heartbeats do agente.</description>
+      <type>input</type>
+      <size>8</size>
+    </field>
+    <field>
+      <fielddescr>Services list</fielddescr>
+      <fieldname>services_csv</fieldname>
+      <description>Lista CSV dos servicos observados pelo agente.</description>
+      <type>input</type>
+      <size>80</size>
+    </field>
+    <field>
+      <fielddescr>Node secret</fielddescr>
+      <fieldname>node_secret</fieldname>
+      <description>Segredo do node gerado pelo controlador para autenticacao HMAC. Obrigatorio para o runtime.</description>
+      <type>password</type>
+      <size>64</size>
+    </field>
+  </fields>
+</packagegui>

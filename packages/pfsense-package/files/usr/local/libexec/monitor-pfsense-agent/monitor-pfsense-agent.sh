@@ -1,0 +1,442 @@
+#!/bin/sh
+
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+DEFAULT_CONFIG="$SCRIPT_DIR/../monitor-pfsense-agent.conf"
+if [ -f /usr/local/etc/monitor-pfsense-agent.conf ]; then
+  DEFAULT_CONFIG="/usr/local/etc/monitor-pfsense-agent.conf"
+fi
+CONFIG_FILE="${MONITOR_AGENT_CONFIG:-$DEFAULT_CONFIG}"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo "Config file not found: $CONFIG_FILE" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC1090
+. "$CONFIG_FILE"
+
+require_var() {
+  key="$1"
+  eval "value=\${$key-}"
+  if [ -z "${value:-}" ]; then
+    echo "Missing required config: $key" >&2
+    exit 1
+  fi
+}
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+add_notice() {
+  message="$1"
+  if [ -z "${message:-}" ]; then
+    return
+  fi
+
+  if [ -n "${MONITOR_AGENT_NOTICES:-}" ]; then
+    MONITOR_AGENT_NOTICES="${MONITOR_AGENT_NOTICES}
+$message"
+  else
+    MONITOR_AGENT_NOTICES="$message"
+  fi
+}
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+json_nullable_string() {
+  if [ -n "${1:-}" ]; then
+    printf '"%s"' "$(json_escape "$1")"
+    return
+  fi
+
+  printf 'null'
+}
+
+json_nullable_number() {
+  if [ -n "${1:-}" ]; then
+    printf '%s' "$1"
+    return
+  fi
+
+  printf 'null'
+}
+
+hex_hmac() {
+  openssl dgst -sha256 -hmac "$1" -binary | od -An -vtx1 | tr -d ' \n'
+}
+
+iso_now() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+detect_hostname() {
+  if [ -n "${HOSTNAME_OVERRIDE:-}" ]; then
+    printf '%s' "$HOSTNAME_OVERRIDE"
+    return
+  fi
+
+  hostname 2>/dev/null || printf 'unknown-host'
+}
+
+read_pfsense_interface_name() {
+  interface_role="$1"
+
+  if [ ! -f /conf/config.xml ] || ! command_exists php; then
+    return 1
+  fi
+
+  php -r '
+    $role = $argv[1];
+    $config = @simplexml_load_file("/conf/config.xml");
+    if (!$config || !isset($config->interfaces->{$role}->if)) {
+      exit(1);
+    }
+    echo trim((string) $config->interfaces->{$role}->if);
+  ' "$interface_role" 2>/dev/null
+}
+
+detect_interface_ipv4() {
+  interface_name="$1"
+
+  if [ -z "${interface_name:-}" ]; then
+    return 1
+  fi
+
+  ifconfig "$interface_name" 2>/dev/null | awk '
+    $1 == "inet" && $2 != "127.0.0.1" {
+      print $2;
+      exit;
+    }
+  '
+}
+
+detect_default_interface() {
+  if command_exists route; then
+    route -n get default 2>/dev/null | awk '/interface:/{print $2; exit}'
+    return
+  fi
+
+  if command_exists ip; then
+    ip route show default 2>/dev/null | awk '
+      /default/ {
+        for (i = 1; i <= NF; i++) {
+          if ($i == "dev") {
+            print $(i + 1);
+            exit;
+          }
+        }
+      }
+    '
+  fi
+}
+
+detect_mgmt_ip() {
+  if [ -n "${MGMT_IP:-}" ]; then
+    printf '%s' "$MGMT_IP"
+    return
+  fi
+
+  lan_if="$(read_pfsense_interface_name lan 2>/dev/null || true)"
+  if [ -n "${lan_if:-}" ]; then
+    detect_interface_ipv4 "$lan_if"
+    return
+  fi
+}
+
+detect_wan_ip() {
+  if [ -n "${WAN_IP_REPORTED:-}" ]; then
+    printf '%s' "$WAN_IP_REPORTED"
+    return
+  fi
+
+  wan_if="$(read_pfsense_interface_name wan 2>/dev/null || true)"
+  if [ -z "${wan_if:-}" ]; then
+    wan_if="$(detect_default_interface 2>/dev/null || true)"
+  fi
+
+  if [ -n "${wan_if:-}" ]; then
+    detect_interface_ipv4 "$wan_if"
+  fi
+}
+
+detect_pfsense_version() {
+  if [ -n "${PFSENSE_VERSION_OVERRIDE:-}" ]; then
+    printf '%s' "$PFSENSE_VERSION_OVERRIDE"
+    return
+  fi
+
+  if [ -f /etc/version ]; then
+    head -n 1 /etc/version | tr -d '\r'
+    return
+  fi
+
+  printf 'unknown'
+}
+
+detect_uptime_seconds() {
+  if [ -n "${UPTIME_SECONDS_OVERRIDE:-}" ]; then
+    printf '%s' "$UPTIME_SECONDS_OVERRIDE"
+    return
+  fi
+
+  if [ -r /proc/uptime ]; then
+    awk '{print int($1)}' /proc/uptime
+    return
+  fi
+
+  if command -v sysctl >/dev/null 2>&1; then
+    boot_epoch=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/.*sec = \([0-9][0-9]*\).*/\1/p' | head -n 1)
+    if [ -n "${boot_epoch:-}" ]; then
+      now_epoch=$(date +%s)
+      expr "$now_epoch" - "$boot_epoch"
+      return
+    fi
+  fi
+
+  printf '0'
+}
+
+detect_disk_percent() {
+  if [ -n "${DISK_PERCENT_OVERRIDE:-}" ]; then
+    printf '%s' "$DISK_PERCENT_OVERRIDE"
+    return
+  fi
+
+  df -Pk / 2>/dev/null | awk 'NR == 2 {gsub(/%/, "", $5); print $5; exit}'
+}
+
+detect_memory_percent() {
+  if [ -n "${MEMORY_PERCENT_OVERRIDE:-}" ]; then
+    printf '%s' "$MEMORY_PERCENT_OVERRIDE"
+    return
+  fi
+
+  if [ -r /proc/meminfo ]; then
+    awk '
+      $1 == "MemTotal:" { total = $2 }
+      $1 == "MemAvailable:" { available = $2 }
+      END {
+        if (total > 0 && available >= 0) {
+          used = total - available;
+          printf "%.2f", (used * 100) / total;
+        }
+      }
+    ' /proc/meminfo
+    return
+  fi
+
+  if command_exists sysctl; then
+    total="$(sysctl -n hw.physmem 2>/dev/null || true)"
+    page_size="$(sysctl -n hw.pagesize 2>/dev/null || true)"
+    free_pages="$(sysctl -n vm.stats.vm.v_free_count 2>/dev/null || true)"
+    inactive_pages="$(sysctl -n vm.stats.vm.v_inactive_count 2>/dev/null || true)"
+    cache_pages="$(sysctl -n vm.stats.vm.v_cache_count 2>/dev/null || true)"
+
+    if [ -n "${total:-}" ] && [ -n "${page_size:-}" ] && [ -n "${free_pages:-}" ] && [ -n "${inactive_pages:-}" ] && [ -n "${cache_pages:-}" ]; then
+      awk -v total="$total" -v page_size="$page_size" -v free_pages="$free_pages" -v inactive_pages="$inactive_pages" -v cache_pages="$cache_pages" '
+        BEGIN {
+          available = (free_pages + inactive_pages + cache_pages) * page_size;
+          if (total > 0) {
+            used = total - available;
+            if (used < 0) {
+              used = 0;
+            }
+            printf "%.2f", (used * 100) / total;
+          }
+        }
+      '
+      return
+    fi
+  fi
+}
+
+detect_cpu_percent() {
+  if [ -n "${CPU_PERCENT_OVERRIDE:-}" ]; then
+    printf '%s' "$CPU_PERCENT_OVERRIDE"
+  fi
+}
+
+service_status_from_service_cmd() {
+  service_name="$1"
+  service_output=""
+
+  if service_output="$(service "$service_name" onestatus 2>&1)"; then
+    printf 'running|%s\n' "$service_output"
+    return
+  fi
+
+  service_output="$(service "$service_name" status 2>&1 || true)"
+  case "$service_output" in
+    *"does not exist"*|*"not found"*|*"could not be found"*|*"unknown directive"*)
+      printf 'not_installed|%s\n' "$service_output"
+      return
+      ;;
+    *"is running as"*|*"running as pid"*|*"is running"*)
+      printf 'running|%s\n' "$service_output"
+      return
+      ;;
+    "")
+      printf 'unknown|\n'
+      return
+      ;;
+    *)
+      printf 'stopped|%s\n' "$service_output"
+      return
+      ;;
+  esac
+}
+
+detect_service_status() {
+  service_name="$1"
+
+  if command_exists service; then
+    service_status_from_service_cmd "$service_name"
+    return
+  fi
+
+  if command_exists pgrep; then
+    if pgrep -f "$service_name" >/dev/null 2>&1; then
+      printf 'running|detected via pgrep\n'
+    else
+      printf 'stopped|process not found via pgrep\n'
+    fi
+    return
+  fi
+
+  printf 'unknown|no service detection method available\n'
+}
+
+build_services_json() {
+  services_csv="${MONITOR_AGENT_SERVICES:-unbound,dhcpd,openvpn,ipsec,wireguard,ntpd,dpinger}"
+  old_ifs="${IFS}"
+  IFS=','
+  first_item="1"
+
+  printf '['
+  for raw_service in $services_csv; do
+    service_name=$(printf '%s' "$raw_service" | sed 's/^ *//; s/ *$//')
+    if [ -z "$service_name" ]; then
+      continue
+    fi
+
+    service_state="$(detect_service_status "$service_name")"
+    service_status="${service_state%%|*}"
+    service_detail="${service_state#*|}"
+
+    if [ "$first_item" = "1" ]; then
+      first_item="0"
+    else
+      printf ','
+    fi
+
+    printf '{"name":"%s","status":"%s","detail":%s}' \
+      "$(json_escape "$service_name")" \
+      "$(json_escape "$service_status")" \
+      "$(json_nullable_string "$service_detail")"
+  done
+  printf ']'
+  IFS="${old_ifs}"
+}
+
+build_payload() {
+  mgmt_ip="$(detect_mgmt_ip 2>/dev/null || true)"
+  wan_ip="$(detect_wan_ip 2>/dev/null || true)"
+  pfsense_version="$(detect_pfsense_version)"
+  uptime_seconds="$(detect_uptime_seconds)"
+  cpu_percent="$(detect_cpu_percent 2>/dev/null || true)"
+  memory_percent="$(detect_memory_percent 2>/dev/null || true)"
+  disk_percent="$(detect_disk_percent 2>/dev/null || true)"
+  services_json="$(build_services_json)"
+  notices_json="$(json_nullable_string "${MONITOR_AGENT_NOTICES:-}")"
+
+  cat <<EOF
+{
+  "hostname": "$(json_escape "$(detect_hostname)")",
+  "customer_code": "$(json_escape "$CUSTOMER_CODE")",
+  "pfsense_version": "$(json_escape "$pfsense_version")",
+  "uptime_seconds": $uptime_seconds,
+  "mgmt_ip": $(json_nullable_string "$mgmt_ip"),
+  "wan_ip_reported": $(json_nullable_string "$wan_ip"),
+  "agent_version": "$(json_escape "${AGENT_VERSION:-0.1.0}")",
+  "schema_version": "$(json_escape "${SCHEMA_VERSION:-2026-01}")",
+  "metrics": {
+    "cpu_percent": $(json_nullable_number "$cpu_percent"),
+    "memory_percent": $(json_nullable_number "$memory_percent"),
+    "disk_percent": $(json_nullable_number "$disk_percent")
+  },
+  "services": $services_json,
+  "notices": $notices_json
+}
+EOF
+}
+
+post_signed_request() {
+  endpoint="$1"
+  payload="$2"
+  timestamp="$(iso_now)"
+  signature_input="${NODE_UID}.${timestamp}.${payload}"
+  signature="$(printf '%s' "$signature_input" | hex_hmac "$NODE_SECRET")"
+
+  curl -fsS \
+    -H "Content-Type: application/json" \
+    -H "X-Node-Uid: $NODE_UID" \
+    -H "X-Timestamp: $timestamp" \
+    -H "X-Signature: $signature" \
+    --data "$payload" \
+    "$CONTROLLER_URL$endpoint"
+}
+
+print_config() {
+  cat "$CONFIG_FILE"
+}
+
+heartbeat() {
+  require_var CONTROLLER_URL
+  require_var NODE_UID
+  require_var NODE_SECRET
+  require_var CUSTOMER_CODE
+
+  payload="$(build_payload)"
+  post_signed_request "/api/v1/ingest/heartbeat" "$payload"
+}
+
+test_connection() {
+  require_var CONTROLLER_URL
+  require_var NODE_UID
+  require_var NODE_SECRET
+  require_var CUSTOMER_CODE
+
+  payload="$(build_payload)"
+  post_signed_request "/api/v1/ingest/test-connection" "$payload"
+}
+
+usage() {
+  cat <<EOF
+Usage:
+  $0 heartbeat
+  $0 test-connection
+  $0 print-config
+EOF
+}
+
+command_name="${1:-}"
+case "$command_name" in
+  heartbeat)
+    heartbeat
+    ;;
+  test-connection)
+    test_connection
+    ;;
+  print-config)
+    print_config
+    ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
+esac

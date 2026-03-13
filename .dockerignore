@@ -1,0 +1,15 @@
+node_modules
+.git
+.next
+dist
+coverage
+data
+*.log
+.env
+.env.api
+.env.db
+.env.web
+apps/api/node_modules
+apps/api/dist
+apps/web/node_modules
+apps/web/.next

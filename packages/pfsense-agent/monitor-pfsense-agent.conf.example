@@ -1,0 +1,17 @@
+CONTROLLER_URL="https://pfs-monitor.systemup.inf.br"
+NODE_UID="node_uid_emitido_no_bootstrap"
+NODE_SECRET="node_secret_emitido_no_bootstrap"
+CUSTOMER_CODE="CLIENTE"
+MONITOR_AGENT_SERVICES="unbound,dhcpd,openvpn,ipsec,wireguard,ntpd,dpinger"
+
+# Overrides opcionais durante o bootstrap inicial.
+# HOSTNAME_OVERRIDE="fw-cliente-a"
+# PFSENSE_VERSION_OVERRIDE="pfSense CE 2.8.1"
+# UPTIME_SECONDS_OVERRIDE="120"
+# MGMT_IP="10.0.0.1"
+# WAN_IP_REPORTED="198.51.100.10"
+# CPU_PERCENT_OVERRIDE="12.5"
+# MEMORY_PERCENT_OVERRIDE="43.1"
+# DISK_PERCENT_OVERRIDE="61"
+# AGENT_VERSION="0.1.0"
+# SCHEMA_VERSION="2026-01"
