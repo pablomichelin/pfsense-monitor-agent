@@ -72,6 +72,57 @@ function systemup_monitor_runtime_paths()
     );
 }
 
+function systemup_monitor_service_definition()
+{
+    return array(
+        'name' => 'monitor_pfsense_agent',
+        'description' => 'SystemUp Monitor Agent',
+        'rcfile' => 'monitor_pfsense_agent',
+        'custom_php_service_status_command' => 'mwexec("/usr/sbin/service monitor_pfsense_agent onestatus >/dev/null 2>&1") == 0;',
+    );
+}
+
+function systemup_monitor_register_service()
+{
+    global $config;
+
+    if (!is_array($config['installedpackages']['service'])) {
+        $config['installedpackages']['service'] = array();
+    }
+
+    $service_name = systemup_monitor_service_definition()['name'];
+
+    foreach ($config['installedpackages']['service'] as $index => $service) {
+        if (!is_array($service) || ($service['name'] ?? '') !== $service_name) {
+            continue;
+        }
+
+        $config['installedpackages']['service'][$index] = systemup_monitor_service_definition();
+        return;
+    }
+
+    $config['installedpackages']['service'][] = systemup_monitor_service_definition();
+}
+
+function systemup_monitor_unregister_service()
+{
+    global $config;
+
+    if (!is_array($config['installedpackages']['service'])) {
+        return;
+    }
+
+    $service_name = systemup_monitor_service_definition()['name'];
+
+    foreach ($config['installedpackages']['service'] as $index => $service) {
+        if (is_array($service) && ($service['name'] ?? '') === $service_name) {
+            unset($config['installedpackages']['service'][$index]);
+        }
+    }
+
+    $config['installedpackages']['service'] = array_values($config['installedpackages']['service']);
+}
+
 function systemup_monitor_is_enabled($pkg)
 {
     return isset($pkg['enabled']) && $pkg['enabled'] === 'on';
@@ -187,6 +238,7 @@ function systemup_monitor_sync_service($enabled, $config_ready)
 function systemup_monitor_sync_config()
 {
     systemup_monitor_apply_defaults();
+    systemup_monitor_register_service();
     $pkg = systemup_monitor_read_config();
     $missing_fields = array();
     $config_ready = systemup_monitor_has_required_runtime_config($pkg, $missing_fields);

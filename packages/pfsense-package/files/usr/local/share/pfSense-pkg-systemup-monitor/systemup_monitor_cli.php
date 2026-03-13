@@ -86,6 +86,7 @@ function systemup_monitor_cli_remove()
     $pkg =& systemup_monitor_config_ref();
     $pkg['enabled'] = '';
     systemup_monitor_sync_config();
+    systemup_monitor_unregister_service();
 
     unset($config['installedpackages']['systemupmonitor']);
     delete_package_xml('systemup-monitor');
