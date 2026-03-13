@@ -66,6 +66,25 @@ json_nullable_number() {
   printf 'null'
 }
 
+json_string_array() {
+  if [ "$#" -eq 0 ]; then
+    printf '[]'
+    return
+  fi
+
+  first_item="1"
+  printf '['
+  for item in "$@"; do
+    if [ "$first_item" = "1" ]; then
+      first_item="0"
+    else
+      printf ','
+    fi
+    printf '"%s"' "$(json_escape "$item")"
+  done
+  printf ']'
+}
+
 hex_hmac() {
   openssl dgst -sha256 -hmac "$1" -binary | od -An -vtx1 | tr -d ' \n'
 }
@@ -334,13 +353,17 @@ build_services_json() {
       printf ','
     fi
 
-    printf '{"name":"%s","status":"%s","detail":%s}' \
+    printf '{"name":"%s","status":"%s","message":%s}' \
       "$(json_escape "$service_name")" \
       "$(json_escape "$service_status")" \
       "$(json_nullable_string "$service_detail")"
   done
   printf ']'
   IFS="${old_ifs}"
+}
+
+build_gateways_json() {
+  printf '[]'
 }
 
 build_payload() {
@@ -351,24 +374,34 @@ build_payload() {
   cpu_percent="$(detect_cpu_percent 2>/dev/null || true)"
   memory_percent="$(detect_memory_percent 2>/dev/null || true)"
   disk_percent="$(detect_disk_percent 2>/dev/null || true)"
+  heartbeat_id="${NODE_UID}-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  sent_at="$(iso_now)"
   services_json="$(build_services_json)"
-  notices_json="$(json_nullable_string "${MONITOR_AGENT_NOTICES:-}")"
+  gateways_json="$(build_gateways_json)"
+
+  if [ -n "${MONITOR_AGENT_NOTICES:-}" ]; then
+    notices_json="$(json_string_array "$MONITOR_AGENT_NOTICES")"
+  else
+    notices_json='[]'
+  fi
 
   cat <<EOF
 {
+  "schema_version": "$(json_escape "${SCHEMA_VERSION:-2026-01}")",
+  "heartbeat_id": "$(json_escape "$heartbeat_id")",
+  "sent_at": "$(json_escape "$sent_at")",
+  "node_uid": "$(json_escape "$NODE_UID")",
   "hostname": "$(json_escape "$(detect_hostname)")",
   "customer_code": "$(json_escape "$CUSTOMER_CODE")",
   "pfsense_version": "$(json_escape "$pfsense_version")",
-  "uptime_seconds": $uptime_seconds,
+  "uptime_sec": $uptime_seconds,
   "mgmt_ip": $(json_nullable_string "$mgmt_ip"),
   "wan_ip_reported": $(json_nullable_string "$wan_ip"),
   "agent_version": "$(json_escape "${AGENT_VERSION:-0.1.0}")",
-  "schema_version": "$(json_escape "${SCHEMA_VERSION:-2026-01}")",
-  "metrics": {
-    "cpu_percent": $(json_nullable_number "$cpu_percent"),
-    "memory_percent": $(json_nullable_number "$memory_percent"),
-    "disk_percent": $(json_nullable_number "$disk_percent")
-  },
+  "cpu_percent": $(json_nullable_number "$cpu_percent"),
+  "memory_percent": $(json_nullable_number "$memory_percent"),
+  "disk_percent": $(json_nullable_number "$disk_percent"),
+  "gateways": $gateways_json,
   "services": $services_json,
   "notices": $notices_json
 }
@@ -377,20 +410,36 @@ EOF
 
 post_signed_request() {
   endpoint="$1"
-  payload="$2"
+  payload="${2:-}"
   timestamp="$(iso_now)"
   signature_input="${NODE_UID}.${timestamp}.${payload}"
   signature="$(printf '%s' "$signature_input" | hex_hmac "$NODE_SECRET")"
   request_url="${CONTROLLER_URL}${endpoint}"
 
   if command_exists curl; then
-    curl -fsS \
+    curl_args="
+      -fsS
+      -H Content-Type: application/json
+      -H X-Node-Uid: $NODE_UID
+      -H X-Timestamp: $timestamp
+      -H X-Signature: $signature
+    "
+    if [ -n "$payload" ]; then
+      curl -fsS \
       -H "Content-Type: application/json" \
       -H "X-Node-Uid: $NODE_UID" \
       -H "X-Timestamp: $timestamp" \
       -H "X-Signature: $signature" \
       --data "$payload" \
       "$request_url"
+    else
+      curl -fsS \
+        -H "Content-Type: application/json" \
+        -H "X-Node-Uid: $NODE_UID" \
+        -H "X-Timestamp: $timestamp" \
+        -H "X-Signature: $signature" \
+        "$request_url"
+    fi
     return
   fi
 
@@ -471,8 +520,7 @@ test_connection() {
   require_var NODE_SECRET
   require_var CUSTOMER_CODE
 
-  payload="$(build_payload)"
-  post_signed_request "/api/v1/ingest/test-connection" "$payload"
+  post_signed_request "/api/v1/ingest/test-connection"
 }
 
 usage() {
