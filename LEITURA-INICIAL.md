@@ -143,6 +143,8 @@ Status:
 - firewall real `Lasalle Agro` chegou ao painel com `agente ativo`, `Agente 0.1.0` e ultimo contato recente
 - causa raiz mais provavel do `degraded` do node real identificada no runtime do agente: a lista padrao de servicos incluia itens nao habilitados no firewall e o backend os tratava como falha relevante
 - runtime do agente agora filtra a lista padrao para enviar apenas servicos habilitados ou configurados no `config.xml` do pfSense, reduzindo falso positivo de `degraded`
+- package pfSense agora expoe selecao explicita por firewall dos servicos nativos monitorados, evitando degradacao por recurso que o cliente nao usa
+- catalogo inicial de pacotes monitoraveis do pfSense agora esta versionado para a proxima fase de expansao do produto
 - cadastro inicial no painel administrativo agora esta simplificado: `client code`, `site code` e `node_uid` nascem automaticamente no backend, reduzindo o formulario ao minimo operacional
 - estrategia do pacote pfSense consolidada: usar o framework oficial de packages para menu/configuracao e manter pagina local em `/usr/local/www`, sem editar `head.inc` como solucao final
 - suite local `scripts/run-smoke-suite.sh` executada com sucesso no stack atual em `2026-03-12`, concluindo `realtime`, `admin` e `RBAC` em `14s`
@@ -267,6 +269,7 @@ Isso deve bastar para retomar o desenvolvimento sem explicar tudo novamente.
 - `2026-03-12`: `packages/pfsense-package` evoluido de scaffold para port empacotavel do pfSense, com `Makefile`, `pkg-plist`, scripts `pkg-install/pkg-deinstall`, runtime do agente embutido, sync da GUI gerando `/usr/local/etc/monitor-pfsense-agent.conf` e controle do servico `monitor_pfsense_agent`; gestao de tokens auxiliares, backup/restore do PostgreSQL, `verify-origin-contract.sh`, `AUTO_STAGE_RELEASE=1` e a suite completa permaneceram validados na mesma iteracao
 - `2026-03-13`: primeira rodada funcional de homologacao real do pacote pfSense concluida com GUI, servico e heartbeat real chegando ao painel para o firewall `Lasalle Agro`; linha do tempo, comandos corretos, erros reais e correcoes registradas em `18-homologacao-pfsense-package-real-2026-03-13.md`
 - `2026-03-13`: runtime do agente ajustado para filtrar a lista padrao de servicos conforme o `config.xml` do pfSense, atacando a causa mais provavel do falso `degraded` observado no node `Lasalle Agro`
+- `2026-03-13`: rodada de endurecimento do package pfSense registrada em `20-endurecimento-pfsense-package-2026-03-13.md`, incluindo `v0.1.1` a `v0.1.6`, correcao do fluxo HTTP/HMAC, coleta local refinada e selecao explicita por firewall dos servicos nativos monitorados
 
 ## Notas especificas para o proximo chat
 
