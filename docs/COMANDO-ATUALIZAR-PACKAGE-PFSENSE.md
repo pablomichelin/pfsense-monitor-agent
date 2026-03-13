@@ -2,16 +2,40 @@
 
 Sempre que for preciso instalar ou atualizar o package do SystemUp Monitor em um pfSense (Diagnostics > Command Prompt), use o comando **one-shot** abaixo.
 
-## Formato padrao
+## Gerar comando automaticamente (no servidor)
+
+No servidor do projeto, o comando completo (com o **secret real** do node) é gerado pela API. Execute:
 
 ```bash
-fetch -o - https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main/packages/pfsense-package/bootstrap/install-from-release.sh | sh -s -- \
-  --release-url https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main/dist/pfsense-package/monitor-pfsense-package-vVERSAO.tar.gz \
-  --sha256 SHA256_DO_ARTEFATO \
-  --controller-url https://pfs-monitor.systemup.inf.br \
-  --node-uid NODE_UID \
-  --node-secret NODE_SECRET \
-  --customer-code CUSTOMER_CODE
+cd /opt/Monitor-Pfsense
+./scripts/generate-install-command.sh [NODE_UID]
+```
+
+Exemplo para Lasalle Agro:
+
+```bash
+./scripts/generate-install-command.sh lasalle-agro
+```
+
+A saída é o comando pronto para copiar e colar no Command Prompt do pfSense. O comando inclui **`--enable`**, que habilita o serviço do agente e inicia o loop de heartbeats (a cada 30 s). Requer `curl` e `jq`; usa credenciais de `.env.api` para login na API e obtém o secret ativo do node.
+
+### Se já instalou sem `--enable` (heartbeat só ao rodar manualmente)
+
+No pfSense (Diagnostics > Command Prompt), execute para habilitar e iniciar o serviço:
+
+```bash
+/usr/sbin/sysrc monitor_pfsense_agent_enable=YES
+/usr/sbin/service monitor_pfsense_agent start
+```
+
+Confirme que está rodando: `service monitor_pfsense_agent status`. A partir daí os heartbeats passam a ser enviados automaticamente a cada 30 segundos.
+
+## Formato padrao
+
+Comando **sem pipe** (evita travamento no Command Prompt do pfSense): baixa o script para `/tmp` e executa com stdin fechado.
+
+```bash
+fetch -o /tmp/install-from-release.sh INSTALLER_SCRIPT_URL && chmod +x /tmp/install-from-release.sh && /tmp/install-from-release.sh --release-url ARTIFACT_URL --sha256 SHA256 --controller-url https://pfs-monitor.systemup.inf.br --node-uid NODE_UID --node-secret NODE_SECRET --customer-code CUSTOMER_CODE < /dev/null
 ```
 
 Substitua:
@@ -30,19 +54,13 @@ Inclui correcao do loop do agente (heartbeat a cada 30s sem parar) e alteracoes 
 
 ## Exemplo — Lasalle Agro (v0.1.7)
 
-**Antes de usar:** publique o artefato `monitor-pfsense-package-v0.1.7.tar.gz` (e o `.sha256` se quiser) em `dist/pfsense-package/` no branch `main` do repo, para que a URL raw funcione.
+Use o comando gerado no servidor (`./scripts/generate-install-command.sh lasalle-agro`) para obter a linha com o secret real. Formato (sem pipe, para não travar no Command Prompt):
 
 ```bash
-fetch -o - https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main/packages/pfsense-package/bootstrap/install-from-release.sh | sh -s -- \
-  --release-url https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main/dist/pfsense-package/monitor-pfsense-package-v0.1.7.tar.gz \
-  --sha256 4b0ab135381ec8bf46bcacdd3687fda5a554bf5e866e47b7bfa6cf36aed9caba \
-  --controller-url https://pfs-monitor.systemup.inf.br \
-  --node-uid lasalle-agro \
-  --node-secret SEU_NODE_SECRET_DO_PAINEL \
-  --customer-code lasalle-agro
+fetch -o /tmp/install-from-release.sh https://raw.githubusercontent.com/.../install-from-release.sh && chmod +x /tmp/install-from-release.sh && /tmp/install-from-release.sh --release-url ... --sha256 ... --controller-url ... --node-uid lasalle-agro --node-secret 'SEU_SECRET' --customer-code LASALLE-AGRO < /dev/null
 ```
 
-**Importante:** use o **node-secret** exibido no painel (detalhe do node Lasalle Agro). O secret tem digitos e letras; confira **0** (zero) vs **O** (letra). Se nao tiver o secret, use **Rekey** no painel e copie o novo.
+**Importante:** use o **node-secret** exibido no painel (ou o comando completo gerado por `generate-install-command.sh`).
 
 ---
 

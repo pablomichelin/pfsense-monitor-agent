@@ -19,9 +19,11 @@ usage() {
 Usage:
   $0 [--controller-url URL --node-uid UID --node-secret SECRET --customer-code CODE] [--interval-seconds N] [--services CSV] [--enable]
 
+  Com controller-url + node-uid + node-secret + customer-code o serviço é habilitado e iniciado automaticamente (heartbeats a cada 30s).
+
 Examples:
   $0
-  $0 --controller-url https://pfs-monitor.systemup.inf.br --node-uid node-123 --node-secret secret-123 --customer-code CLIENTE --enable
+  $0 --controller-url https://pfs-monitor.systemup.inf.br --node-uid node-123 --node-secret secret-123 --customer-code CLIENTE
 EOF
 }
 
@@ -60,7 +62,7 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
     require_once("/etc/inc/config.inc");
     require_once("/etc/inc/pkg-utils.inc");
     install_package_xml("systemup-monitor");
-  '
+  ' < /dev/null
 
   set -- seed
 
@@ -82,11 +84,12 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
   if [ -n "$SERVICES_CSV" ]; then
     set -- "$@" --services "$SERVICES_CSV"
   fi
-  if [ "$ENABLE_PACKAGE" = "1" ]; then
+  # Com config completa (controller + node_uid + secret + customer), habilita e inicia o serviço em um único passo
+  if [ "$ENABLE_PACKAGE" = "1" ] || { [ -n "$CONTROLLER_URL" ] && [ -n "$NODE_UID" ] && [ -n "$NODE_SECRET" ] && [ -n "$CUSTOMER_CODE" ]; }; then
     set -- "$@" --enable
   fi
 
-  /usr/local/bin/php -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php "$@"
+  /usr/local/bin/php -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php "$@" < /dev/null
 fi
 
 cat <<EOF
