@@ -543,93 +543,19 @@ build_payload() {
 EOF
 }
 
-post_signed_request() {
-  endpoint="$1"
-  payload="${2:-}"
-  timestamp="$(iso_now)"
-  if [ -n "$payload" ]; then
-    signature="$(printf '%s\n%s' "$timestamp" "$payload" | hex_hmac "$NODE_SECRET")"
-  else
-    signature="$(printf '%s\n' "$timestamp" | hex_hmac "$NODE_SECRET")"
-  fi
-  request_url="${CONTROLLER_URL}${endpoint}"
-
-  if command_exists curl; then
-    if [ -n "$payload" ]; then
-      curl -fsS \
-      -X POST \
-      -H "Content-Type: application/json" \
-      -H "X-Node-Uid: $NODE_UID" \
-      -H "X-Timestamp: $timestamp" \
-      -H "X-Signature: $signature" \
-      --data "$payload" \
-      "$request_url"
-    else
-      curl -fsS \
-        -X POST \
-        -H "X-Node-Uid: $NODE_UID" \
-        -H "X-Timestamp: $timestamp" \
-        -H "X-Signature: $signature" \
-        "$request_url"
-    fi
-    return
-  fi
-
-  if command_exists php; then
-    REQUEST_URL="$request_url" \
-    REQUEST_PAYLOAD="$payload" \
-    REQUEST_NODE_UID="$NODE_UID" \
-    REQUEST_TIMESTAMP="$timestamp" \
-    REQUEST_SIGNATURE="$signature" \
-    php <<'EOF'
-<?php
-$url = getenv('REQUEST_URL') ?: '';
-$payload = getenv('REQUEST_PAYLOAD') ?: '';
-$nodeUid = getenv('REQUEST_NODE_UID') ?: '';
-$timestamp = getenv('REQUEST_TIMESTAMP') ?: '';
-$signature = getenv('REQUEST_SIGNATURE') ?: '';
-
-$context = stream_context_create([
-    'http' => [
-        'method' => 'POST',
-        'ignore_errors' => true,
-        'header' => implode("\r\n", [
-            'Content-Type: application/json',
-            'X-Node-Uid: ' . $nodeUid,
-            'X-Timestamp: ' . $timestamp,
-            'X-Signature: ' . $signature,
-        ]),
-        'content' => $payload,
-        'timeout' => 20,
-    ],
-]);
-
-$response = @file_get_contents($url, false, $context);
-$statusLine = $http_response_header[0] ?? '';
-if (!preg_match('/\s(\d{3})\s/', $statusLine, $matches)) {
-    fwrite(STDERR, "HTTP request failed\n");
-    exit(1);
+build_test_connection_signature() {
+  timestamp="$1"
+  printf '%s\n' "$timestamp" | hex_hmac "$NODE_SECRET"
 }
 
-$statusCode = (int) $matches[1];
-if ($statusCode < 200 || $statusCode >= 300) {
-    fwrite(STDERR, 'HTTP ' . $statusCode);
-    if (is_string($response) && $response !== '') {
-        fwrite(STDERR, ': ' . trim($response));
-    }
-    fwrite(STDERR, PHP_EOL);
-    exit(1);
-}
+build_payload_signature() {
+  timestamp="$1"
+  payload_file="$2"
 
-if (is_string($response) && $response !== '') {
-    fwrite(STDOUT, $response);
-}
-EOF
-    return
-  fi
-
-  echo "Neither curl nor php is available for HTTP requests" >&2
-  exit 1
+  {
+    printf '%s\n' "$timestamp"
+    cat "$payload_file"
+  } | hex_hmac "$NODE_SECRET"
 }
 
 print_config() {
@@ -642,8 +568,20 @@ heartbeat() {
   require_var NODE_SECRET
   require_var CUSTOMER_CODE
 
-  payload="$(build_payload)"
-  post_signed_request "/api/v1/ingest/heartbeat" "$payload"
+  timestamp="$(iso_now)"
+  payload_file="$(mktemp)"
+  trap 'rm -f "$payload_file"' EXIT INT TERM
+  build_payload >"$payload_file"
+  signature="$(build_payload_signature "$timestamp" "$payload_file")"
+
+  curl -fsS \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -H "X-Node-Uid: $NODE_UID" \
+    -H "X-Timestamp: $timestamp" \
+    -H "X-Signature: $signature" \
+    --data-binary @"$payload_file" \
+    "${CONTROLLER_URL}/api/v1/ingest/heartbeat"
 }
 
 test_connection() {
@@ -652,7 +590,15 @@ test_connection() {
   require_var NODE_SECRET
   require_var CUSTOMER_CODE
 
-  post_signed_request "/api/v1/ingest/test-connection"
+  timestamp="$(iso_now)"
+  signature="$(build_test_connection_signature "$timestamp")"
+
+  curl -fsS \
+    -X POST \
+    -H "X-Node-Uid: $NODE_UID" \
+    -H "X-Timestamp: $timestamp" \
+    -H "X-Signature: $signature" \
+    "${CONTROLLER_URL}/api/v1/ingest/test-connection"
 }
 
 usage() {
