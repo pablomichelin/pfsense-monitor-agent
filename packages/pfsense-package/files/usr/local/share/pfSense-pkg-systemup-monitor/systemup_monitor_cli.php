@@ -5,6 +5,7 @@ set_include_path(get_include_path() . PATH_SEPARATOR . '/etc/inc' . PATH_SEPARAT
 
 require_once('/etc/inc/config.inc');
 require_once('/etc/inc/globals.inc');
+require_once('/etc/inc/pkg-utils.inc');
 require_once('/usr/local/pkg/systemup_monitor.inc');
 
 function systemup_monitor_cli_usage()
@@ -59,6 +60,8 @@ function systemup_monitor_cli_parse_args($argv)
 
 function systemup_monitor_cli_seed($options)
 {
+    install_package_xml('systemup-monitor');
+
     $pkg =& systemup_monitor_config_ref();
     systemup_monitor_apply_defaults();
 
@@ -85,6 +88,7 @@ function systemup_monitor_cli_remove()
     systemup_monitor_sync_config();
 
     unset($config['installedpackages']['systemupmonitor']);
+    delete_package_xml('systemup-monitor');
     write_config('SystemUp Monitor package bootstrap removed');
 
     echo "SystemUp Monitor package config removed.\n";

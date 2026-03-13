@@ -56,6 +56,12 @@ chmod 0755 \
   "$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php"
 
 if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/config.inc ]; then
+  /usr/local/bin/php -r '
+    require_once("/etc/inc/config.inc");
+    require_once("/etc/inc/pkg-utils.inc");
+    install_package_xml("systemup-monitor");
+  '
+
   set -- seed
 
   if [ -n "$CONTROLLER_URL" ]; then
