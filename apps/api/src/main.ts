@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { Readable } from 'stream';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
@@ -9,11 +10,29 @@ import { AppModule } from './app.module';
 import { appConfig } from './config/app-config';
 
 async function bootstrap(): Promise<void> {
+  const fastifyAdapter = new FastifyAdapter({
+    bodyLimit: appConfig.heartbeat.maxPayloadBytes,
+  });
+
+  // POST com application/json e body vazio: Fastify rejeita. Injetar '{}' para rotas como rekey/revoke.
+  const instance = fastifyAdapter.getInstance();
+  instance.addHook('preParsing', (request, _reply, payload, done) => {
+    const contentType = request.headers['content-type']?.toLowerCase();
+    const contentLength = request.headers['content-length'];
+    if (
+      request.method === 'POST' &&
+      contentType?.startsWith('application/json') &&
+      (contentLength === '0' || contentLength === undefined)
+    ) {
+      done(null, Readable.from(['{}']));
+      return;
+    }
+    done(null, payload);
+  });
+
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({
-      bodyLimit: appConfig.heartbeat.maxPayloadBytes,
-    }),
+    fastifyAdapter,
     {
       rawBody: true,
       bufferLogs: true,
