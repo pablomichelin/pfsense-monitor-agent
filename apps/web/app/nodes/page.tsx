@@ -127,7 +127,7 @@ export default async function NodesPage({
       <PageHero
         eyebrow="Inventario central"
         title="Firewalls monitorados"
-        description="Status efetivo calculado com heartbeat recente, telemetria recebida, cobertura do agente e aderencia a matriz homologada."
+        description="Lista principal de firewalls com status, versao e etapa de instalacao."
         stats={[
           { label: 'Itens filtrados', value: String(nodes.items.length) },
           { label: 'Agente ativo', value: String(bootstrapSummary.active), tone: bootstrapSummary.active > 0 ? 'success' : 'default' },
@@ -178,7 +178,7 @@ export default async function NodesPage({
                 type="search"
                 name="search"
                 defaultValue={search ?? ''}
-                placeholder="Buscar por hostname, node UID ou cliente"
+                placeholder="Buscar por nome, hostname ou cliente"
                 className="min-w-[18rem] flex-1 rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
               />
               <button
@@ -200,7 +200,7 @@ export default async function NodesPage({
               {bootstrapSummary.pending}
             </span>
             <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs text-amber-200">
-              prontos p/ bootstrap
+              aguardando instalacao
             </span>
           </div>
         </div>
@@ -241,12 +241,10 @@ export default async function NodesPage({
               <tr>
                 <th className="px-5 py-4">Status</th>
                 <th className="px-5 py-4">Firewall</th>
-                <th className="px-5 py-4">Cliente / Site</th>
-                <th className="px-5 py-4">IPs</th>
+                <th className="px-5 py-4">Local</th>
                 <th className="px-5 py-4">Versao</th>
-                <th className="px-5 py-4">Ultimo heartbeat</th>
-                <th className="px-5 py-4">Bootstrap</th>
-                <th className="px-5 py-4">Alertas</th>
+                <th className="px-5 py-4">Ultimo contato</th>
+                <th className="px-5 py-4">Instalacao</th>
               </tr>
             </thead>
             <tbody>
@@ -265,28 +263,21 @@ export default async function NodesPage({
                     <Link href={`/nodes/${node.id}`} className="font-display text-lg text-white">
                       {node.display_name ?? node.hostname}
                     </Link>
-                    <p className="mt-1 font-mono text-xs text-slate-500">
-                      {node.node_uid}
-                    </p>
+                    <p className="mt-1 text-xs text-slate-500">{node.hostname}</p>
                   </td>
                   <td className="px-5 py-4">
                     <p>{node.client.name}</p>
                     <p className="text-slate-500">{node.site.name}</p>
-                  </td>
-                  <td className="px-5 py-4 text-slate-400">
-                    <p>MGMT {node.management_ip ?? '-'}</p>
-                    <p>WAN {node.wan_ip ?? '-'}</p>
                   </td>
                   <td className="px-5 py-4">
                     <VersionBadge
                       version={node.pfsense_version}
                       homologated={node.pfsense_version_homologated}
                     />
-                    <p className="text-slate-500">Agente {node.agent_version ?? '-'}</p>
+                    <p className="text-slate-500">Agente {node.agent_version ?? 'nao instalado'}</p>
                   </td>
                   <td className="px-5 py-4 text-slate-400">
                     <p>{formatRelativeAge(node.last_seen_at)}</p>
-                    <p>{formatDateTime(node.last_seen_at)}</p>
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex flex-col gap-2">
@@ -298,14 +289,9 @@ export default async function NodesPage({
                         href={`/nodes/${node.id}`}
                         className="text-xs text-cyan-300 transition hover:text-cyan-200"
                       >
-                        Abrir bootstrap
+                        Abrir
                       </Link>
                     </div>
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className="rounded-full border border-slate-700 bg-panel-soft px-3 py-1 font-mono text-xs">
-                      {node.open_alerts}
-                    </span>
                   </td>
                 </tr>
               ))}

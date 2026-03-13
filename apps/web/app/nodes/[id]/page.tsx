@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { AdvancedSection } from '@/components/advanced-section';
 import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 import {
@@ -352,12 +353,12 @@ export default async function NodeDetailsPage({
         ) : null}
 
         <PageHero
-          eyebrow="Detalhe do firewall"
+          eyebrow="Firewall"
           title={node.display_name ?? node.hostname}
           description={identityLabel}
           stats={[
             { label: 'Status', value: node.effective_status },
-            { label: 'Ultimo heartbeat', value: formatRelativeAge(node.last_seen_at) },
+            { label: 'Ultimo contato', value: formatRelativeAge(node.last_seen_at) },
             { label: 'pfSense', value: node.pfsense_version ?? '-', tone: node.pfsense_version_homologated ? 'success' : 'warning' },
             { label: 'Agente', value: node.agent_version ?? '-' },
           ]}
@@ -399,87 +400,68 @@ export default async function NodeDetailsPage({
           <div className="space-y-6">
             <div className="glass-panel rounded-[2rem] p-5">
               <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
-                Telemetria recente
+                Resumo do equipamento
               </p>
-              <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Metric
-                  label="Uptime"
-                  value={formatUptime(node.latest_heartbeat?.uptime_seconds ?? null)}
-                />
-                <Metric
-                  label="CPU"
-                  value={formatPercent(node.latest_heartbeat?.cpu_percent ?? null)}
-                />
-                <Metric
-                  label="Memoria"
-                  value={formatPercent(node.latest_heartbeat?.memory_percent ?? null)}
-                />
-                <Metric
-                  label="Disco"
-                  value={formatPercent(node.latest_heartbeat?.disk_percent ?? null)}
-                />
-              </div>
+              {node.latest_heartbeat ? (
+                <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <Metric
+                    label="Uptime"
+                    value={formatUptime(node.latest_heartbeat?.uptime_seconds ?? null)}
+                  />
+                  <Metric
+                    label="CPU"
+                    value={formatPercent(node.latest_heartbeat?.cpu_percent ?? null)}
+                  />
+                  <Metric
+                    label="Memoria"
+                    value={formatPercent(node.latest_heartbeat?.memory_percent ?? null)}
+                  />
+                  <Metric
+                    label="Disco"
+                    value={formatPercent(node.latest_heartbeat?.disk_percent ?? null)}
+                  />
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-6 text-sm text-slate-400">
+                  Ainda nao ha dados recebidos deste firewall.
+                </div>
+              )}
             </div>
 
             <div className="glass-panel rounded-[2rem] p-5">
               <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
                 Servicos
               </p>
-              <div className="mt-4 grid gap-3">
-                {node.services.map((service) => (
-                  <div
-                    key={service.name}
-                    className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4"
-                  >
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-display text-lg text-white">{service.name}</h3>
-                      <span className="capitalize text-slate-300">{service.status}</span>
+              {node.services.length > 0 ? (
+                <div className="mt-4 grid gap-3">
+                  {node.services.map((service) => (
+                    <div
+                      key={service.name}
+                      className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-display text-lg text-white">{service.name}</h3>
+                        <span className="capitalize text-slate-300">{service.status}</span>
+                      </div>
                     </div>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {service.message ?? 'Sem mensagem adicional.'}
-                    </p>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-6 text-sm text-slate-400">
+                  Nenhum servico reportado ainda.
+                </div>
+              )}
             </div>
           </div>
 
           <div className="space-y-6">
             <div className="glass-panel rounded-[2rem] p-5">
-              <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
-                Gateways
-              </p>
-              <div className="mt-4 space-y-3">
-                {node.gateways.map((gateway) => (
-                  <div
-                    key={gateway.name}
-                    className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4"
-                  >
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-display text-lg text-white">{gateway.name}</h3>
-                      <span className="capitalize text-slate-300">{gateway.status}</span>
-                    </div>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Latencia {formatMs(gateway.latency_ms)} / Perda {formatPercent(gateway.loss_percent)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="glass-panel rounded-[2rem] p-5">
-              <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
-                Identidade e heartbeat
-              </p>
+              <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Dados principais</p>
               <div className="mt-4 space-y-3 text-sm text-slate-300">
                 <p>Hostname: {node.hostname}</p>
-                <p>Management IP: {node.management_ip ?? '-'}</p>
-                <p>WAN IP: {node.wan_ip ?? '-'}</p>
-                <p>HA role: {node.ha_role ?? '-'}</p>
-                <p>Ultimo envio: {formatDateTime(node.latest_heartbeat?.sent_at ?? null)}</p>
-                <p>Ultimo recebimento: {formatDateTime(node.latest_heartbeat?.received_at ?? null)}</p>
-                <p>Latencia: {formatMs(node.latest_heartbeat?.latency_ms ?? null)}</p>
-                <p>Boot estimado: {formatDateTime(node.last_boot_at)}</p>
+                <p>IP interno: {node.management_ip ?? '-'}</p>
+                <p>IP publico: {node.wan_ip ?? '-'}</p>
+                <p>Ultimo contato: {formatDateTime(node.latest_heartbeat?.received_at ?? null)}</p>
               </div>
               {canManageNode ? (
                 <form action={setNodeMaintenanceAction} className="mt-4">
@@ -511,9 +493,7 @@ export default async function NodeDetailsPage({
 
             {canManageNode ? (
               <div className="glass-panel rounded-[2rem] p-5">
-                <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
-                  Edicao rapida
-                </p>
+                <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Editar cadastro</p>
                 <form action={updateNodeAction} className="mt-4 space-y-3">
                   <input type="hidden" name="node_id" value={node.id} />
                   <input
@@ -534,35 +514,35 @@ export default async function NodeDetailsPage({
                     type="text"
                     name="management_ip"
                     defaultValue={node.management_ip ?? ''}
-                    placeholder="Management IP"
+                    placeholder="IP interno"
                     className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   />
                   <input
                     type="text"
                     name="wan_ip"
                     defaultValue={node.wan_ip ?? ''}
-                    placeholder="WAN IP"
+                    placeholder="IP publico"
                     className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   />
                   <input
                     type="text"
                     name="pfsense_version"
                     defaultValue={node.pfsense_version ?? ''}
-                    placeholder="pfSense version"
+                    placeholder="Versao do pfSense"
                     className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   />
                   <input
                     type="text"
                     name="agent_version"
                     defaultValue={node.agent_version ?? ''}
-                    placeholder="Agent version"
+                    placeholder="Versao do agente"
                     className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   />
                   <input
                     type="text"
                     name="ha_role"
                     defaultValue={node.ha_role ?? ''}
-                    placeholder="HA role"
+                    placeholder="Papel HA"
                     className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   />
                   <button
@@ -578,9 +558,7 @@ export default async function NodeDetailsPage({
         </section>
 
         <section className="glass-panel rounded-[2rem] p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
-            Alertas recentes
-          </p>
+          <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Alertas</p>
           <div className="mt-4 space-y-3">
             {node.recent_alerts.length === 0 ? (
               <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-6 text-sm text-emerald-200">
@@ -609,16 +587,12 @@ export default async function NodeDetailsPage({
         </section>
 
         <section className="glass-panel rounded-[2rem] p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
-            Bootstrap do agente
-          </p>
+          <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Instalar agente</p>
           <div className="mt-4 space-y-4">
             <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <p className="text-sm text-slate-200">Credencial ativa do agente</p>
-                <p className="mt-1 text-sm text-slate-500">
-                  Use `rekey` quando precisar invalidar o secret atual e emitir um novo bootstrap.
-                </p>
+                <p className="text-sm text-slate-200">Credencial do agente</p>
+                <p className="mt-1 text-sm text-slate-500">Use a instalacao abaixo para conectar este firewall ao painel.</p>
               </div>
               {canManageNode ? (
                 <form action={rotateNodeSecretAction}>
@@ -636,323 +610,146 @@ export default async function NodeDetailsPage({
             </div>
             <div className="grid gap-3 lg:grid-cols-2">
               <BootstrapField label="Node UID" value={bootstrap.node.node_uid} />
-              <BootstrapField label="Secret hint" value={bootstrap.bootstrap.secret_hint} />
-              <BootstrapField label="Artefato" value={bootstrap.release.artifact_name} />
               <BootstrapField
-                label="Release base URL"
-                value={bootstrap.release.release_base_url ?? 'nao configurada'}
+                label={canManageNode ? 'Secret' : 'Secret hint'}
+                value={canManageNode ? bootstrap.bootstrap.node_secret : bootstrap.bootstrap.secret_hint}
               />
-              <BootstrapField
-                label="Controller URL"
-                value={bootstrap.release.controller_url}
-              />
-              {bootstrap.release.artifact_url ? (
-                <BootstrapField
-                  label="Artifact URL"
-                  value={bootstrap.release.artifact_url}
-                  href={bootstrap.release.artifact_url}
-                />
-              ) : null}
-              {bootstrap.release.checksum_url ? (
-                <BootstrapField
-                  label="Checksum URL"
-                  value={bootstrap.release.checksum_url}
-                  href={bootstrap.release.checksum_url}
-                />
-              ) : null}
-              {bootstrap.release.installer_url ? (
-                <BootstrapField
-                  label="Installer URL"
-                  value={bootstrap.release.installer_url}
-                  href={bootstrap.release.installer_url}
-                />
-              ) : null}
             </div>
-
-            {canManageNode ? (
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-                <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
-                  Override operacional
-                </p>
-                <p className="mt-2 text-sm text-slate-400">
-                  Use `release_base_url` e `controller_url` temporarios para homologacao sem alterar a configuracao permanente da API.
-                </p>
-                <form className="mt-4 flex flex-col gap-3">
-                  <input
-                    type="text"
-                    name="release_base_url"
-                    defaultValue={releaseBaseUrl ?? ''}
-                    placeholder="https://downloads.systemup.inf.br/monitor-pfsense"
-                    className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
-                  <input
-                    type="text"
-                    name="controller_url"
-                    defaultValue={controllerUrl ?? ''}
-                    placeholder="https://pfs-monitor.systemup.inf.br"
-                    className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
-                  <div className="flex flex-col gap-3 lg:flex-row">
-                    <button
-                      type="submit"
-                      className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
-                    >
-                      Aplicar override
-                    </button>
-                    <Link
-                      href={`/nodes/${node.id}`}
-                      className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
-                    >
-                      Limpar
-                    </Link>
-                  </div>
-                </form>
-                {releaseBaseUrl || controllerUrl ? (
-                  <div className="mt-3 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">
-                    <p>Overrides ativos para esta visualizacao.</p>
-                    <p>release_base_url: {releaseBaseUrl ?? 'padrao da API'}</p>
-                    <p>controller_url: {controllerUrl ?? 'padrao do MVP'}</p>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
 
             {bootstrap.command ? (
               <div className="space-y-2">
                 <p className="text-sm text-slate-400">
-                  Comando one-shot para usar em `Diagnostics &gt; Command Prompt`.
+                  Cole este comando em `Diagnostics &gt; Command Prompt`.
                 </p>
                 <CommandBlock value={bootstrap.command} />
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                  <p>Passo sugerido:</p>
-                  <p>
-                    1. Acesse `Diagnostics &gt; Command Prompt` no pfSense.
-                  </p>
-                  <p>
-                    2. Cole o comando acima e execute.
-                  </p>
-                  <p>
-                    3. Valide com `test-connection` e confirme o heartbeat no painel.
-                  </p>
+                  1. Abra o `Command Prompt` no pfSense.
+                  2. Cole o comando.
+                  3. Aguarde a instalacao.
                 </div>
               </div>
             ) : (
               <div className="space-y-3">
                 <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-200">
-                  Configure `AGENT_BOOTSTRAP_RELEASE_BASE_URL` na API para gerar o comando
-                  completo automaticamente.
+                  O comando automatico ainda nao esta pronto para este firewall.
                 </div>
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                  <p>Fallback manual atual:</p>
-                  <p>
-                    1. Publique `install-from-release.sh` e o artefato versionado.
-                  </p>
-                  <p>
-                    2. Reabra este detalhe com o `release_base_url` configurado na API.
-                  </p>
-                  <p>
-                    3. Use o `node_uid` acima e o secret do bootstrap emitido no cadastro.
-                  </p>
+                  Publique a release do agente ou configure a base de download para o sistema montar o comando automaticamente.
                 </div>
               </div>
             )}
-
             <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-              <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
-                Pre-check da rodada
-              </p>
-              <p className="text-sm text-slate-400">
-                Feche esta conferencia no painel antes de abrir o pfSense e executar o bootstrap.
-              </p>
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                <p>1. `node_uid`: `{bootstrap.node.node_uid}`.</p>
-                <p>2. `secret_hint`: `{bootstrap.bootstrap.secret_hint}`.</p>
-                <p>3. `pfSense`: `{node.pfsense_version ?? '-'}`.</p>
-                <p>4. `artifact_url`: `{bootstrap.release.artifact_url ?? 'indisponivel'}`.</p>
-                <p>5. `checksum_url`: `{bootstrap.release.checksum_url ?? 'indisponivel'}`.</p>
-                <p>6. `installer_url`: `{bootstrap.release.installer_url ?? 'indisponivel'}`.</p>
-                <p>
-                  7. override `release_base_url`: `{releaseBaseUrl ?? 'nao usado nesta visualizacao'}`.
-                </p>
-                <p>
-                  8. override `controller_url`: `{controllerUrl ?? 'nao usado nesta visualizacao'}`.
-                </p>
-              </div>
-              <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap">
-                <Link
-                  href={bootstrapHref}
-                  className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-3 text-center text-sm text-cyan-200 transition hover:border-cyan-400/50"
-                >
-                  Abrir preflight da rodada
-                </Link>
-              </div>
-            </div>
-
-            <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-              <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
-                Pre-check no pfSense
-              </p>
-              <p className="text-sm text-slate-400">
-                Rode este bloco em `Diagnostics &gt; Command Prompt` antes do bootstrap para confirmar versao, DNS e saida HTTP/HTTPS da rodada.
-              </p>
-              <CommandBlock value={pfSensePrecheckBlock} />
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                <p>Conferencia esperada:</p>
-                <p>1. `cat /etc/version` apontando `pfSense CE 2.8.1`.</p>
-                <p>2. `drill` resolvendo o host publico do controlador e da release.</p>
-                <p>3. `fetch` sem erro para `healthz`, instalador, artefato e `.sha256`.</p>
-                <p>4. janela operacional permitindo reiniciar apenas o servico do agente se necessario.</p>
-              </div>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-                <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
-                  Sinais esperados na execucao
-                </p>
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                  <p>1. download do `install-from-release.sh`.</p>
-                  <p>2. download do `.tar.gz` versionado do agente.</p>
-                  <p>3. validacao positiva de `SHA256`.</p>
-                  <p>4. escrita da config em `/usr/local/etc/monitor-pfsense-agent.conf`.</p>
-                  <p>5. instalacao dos arquivos em `/usr/local/libexec/monitor-pfsense-agent/`.</p>
-                  <p>6. instalacao do servico em `/usr/local/etc/rc.d/monitor_pfsense_agent`.</p>
-                </div>
-              </div>
-
-              <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-                <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
-                  Se a execucao falhar
-                </p>
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                  <p>1. capture a saida completa do shell antes de fechar a janela.</p>
-                  <p>2. classifique primeiro: DNS, TLS, download ou `SHA256 mismatch`.</p>
-                  <p>3. nao improvise ajuste permanente fora dos scripts versionados.</p>
-                  <p>4. registre a categoria no bloco `Classificacao inicial de falha` abaixo.</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-              <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
-                Verificacao pos-bootstrap
-              </p>
-              <p className="text-sm text-slate-400">
-                Rode este bloco no pfSense logo apos a instalacao para fechar a homologacao local antes de voltar ao painel.
-              </p>
+              <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">Verificacao rapida</p>
               <CommandBlock value={bootstrap.verification.command_block} />
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                <p>Conferencia esperada:</p>
-                <p>1. `status` do servico sem erro.</p>
-                <p>2. `test-connection` com sucesso.</p>
-                <p>3. `heartbeat` manual aceito pelo controlador.</p>
-                <p>4. log local sem falha de DNS, TLS, download ou autenticacao.</p>
-              </div>
             </div>
 
-            <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-              <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
-                Evidencias da rodada
-              </p>
-              <p className="text-sm text-slate-400">
-                Use este bloco como base para registrar a homologacao manual do bootstrap em campo.
-              </p>
-              <CommandBlock value={evidenceBlock} />
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                <p>Minimo esperado:</p>
-                <p>1. versao do pfSense e da release do agente.</p>
-                <p>2. comando de bootstrap realmente usado.</p>
-                <p>3. resultado do `test-connection` e do primeiro `heartbeat` manual.</p>
-                <p>4. anotacao ou print do painel com o node em `online`.</p>
-              </div>
-            </div>
+            <AdvancedSection
+              title="Mais opcoes e diagnostico"
+              description="URLs, overrides e roteiro tecnico para homologacao."
+            >
+              <div className="space-y-4">
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <BootstrapField label="Artefato" value={bootstrap.release.artifact_name} />
+                  <BootstrapField
+                    label="Controller URL"
+                    value={bootstrap.release.controller_url}
+                  />
+                  <BootstrapField
+                    label="Release base URL"
+                    value={bootstrap.release.release_base_url ?? 'nao configurada'}
+                  />
+                  {bootstrap.release.artifact_url ? (
+                    <BootstrapField
+                      label="Artifact URL"
+                      value={bootstrap.release.artifact_url}
+                      href={bootstrap.release.artifact_url}
+                    />
+                  ) : null}
+                  {bootstrap.release.checksum_url ? (
+                    <BootstrapField
+                      label="Checksum URL"
+                      value={bootstrap.release.checksum_url}
+                      href={bootstrap.release.checksum_url}
+                    />
+                  ) : null}
+                  {bootstrap.release.installer_url ? (
+                    <BootstrapField
+                      label="Installer URL"
+                      value={bootstrap.release.installer_url}
+                      href={bootstrap.release.installer_url}
+                    />
+                  ) : null}
+                </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-                <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
-                  Criterios de aceite
-                </p>
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                  <p>1. bootstrap sem ajuste manual fora do fluxo versionado.</p>
-                  <p>2. checksum do release validado.</p>
-                  <p>3. servico permanece instalado apos restart.</p>
-                  <p>4. `test-connection` funciona com a credencial real do node.</p>
-                  <p>5. ao menos um `heartbeat` real chega ao controlador.</p>
-                  <p>6. o painel reflete o node como `online`.</p>
+                {canManageNode ? (
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+                    <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">Override operacional</p>
+                    <form className="mt-4 flex flex-col gap-3">
+                      <input
+                        type="text"
+                        name="release_base_url"
+                        defaultValue={releaseBaseUrl ?? ''}
+                        placeholder="https://downloads.systemup.inf.br/monitor-pfsense"
+                        className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                      />
+                      <input
+                        type="text"
+                        name="controller_url"
+                        defaultValue={controllerUrl ?? ''}
+                        placeholder="https://pfs-monitor.systemup.inf.br"
+                        className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                      />
+                      <div className="flex flex-col gap-3 lg:flex-row">
+                        <button
+                          type="submit"
+                          className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
+                        >
+                          Aplicar override
+                        </button>
+                        <Link
+                          href={`/nodes/${node.id}`}
+                          className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+                        >
+                          Limpar
+                        </Link>
+                      </div>
+                    </form>
+                  </div>
+                ) : null}
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+                    <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">Pre-check no pfSense</p>
+                    <CommandBlock value={pfSensePrecheckBlock} />
+                  </div>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+                    <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">Evidencias da rodada</p>
+                    <CommandBlock value={evidenceBlock} />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap">
+                  <Link
+                    href={bootstrapHref}
+                    className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-3 text-center text-sm text-cyan-200 transition hover:border-cyan-400/50"
+                  >
+                    Abrir instalacao guiada
+                  </Link>
+                  <Link
+                    href={testConnectionAuditHref}
+                    className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+                  >
+                    Ver eventos deste firewall
+                  </Link>
+                  <Link
+                    href="/dashboard"
+                    className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+                  >
+                    Dashboard
+                  </Link>
                 </div>
               </div>
-
-              <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-                <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
-                  Classificacao inicial de falha
-                </p>
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                  <p>1. conectividade ou DNS no pfSense.</p>
-                  <p>2. problema de release ou checksum.</p>
-                  <p>3. erro de instalacao do bootstrap.</p>
-                  <p>4. erro de autenticacao HMAC.</p>
-                  <p>5. erro de persistencia do servico `rc.d`.</p>
-                  <p>6. divergencia entre detalhe do node e ambiente real.</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-              <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
-                Verificacao no controlador
-              </p>
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                <p>1. reabra este detalhe depois do `test-connection` e do primeiro `heartbeat`.</p>
-                <p>2. confirme `agent_version`, `ultimo heartbeat` e status `online` neste node.</p>
-                <p>3. confira dashboard e inventario com refresh refletindo o node atualizado.</p>
-                <p>4. revise a trilha `ingest.test_connection` e os eventos do node na auditoria.</p>
-              </div>
-              <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap">
-                <Link
-                  href={testConnectionAuditHref}
-                  className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-3 text-center text-sm text-cyan-200 transition hover:border-cyan-400/50"
-                >
-                  Abrir auditoria de test-connection
-                </Link>
-                <Link
-                  href={nodeAuditHref}
-                  className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
-                >
-                  Abrir auditoria do node
-                </Link>
-                <Link
-                  href="/dashboard"
-                  className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
-                >
-                  Abrir dashboard
-                </Link>
-                <Link
-                  href="/nodes"
-                  className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
-                >
-                  Abrir inventario
-                </Link>
-              </div>
-            </div>
-
-            <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-              <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
-                Fechamento da rodada
-              </p>
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                <p>Se a homologacao foi aprovada:</p>
-                <p>1. atualize `LEITURA-INICIAL.md` com o resultado da rodada.</p>
-                <p>2. revise o percentual do roadmap se a fase mudou.</p>
-                <p>3. registre a versao homologada do agente e do pfSense.</p>
-                <p>4. decida o proximo passo: endurecer bootstrap/agente ou avancar para a GUI nativa.</p>
-              </div>
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                <p>Se a homologacao falhou:</p>
-                <p>1. preserve a evidencia da saida do shell e do painel.</p>
-                <p>2. registre a categoria no bloco `Classificacao inicial de falha`.</p>
-                <p>3. corrija a causa no fluxo versionado antes de repetir a rodada.</p>
-              </div>
-            </div>
+            </AdvancedSection>
           </div>
         </section>
       </div>

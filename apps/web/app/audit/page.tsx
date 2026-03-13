@@ -47,8 +47,8 @@ export default async function AuditPage({
     <div className="space-y-6">
       <PageHero
         eyebrow="Governanca"
-        title="Auditoria humana"
-        description="Trilhas recentes de autenticacao, administracao, alertas e operacao sensivel do controlador."
+        title="Auditoria"
+        description="Historico de acoes administrativas."
         stats={[
           { label: 'Eventos', value: String(audit.items.length) },
           { label: 'Acoes', value: String(actionCount) },

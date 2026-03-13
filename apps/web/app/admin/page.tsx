@@ -146,8 +146,8 @@ export default async function AdminPage({
     <div className="space-y-6">
       <PageHero
         eyebrow="Operacao interna"
-        title="Administracao do controlador"
-        description="Cadastro operacional de clientes, sites, firewalls e acesso humano para manter o servidor completo antes da etapa de homologacao no pfSense real."
+        title="Cadastro inicial"
+        description="Cadastre cliente, site e firewall com o minimo necessario para comecar a operar."
         stats={[
           { label: 'Clientes', value: String(filterOptions.clients.length) },
           { label: 'Nodes', value: String(nodes.items.length) },

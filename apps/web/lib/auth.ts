@@ -6,6 +6,8 @@ import { revalidatePath } from 'next/cache';
 import { revokeAuthSession } from './api';
 
 const apiBaseUrl = process.env.MONITOR_API_BASE_URL?.trim();
+const sessionCookieName =
+  process.env.MONITOR_AUTH_SESSION_COOKIE_NAME?.trim() || 'monitor_pfsense_session';
 const csrfCookieName =
   process.env.MONITOR_AUTH_CSRF_COOKIE_NAME?.trim() || 'monitor_pfsense_csrf';
 
@@ -153,6 +155,15 @@ export async function logoutAction(): Promise<void> {
   });
 
   await syncCookiesFromApi(response);
+  cookieStore.delete(sessionCookieName);
+  cookieStore.delete(csrfCookieName);
+  revalidatePath('/', 'layout');
+  revalidatePath('/dashboard');
+  revalidatePath('/nodes');
+  revalidatePath('/alerts');
+  revalidatePath('/bootstrap');
+  revalidatePath('/admin');
+  revalidatePath('/sessions');
   redirect('/login');
 }
 

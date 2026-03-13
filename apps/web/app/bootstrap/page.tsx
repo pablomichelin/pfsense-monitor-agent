@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { AdvancedSection } from '@/components/advanced-section';
 import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 import {
@@ -335,9 +336,9 @@ export default async function BootstrapPage({
   return (
     <div className="space-y-6">
       <PageHero
-        eyebrow="Operacao de campo"
-        title="Bootstrap do agente"
-        description="Concentra firewalls prontos para implantacao, os que ja estao com agente ativo e os casos bloqueados por estado de identidade."
+        eyebrow="Instalacao"
+        title="Instalar agente"
+        description="Escolha um firewall e copie o comando de instalacao."
         stats={[
           { label: 'Prontos', value: String(pending.length), tone: pending.length > 0 ? 'warning' : 'default' },
           { label: 'Ativos', value: String(active.length), tone: active.length > 0 ? 'success' : 'default' },
@@ -406,16 +407,8 @@ export default async function BootstrapPage({
 
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="glass-panel rounded-[2rem] p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
-            Preflight local
-          </p>
-          <h3 className="mt-2 font-display text-2xl text-white">
-            Monte o comando antes de ir ao pfSense
-          </h3>
-          <p className="mt-2 text-sm text-slate-400">
-            Este bloco gera o `verify-bootstrap-release.sh` e o `run-bootstrap-preflight.sh`
-            para o node alvo, com os mesmos overrides temporarios usados na homologacao.
-          </p>
+          <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Escolha o firewall</p>
+          <h3 className="mt-2 font-display text-2xl text-white">Preparar instalacao</h3>
 
           <form className="mt-4 space-y-3">
             <select
@@ -453,7 +446,7 @@ export default async function BootstrapPage({
                 type="submit"
                 className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
               >
-                Montar preflight
+                Abrir
               </button>
               <Link
                 href={buildBootstrapHref({ clientId, siteId, search, bucket })}
@@ -466,51 +459,53 @@ export default async function BootstrapPage({
         </div>
 
         <div className="glass-panel rounded-[2rem] p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
-            Resultado do preflight
-          </p>
+          <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Instalacao</p>
           {selectedNode && verifyBootstrapCommand && runBootstrapPreflightCommand ? (
             <div className="mt-4 space-y-4">
               <div className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
-                <p>Node alvo: {selectedNode.node_uid}</p>
-                <p>Cliente/Site: {selectedNode.client.name} / {selectedNode.site.name}</p>
-                <p>Bucket atual: {selectedNode.bootstrap_bucket}</p>
-                <p>Ultimo heartbeat: {formatRelativeAge(selectedNode.last_seen_at)}</p>
+                <p>Firewall: {selectedNode.display_name ?? selectedNode.hostname}</p>
+                <p>Local: {selectedNode.client.name} / {selectedNode.site.name}</p>
+                <p>Ultimo contato: {formatRelativeAge(selectedNode.last_seen_at)}</p>
               </div>
               <div className="space-y-2">
-                <p className="text-sm text-slate-400">
-                  Verificacao do comando, URLs e release publicados.
-                </p>
-                <CommandBlock value={verifyBootstrapCommand} />
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm text-slate-400">
-                  Preflight completo local antes da rodada manual no firewall real.
-                </p>
-                <CommandBlock value={runBootstrapPreflightCommand} />
-              </div>
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                <p>Requisitos:</p>
-                <p>1. `AUTH_EMAIL` e `AUTH_PASSWORD` no ambiente ou em `.env.api`.</p>
-                <p>2. stack do controlador respondendo em `BASE_URL`.</p>
-                <p>3. release publicada com artefato, `.sha256` e `install-from-release.sh`.</p>
+                <p className="text-sm text-slate-400">Use este comando no pfSense.</p>
+                {selectedBootstrap?.command ? (
+                  <CommandBlock value={selectedBootstrap.command} />
+                ) : (
+                  <CommandBlock value={verifyBootstrapCommand} />
+                )}
               </div>
               <div className="flex flex-col gap-3 lg:flex-row">
                 <Link
                   href={`/nodes/${selectedNode.id}`}
                   className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
                 >
-                  Abrir detalhe do node
+                  Abrir firewall
                 </Link>
                 {selectedNodeScopeHref ? (
                   <Link
                     href={selectedNodeScopeHref}
                     className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-3 text-center text-sm text-cyan-200 transition hover:border-cyan-400/50"
                   >
-                    Manter este node no preflight
+                    Manter selecionado
                   </Link>
                 ) : null}
               </div>
+              <AdvancedSection
+                title="Diagnostico e preflight"
+                description="Comandos de verificacao e material tecnico para homologacao."
+              >
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-sm text-slate-400">Verificacao do release.</p>
+                    <CommandBlock value={verifyBootstrapCommand} />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm text-slate-400">Preflight completo local.</p>
+                    <CommandBlock value={runBootstrapPreflightCommand} />
+                  </div>
+                </div>
+              </AdvancedSection>
             </div>
           ) : (
             <div className="mt-4 rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-6 text-sm text-slate-500">
@@ -523,16 +518,8 @@ export default async function BootstrapPage({
       {selectedNode && selectedBootstrap ? (
         <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="glass-panel rounded-[2rem] p-5">
-            <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
-              Rodada manual
-            </p>
-            <h3 className="mt-2 font-display text-2xl text-white">
-              Pacote operacional do node selecionado
-            </h3>
-            <p className="mt-2 text-sm text-slate-400">
-              A tela abaixo usa o mesmo `bootstrap-command` emitido pelo backend e concentra o
-              pre-check no pfSense, a validacao pos-instalacao e o bloco de evidencias.
-            </p>
+            <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Resumo</p>
+            <h3 className="mt-2 font-display text-2xl text-white">Firewall selecionado</h3>
 
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               <div className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
@@ -553,13 +540,13 @@ export default async function BootstrapPage({
               <div className="mt-4 space-y-4">
                 <div className="space-y-2">
                   <p className="text-sm text-slate-400">
-                    Comando one-shot para colar em `Diagnostics &gt; Command Prompt`.
+                    Comando para colar em `Diagnostics &gt; Command Prompt`.
                   </p>
                   <CommandBlock value={selectedBootstrap.command} />
                 </div>
                 <div className="space-y-2">
                   <p className="text-sm text-slate-400">
-                    Verificacao pos-bootstrap recomendada pelo backend.
+                    Verificacao rapida apos instalar.
                   </p>
                   <CommandBlock value={selectedBootstrap.verification.command_block} />
                 </div>
@@ -573,26 +560,21 @@ export default async function BootstrapPage({
           </div>
 
           <div className="space-y-6">
-            <div className="glass-panel rounded-[2rem] p-5">
-              <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
-                Pre-check no pfSense
-              </p>
-              <p className="mt-2 text-sm text-slate-400">
-                Rode este bloco no firewall antes do bootstrap para validar versao, DNS e saida
-                HTTP/HTTPS.
-              </p>
-              {pfSensePrecheckBlock ? <CommandBlock value={pfSensePrecheckBlock} /> : null}
-            </div>
-
-            <div className="glass-panel rounded-[2rem] p-5">
-              <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
-                Evidencias da rodada
-              </p>
-              <p className="mt-2 text-sm text-slate-400">
-                Preencha e preserve este bloco ao fechar a homologacao manual.
-              </p>
-              {evidenceBlock ? <CommandBlock value={evidenceBlock} /> : null}
-            </div>
+            <AdvancedSection
+              title="Detalhes tecnicos da rodada"
+              description="Pre-check no pfSense e bloco de evidencia para homologacao."
+            >
+              <div className="space-y-4">
+                <div>
+                  <p className="mb-2 text-sm text-slate-400">Pre-check no pfSense</p>
+                  {pfSensePrecheckBlock ? <CommandBlock value={pfSensePrecheckBlock} /> : null}
+                </div>
+                <div>
+                  <p className="mb-2 text-sm text-slate-400">Evidencias</p>
+                  {evidenceBlock ? <CommandBlock value={evidenceBlock} /> : null}
+                </div>
+              </div>
+            </AdvancedSection>
           </div>
         </section>
       ) : null}

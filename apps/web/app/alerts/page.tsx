@@ -172,7 +172,7 @@ export default async function AlertsPage({
       <PageHero
         eyebrow="Operacao"
         title="Central de alertas"
-        description="Consolida alertas abertos, reconhecidos e resolvidos com acao humana no mesmo painel, sem sair do fluxo operacional."
+        description="Lista de problemas que precisam de atencao."
         stats={[
           { label: 'Abertos', value: String(openCount), tone: openCount > 0 ? 'danger' : 'success' },
           { label: 'Reconhecidos', value: String(acknowledgedCount), tone: acknowledgedCount > 0 ? 'warning' : 'default' },

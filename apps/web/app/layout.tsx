@@ -27,8 +27,8 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/nodes', label: 'Firewalls' },
   { href: '/alerts', label: 'Alertas' },
-  { href: '/bootstrap', label: 'Bootstrap' },
-  { href: '/sessions', label: 'Sessoes' },
+  { href: '/bootstrap', label: 'Instalacao' },
+  { href: '/sessions', label: 'Minha conta' },
 ];
 
 export default async function RootLayout({
@@ -36,7 +36,7 @@ export default async function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const session = await getOptionalSession();
   const visibleNavItems = hasRole(session?.user.role, ADMIN_ROLES)
-    ? [...navItems, { href: '/admin', label: 'Admin' }, { href: '/audit', label: 'Auditoria' }]
+    ? [...navItems, { href: '/admin', label: 'Cadastro' }]
     : navItems;
 
   return (
@@ -56,17 +56,12 @@ export default async function RootLayout({
                   <h1 className="font-display text-2xl font-semibold text-slate-50">
                     Monitor-Pfsense
                   </h1>
-                  <p className="text-sm text-slate-400">
-                    Leitura operacional centralizada dos firewalls pfSense.
-                  </p>
+                  <p className="text-sm text-slate-400">Painel simples para acompanhar e instalar os firewalls.</p>
                 </div>
 
                 <div className="flex flex-col gap-3 lg:items-end">
                   {session ? (
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-slate-700/80 bg-slate-950/50 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                        {session.user.role}
-                      </span>
                       <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-sm text-cyan-100">
                         {session.user.email}
                       </span>

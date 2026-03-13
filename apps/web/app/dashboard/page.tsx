@@ -70,8 +70,8 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <PageHero
         eyebrow="Visao operacional"
-        title="Estado consolidado do controlador"
-        description="Abertura rapida para operacao: quantidade de firewalls, pressao de alertas e desvios de versao homologada em um unico bloco."
+        title="Resumo dos firewalls"
+        description="Veja rapidamente quantos firewalls estao online, precisam de atencao ou ainda aguardam instalacao."
         stats={[
           { label: 'Nodes', value: String(summary.totals.nodes) },
           { label: 'Alertas abertos', value: String(summary.totals.open_alerts), tone: summary.totals.open_alerts > 0 ? 'danger' : 'default' },
@@ -152,9 +152,7 @@ export default async function DashboardPage() {
           <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
             Matriz de versao
           </p>
-          <h2 className="mt-2 font-display text-2xl text-white">
-            Distribuicao do pfSense
-          </h2>
+          <h2 className="mt-2 font-display text-2xl text-white">Versoes do pfSense</h2>
           <div className="mt-5 space-y-3">
             {Object.entries(versionCounts).map(([version, count]) => (
               <div
@@ -181,7 +179,7 @@ export default async function DashboardPage() {
           </div>
 
           <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4 text-sm text-slate-400">
-            Atualizado em {formatRelativeAge(summary.generated_at)}. Versao do backend: {summary.version}. Matriz homologada: {summary.version_matrix.homologated_pfsense_versions.join(', ')}.
+            Atualizado {formatRelativeAge(summary.generated_at)}. Versoes homologadas: {summary.version_matrix.homologated_pfsense_versions.join(', ')}.
           </div>
         </div>
       </section>

@@ -35,6 +35,8 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 - [15-versionamento-e-branding.md](./15-versionamento-e-branding.md)
 - [16-status-e-progresso-do-projeto.md](./16-status-e-progresso-do-projeto.md)
 - [17-checklist-homologacao-bootstrap-pfsense-real.md](./17-checklist-homologacao-bootstrap-pfsense-real.md)
+- [18-homologacao-pfsense-package-real-2026-03-13.md](./18-homologacao-pfsense-package-real-2026-03-13.md)
+- [PROMPT-CONTINUACAO-PFSENSE-PACKAGE.md](./PROMPT-CONTINUACAO-PFSENSE-PACKAGE.md)
 
 ## Arquivos de governanca do projeto
 
@@ -44,7 +46,7 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 
 ## Status atual do projeto
 
-Em `2026-03-12`, a `Fase 1 - MVP do controlador` esta operacionalmente concluida e registrada como `100%`, com `93%` do plano total entregue.
+Em `2026-03-13`, a `Fase 1 - MVP do controlador` segue operacionalmente concluida e registrada como `100%`, com `93%` do plano total entregue.
 
 Estado atual consolidado:
 
@@ -74,6 +76,10 @@ Estado atual consolidado:
 - backup e restore do PostgreSQL do controlador agora estao versionados e validados com scripts dedicados
 - gestao de tokens auxiliares do agente agora esta operacional no backend e no painel administrativo, com emissao, listagem, revogacao e auditoria por node
 - pacote nativo do pfSense agora esta estruturado como port empacotavel em `packages/pfsense-package`, com runtime local do agente embutido
+- primeira rodada real do pacote pfSense registrada com comandos, erros e correcoes em `18-homologacao-pfsense-package-real-2026-03-13.md`
+- GUI do pacote validada em `Services > SystemUp Monitor`
+- servico do pacote validado em `Status > Services`
+- firewall real `Lasalle Agro` chegou ao painel com `agente ativo` e `Agente 0.1.0`
 - proximo bloco recomendado concentrado em homologacao do bootstrap em pfSense real
 - escopo do servidor/controlador considerado concluido no estado atual
 
