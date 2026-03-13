@@ -56,11 +56,14 @@ Se a meta for colar uma linha no `Diagnostics > Command Prompt`, use o fluxo de 
    - `monitor-pfsense-package-vX.Y.Z.tar.gz`
    - `monitor-pfsense-package-vX.Y.Z.tar.gz.sha256`
    - `packages/pfsense-package/bootstrap/install-from-release.sh`
-3. executar no pfSense:
+3. o artefato pode ficar:
+   - em uma GitHub Release
+   - ou versionado direto no repositorio, por exemplo em `dist/pfsense-package/`
+4. executar no pfSense:
 
 ```sh
 fetch -o - https://raw.githubusercontent.com/SEU-USUARIO/SEU-REPO/main/packages/pfsense-package/bootstrap/install-from-release.sh | sh -s -- \
-  --release-url https://github.com/SEU-USUARIO/SEU-REPO/releases/download/vX.Y.Z/monitor-pfsense-package-vX.Y.Z.tar.gz \
+  --release-url https://raw.githubusercontent.com/SEU-USUARIO/SEU-REPO/main/dist/pfsense-package/monitor-pfsense-package-vX.Y.Z.tar.gz \
   --sha256 COLE_O_SHA256_AQUI \
   --controller-url https://pfs-monitor.systemup.inf.br \
   --node-uid NODE_UID \
