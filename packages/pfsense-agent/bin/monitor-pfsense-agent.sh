@@ -70,6 +70,28 @@ json_nullable_number() {
   printf 'null'
 }
 
+truncate_text() {
+  value="${1:-}"
+  limit="${2:-255}"
+
+  if [ -z "$value" ]; then
+    printf '%s' "$value"
+    return
+  fi
+
+  printf '%s' "$value" | awk -v limit="$limit" '
+    BEGIN { ORS = "" }
+    {
+      text = $0
+      if (length(text) > limit) {
+        printf "%s", substr(text, 1, limit)
+      } else {
+        printf "%s", text
+      }
+    }
+  '
+}
+
 hex_hmac() {
   openssl dgst -sha256 -hmac "$1" -binary | od -An -vtx1 | tr -d ' \n'
 }
@@ -195,8 +217,26 @@ detect_uptime_seconds() {
     return
   fi
 
+  if command_exists php && command_exists sysctl; then
+    php -r '
+      $output = shell_exec("sysctl -n kern.boottime 2>/dev/null") ?? "";
+      if (preg_match("/sec\\s*=\\s*([0-9]+)/", $output, $matches)) {
+        echo max(0, time() - (int) $matches[1]);
+        exit(0);
+      }
+      exit(1);
+    ' 2>/dev/null && return
+  fi
+
   if command -v sysctl >/dev/null 2>&1; then
-    boot_epoch=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/.*sec = \([0-9][0-9]*\).*/\1/p' | head -n 1)
+    boot_epoch=$(sysctl -n kern.boottime 2>/dev/null | awk '
+      match($0, /sec = [0-9]+/) {
+        value = substr($0, RSTART, RLENGTH)
+        sub(/^sec = /, "", value)
+        print value
+        exit
+      }
+    ' | head -n 1)
     if [ -n "${boot_epoch:-}" ]; then
       now_epoch=$(date +%s)
       expr "$now_epoch" - "$boot_epoch"
@@ -264,12 +304,68 @@ detect_memory_percent() {
 detect_cpu_percent() {
   if [ -n "${CPU_PERCENT_OVERRIDE:-}" ]; then
     printf '%s' "$CPU_PERCENT_OVERRIDE"
+    return
   fi
+
+  if command_exists top; then
+    top -b -n 1 2>/dev/null | awk '
+      /CPU:|CPU states:/ {
+        for (i = 1; i <= NF; i++) {
+          gsub(/,/, "", $i)
+          if ($i ~ /id$/ || $i ~ /idle$/) {
+            idle = $(i - 1)
+            gsub(/%/, "", idle)
+            if (idle ~ /^[0-9]+([.][0-9]+)?$/) {
+              printf "%.2f", 100 - idle
+              exit
+            }
+          }
+        }
+      }
+    '
+  fi
+}
+
+service_process_pattern() {
+  case "$1" in
+    unbound) printf '%s' '(^|/)(unbound)$' ;;
+    dhcpd) printf '%s' '(^|/)(dhcpd)$' ;;
+    openvpn) printf '%s' '(^|/)(openvpn)$' ;;
+    ipsec) printf '%s' 'charon|starter|pluto' ;;
+    wireguard) printf '%s' 'wireguard-go|boringtun|wg-quick' ;;
+    ntpd) printf '%s' '(^|/)(ntpd)$' ;;
+    dpinger) printf '%s' '(^|/)(dpinger)$' ;;
+    *) return 1 ;;
+  esac
+}
+
+service_status_from_process() {
+  service_name="$1"
+
+  if ! command_exists pgrep; then
+    return 1
+  fi
+
+  pattern="$(service_process_pattern "$service_name" 2>/dev/null || true)"
+  if [ -z "${pattern:-}" ]; then
+    return 1
+  fi
+
+  if pgrep -f "$pattern" >/dev/null 2>&1; then
+    printf 'running|detected via process match\n'
+    return 0
+  fi
+
+  return 1
 }
 
 service_status_from_service_cmd() {
   service_name="$1"
   service_output=""
+
+  if service_status_from_process "$service_name" 2>/dev/null; then
+    return
+  fi
 
   if service_output="$(service "$service_name" onestatus 2>&1)"; then
     printf 'running|%s\n' "$service_output"
@@ -279,7 +375,7 @@ service_status_from_service_cmd() {
   service_output="$(service "$service_name" status 2>&1 || true)"
   case "$service_output" in
     *"does not exist"*|*"not found"*|*"could not be found"*|*"unknown directive"*)
-      printf 'not_installed|%s\n' "$service_output"
+      printf 'stopped|%s\n' "$service_output"
       return
       ;;
     *"is running as"*|*"running as pid"*|*"is running"*)
@@ -440,6 +536,7 @@ build_services_json() {
     service_result="$(detect_service_status "$service_name")"
     service_status="$(printf '%s' "$service_result" | awk -F'|' 'NR == 1 {print $1}')"
     service_message="$(printf '%s' "$service_result" | awk -F'|' 'NR == 1 {sub(/^[^|]*\|/, "", $0); print $0}')"
+    service_message="$(truncate_text "$service_message" 255)"
 
     if [ "$first_item" = "0" ]; then
       printf ','
