@@ -31,6 +31,11 @@ export const HEARTBEAT_GATEWAY_STATUSES = [
   'unknown',
 ] as const;
 
+export const HEARTBEAT_SERVICE_IMPACT = [
+  'critical',
+  'optional',
+] as const;
+
 export class HeartbeatServiceDto {
   @IsString()
   @IsNotEmpty()
@@ -45,6 +50,11 @@ export class HeartbeatServiceDto {
   @IsString()
   @MaxLength(255)
   message?: string;
+
+  /** Se omitido, trata-se como critical (compatibilidade Fase A). Optional nao degrada o node. */
+  @IsOptional()
+  @IsIn(HEARTBEAT_SERVICE_IMPACT)
+  impact_on_status?: (typeof HEARTBEAT_SERVICE_IMPACT)[number];
 }
 
 export class HeartbeatGatewayDto {

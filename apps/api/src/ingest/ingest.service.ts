@@ -169,6 +169,7 @@ export class IngestService {
         },
       });
 
+      const bodyServiceNames = request.body.services.map((s) => s.name);
       for (const service of request.body.services) {
         await tx.nodeServiceStatus.upsert({
           where: {
@@ -191,7 +192,20 @@ export class IngestService {
           },
         });
       }
+      if (bodyServiceNames.length > 0) {
+        await tx.nodeServiceStatus.deleteMany({
+          where: {
+            nodeId: node.id,
+            serviceName: { notIn: bodyServiceNames },
+          },
+        });
+      } else {
+        await tx.nodeServiceStatus.deleteMany({
+          where: { nodeId: node.id },
+        });
+      }
 
+      const bodyGatewayNames = request.body.gateways.map((g) => g.name);
       for (const gateway of request.body.gateways) {
         await tx.nodeGatewayStatus.upsert({
           where: {
@@ -214,6 +228,18 @@ export class IngestService {
             latencyMs: gateway.latency_ms ?? null,
             observedAt: sentAt,
           },
+        });
+      }
+      if (bodyGatewayNames.length > 0) {
+        await tx.nodeGatewayStatus.deleteMany({
+          where: {
+            nodeId: node.id,
+            gatewayName: { notIn: bodyGatewayNames },
+          },
+        });
+      } else {
+        await tx.nodeGatewayStatus.deleteMany({
+          where: { nodeId: node.id },
         });
       }
 

@@ -147,6 +147,9 @@ Status:
 - catalogo inicial de pacotes monitoraveis do pfSense agora esta versionado para a proxima fase de expansao do produto
 - cadastro inicial no painel administrativo agora esta simplificado: `client code`, `site code` e `node_uid` nascem automaticamente no backend, reduzindo o formulario ao minimo operacional
 - estrategia do pacote pfSense consolidada: usar o framework oficial de packages para menu/configuracao e manter pagina local em `/usr/local/www`, sem editar `head.inc` como solucao final
+- ingest do backend passa a remover servicos/gateways fora do ultimo heartbeat; painel reflete apenas o conjunto atualmente monitorado
+- backend aceita `impact_on_status` (critical/optional) no heartbeat; apenas servicos critical degradam o node
+- Fase B: catalogo com campo `service_name`, agente com `MONITOR_AGENT_PACKAGES`, GUI com campo "Pacotes adicionais"; ver `21-evolucao-servicos-e-fase-b-2026-03-13.md`
 - suite local `scripts/run-smoke-suite.sh` executada com sucesso no stack atual em `2026-03-12`, concluindo `realtime`, `admin` e `RBAC` em `14s`
 - smokes `admin` e `RBAC` reexecutados com sucesso apos a separacao `superadmin` x `admin` na gestao de usuarios
 - suite local reexecutada com sucesso em `2026-03-12` apos incluir governanca de sessoes humanas, concluindo `realtime`, `auth sessions`, `admin` e `RBAC` em `16s`
@@ -270,6 +273,7 @@ Isso deve bastar para retomar o desenvolvimento sem explicar tudo novamente.
 - `2026-03-13`: primeira rodada funcional de homologacao real do pacote pfSense concluida com GUI, servico e heartbeat real chegando ao painel para o firewall `Lasalle Agro`; linha do tempo, comandos corretos, erros reais e correcoes registradas em `18-homologacao-pfsense-package-real-2026-03-13.md`
 - `2026-03-13`: runtime do agente ajustado para filtrar a lista padrao de servicos conforme o `config.xml` do pfSense, atacando a causa mais provavel do falso `degraded` observado no node `Lasalle Agro`
 - `2026-03-13`: rodada de endurecimento do package pfSense registrada em `20-endurecimento-pfsense-package-2026-03-13.md`, incluindo `v0.1.1` a `v0.1.6`, correcao do fluxo HTTP/HMAC, coleta local refinada e selecao explicita por firewall dos servicos nativos monitorados
+- `2026-03-13`: evolucao da logica de servicos e Fase B em `21-evolucao-servicos-e-fase-b-2026-03-13.md`: limpeza de orfaos no ingest, impact_on_status no backend, catalogo com service_name, MONITOR_AGENT_PACKAGES no agente e GUI
 
 ## Notas especificas para o proximo chat
 

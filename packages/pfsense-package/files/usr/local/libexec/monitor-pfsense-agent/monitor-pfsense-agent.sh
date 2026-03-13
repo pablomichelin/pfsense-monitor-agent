@@ -432,6 +432,53 @@ detect_service_status() {
   printf 'unknown|no service detection method available\n'
 }
 
+# Fase B: package_name (catalog) -> rc service name no FreeBSD/pfSense
+package_name_to_service_name() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    apcupsd) printf '%s' 'apcupsd' ;;
+    arpwatch) printf '%s' 'arpwatch' ;;
+    avahi) printf '%s' 'avahi' ;;
+    bandwidthd) printf '%s' 'bandwidthd' ;;
+    bind) printf '%s' 'named' ;;
+    darkstat) printf '%s' 'darkstat' ;;
+    freeradius3) printf '%s' 'radiusd' ;;
+    frr) printf '%s' 'frr' ;;
+    haproxy|haproxy-devel) printf '%s' 'haproxy' ;;
+    ladvd) printf '%s' 'ladvd' ;;
+    lldpd) printf '%s' 'lldpd' ;;
+    mdns-bridge) printf '%s' 'mdnsbridge' ;;
+    net-snmp) printf '%s' 'snmpd' ;;
+    node_exporter) printf '%s' 'node_exporter' ;;
+    nrpe) printf '%s' 'nrpe' ;;
+    ntopng) printf '%s' 'ntopng' ;;
+    nut) printf '%s' 'nut' ;;
+    pimd) printf '%s' 'pimd' ;;
+    siproxd) printf '%s' 'siproxd' ;;
+    snmptt) printf '%s' 'snmptt' ;;
+    snort) printf '%s' 'snort' ;;
+    softflowd) printf '%s' 'softflowd' ;;
+    stunnel) printf '%s' 'stunnel' ;;
+    suricata) printf '%s' 'suricata' ;;
+    syslog-ng) printf '%s' 'syslog_ng' ;;
+    tailscale) printf '%s' 'tailscaled' ;;
+    telegraf) printf '%s' 'telegraf' ;;
+    tftpd) printf '%s' 'tftpd' ;;
+    tinc) printf '%s' 'tinc' ;;
+    udpbroadcastrelay) printf '%s' 'udpbroadcastrelay' ;;
+    wireguard) printf '%s' 'wireguard' ;;
+    zabbix-agent5|zabbix-agent6|zabbix-agent7) printf '%s' 'zabbix_agent2' ;;
+    zabbix-proxy5|zabbix-proxy6|zabbix-proxy7) printf '%s' 'zabbix_proxy' ;;
+    zeek) printf '%s' 'zeek' ;;
+    lightsquid) printf '%s' 'lightsquid' ;;
+    open-vm-tools) printf '%s' 'vmware_guestd' ;;
+    squid) printf '%s' 'squid' ;;
+    squidguard) printf '%s' 'squidguard' ;;
+    *)
+      printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/-/_/g'
+      ;;
+  esac
+}
+
 service_should_be_monitored() {
   service_name="$1"
   config_path="$(pfsense_config_path)"
@@ -567,8 +614,48 @@ build_services_json() {
       "$(json_escape "$service_status")" \
       "$(json_nullable_string "$service_detail")"
   done
-  printf ']'
+
+  # Fase B: pacotes adicionais (MONITOR_AGENT_PACKAGES = "pkg:impact,pkg2:impact" ou "pkg")
+  packages_csv="${MONITOR_AGENT_PACKAGES:-}"
+  if [ -n "$packages_csv" ]; then
+    IFS=','
+    for raw_entry in $packages_csv; do
+      entry=$(printf '%s' "$raw_entry" | sed 's/^ *//; s/ *$//')
+      if [ -z "$entry" ]; then
+        continue
+      fi
+      package_name="${entry%%:*}"
+      impact="${entry#*:}"
+      if [ "$impact" = "$entry" ]; then
+        impact="critical"
+      fi
+      package_name=$(printf '%s' "$package_name" | sed 's/^ *//; s/ *$//')
+      impact=$(printf '%s' "$impact" | tr '[:upper:]' '[:lower:]' | sed 's/^ *//; s/ *$//')
+      if [ -z "$package_name" ]; then
+        continue
+      fi
+      case "$impact" in
+        critical|optional) ;;
+        *) impact="critical" ;;
+      esac
+      rc_service="$(package_name_to_service_name "$package_name")"
+      service_state="$(detect_service_status "$rc_service")"
+      service_status="${service_state%%|*}"
+      service_detail="$(truncate_text "${service_state#*|}" 255)"
+      if [ "$first_item" = "1" ]; then
+        first_item="0"
+      else
+        printf ','
+      fi
+      printf '{"name":"%s","status":"%s","message":%s,"impact_on_status":"%s"}' \
+        "$(json_escape "$rc_service")" \
+        "$(json_escape "$service_status")" \
+        "$(json_nullable_string "$service_detail")" \
+        "$(json_escape "$impact")"
+    done
+  fi
   IFS="${old_ifs}"
+  printf ']'
 }
 
 build_gateways_json() {

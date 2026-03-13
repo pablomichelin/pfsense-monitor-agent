@@ -151,6 +151,7 @@ function systemup_monitor_defaults()
         'controller_url' => SYSTEMUP_MONITOR_DEFAULT_CONTROLLER_URL,
         'interval_seconds' => SYSTEMUP_MONITOR_DEFAULT_INTERVAL,
         'services_csv' => SYSTEMUP_MONITOR_DEFAULT_SERVICES,
+        'monitored_packages_csv' => '',
     );
 }
 
@@ -281,18 +282,24 @@ function systemup_monitor_touch_log_file($path)
 function systemup_monitor_render_agent_config($pkg)
 {
     $selectedServices = implode(',', systemup_monitor_selected_services($pkg));
+    $monitoredPackages = isset($pkg['monitored_packages_csv'])
+        ? trim((string) $pkg['monitored_packages_csv'])
+        : '';
 
     $lines = array(
         'CONTROLLER_URL="' . systemup_monitor_escape_shell_value($pkg['controller_url']) . '"',
         'NODE_UID="' . systemup_monitor_escape_shell_value($pkg['node_uid']) . '"',
         'NODE_SECRET="' . systemup_monitor_escape_shell_value($pkg['node_secret']) . '"',
         'CUSTOMER_CODE="' . systemup_monitor_escape_shell_value($pkg['customer_code']) . '"',
-        'AGENT_VERSION="0.1.6"',
+        'AGENT_VERSION="0.1.7"',
         'SCHEMA_VERSION="2026-01"',
         'MONITOR_AGENT_INTERVAL_SECONDS="' . systemup_monitor_escape_shell_value($pkg['interval_seconds']) . '"',
         'MONITOR_AGENT_LOG_FILE="/var/log/monitor-pfsense-agent.log"',
         'MONITOR_AGENT_SERVICES="' . systemup_monitor_escape_shell_value($selectedServices) . '"',
     );
+    if ($monitoredPackages !== '') {
+        $lines[] = 'MONITOR_AGENT_PACKAGES="' . systemup_monitor_escape_shell_value($monitoredPackages) . '"';
+    }
 
     return implode("\n", $lines) . "\n";
 }

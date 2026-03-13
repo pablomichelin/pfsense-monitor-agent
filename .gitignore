@@ -1,5 +1,8 @@
 node_modules
 dist
+# artefatos do package pfSense publicados no repo para one-shot install
+!dist/pfsense-package/*.tar.gz
+!dist/pfsense-package/*.tar.gz.sha256
 coverage
 .env
 .env.*

@@ -1,6 +1,8 @@
 #!/bin/sh
 
-set -eu
+# Nao usar set -e: se sleep for interrompido por sinal, retorna nao-zero e o script sairia;
+# o loop deve rodar sempre, a cada INTERVAL_SECONDS.
+set -u
 
 AGENT_HOME="${AGENT_HOME:-/usr/local/libexec/monitor-pfsense-agent}"
 CONFIG_FILE="${MONITOR_AGENT_CONFIG:-/usr/local/etc/monitor-pfsense-agent.conf}"
@@ -19,5 +21,6 @@ AGENT_BIN="$AGENT_HOME/monitor-pfsense-agent.sh"
 
 while :; do
   "$AGENT_BIN" heartbeat >>"$LOG_FILE" 2>&1 || true
-  sleep "$INTERVAL_SECONDS"
+  # sleep pode retornar nao-zero se interrompido por sinal; || true evita sair do loop
+  sleep "$INTERVAL_SECONDS" || true
 done

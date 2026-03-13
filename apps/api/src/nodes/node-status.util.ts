@@ -51,6 +51,10 @@ export const isGatewayProblem = (gateway: HeartbeatGatewayDto): boolean => {
   return false;
 };
 
+/** Servicos com impact_on_status === 'optional' nao degradam o node. Omitido = critical. */
+export const serviceCountsForDegraded = (service: HeartbeatServiceDto): boolean =>
+  isServiceProblem(service) && (service.impact_on_status ?? 'critical') !== 'optional';
+
 export const calculateNodeStatus = (input: {
   maintenanceMode: boolean;
   services: HeartbeatServiceDto[];
@@ -61,7 +65,7 @@ export const calculateNodeStatus = (input: {
   }
 
   if (
-    input.services.some((service) => isServiceProblem(service)) ||
+    input.services.some((service) => serviceCountsForDegraded(service)) ||
     input.gateways.some((gateway) => isGatewayProblem(gateway))
   ) {
     return NodeStatus.degraded;

@@ -115,6 +115,14 @@
       <type>checkbox</type>
     </field>
     <field>
+      <fielddescr>Pacotes adicionais (Fase B)</fielddescr>
+      <fieldname>monitored_packages_csv</fieldname>
+      <description>Pacotes do pfSense a monitorar alem dos servicos nativos. Lista separada por virgula; opcionalmente use ":critical" ou ":optional" por pacote (ex: haproxy,suricata,squid:optional). Optional nao degrada o node. Consulte o catalogo em packages/pfsense-package/catalog/.</description>
+      <type>textarea</type>
+      <rows>3</rows>
+      <cols>60</cols>
+    </field>
+    <field>
       <fielddescr>Node secret</fielddescr>
       <fieldname>node_secret</fieldname>
       <description>Segredo do node gerado pelo controlador para autenticacao HMAC. Obrigatorio para o runtime.</description>

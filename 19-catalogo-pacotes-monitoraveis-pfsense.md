@@ -78,6 +78,8 @@ O catalogo estruturado desta rodada fica em:
 
 - `packages/pfsense-package/catalog/package-monitor-catalog.json`
 
+Para itens com `check_type: "service"`, o catalogo inclui o campo **`service_name`** (nome do daemon/rc no FreeBSD/pfSense), usado pelo agente para verificar o servico quando o pacote e selecionado na Fase B. Ver `21-evolucao-servicos-e-fase-b-2026-03-13.md`.
+
 ## Exemplo de direcao pratica
 
 Itens que tendem a fazer sentido como `critical` quando usados:
