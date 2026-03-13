@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { isRedirectError } from 'next/dist/client/components/redirect-error';
 import {
   createAgentToken,
   createClient,
@@ -33,6 +34,12 @@ const normalizeOptional = (value: FormDataEntryValue | null): string | undefined
   return normalized ? normalized : undefined;
 };
 
+const rethrowIfRedirectError = (error: unknown): void => {
+  if (isRedirectError(error)) {
+    throw error;
+  }
+};
+
 export async function createClientAction(formData: FormData): Promise<void> {
   try {
     const response = await createClient({
@@ -46,6 +53,7 @@ export async function createClientAction(formData: FormData): Promise<void> {
     revalidatePath('/bootstrap');
     adminRedirect('client', 'ok', `Cliente ${response.client.code} criado.`);
   } catch (error) {
+    rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao criar cliente';
     adminRedirect('client', 'error', message);
   }
@@ -68,6 +76,7 @@ export async function createSiteAction(formData: FormData): Promise<void> {
     revalidatePath('/bootstrap');
     adminRedirect('site', 'ok', `Site ${response.site.code} criado.`);
   } catch (error) {
+    rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao criar site';
     adminRedirect('site', 'error', message);
   }
@@ -93,6 +102,7 @@ export async function updateClientAction(formData: FormData): Promise<void> {
     revalidatePath('/nodes');
     adminRedirect('client-edit', 'ok', `Cliente ${response.client.code} atualizado.`);
   } catch (error) {
+    rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao atualizar cliente';
     adminRedirect('client-edit', 'error', message);
   }
@@ -121,6 +131,7 @@ export async function updateSiteAction(formData: FormData): Promise<void> {
     revalidatePath('/nodes');
     adminRedirect('site-edit', 'ok', `Site ${response.site.code} atualizado.`);
   } catch (error) {
+    rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao atualizar site';
     adminRedirect('site-edit', 'error', message);
   }
@@ -146,6 +157,7 @@ export async function createNodeAction(formData: FormData): Promise<void> {
     revalidatePath('/bootstrap');
     redirect(`/nodes/${response.node.id}?created=1`);
   } catch (error) {
+    rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao criar node';
     adminRedirect('node', 'error', message);
   }
@@ -172,6 +184,7 @@ export async function createUserAction(formData: FormData): Promise<void> {
     revalidatePath('/admin');
     adminRedirect('user', 'ok', `Usuario ${response.user.email} criado.`);
   } catch (error) {
+    rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao criar usuario';
     adminRedirect('user', 'error', message);
   }
@@ -203,6 +216,7 @@ export async function updateUserAction(formData: FormData): Promise<void> {
     revalidatePath('/admin');
     adminRedirect('user-edit', 'ok', `Usuario ${response.user.email} atualizado.`);
   } catch (error) {
+    rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao atualizar usuario';
     adminRedirect('user-edit', 'error', message);
   }
@@ -222,6 +236,7 @@ export async function revokeUserSessionAdminAction(formData: FormData): Promise<
     revalidatePath('/sessions');
     redirect('/admin?section=user-sessions&status=ok&message=Sessao%20revogada');
   } catch (error) {
+    rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao revogar sessao';
     redirect(`/admin?section=user-sessions&status=error&message=${encodeURIComponent(message)}`);
   }
@@ -240,6 +255,7 @@ export async function rotateNodeSecretAction(formData: FormData): Promise<void> 
     revalidatePath('/bootstrap');
     redirect(`/nodes/${nodeId}?rekey=1`);
   } catch (error) {
+    rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao rotacionar secret';
     redirect(`/nodes/${nodeId}?rekey_error=${encodeURIComponent(message)}`);
   }
