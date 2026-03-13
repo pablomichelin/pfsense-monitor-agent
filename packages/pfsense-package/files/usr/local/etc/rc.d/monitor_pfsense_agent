@@ -11,12 +11,37 @@ rcvar="monitor_pfsense_agent_enable"
 pidfile="/var/run/${name}.pid"
 command="/usr/sbin/daemon"
 agent_loop="/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent-loop.sh"
-procname="${command}"
-command_args="-p ${pidfile} -f -- ${agent_loop}"
 required_files="/usr/local/etc/monitor-pfsense-agent.conf ${agent_loop}"
+start_cmd="${name}_start"
+stop_cmd="${name}_stop"
+status_cmd="${name}_status"
 
 load_rc_config "$name"
 : "${monitor_pfsense_agent_enable:=NO}"
 onecmd="YES"
+
+monitor_pfsense_agent_start()
+{
+	/usr/sbin/daemon -p "${pidfile}" "${agent_loop}"
+}
+
+monitor_pfsense_agent_stop()
+{
+	if [ -f "${pidfile}" ]; then
+		kill "$(cat "${pidfile}")" 2>/dev/null || true
+		rm -f "${pidfile}"
+	fi
+}
+
+monitor_pfsense_agent_status()
+{
+	if check_pidfile "${pidfile}" /usr/sbin/daemon >/dev/null 2>&1; then
+		echo "${name} is running."
+		return 0
+	fi
+
+	echo "${name} is not running."
+	return 1
+}
 
 run_rc_command "$1"
