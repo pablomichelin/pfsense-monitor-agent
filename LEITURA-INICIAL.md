@@ -8,7 +8,7 @@ Leia este arquivo primeiro.
 
 ## Estado atual
 
-Data de referencia: `2026-03-12`
+Data de referencia: `2026-03-13`
 
 Fase atual:
 
@@ -18,7 +18,7 @@ Progresso:
 
 - fase atual: `100%`
 - plano total: `93%`
-- tarefa atual: `retomar a homologacao do bootstrap inicial do agente em pfSense CE 2.8.1 real, apoiada pela bateria local de smokes e pelo checklist operacional versionado`
+- tarefa atual: `consolidar a homologacao real do pacote pfSense em pfSense CE 2.8.1 apos a primeira rodada funcional em campo, com foco em endurecer o fluxo e eliminar tentativa e erro`
 - escopo do servidor/controlador: `100%`
 - observacao de continuidade: `abrir novo chat e seguir a partir deste arquivo e de 00_inicio.md e 00-README.md`
 
@@ -135,6 +135,14 @@ Status:
 - gestao de tokens auxiliares do agente adicionada no backend e no painel administrativo, com emissao, listagem, revogacao e auditoria por node
 - pacote nativo do pfSense evoluido em `packages/pfsense-package` para port empacotavel, com `Makefile`, `pkg-plist`, scripts de instalacao, runtime local do agente e GUI de configuracao/diagnostico
 - fluxo one-shot do pacote pfSense agora tambem esta versionado, com artefato `tar.gz`, instalador por release GitHub e bootstrap copiavel para `Diagnostics > Command Prompt`
+- rodada real de homologacao do pacote pfSense executada em `2026-03-13`, com registro completo em `18-homologacao-pfsense-package-real-2026-03-13.md`
+- menu do pacote validado em `Services > SystemUp Monitor`
+- servico do pacote validado em `Status > Services`
+- assinatura HMAC do agente corrigida e alinhada ao backend usando `timestamp + "\n" + rawBody`
+- payloads de `test-connection` e `heartbeat` alinhados ao contrato real da API
+- firewall real `Lasalle Agro` chegou ao painel com `agente ativo`, `Agente 0.1.0` e ultimo contato recente
+- causa raiz mais provavel do `degraded` do node real identificada no runtime do agente: a lista padrao de servicos incluia itens nao habilitados no firewall e o backend os tratava como falha relevante
+- runtime do agente agora filtra a lista padrao para enviar apenas servicos habilitados ou configurados no `config.xml` do pfSense, reduzindo falso positivo de `degraded`
 - cadastro inicial no painel administrativo agora esta simplificado: `client code`, `site code` e `node_uid` nascem automaticamente no backend, reduzindo o formulario ao minimo operacional
 - estrategia do pacote pfSense consolidada: usar o framework oficial de packages para menu/configuracao e manter pagina local em `/usr/local/www`, sem editar `head.inc` como solucao final
 - suite local `scripts/run-smoke-suite.sh` executada com sucesso no stack atual em `2026-03-12`, concluindo `realtime`, `admin` e `RBAC` em `14s`
@@ -224,14 +232,13 @@ Restricao principal do ambiente:
 
 Proximo bloco recomendado:
 
-1. aplicar ou conferir no ambiente externo a configuracao versionada do `ISPConfig` usada em producao ou homologacao
-2. validar o contrato externo do proxy com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh` sempre que houver ajuste em `ISPConfig`, `Cloudflare` ou `nginx`
-3. manter a homologacao local do servidor fechada e repetir a suite `scripts/run-smoke-suite.sh` sempre que houver mudanca em `admin`, `alerts`, `rekey`, `maintenance`, `update node`, `update client`, `update site` ou `realtime`
-4. usar `17-checklist-homologacao-bootstrap-pfsense-real.md` como roteiro operacional da proxima rodada manual
-5. em laboratorio local sem release publicada, usar `AUTO_STAGE_RELEASE=1 scripts/run-bootstrap-preflight.sh <node_id>` para validar o `bootstrap-command` antes da rodada externa
-6. retomar a homologacao do bootstrap em pfSense real
-7. publicar o artefato de `packages/pfsense-package` no GitHub e validar o instalador one-shot no `Diagnostics > Command Prompt` do `pfSense CE 2.8.1`
-8. copiar `packages/pfsense-package` para um builder compativel com `pfSense CE 2.8.1`, executar `make package` e instalar o artefato gerado no firewall de teste com `pkg add`
+1. ler `18-homologacao-pfsense-package-real-2026-03-13.md` antes de qualquer nova mudanca no pacote pfSense
+2. manter a homologacao local do servidor fechada e repetir a suite `scripts/run-smoke-suite.sh` sempre que houver mudanca em `admin`, `alerts`, `rekey`, `maintenance`, `update node`, `update client`, `update site`, `bootstrap` ou `realtime`
+3. revisar por que o firewall real `Lasalle Agro` apareceu como `degraded` apesar de chegar com `agente ativo`
+4. endurecer o fluxo de instalacao do pacote pfSense para nao depender de correcao manual em firewall de cliente
+5. validar novamente o contrato externo do proxy com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh` se houver qualquer ajuste em `ISPConfig`, `Cloudflare` ou `nginx`
+6. usar `17-checklist-homologacao-bootstrap-pfsense-real.md` como roteiro resumido e `18-homologacao-pfsense-package-real-2026-03-13.md` como memoria detalhada da rodada real
+7. copiar `packages/pfsense-package` para um builder compativel com `pfSense CE 2.8.1`, executar `make package` e instalar o artefato gerado no firewall de teste com `pkg add`
 
 ## Definicoes ainda em aberto
 
@@ -258,6 +265,8 @@ Isso deve bastar para retomar o desenvolvimento sem explicar tudo novamente.
 ## Ultima entrega registrada
 
 - `2026-03-12`: `packages/pfsense-package` evoluido de scaffold para port empacotavel do pfSense, com `Makefile`, `pkg-plist`, scripts `pkg-install/pkg-deinstall`, runtime do agente embutido, sync da GUI gerando `/usr/local/etc/monitor-pfsense-agent.conf` e controle do servico `monitor_pfsense_agent`; gestao de tokens auxiliares, backup/restore do PostgreSQL, `verify-origin-contract.sh`, `AUTO_STAGE_RELEASE=1` e a suite completa permaneceram validados na mesma iteracao
+- `2026-03-13`: primeira rodada funcional de homologacao real do pacote pfSense concluida com GUI, servico e heartbeat real chegando ao painel para o firewall `Lasalle Agro`; linha do tempo, comandos corretos, erros reais e correcoes registradas em `18-homologacao-pfsense-package-real-2026-03-13.md`
+- `2026-03-13`: runtime do agente ajustado para filtrar a lista padrao de servicos conforme o `config.xml` do pfSense, atacando a causa mais provavel do falso `degraded` observado no node `Lasalle Agro`
 
 ## Notas especificas para o proximo chat
 

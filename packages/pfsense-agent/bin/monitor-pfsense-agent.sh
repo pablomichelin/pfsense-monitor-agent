@@ -30,6 +30,10 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+pfsense_config_path() {
+  printf '%s' "${MONITOR_AGENT_PFSENSE_CONFIG_XML:-/conf/config.xml}"
+}
+
 add_notice() {
   message="$1"
   if [ -z "${message:-}" ]; then
@@ -85,14 +89,16 @@ detect_hostname() {
 
 read_pfsense_interface_name() {
   interface_role="$1"
+  config_path="$(pfsense_config_path)"
 
-  if [ ! -f /conf/config.xml ] || ! command_exists php; then
+  if [ ! -f "$config_path" ] || ! command_exists php; then
     return 1
   fi
 
-  php -r '
+  PFSENSE_CONFIG_XML="$config_path" php -r '
     $role = $argv[1];
-    $config = @simplexml_load_file("/conf/config.xml");
+    $configPath = getenv("PFSENSE_CONFIG_XML") ?: "/conf/config.xml";
+    $config = @simplexml_load_file($configPath);
     if (!$config || !isset($config->interfaces->{$role}->if)) {
       exit(1);
     }
@@ -311,6 +317,109 @@ detect_service_status() {
   printf 'unknown|no service detection method available\n'
 }
 
+service_should_be_monitored() {
+  service_name="$1"
+  config_path="$(pfsense_config_path)"
+
+  if [ ! -f "$config_path" ] || ! command_exists php; then
+    return 0
+  fi
+
+  PFSENSE_CONFIG_XML="$config_path" php -r '
+    $service = strtolower($argv[1]);
+    $configPath = getenv("PFSENSE_CONFIG_XML") ?: "/conf/config.xml";
+    $config = @simplexml_load_file($configPath);
+    if (!$config) {
+      exit(0);
+    }
+
+    $hasEnabledChild = static function ($node): bool {
+      if (!$node instanceof SimpleXMLElement) {
+        return false;
+      }
+
+      foreach ($node->children() as $child) {
+        if ((string) ($child->enable ?? "") !== "") {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    $hasActiveChild = static function ($node, array $candidates = []): bool {
+      if (!$node instanceof SimpleXMLElement) {
+        return false;
+      }
+
+      $children = [];
+      if ($candidates === []) {
+        foreach ($node->children() as $child) {
+          $children[] = $child;
+        }
+      } else {
+        foreach ($candidates as $candidate) {
+          if (!isset($node->{$candidate})) {
+            continue;
+          }
+          foreach ($node->{$candidate} as $child) {
+            $children[] = $child;
+          }
+        }
+      }
+
+      foreach ($children as $child) {
+        if (!$child instanceof SimpleXMLElement) {
+          continue;
+        }
+        if ((string) ($child->disable ?? "") === "1" || (string) ($child->disabled ?? "") === "1") {
+          continue;
+        }
+        return true;
+      }
+
+      return false;
+    };
+
+    $shouldMonitor = true;
+
+    switch ($service) {
+      case "unbound":
+        $shouldMonitor = isset($config->dnsresolver) && (string) ($config->dnsresolver->enable ?? "") !== "";
+        break;
+      case "dhcpd":
+        $shouldMonitor = isset($config->dhcpd) && $hasEnabledChild($config->dhcpd);
+        break;
+      case "openvpn":
+        $shouldMonitor = isset($config->openvpn) && $hasActiveChild($config->openvpn, [
+          "openvpn-server",
+          "openvpn-client",
+          "openvpn-csc",
+        ]);
+        break;
+      case "ipsec":
+        $shouldMonitor =
+          (isset($config->ipsec) && (string) ($config->ipsec->enable ?? "") !== "") ||
+          (isset($config->ipsec->phase1) && count($config->ipsec->phase1) > 0);
+        break;
+      case "wireguard":
+        $shouldMonitor = isset($config->wireguard) && $hasActiveChild($config->wireguard);
+        break;
+      case "ntpd":
+        $shouldMonitor = isset($config->ntpd) && (string) ($config->ntpd->enable ?? "") !== "";
+        break;
+      case "dpinger":
+        $shouldMonitor = isset($config->gateways) && $hasActiveChild($config->gateways, ["gateway_item"]);
+        break;
+      default:
+        $shouldMonitor = true;
+        break;
+    }
+
+    exit($shouldMonitor ? 0 : 1);
+  ' "$service_name" >/dev/null 2>&1
+}
+
 build_services_json() {
   services_csv="${MONITOR_AGENT_SERVICES:-unbound,dhcpd,openvpn,ipsec,wireguard,ntpd,dpinger}"
   old_ifs="${IFS}"
@@ -321,6 +430,10 @@ build_services_json() {
   for raw_name in $services_csv; do
     service_name="$(printf '%s' "$raw_name" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
     if [ -z "${service_name:-}" ]; then
+      continue
+    fi
+
+    if ! service_should_be_monitored "$service_name"; then
       continue
     fi
 
