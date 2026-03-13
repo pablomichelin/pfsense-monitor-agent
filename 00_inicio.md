@@ -198,6 +198,7 @@ Ao concluir uma iteracao relevante:
 - atualizar `LEITURA-INICIAL.md`
 - ajustar documentos impactados
 - manter visivel o percentual da fase atual e do plano total
+- **fazer commit e push para `origin main`** — este host e o servidor do projeto; o GitHub deve estar sempre atualizado
 
 ## Objetivo deste arquivo
 
