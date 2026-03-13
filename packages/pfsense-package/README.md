@@ -43,7 +43,7 @@ make package
 O artefato gerado podera ser instalado no firewall com:
 
 ```sh
-pkg add ./pfSense-pkg-systemup-monitor-0.1.1.pkg
+pkg add ./pfSense-pkg-systemup-monitor-0.1.3.pkg
 ```
 
 Dependendo do builder, a extensao final pode sair como `.pkg` ou `.txz`.

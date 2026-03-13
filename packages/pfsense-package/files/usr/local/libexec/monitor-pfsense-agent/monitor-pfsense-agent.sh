@@ -70,6 +70,28 @@ json_nullable_number() {
   printf 'null'
 }
 
+truncate_text() {
+  value="${1:-}"
+  limit="${2:-255}"
+
+  if [ -z "$value" ]; then
+    printf '%s' "$value"
+    return
+  fi
+
+  printf '%s' "$value" | awk -v limit="$limit" '
+    BEGIN { ORS = "" }
+    {
+      text = $0
+      if (length(text) > limit) {
+        printf "%s", substr(text, 1, limit)
+      } else {
+        printf "%s", text
+      }
+    }
+  '
+}
+
 json_string_array() {
   if [ "$#" -eq 0 ]; then
     printf '[]'
@@ -458,7 +480,7 @@ build_services_json() {
 
     service_state="$(detect_service_status "$service_name")"
     service_status="${service_state%%|*}"
-    service_detail="${service_state#*|}"
+    service_detail="$(truncate_text "${service_state#*|}" 255)"
 
     if [ "$first_item" = "1" ]; then
       first_item="0"
@@ -525,8 +547,11 @@ post_signed_request() {
   endpoint="$1"
   payload="${2:-}"
   timestamp="$(iso_now)"
-  signature_input="$(printf '%s\n%s' "$timestamp" "$payload")"
-  signature="$(printf '%s' "$signature_input" | hex_hmac "$NODE_SECRET")"
+  if [ -n "$payload" ]; then
+    signature="$(printf '%s\n%s' "$timestamp" "$payload" | hex_hmac "$NODE_SECRET")"
+  else
+    signature="$(printf '%s\n' "$timestamp" | hex_hmac "$NODE_SECRET")"
+  fi
   request_url="${CONTROLLER_URL}${endpoint}"
 
   if command_exists curl; then
@@ -542,7 +567,6 @@ post_signed_request() {
     else
       curl -fsS \
         -X POST \
-        -H "Content-Type: application/json" \
         -H "X-Node-Uid: $NODE_UID" \
         -H "X-Timestamp: $timestamp" \
         -H "X-Signature: $signature" \
