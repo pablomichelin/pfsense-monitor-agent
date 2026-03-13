@@ -665,15 +665,15 @@ build_gateways_json() {
 build_payload() {
   mgmt_ip="$(detect_mgmt_ip 2>/dev/null || true)"
   wan_ip="$(detect_wan_ip 2>/dev/null || true)"
-  pfsense_version="$(detect_pfsense_version)"
-  uptime_seconds="$(detect_uptime_seconds)"
+  pfsense_version="$(detect_pfsense_version 2>/dev/null)" || pfsense_version="unknown"
+  uptime_seconds="$(detect_uptime_seconds 2>/dev/null)" || uptime_seconds="0"
   cpu_percent="$(detect_cpu_percent 2>/dev/null || true)"
   memory_percent="$(detect_memory_percent 2>/dev/null || true)"
   disk_percent="$(detect_disk_percent 2>/dev/null || true)"
   heartbeat_id="${NODE_UID}-$(date -u +%Y%m%dT%H%M%SZ)-$$"
   sent_at="$(iso_now)"
-  services_json="$(build_services_json)"
-  gateways_json="$(build_gateways_json)"
+  services_json="$(build_services_json 2>/dev/null)" || services_json="[]"
+  gateways_json="$(build_gateways_json 2>/dev/null)" || gateways_json="[]"
 
   if [ -n "${MONITOR_AGENT_NOTICES:-}" ]; then
     notices_json="$(json_string_array "$MONITOR_AGENT_NOTICES")"
@@ -729,13 +729,27 @@ heartbeat() {
   require_var NODE_SECRET
   require_var CUSTOMER_CODE
 
+  CURL_CMD=""
+  if command -v curl >/dev/null 2>&1; then
+    CURL_CMD="curl"
+  elif [ -x /usr/local/bin/curl ]; then
+    CURL_CMD="/usr/local/bin/curl"
+  else
+    echo "heartbeat: curl not found (PATH=$PATH)" >&2
+    exit 1
+  fi
+
   timestamp="$(iso_now)"
   payload_file="$(mktemp)"
   trap 'rm -f "$payload_file"' EXIT INT TERM
-  build_payload >"$payload_file"
+  build_payload >"$payload_file" 2>/dev/null
+  if [ ! -s "$payload_file" ]; then
+    echo "heartbeat: build_payload failed" >&2
+    exit 1
+  fi
   signature="$(build_payload_signature "$timestamp" "$payload_file")"
 
-  curl -fsS \
+  $CURL_CMD -fsS \
     -X POST \
     -H "Content-Type: application/json" \
     -H "X-Node-Uid: $NODE_UID" \
@@ -751,10 +765,20 @@ test_connection() {
   require_var NODE_SECRET
   require_var CUSTOMER_CODE
 
+  CURL_CMD=""
+  if command -v curl >/dev/null 2>&1; then
+    CURL_CMD="curl"
+  elif [ -x /usr/local/bin/curl ]; then
+    CURL_CMD="/usr/local/bin/curl"
+  else
+    echo "test_connection: curl not found" >&2
+    exit 1
+  fi
+
   timestamp="$(iso_now)"
   signature="$(build_test_connection_signature "$timestamp")"
 
-  curl -fsS \
+  $CURL_CMD -fsS \
     -X POST \
     -H "X-Node-Uid: $NODE_UID" \
     -H "X-Timestamp: $timestamp" \

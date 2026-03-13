@@ -291,7 +291,7 @@ function systemup_monitor_render_agent_config($pkg)
         'NODE_UID="' . systemup_monitor_escape_shell_value($pkg['node_uid']) . '"',
         'NODE_SECRET="' . systemup_monitor_escape_shell_value($pkg['node_secret']) . '"',
         'CUSTOMER_CODE="' . systemup_monitor_escape_shell_value($pkg['customer_code']) . '"',
-        'AGENT_VERSION="0.1.9"',
+        'AGENT_VERSION="0.2.0"',
         'SCHEMA_VERSION="2026-01"',
         'MONITOR_AGENT_INTERVAL_SECONDS="' . systemup_monitor_escape_shell_value($pkg['interval_seconds']) . '"',
         'MONITOR_AGENT_LOG_FILE="/var/log/monitor-pfsense-agent.log"',
