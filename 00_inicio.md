@@ -100,7 +100,7 @@ Na pratica:
 
 Seguir nesta ordem:
 
-1. Etapa A concluida (2026-03-15): ver `docs/39-ETAPA-A-VALIDACAO-SERVIDOR-2026-03-15.md`. Para rodada no pfSense, usar `./scripts/generate-install-command.sh lasalle-agro` para obter o comando
+1. Validacao Lasalle Agro (2026-03-15): ver `docs/40-VALIDACAO-PFSENSE-REAL-LASALLE-AGRO-2026-03-15.md`. Node online, agent 0.2.0, degraded resolvido. Reinstalacao NAO necessaria. Checklist para validacao manual no pfSense documentado
 2. conferir ou aplicar no ambiente externo a configuracao versionada do `ISPConfig`
 3. validar o contrato do proxy externo com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh`
 4. manter o servidor local fechado e repetir `scripts/run-smoke-suite.sh` sempre que houver mudanca em `admin`, `alerts`, `rekey`, `maintenance`, `update node`, `update client`, `update site` ou `realtime`
