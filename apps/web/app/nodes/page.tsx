@@ -24,7 +24,7 @@ function BootstrapStatus({
 }) {
   if (nodeUidStatus !== 'active') {
     return (
-      <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-1 font-mono text-xs text-rose-200">
+      <span className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 font-mono text-xs text-rose-200">
         bloqueado
       </span>
     );
@@ -32,14 +32,14 @@ function BootstrapStatus({
 
   if (agentVersion) {
     return (
-      <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 font-mono text-xs text-emerald-200">
+      <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 font-mono text-xs text-emerald-200">
         agente ativo
       </span>
     );
   }
 
   return (
-    <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs text-amber-200">
+    <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 font-mono text-xs text-amber-200">
       pronto p/ bootstrap
     </span>
   );
@@ -55,8 +55,8 @@ function VersionBadge({
   return (
     <div className="space-y-1">
       <p className="font-mono text-cyan-200">{version ?? '-'}</p>
-      <span
-        className={`rounded-full border px-3 py-1 font-mono text-xs ${
+        <span
+        className={`rounded-md border px-2.5 py-0.5 font-mono text-xs ${
           homologated
             ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
             : 'border-amber-500/30 bg-amber-500/10 text-amber-200'
@@ -123,7 +123,7 @@ export default async function NodesPage({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHero
         eyebrow="Inventario central"
         title="Firewalls monitorados"
@@ -136,12 +136,12 @@ export default async function NodesPage({
         aside={<RealtimeRefresh renderedAt={nodes.generated_at} />}
       />
 
-      <section className="glass-panel rounded-[2rem] p-5">
-        <form className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center">
+      <section className="glass-panel rounded-xl p-6">
+        <form className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end xl:gap-4">
               <select
                 name="client_id"
                 defaultValue={clientId ?? ''}
-                className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
+                className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
               >
                 <option value="">Todos os clientes</option>
                 {filterOptions.clients.map((client) => (
@@ -153,7 +153,7 @@ export default async function NodesPage({
               <select
                 name="site_id"
                 defaultValue={siteId ?? ''}
-                className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
+                className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
               >
                 <option value="">Todos os sites</option>
                 {sites.map((site) => (
@@ -165,7 +165,7 @@ export default async function NodesPage({
               <select
                 name="status"
                 defaultValue={status ?? ''}
-                className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
+                className="h-11 min-w-[10rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
               >
                 <option value="">Todos os status</option>
                 <option value="online">Online</option>
@@ -179,72 +179,28 @@ export default async function NodesPage({
                 name="search"
                 defaultValue={search ?? ''}
                 placeholder="Buscar por nome, hostname ou cliente"
-                className="min-w-[18rem] flex-1 rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                className="h-11 min-w-[16rem] flex-1 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
               />
               <button
                 type="submit"
-                className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
+                className="h-11 rounded-lg bg-cyan-500 px-5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"
               >
                 Aplicar filtros
               </button>
         </form>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="glass-panel rounded-3xl p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-slate-500">
-            Bootstrap
-          </p>
-          <div className="mt-3 flex items-end justify-between">
-            <span className="font-display text-4xl font-semibold text-white">
-              {bootstrapSummary.pending}
-            </span>
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs text-amber-200">
-              aguardando instalacao
-            </span>
-          </div>
-        </div>
-
-        <div className="glass-panel rounded-3xl p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-slate-500">
-            Agente ativo
-          </p>
-          <div className="mt-3 flex items-end justify-between">
-            <span className="font-display text-4xl font-semibold text-white">
-              {bootstrapSummary.active}
-            </span>
-            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 font-mono text-xs text-emerald-200">
-              em operacao
-            </span>
-          </div>
-        </div>
-
-        <div className="glass-panel rounded-3xl p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-slate-500">
-            Bloqueados
-          </p>
-          <div className="mt-3 flex items-end justify-between">
-            <span className="font-display text-4xl font-semibold text-white">
-              {bootstrapSummary.blocked}
-            </span>
-            <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-1 font-mono text-xs text-rose-200">
-              exigem ajuste
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <section className="glass-panel overflow-hidden rounded-[2rem]">
+      <section className="glass-panel overflow-hidden rounded-xl">
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-slate-800 bg-slate-950/40 text-slate-400">
               <tr>
-                <th className="px-5 py-4">Status</th>
-                <th className="px-5 py-4">Firewall</th>
-                <th className="px-5 py-4">Local</th>
-                <th className="px-5 py-4">Versao</th>
-                <th className="px-5 py-4">Ultimo contato</th>
-                <th className="px-5 py-4">Instalacao</th>
+                <th className="w-28 min-w-[7rem] px-4 py-4">Status</th>
+                <th className="min-w-[10rem] px-4 py-4">Firewall</th>
+                <th className="min-w-[8rem] px-4 py-4">Local</th>
+                <th className="min-w-[8rem] px-4 py-4">Versao</th>
+                <th className="min-w-[6rem] px-4 py-4">Ultimo contato</th>
+                <th className="w-28 min-w-[7rem] px-4 py-4">Instalacao</th>
               </tr>
             </thead>
             <tbody>
@@ -253,33 +209,33 @@ export default async function NodesPage({
                   key={node.id}
                   className="border-b border-slate-900/80 text-slate-200 transition hover:bg-slate-950/20"
                 >
-                  <td className="px-5 py-4">
+                  <td className="w-28 min-w-[7rem] px-4 py-4">
                     <div className="flex items-center gap-3">
                       <span className={`status-dot ${statusTone[node.effective_status]}`} />
                       <span className="capitalize">{node.effective_status}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-4">
-                    <Link href={`/nodes/${node.id}`} className="font-display text-lg text-white">
-                      {node.display_name ?? node.hostname}
+                  <td className="min-w-[10rem] px-4 py-4">
+                    <Link href={`/nodes/${node.id}`} className="font-display text-lg text-white hover:text-cyan-200">
+                      <span className="truncate block">{node.display_name ?? node.hostname}</span>
                     </Link>
-                    <p className="mt-1 text-xs text-slate-500">{node.hostname}</p>
+                    <p className="mt-1 truncate text-xs text-slate-500">{node.hostname}</p>
                   </td>
-                  <td className="px-5 py-4">
-                    <p>{node.client.name}</p>
-                    <p className="text-slate-500">{node.site.name}</p>
+                  <td className="min-w-[8rem] px-4 py-4">
+                    <p className="truncate">{node.client.name}</p>
+                    <p className="truncate text-slate-500">{node.site.name}</p>
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="min-w-[8rem] px-4 py-4">
                     <VersionBadge
                       version={node.pfsense_version}
                       homologated={node.pfsense_version_homologated}
                     />
                     <p className="text-slate-500">Agente {node.agent_version ?? 'nao instalado'}</p>
                   </td>
-                  <td className="px-5 py-4 text-slate-400">
+                  <td className="min-w-[6rem] px-4 py-4 text-slate-400">
                     <p>{formatRelativeAge(node.last_seen_at)}</p>
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="w-28 min-w-[7rem] px-4 py-4">
                     <div className="flex flex-col gap-2">
                       <BootstrapStatus
                         nodeUidStatus={node.node_uid_status}

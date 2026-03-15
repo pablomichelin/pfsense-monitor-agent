@@ -37,6 +37,18 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 - [17-checklist-homologacao-bootstrap-pfsense-real.md](./17-checklist-homologacao-bootstrap-pfsense-real.md)
 - [18-homologacao-pfsense-package-real-2026-03-13.md](./18-homologacao-pfsense-package-real-2026-03-13.md)
 - [PROMPT-CONTINUACAO-PFSENSE-PACKAGE.md](./PROMPT-CONTINUACAO-PFSENSE-PACKAGE.md)
+- [docs/CADASTRO-E-COMANDOS-PFSENSE.md](./docs/CADASTRO-E-COMANDOS-PFSENSE.md): cadastro, comandos e testes no pfSense (operacional).
+- [docs/22-diagnostico-cadastro-e-comandos-2026-03-14.md](./docs/22-diagnostico-cadastro-e-comandos-2026-03-14.md): diagnóstico técnico cadastro/comandos.
+- [docs/23-analise-duplicacao-cadastro-2026-03-14.md](./docs/23-analise-duplicacao-cadastro-2026-03-14.md): análise duplicação de cadastro.
+- [docs/24-plano-seguro-duplicacao-cadastro-2026-03-14.md](./docs/24-plano-seguro-duplicacao-cadastro-2026-03-14.md): plano seguro para corrigir duplicações.
+- [docs/25-entrega-acabamento-cadastro-comandos-2026-03-14.md](./docs/25-entrega-acabamento-cadastro-comandos-2026-03-14.md): entrega acabamento cadastro/comandos (2026-03-14).
+- [docs/26-diagnostico-visual-e-fluxos-2026-03-14.md](./docs/26-diagnostico-visual-e-fluxos-2026-03-14.md): diagnóstico fluxos, telas e layout visual.
+- [docs/PAINEL-E-AUTENTICACAO.md](./docs/PAINEL-E-AUTENTICACAO.md): objetivo do painel e fluxo de autenticação.
+- [docs/27-entrega-acabamento-visual-e-fluxos-2026-03-14.md](./docs/27-entrega-acabamento-visual-e-fluxos-2026-03-14.md): entrega acabamento visual e fluxos (2026-03-14).
+- [docs/SISTEMA-VISUAL-PAINEL.md](./docs/SISTEMA-VISUAL-PAINEL.md): **sistema visual canônico** — referência ao criar/alterar UI do painel (2026-03-14).
+- [docs/29-entrega-refatoracao-visual-2026-03-14.md](./docs/29-entrega-refatoracao-visual-2026-03-14.md): entrega refatoração visual profissional, finalizada (v0.1.1).
+- [docs/33-ENTREGA-ONDA-1-SIMPLIFICACAO-2026-03-15.md](./docs/33-ENTREGA-ONDA-1-SIMPLIFICACAO-2026-03-15.md): Onda 1 simplificação (login, sessions, alertas, menu Auditoria) — v0.1.2.
+- [docs/35-ENTREGA-ONDA-2-SIMPLIFICACAO-2026-03-15.md](./docs/35-ENTREGA-ONDA-2-SIMPLIFICACAO-2026-03-15.md): Onda 2 simplificação (nodes, bootstrap, dashboard) — v0.1.3.
 
 ## Arquivos de governanca do projeto
 

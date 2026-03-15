@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AdvancedSection } from '@/components/advanced-section';
+import { CopyButton } from '@/components/copy-button';
 import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 import {
@@ -76,7 +77,7 @@ function getBootstrapBucket(node: {
 function BootstrapBadge({ bucket }: { bucket: BootstrapBucket }) {
   if (bucket === 'active') {
     return (
-      <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 font-mono text-xs text-emerald-200">
+      <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 font-mono text-xs text-emerald-200">
         agente ativo
       </span>
     );
@@ -84,14 +85,14 @@ function BootstrapBadge({ bucket }: { bucket: BootstrapBucket }) {
 
   if (bucket === 'blocked') {
     return (
-      <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-1 font-mono text-xs text-rose-200">
+      <span className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-1 font-mono text-xs text-rose-200">
         bloqueado
       </span>
     );
   }
 
   return (
-    <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs text-amber-200">
+    <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs text-amber-200">
       pronto p/ bootstrap
     </span>
   );
@@ -99,7 +100,7 @@ function BootstrapBadge({ bucket }: { bucket: BootstrapBucket }) {
 
 function CommandBlock({ value }: { value: string }) {
   return (
-    <pre className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-4 font-mono text-xs text-cyan-100">
+    <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-4 font-mono text-xs text-cyan-100">
       {value}
     </pre>
   );
@@ -334,7 +335,7 @@ export default async function BootstrapPage({
     : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHero
         eyebrow="Instalacao"
         title="Instalar agente"
@@ -347,12 +348,12 @@ export default async function BootstrapPage({
         aside={<RealtimeRefresh renderedAt={nodes.generated_at} />}
       />
 
-      <section className="glass-panel rounded-[2rem] p-5">
+      <section className="glass-panel rounded-xl p-5">
         <form className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center">
               <select
                 name="client_id"
                 defaultValue={clientId ?? ''}
-                className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
+                className="rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
               >
                 <option value="">Todos os clientes</option>
                 {filterOptions.clients.map((client) => (
@@ -364,7 +365,7 @@ export default async function BootstrapPage({
               <select
                 name="site_id"
                 defaultValue={siteId ?? ''}
-                className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
+                className="rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
               >
                 <option value="">Todos os sites</option>
                 {sites.map((site) => (
@@ -376,7 +377,7 @@ export default async function BootstrapPage({
               <select
                 name="bucket"
                 defaultValue={bucket ?? ''}
-                className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
+                className="rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
               >
                 <option value="">Todos os buckets</option>
                 <option value="pending">Prontos</option>
@@ -388,17 +389,17 @@ export default async function BootstrapPage({
                 name="search"
                 defaultValue={search ?? ''}
                 placeholder="Buscar por hostname, node UID ou cliente"
-                className="min-w-[18rem] flex-1 rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                className="min-w-[18rem] flex-1 rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
               />
               <button
                 type="submit"
-                className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
+                className="rounded-xl h-11 bg-cyan-500 px-5 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
               >
                 Filtrar
               </button>
               <Link
                 href="/bootstrap"
-                className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+                className="rounded-xl h-11 border border-slate-600/80 px-5 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
               >
                 Limpar
               </Link>
@@ -406,15 +407,15 @@ export default async function BootstrapPage({
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="glass-panel rounded-[2rem] p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Escolha o firewall</p>
+        <div className="glass-panel rounded-xl p-5">
+          <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Escolha o firewall</p>
           <h3 className="mt-2 font-display text-2xl text-white">Preparar instalacao</h3>
 
           <form className="mt-4 space-y-3">
             <select
               name="node_id"
               defaultValue={selectedNode?.id ?? ''}
-              className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
+              className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
               <option value="">Selecione um node</option>
               {filteredItems.map((node) => (
@@ -432,25 +433,25 @@ export default async function BootstrapPage({
               name="release_base_url"
               defaultValue={releaseBaseUrl ?? ''}
               placeholder="https://downloads.systemup.inf.br/monitor-pfsense"
-              className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+              className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
             />
             <input
               type="text"
               name="controller_url"
               defaultValue={controllerUrl ?? ''}
               placeholder="https://pfs-monitor.systemup.inf.br"
-              className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+              className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
             />
             <div className="flex flex-col gap-3 lg:flex-row">
               <button
                 type="submit"
-                className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
+                className="rounded-xl h-11 bg-cyan-500 px-5 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
               >
                 Abrir
               </button>
               <Link
                 href={buildBootstrapHref({ clientId, siteId, search, bucket })}
-                className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+                className="rounded-xl h-11 border border-slate-600/80 px-5 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
               >
                 Limpar preflight
               </Link>
@@ -458,11 +459,11 @@ export default async function BootstrapPage({
           </form>
         </div>
 
-        <div className="glass-panel rounded-[2rem] p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Instalacao</p>
+        <div className="glass-panel rounded-xl p-5">
+          <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Instalacao</p>
           {selectedNode && verifyBootstrapCommand && runBootstrapPreflightCommand ? (
             <div className="mt-4 space-y-4">
-              <div className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
+              <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
                 <p>Firewall: {selectedNode.display_name ?? selectedNode.hostname}</p>
                 <p>Local: {selectedNode.client.name} / {selectedNode.site.name}</p>
                 <p>Ultimo contato: {formatRelativeAge(selectedNode.last_seen_at)}</p>
@@ -478,14 +479,14 @@ export default async function BootstrapPage({
               <div className="flex flex-col gap-3 lg:flex-row">
                 <Link
                   href={`/nodes/${selectedNode.id}`}
-                  className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+                  className="rounded-xl h-11 border border-slate-600/80 px-5 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
                 >
                   Abrir firewall
                 </Link>
                 {selectedNodeScopeHref ? (
                   <Link
                     href={selectedNodeScopeHref}
-                    className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-3 text-center text-sm text-cyan-200 transition hover:border-cyan-400/50"
+                    className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-3 text-center text-sm text-cyan-200 transition hover:border-cyan-400/50"
                   >
                     Manter selecionado
                   </Link>
@@ -508,7 +509,7 @@ export default async function BootstrapPage({
               </AdvancedSection>
             </div>
           ) : (
-            <div className="mt-4 rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-6 text-sm text-slate-500">
+            <div className="mt-4 rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-6 text-sm text-slate-500">
               Nenhum node selecionado para preflight. Escolha um node no formulario ao lado.
             </div>
           )}
@@ -517,18 +518,18 @@ export default async function BootstrapPage({
 
       {selectedNode && selectedBootstrap ? (
         <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="glass-panel rounded-[2rem] p-5">
-            <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Resumo</p>
+          <div className="glass-panel rounded-xl p-5">
+            <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Resumo</p>
             <h3 className="mt-2 font-display text-2xl text-white">Firewall selecionado</h3>
 
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
-              <div className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
+              <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
                 <p>Node UID: {selectedBootstrap.node.node_uid}</p>
                 <p>Hostname: {selectedNode.hostname}</p>
                 <p>pfSense: {selectedNode.pfsense_version ?? '-'}</p>
                 <p>Bucket: {selectedNode.bootstrap_bucket}</p>
               </div>
-              <div className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
+              <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
                 <p>Release: {selectedBootstrap.release.version}</p>
                 <p>Artifact: {selectedBootstrap.release.artifact_name}</p>
                 <p>Release URL: {selectedBootstrap.release.release_base_url ?? 'nao configurada'}</p>
@@ -539,20 +540,23 @@ export default async function BootstrapPage({
             {(selectedBootstrap.package_command ?? selectedBootstrap.command) ? (
               <div className="mt-4 space-y-4">
                 <div className="space-y-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Comando principal</p>
+                    <CopyButton value={selectedBootstrap.package_command ?? selectedBootstrap.command ?? ''} />
+                  </div>
                   <p className="text-sm text-slate-400">
-                    Comando para colar em Diagnostics &gt; Command Prompt (retorna na hora; instalação em segundo plano).
+                    Cole em <strong>Diagnostics &gt; Command Prompt</strong>. Retorna na hora; instalação em segundo plano.
                   </p>
                   <CommandBlock value={selectedBootstrap.package_command ?? selectedBootstrap.command ?? ''} />
                 </div>
                 <div className="space-y-2">
-                  <p className="text-sm text-slate-400">
-                    Verificacao rapida apos instalar.
-                  </p>
+                  <p className="font-mono text-xs uppercase tracking-wider text-slate-500">Comandos de teste (pós-instalação)</p>
+                  <p className="text-sm text-slate-400">Valide serviço, config, test-connection e heartbeat no pfSense.</p>
                   <CommandBlock value={selectedBootstrap.verification.command_block} />
                 </div>
               </div>
             ) : (
-              <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-200">
+              <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-200">
                 Release ainda nao pronta nesta visualizacao. Configure `release_base_url` para
                 montar o comando completo antes de ir ao pfSense.
               </div>
@@ -579,10 +583,10 @@ export default async function BootstrapPage({
         </section>
       ) : null}
 
-      <section className="glass-panel rounded-[2rem] p-5">
+      <section className="glass-panel rounded-xl p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
+            <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">
               Escopo atual
             </p>
             <h3 className="mt-2 font-display text-2xl text-white">{resultSummary}</h3>
@@ -600,7 +604,7 @@ export default async function BootstrapPage({
                 siteId,
                 search,
               })}
-              className={`rounded-full border px-4 py-2 text-sm transition ${
+              className={`rounded-md border px-4 py-2 text-sm transition ${
                 !bucket
                   ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-200'
                   : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white'
@@ -615,7 +619,7 @@ export default async function BootstrapPage({
                 search,
                 bucket: 'pending',
               })}
-              className={`rounded-full border px-4 py-2 text-sm transition ${
+              className={`rounded-md border px-4 py-2 text-sm transition ${
                 bucket === 'pending'
                   ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
                   : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white'
@@ -630,7 +634,7 @@ export default async function BootstrapPage({
                 search,
                 bucket: 'active',
               })}
-              className={`rounded-full border px-4 py-2 text-sm transition ${
+              className={`rounded-md border px-4 py-2 text-sm transition ${
                 bucket === 'active'
                   ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
                   : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white'
@@ -645,7 +649,7 @@ export default async function BootstrapPage({
                 search,
                 bucket: 'blocked',
               })}
-              className={`rounded-full border px-4 py-2 text-sm transition ${
+              className={`rounded-md border px-4 py-2 text-sm transition ${
                 bucket === 'blocked'
                   ? 'border-rose-500/40 bg-rose-500/10 text-rose-200'
                   : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white'
@@ -657,63 +661,25 @@ export default async function BootstrapPage({
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="glass-panel rounded-3xl p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-slate-500">
-            Prontos
-          </p>
-          <div className="mt-3 flex items-end justify-between">
-            <span className="font-display text-4xl font-semibold text-white">
-              {pending.length}
-            </span>
-            <BootstrapBadge bucket="pending" />
-          </div>
-        </div>
-
-        <div className="glass-panel rounded-3xl p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-slate-500">
-            Ativos
-          </p>
-          <div className="mt-3 flex items-end justify-between">
-            <span className="font-display text-4xl font-semibold text-white">
-              {active.length}
-            </span>
-            <BootstrapBadge bucket="active" />
-          </div>
-        </div>
-
-        <div className="glass-panel rounded-3xl p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-slate-500">
-            Bloqueados
-          </p>
-          <div className="mt-3 flex items-end justify-between">
-            <span className="font-display text-4xl font-semibold text-white">
-              {blocked.length}
-            </span>
-            <BootstrapBadge bucket="blocked" />
-          </div>
-        </div>
-      </section>
-
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="glass-panel rounded-[2rem] p-5">
+        <div className="glass-panel rounded-xl p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
+              <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">
                 Fila de bootstrap
               </p>
               <h3 className="mt-2 font-display text-2xl text-white">
                 Firewalls prontos para instalar
               </h3>
             </div>
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs text-amber-200">
+            <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs text-amber-200">
               {pending.length} pendentes
             </span>
           </div>
 
           <div className="mt-4 space-y-3">
             {pending.length === 0 ? (
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-6 text-sm text-emerald-200">
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-6 text-sm text-emerald-200">
                 Nenhum firewall aguardando bootstrap no momento.
               </div>
             ) : (
@@ -721,7 +687,7 @@ export default async function BootstrapPage({
                 <Link
                   key={node.id}
                   href={`/nodes/${node.id}`}
-                  className="block rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4 transition hover:border-cyan-400/40"
+                  className="block rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 transition hover:border-cyan-400/40"
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
@@ -747,8 +713,8 @@ export default async function BootstrapPage({
         </div>
 
         <div className="space-y-6">
-          <div className="glass-panel rounded-[2rem] p-5">
-            <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
+          <div className="glass-panel rounded-xl p-5">
+            <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">
               Agentes ativos
             </p>
             <div className="mt-4 space-y-3">
@@ -756,7 +722,7 @@ export default async function BootstrapPage({
                 <Link
                   key={node.id}
                   href={`/nodes/${node.id}`}
-                  className="block rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4 transition hover:border-cyan-400/40"
+                  className="block rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 transition hover:border-cyan-400/40"
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div>
@@ -772,15 +738,15 @@ export default async function BootstrapPage({
                 </Link>
               ))}
               {active.length === 0 ? (
-                <div className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-500">
+                <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-500">
                   Nenhum agente ativo ainda.
                 </div>
               ) : null}
             </div>
           </div>
 
-          <div className="glass-panel rounded-[2rem] p-5">
-            <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
+          <div className="glass-panel rounded-xl p-5">
+            <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">
               Bloqueios
             </p>
             <div className="mt-4 space-y-3">
@@ -788,7 +754,7 @@ export default async function BootstrapPage({
                 <Link
                   key={node.id}
                   href={`/nodes/${node.id}`}
-                  className="block rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4 transition hover:border-rose-400/40"
+                  className="block rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 transition hover:border-rose-400/40"
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div>
@@ -804,7 +770,7 @@ export default async function BootstrapPage({
                 </Link>
               ))}
               {blocked.length === 0 ? (
-                <div className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-500">
+                <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-500">
                   Nenhum bloqueio de bootstrap no momento.
                 </div>
               ) : null}

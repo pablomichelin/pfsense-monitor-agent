@@ -36,7 +36,7 @@ export default async function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const session = await getOptionalSession();
   const visibleNavItems = hasRole(session?.user.role, ADMIN_ROLES)
-    ? [...navItems, { href: '/admin', label: 'Cadastro' }]
+    ? [...navItems, { href: '/admin', label: 'Cadastro' }, { href: '/audit', label: 'Auditoria' }]
     : navItems;
 
   return (
@@ -47,48 +47,47 @@ export default async function RootLayout({
       <body className="font-sans">
         <div className="min-h-screen bg-grid bg-[size:32px_32px]">
           <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-            <header className="glass-panel mb-6 rounded-3xl px-5 py-4">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
-                    SystemUp NOC
-                  </p>
-                  <h1 className="font-display text-2xl font-semibold text-slate-50">
-                    Monitor-Pfsense
-                  </h1>
-                  <p className="text-sm text-slate-400">Painel simples para acompanhar e instalar os firewalls.</p>
+            <header className="glass-panel mb-8 rounded-xl px-6 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex min-w-0 shrink-0 items-center gap-4">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-cyan-400/90">
+                      SystemUp NOC
+                    </span>
+                    <span className="text-slate-600">·</span>
+                    <h1 className="font-display text-lg font-semibold tracking-tight text-slate-50">
+                      Monitor-Pfsense
+                    </h1>
+                  </div>
                 </div>
 
-                <div className="flex flex-col gap-3 lg:items-end">
+                <div className="flex flex-wrap items-center gap-3">
                   {session ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-sm text-cyan-100">
-                        {session.user.email}
-                      </span>
-                    </div>
+                    <span className="truncate max-w-[12rem] rounded-lg border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs text-cyan-100">
+                      {session.user.email}
+                    </span>
                   ) : null}
-
-                  <nav className="flex flex-wrap gap-2">
-                    {session
-                    ? <AppNav items={visibleNavItems} />
-                    : (
-                        <Link
-                          href="/login"
-                          className="rounded-full border border-slate-700/80 bg-panel-soft px-4 py-2 text-sm text-slate-200 transition hover:border-cyan-400/60 hover:text-white"
-                        >
-                          Login
-                        </Link>
-                      )}
-                  {session ? (
-                    <form action={logoutAction}>
-                      <button
-                        type="submit"
-                        className="rounded-full border border-slate-700/80 bg-slate-950/60 px-4 py-2 text-sm text-slate-200 transition hover:border-rose-400/60 hover:text-white"
+                  <nav className="flex items-center gap-2">
+                    {session ? (
+                      <AppNav items={visibleNavItems} />
+                    ) : (
+                      <Link
+                        href="/login"
+                        className="inline-flex h-10 min-w-[6rem] items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white"
                       >
-                        Sair
-                      </button>
-                    </form>
-                  ) : null}
+                        Login
+                      </Link>
+                    )}
+                    {session ? (
+                      <form action={logoutAction} className="inline">
+                        <button
+                          type="submit"
+                          className="inline-flex h-10 min-w-[4.5rem] items-center justify-center rounded-lg border border-slate-600/80 bg-slate-950/60 px-4 text-sm font-medium text-slate-200 transition hover:border-rose-400/50 hover:text-white"
+                        >
+                          Sair
+                        </button>
+                      </form>
+                    ) : null}
                   </nav>
                 </div>
               </div>
@@ -97,7 +96,7 @@ export default async function RootLayout({
             <main className="flex-1">{children}</main>
 
             <footer className="mt-6 flex flex-col gap-2 border-t border-slate-800/80 px-1 pt-4 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-              <span>Monitor-Pfsense v0.1.0</span>
+              <span>Monitor-Pfsense v0.1.3</span>
               <a
                 href="https://www.systemup.inf.br"
                 target="_blank"
