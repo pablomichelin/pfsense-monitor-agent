@@ -1,7 +1,7 @@
 # $FreeBSD$
 
 PORTNAME=	pfSense-pkg-systemup-monitor
-PORTVERSION=	0.2.0
+PORTVERSION=	0.2.6
 PORTREVISION=	0
 CATEGORIES=	sysutils
 MASTER_SITES=	# empty
@@ -42,6 +42,8 @@ do-install:
 		${STAGEDIR}${PREFIX}/share/pfSense-pkg-systemup-monitor
 	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php \
 		${STAGEDIR}${PREFIX}/share/pfSense-pkg-systemup-monitor
+	${INSTALL_DATA} ${FILESDIR}${PREFIX}/www/config_systemup_monitor.php \
+		${STAGEDIR}${PREFIX}/www
 	${INSTALL_DATA} ${FILESDIR}${PREFIX}/www/status_systemup_monitor.php \
 		${STAGEDIR}${PREFIX}/www
 	@${REINPLACE_CMD} -i '' -e "s|%%PKGVERSION%%|${PKGVERSION}|" \
