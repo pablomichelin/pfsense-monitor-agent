@@ -112,59 +112,99 @@ fi
 echo "[2/5] Lendo comando de bootstrap do node $NODE_ID"
 BOOTSTRAP_RESPONSE="$(curl -skS -b "$COOKIE_JAR" "$BOOTSTRAP_URL")"
 
-READY="$(json_get "$BOOTSTRAP_RESPONSE" "release.ready")"
-VERSION="$(json_get "$BOOTSTRAP_RESPONSE" "release.version")"
+READY="$(json_get "$BOOTSTRAP_RESPONSE" "release.ready" 2>/dev/null || echo "false")"
+VERSION="$(json_get "$BOOTSTRAP_RESPONSE" "release.version" 2>/dev/null || true)"
 NODE_UID="$(json_get "$BOOTSTRAP_RESPONSE" "node.node_uid")"
-CONTROLLER_URL="$(json_get "$BOOTSTRAP_RESPONSE" "release.controller_url")"
-RELEASE_BASE_URL="$(json_get "$BOOTSTRAP_RESPONSE" "release.release_base_url" || true)"
-ARTIFACT_URL="$(json_get "$BOOTSTRAP_RESPONSE" "release.artifact_url" || true)"
-CHECKSUM_URL="$(json_get "$BOOTSTRAP_RESPONSE" "release.checksum_url" || true)"
-INSTALLER_URL="$(json_get "$BOOTSTRAP_RESPONSE" "release.installer_url" || true)"
-COMMAND="$(json_get "$BOOTSTRAP_RESPONSE" "command" || true)"
+CONTROLLER_URL="$(json_get "$BOOTSTRAP_RESPONSE" "release.release_base_url" 2>/dev/null || true)"
+CONTROLLER_URL="${CONTROLLER_URL:-$(json_get "$BOOTSTRAP_RESPONSE" "release.controller_url" 2>/dev/null || true)}"
+RELEASE_BASE_URL="$(json_get "$BOOTSTRAP_RESPONSE" "release.release_base_url" 2>/dev/null || true)"
+ARTIFACT_URL="$(json_get "$BOOTSTRAP_RESPONSE" "release.artifact_url" 2>/dev/null || true)"
+CHECKSUM_URL="$(json_get "$BOOTSTRAP_RESPONSE" "release.checksum_url" 2>/dev/null || true)"
+INSTALLER_URL="$(json_get "$BOOTSTRAP_RESPONSE" "release.installer_url" 2>/dev/null || true)"
+COMMAND="$(json_get "$BOOTSTRAP_RESPONSE" "command" 2>/dev/null || true)"
+PACKAGE_COMMAND="$(json_get "$BOOTSTRAP_RESPONSE" "package_command" 2>/dev/null || true)"
 
 echo "Node UID:        $NODE_UID"
-echo "Versao release:  $VERSION"
-echo "Controller URL:  $CONTROLLER_URL"
-echo "Release base:    ${RELEASE_BASE_URL:-nao configurada}"
+echo "Versao release:  ${VERSION:-package}"
+echo "Modo:            $([ -n "$PACKAGE_COMMAND" ] && echo "package" || echo "agente")"
 
-if [[ "$READY" != "true" ]]; then
-  echo "Bootstrap nao esta pronto: release.ready=$READY" >&2
-  exit 1
+if [[ -n "$PACKAGE_COMMAND" ]]; then
+  # Modo package: derivar URLs e SHA256 do package_command
+  ARTIFACT_URL="$(echo "$PACKAGE_COMMAND" | sed -n "s/.*--release-url '\([^']*\)'.*/\1/p")"
+  INSTALLER_URL="$(echo "$PACKAGE_COMMAND" | sed -n "s/.*fetch -o [^ ]* '\([^']*\)'.*/\1/p")"
+  CHECKSUM_VALUE="$(echo "$PACKAGE_COMMAND" | sed -n "s/.*--sha256 '\([^']*\)'.*/\1/p")"
+  COMMAND="$PACKAGE_COMMAND"
+
+  if [[ -z "$ARTIFACT_URL" || -z "$INSTALLER_URL" || -z "$CHECKSUM_VALUE" ]]; then
+    echo "Bootstrap package incompleto: nao foi possivel extrair artifact/installer/sha256 do package_command." >&2
+    exit 1
+  fi
+
+  echo "Artifact URL:    $ARTIFACT_URL"
+  echo "Installer URL:   $INSTALLER_URL"
+  echo "SHA256 (inline): ${CHECKSUM_VALUE:0:16}..."
+
+  if [[ ! "$CHECKSUM_VALUE" =~ ^[a-fA-F0-9]{64}$ ]]; then
+    echo "SHA256 invalido no package_command" >&2
+    exit 1
+  fi
+
+  echo "[3/5] Validando acessibilidade dos artefatos do package"
+  curl -fsSIL "$ARTIFACT_URL" >/dev/null
+  curl -fsSIL "$INSTALLER_URL" >/dev/null
+
+  echo "[4/5] (package) SHA256 OK - 64 hex chars"
+  echo "[5/5] Conferindo conteudo do comando package"
+  grep -q -- "$ARTIFACT_URL" <<<"$COMMAND"
+  grep -q -- "$INSTALLER_URL" <<<"$COMMAND"
+  grep -q -- "--sha256 '$CHECKSUM_VALUE'" <<<"$COMMAND"
+  grep -q -- "--controller-url" <<<"$COMMAND"
+  grep -q -- "--node-uid" <<<"$COMMAND"
+else
+  # Modo agente: fluxo original
+  echo "Release base:    ${RELEASE_BASE_URL:-nao configurada}"
+  if [[ "$READY" != "true" ]]; then
+    echo "Bootstrap agente nao esta pronto: release.ready=$READY" >&2
+    exit 1
+  fi
+  if [[ -z "$ARTIFACT_URL" || -z "$CHECKSUM_URL" || -z "$INSTALLER_URL" || -z "$COMMAND" ]]; then
+    echo "Bootstrap incompleto: artifact/checksum/installer/command ausentes." >&2
+    exit 1
+  fi
+
+  echo "[3/5] Validando acessibilidade dos artefatos publicados"
+  curl -fsSIL "$ARTIFACT_URL" >/dev/null
+  curl -fsSIL "$CHECKSUM_URL" >/dev/null
+  curl -fsSIL "$INSTALLER_URL" >/dev/null
+
+  echo "[4/5] Validando formato do checksum publicado"
+  CHECKSUM_CONTENT="$(curl -fsSL "$CHECKSUM_URL")"
+  CHECKSUM_VALUE="$(awk 'NR==1 {print $1}' <<<"$CHECKSUM_CONTENT")"
+  if [[ ! "$CHECKSUM_VALUE" =~ ^[a-fA-F0-9]{64}$ ]]; then
+    echo "Checksum invalido em $CHECKSUM_URL" >&2
+    exit 1
+  fi
+
+  echo "[5/5] Conferindo conteudo do comando one-shot"
+  grep -q -- "$ARTIFACT_URL" <<<"$COMMAND"
+  grep -q -- "$CHECKSUM_URL" <<<"$COMMAND"
+  grep -q -- "$INSTALLER_URL" <<<"$COMMAND"
+  grep -q -- "--controller-url '" <<<"$COMMAND"
+  grep -q -- "--node-uid '" <<<"$COMMAND"
+  grep -q -- '--sha256 "$SHA256_VALUE"' <<<"$COMMAND"
 fi
-
-if [[ -z "$ARTIFACT_URL" || -z "$CHECKSUM_URL" || -z "$INSTALLER_URL" || -z "$COMMAND" ]]; then
-  echo "Bootstrap incompleto: artifact/checksum/installer/command ausentes." >&2
-  exit 1
-fi
-
-echo "[3/5] Validando acessibilidade dos artefatos publicados"
-curl -fsSIL "$ARTIFACT_URL" >/dev/null
-curl -fsSIL "$CHECKSUM_URL" >/dev/null
-curl -fsSIL "$INSTALLER_URL" >/dev/null
-
-echo "[4/5] Validando formato do checksum publicado"
-CHECKSUM_CONTENT="$(curl -fsSL "$CHECKSUM_URL")"
-CHECKSUM_VALUE="$(awk 'NR==1 {print $1}' <<<"$CHECKSUM_CONTENT")"
-if [[ ! "$CHECKSUM_VALUE" =~ ^[a-fA-F0-9]{64}$ ]]; then
-  echo "Checksum invalido em $CHECKSUM_URL" >&2
-  exit 1
-fi
-
-echo "[5/5] Conferindo conteudo do comando one-shot"
-grep -q -- "$ARTIFACT_URL" <<<"$COMMAND"
-grep -q -- "$CHECKSUM_URL" <<<"$COMMAND"
-grep -q -- "$INSTALLER_URL" <<<"$COMMAND"
-grep -q -- "--controller-url '" <<<"$COMMAND"
-grep -q -- "--node-uid '" <<<"$COMMAND"
-grep -q -- '--sha256 "$SHA256_VALUE"' <<<"$COMMAND"
 
 echo
 echo "Bootstrap release OK:"
 echo "- node_id: $NODE_ID"
 echo "- node_uid: $NODE_UID"
 echo "- artifact_url: $ARTIFACT_URL"
-echo "- checksum_url: $CHECKSUM_URL"
 echo "- installer_url: $INSTALLER_URL"
+if [[ -n "$CHECKSUM_URL" ]]; then
+  echo "- checksum_url: $CHECKSUM_URL"
+else
+  echo "- sha256: ${CHECKSUM_VALUE:0:16}... (inline no comando)"
+fi
 echo
 echo "Comando one-shot:"
 echo "$COMMAND"

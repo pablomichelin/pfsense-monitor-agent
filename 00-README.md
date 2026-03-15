@@ -52,6 +52,7 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 - [docs/37-ENTREGA-ONDA-3-SIMPLIFICACAO-2026-03-15.md](./docs/37-ENTREGA-ONDA-3-SIMPLIFICACAO-2026-03-15.md): Onda 3 simplificação (alertas, bootstrap, node detail) — v0.1.4.
 - [docs/39-ETAPA-A-VALIDACAO-SERVIDOR-2026-03-15.md](./docs/39-ETAPA-A-VALIDACAO-SERVIDOR-2026-03-15.md): Etapa A validação servidor/controlador para homologação pacote pfSense.
 - [docs/40-VALIDACAO-PFSENSE-REAL-LASALLE-AGRO-2026-03-15.md](./docs/40-VALIDACAO-PFSENSE-REAL-LASALLE-AGRO-2026-03-15.md): Validação do pfSense real Lasalle Agro (estado atual, sem reinstalar).
+- [docs/41-CORRECAO-DESALINHAMENTO-FLUXO-PACKAGE-2026-03-15.md](./docs/41-CORRECAO-DESALINHAMENTO-FLUXO-PACKAGE-2026-03-15.md): Correção do desalinhamento fluxo package vs fluxo automatizado (API, scripts).
 
 ## Arquivos de governanca do projeto
 

@@ -42,6 +42,20 @@ if [[ -z "$NODE_ID" || "$NODE_ID" == "-h" || "$NODE_ID" == "--help" ]]; then
   exit 0
 fi
 
+read_env_value() {
+  local key="$1"
+  local env_file="${2:-$ROOT_DIR/.env.api}"
+  [[ ! -f "$env_file" ]] && return 1
+  awk -F= -v target="$key" '$1 == target { sub(/^[^=]*=/, ""); print; exit }' "$env_file"
+}
+
+# Modo package: PACKAGE_RELEASE_VERSION configurado = fluxo package homologado
+PACKAGE_VERSION="$(read_env_value PACKAGE_RELEASE_VERSION 2>/dev/null || true)"
+MODE_PACKAGE=""
+if [[ -n "$PACKAGE_VERSION" ]]; then
+  MODE_PACKAGE=1
+fi
+
 cleanup() {
   if [[ -n "$SERVER_PID" ]]; then
     kill "$SERVER_PID" >/dev/null 2>&1 || true
@@ -114,18 +128,22 @@ if [[ ! -x "$VERIFY_BOOTSTRAP" ]]; then
   chmod +x "$VERIFY_BOOTSTRAP"
 fi
 
-echo "[1/2] Validando release local do agente"
-BASE_URL="${BASE_URL:-http://127.0.0.1:8088}" \
-  AUTH_EMAIL="${AUTH_EMAIL:-}" \
-  AUTH_PASSWORD="${AUTH_PASSWORD:-}" \
-  "$SMOKE_RELEASE"
+if [[ -n "$MODE_PACKAGE" ]]; then
+  echo "[modo package] PACKAGE_RELEASE_VERSION=$PACKAGE_VERSION - pulando smoke-agent-release"
+  echo "[1/1] Validando bootstrap do node $NODE_ID (fluxo package)"
+else
+  echo "[1/2] Validando release local do agente"
+  BASE_URL="${BASE_URL:-http://127.0.0.1:8088}" \
+    AUTH_EMAIL="${AUTH_EMAIL:-}" \
+    AUTH_PASSWORD="${AUTH_PASSWORD:-}" \
+    "$SMOKE_RELEASE"
 
-if [[ -z "$RELEASE_BASE_URL_OVERRIDE" && "$AUTO_STAGE_RELEASE" == "1" ]]; then
-  stage_local_release
+  if [[ -z "$RELEASE_BASE_URL_OVERRIDE" && "$AUTO_STAGE_RELEASE" == "1" ]]; then
+    stage_local_release
+  fi
+  echo
+  echo "[2/2] Validando bootstrap do node $NODE_ID"
 fi
-
-echo
-echo "[2/2] Validando bootstrap do node $NODE_ID"
 BASE_URL="${BASE_URL:-http://127.0.0.1:8088}" \
   AUTH_EMAIL="${AUTH_EMAIL:-}" \
   AUTH_PASSWORD="${AUTH_PASSWORD:-}" \
