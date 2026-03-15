@@ -272,6 +272,7 @@ Isso deve bastar para retomar o desenvolvimento sem explicar tudo novamente.
 
 ## Ultima entrega registrada
 
+- `2026-03-15`: Etapa A da validação do servidor para homologação do pacote pfSense concluída. Ver `docs/39-ETAPA-A-VALIDACAO-SERVIDOR-2026-03-15.md`. Resultado: generate-install-command OK, verify-origin-contract OK, artefato v0.2.0 acessível; API retorna package_command null (bloqueio conhecido); verify-bootstrap-release e run-bootstrap-preflight validam agente leve, nao pacote. Rodada no pfSense real pode prosseguir usando `./scripts/generate-install-command.sh lasalle-agro`.
 - `2026-03-12`: `packages/pfsense-package` evoluido de scaffold para port empacotavel do pfSense, com `Makefile`, `pkg-plist`, scripts `pkg-install/pkg-deinstall`, runtime do agente embutido, sync da GUI gerando `/usr/local/etc/monitor-pfsense-agent.conf` e controle do servico `monitor_pfsense_agent`; gestao de tokens auxiliares, backup/restore do PostgreSQL, `verify-origin-contract.sh`, `AUTO_STAGE_RELEASE=1` e a suite completa permaneceram validados na mesma iteracao
 - `2026-03-13`: primeira rodada funcional de homologacao real do pacote pfSense concluida com GUI, servico e heartbeat real chegando ao painel para o firewall `Lasalle Agro`; linha do tempo, comandos corretos, erros reais e correcoes registradas em `18-homologacao-pfsense-package-real-2026-03-13.md`
 - `2026-03-13`: runtime do agente ajustado para filtrar a lista padrao de servicos conforme o `config.xml` do pfSense, atacando a causa mais provavel do falso `degraded` observado no node `Lasalle Agro`

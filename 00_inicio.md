@@ -100,15 +100,16 @@ Na pratica:
 
 Seguir nesta ordem:
 
-1. conferir ou aplicar no ambiente externo a configuracao versionada do `ISPConfig`
-2. validar o contrato do proxy externo com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh`
-3. manter o servidor local fechado e repetir `scripts/run-smoke-suite.sh` sempre que houver mudanca em `admin`, `alerts`, `rekey`, `maintenance`, `update node`, `update client`, `update site` ou `realtime`
-4. executar `scripts/run-bootstrap-preflight.sh <node_id>` para fechar a checagem pre-rodada
-5. em laboratorio local sem release publicada, preferir `AUTO_STAGE_RELEASE=1 scripts/run-bootstrap-preflight.sh <node_id>`
-6. ler `18-homologacao-pfsense-package-real-2026-03-13.md` antes de nova rodada em pfSense real
-7. revisar por que o node real `Lasalle Agro` apareceu como `degraded` mesmo com `agente ativo`
-8. consolidar um fluxo final do pacote pfSense sem tentativa e erro em firewall de cliente
-9. copiar `packages/pfsense-package` para um builder compativel com `pfSense CE 2.8.1`, executar `make package` e instalar o artefato no firewall de teste com `pkg add`
+1. Etapa A concluida (2026-03-15): ver `docs/39-ETAPA-A-VALIDACAO-SERVIDOR-2026-03-15.md`. Para rodada no pfSense, usar `./scripts/generate-install-command.sh lasalle-agro` para obter o comando
+2. conferir ou aplicar no ambiente externo a configuracao versionada do `ISPConfig`
+3. validar o contrato do proxy externo com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh`
+4. manter o servidor local fechado e repetir `scripts/run-smoke-suite.sh` sempre que houver mudanca em `admin`, `alerts`, `rekey`, `maintenance`, `update node`, `update client`, `update site` ou `realtime`
+5. executar `scripts/run-bootstrap-preflight.sh <node_id>` para fechar a checagem pre-rodada (valida agente leve; para pacote usar generate-install-command)
+6. em laboratorio local sem release publicada, preferir `AUTO_STAGE_RELEASE=1 scripts/run-bootstrap-preflight.sh <node_id>`
+7. ler `18-homologacao-pfsense-package-real-2026-03-13.md` antes de nova rodada em pfSense real
+8. revisar por que o node real `Lasalle Agro` apareceu como `degraded` mesmo com `agente ativo`
+9. consolidar um fluxo final do pacote pfSense sem tentativa e erro em firewall de cliente
+10. copiar `packages/pfsense-package` para um builder compativel com `pfSense CE 2.8.1`, executar `make package` e instalar o artefato no firewall de teste com `pkg add`
 
 ## Tarefa atual registrada
 

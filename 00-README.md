@@ -50,6 +50,7 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 - [docs/33-ENTREGA-ONDA-1-SIMPLIFICACAO-2026-03-15.md](./docs/33-ENTREGA-ONDA-1-SIMPLIFICACAO-2026-03-15.md): Onda 1 simplificação (login, sessions, alertas, menu Auditoria) — v0.1.2.
 - [docs/35-ENTREGA-ONDA-2-SIMPLIFICACAO-2026-03-15.md](./docs/35-ENTREGA-ONDA-2-SIMPLIFICACAO-2026-03-15.md): Onda 2 simplificação (nodes, bootstrap, dashboard) — v0.1.3.
 - [docs/37-ENTREGA-ONDA-3-SIMPLIFICACAO-2026-03-15.md](./docs/37-ENTREGA-ONDA-3-SIMPLIFICACAO-2026-03-15.md): Onda 3 simplificação (alertas, bootstrap, node detail) — v0.1.4.
+- [docs/39-ETAPA-A-VALIDACAO-SERVIDOR-2026-03-15.md](./docs/39-ETAPA-A-VALIDACAO-SERVIDOR-2026-03-15.md): Etapa A validação servidor/controlador para homologação pacote pfSense.
 
 ## Arquivos de governanca do projeto
 
