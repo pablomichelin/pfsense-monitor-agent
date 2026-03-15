@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { AdvancedSection } from '@/components/advanced-section';
 import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 import { acknowledgeAlertAction, resolveAlertAction } from '@/lib/alerts';
@@ -31,15 +32,15 @@ function SummaryCard({
   tone: string;
 }) {
   return (
-    <div className="glass-panel rounded-3xl p-5">
-      <p className="font-mono text-xs uppercase tracking-[0.28em] text-slate-500">
+    <div className="glass-panel min-h-28 rounded-xl p-6">
+      <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
         {label}
       </p>
-      <div className="mt-3 flex items-end justify-between">
-        <span className="font-display text-4xl font-semibold text-white">
+      <div className="mt-3 flex items-end justify-between gap-3">
+        <span className="font-display text-3xl font-semibold text-white">
           {value}
         </span>
-        <span className={`rounded-full border px-3 py-1 font-mono text-xs ${tone}`}>
+        <span className={`shrink-0 rounded-md border px-2.5 py-0.5 font-mono text-xs ${tone}`}>
           {label.toLowerCase()}
         </span>
       </div>
@@ -74,9 +75,9 @@ function ActionForms({
           <input type="hidden" name="return_to" value={returnTo} />
           <button
             type="submit"
-            className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 transition hover:border-amber-400/50"
+            className="h-9 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium text-amber-200 transition hover:border-amber-400/50"
           >
-            Acknowledge
+            Reconhecer
           </button>
         </form>
       ) : null}
@@ -87,11 +88,11 @@ function ActionForms({
           type="text"
           name="resolution_note"
           placeholder="Nota de resolucao"
-          className="rounded-xl border border-slate-700 bg-panel-soft px-3 py-2 text-xs text-slate-100 outline-none placeholder:text-slate-500"
+          className="h-9 w-full rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-xs text-slate-100 outline-none placeholder:text-slate-500"
         />
         <button
           type="submit"
-          className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200 transition hover:border-emerald-400/50"
+          className="h-9 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 text-xs font-medium text-emerald-200 transition hover:border-emerald-400/50"
         >
           Resolver
         </button>
@@ -168,7 +169,7 @@ export default async function AlertsPage({
   const criticalCount = alerts.items.filter((item) => item.severity === 'critical').length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHero
         eyebrow="Operacao"
         title="Central de alertas"
@@ -181,46 +182,72 @@ export default async function AlertsPage({
         aside={<RealtimeRefresh renderedAt={alerts.generated_at} />}
       />
 
-      <section className="glass-panel rounded-[2rem] p-5">
-        <form className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center">
-              <select
-                name="client_id"
-                defaultValue={clientId ?? ''}
-                className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
-              >
-                <option value="">Todos os clientes</option>
-                {filterOptions.clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name} ({client.node_count})
-                  </option>
-                ))}
-              </select>
-              <select
-                name="site_id"
-                defaultValue={siteId ?? ''}
-                className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
-              >
-                <option value="">Todos os sites</option>
-                {sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.client_name} / {site.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                name="status"
-                defaultValue={status ?? ''}
-                className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
-              >
-                <option value="">Todos os status</option>
-                <option value="open">Open</option>
-                <option value="acknowledged">Acknowledged</option>
-                <option value="resolved">Resolved</option>
-              </select>
+      <section className="glass-panel rounded-xl p-6">
+        <form className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center xl:gap-4">
+            <select
+              name="client_id"
+              defaultValue={clientId ?? ''}
+              className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
+            >
+              <option value="">Todos os clientes</option>
+              {filterOptions.clients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name} ({client.node_count})
+                </option>
+              ))}
+            </select>
+            <select
+              name="site_id"
+              defaultValue={siteId ?? ''}
+              className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
+            >
+              <option value="">Todos os sites</option>
+              {sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.client_name} / {site.name}
+                </option>
+              ))}
+            </select>
+            <select
+              name="status"
+              defaultValue={status ?? ''}
+              className="h-11 min-w-[10rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
+            >
+              <option value="">Todos os status</option>
+              <option value="open">Open</option>
+              <option value="acknowledged">Acknowledged</option>
+              <option value="resolved">Resolved</option>
+            </select>
+            <input
+              type="search"
+              name="search"
+              defaultValue={search ?? ''}
+              placeholder="Buscar por node, cliente ou descricao"
+              className="h-11 min-w-[16rem] flex-1 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+            />
+            <button
+              type="submit"
+              className="h-11 rounded-lg bg-cyan-500 px-5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"
+            >
+              Filtrar
+            </button>
+            <Link
+              href="/alerts"
+              className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-600/80 px-5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+            >
+              Limpar
+            </Link>
+          </div>
+          <AdvancedSection
+            title="Filtros de diagnostico"
+            description="Severidade e tipo para troubleshooting. Os filtros principais acima bastam para uso diario."
+          >
+            <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center xl:gap-4">
               <select
                 name="severity"
                 defaultValue={severity ?? ''}
-                className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
+                className="h-11 min-w-[10rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
               >
                 <option value="">Todas as severidades</option>
                 <option value="critical">Critical</option>
@@ -230,7 +257,7 @@ export default async function AlertsPage({
               <select
                 name="type"
                 defaultValue={type ?? ''}
-                className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-200 outline-none"
+                className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
               >
                 <option value="">Todos os tipos</option>
                 <option value="heartbeat_missing">heartbeat_missing</option>
@@ -242,29 +269,12 @@ export default async function AlertsPage({
                 <option value="clock_skew">clock_skew</option>
                 <option value="auth_failure_repeated">auth_failure_repeated</option>
               </select>
-              <input
-                type="search"
-                name="search"
-                defaultValue={search ?? ''}
-                placeholder="Buscar por node, cliente ou descricao"
-                className="min-w-[18rem] flex-1 rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-              />
-              <button
-                type="submit"
-                className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
-              >
-                Filtrar
-              </button>
-              <Link
-                href="/alerts"
-                className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
-              >
-                Limpar
-              </Link>
+            </div>
+          </AdvancedSection>
         </form>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <SummaryCard label="Open" value={alerts.totals.open} tone={statusTone.open} />
         <SummaryCard
           label="Acknowledged"
@@ -272,41 +282,38 @@ export default async function AlertsPage({
           tone={statusTone.acknowledged}
         />
         <SummaryCard label="Resolved" value={alerts.totals.resolved} tone={statusTone.resolved} />
-        <SummaryCard label="Critical" value={alerts.totals.critical} tone={severityTone.critical} />
-        <SummaryCard label="Warning" value={alerts.totals.warning} tone={severityTone.warning} />
-        <SummaryCard label="Info" value={alerts.totals.info} tone={severityTone.info} />
       </section>
 
       <section className="space-y-4">
         {alerts.items.length === 0 ? (
-          <div className="glass-panel rounded-[2rem] px-5 py-8 text-sm text-slate-400">
+          <div className="glass-panel rounded-xl px-6 py-8 text-sm text-slate-400">
             Nenhum alerta encontrado com os filtros atuais.
           </div>
         ) : (
           alerts.items.map((alert) => (
-            <div key={alert.id} className="glass-panel rounded-[2rem] p-5">
+            <div key={alert.id} className="glass-panel rounded-xl p-6">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-2">
-                    <span className={`rounded-full border px-3 py-1 font-mono text-xs ${statusTone[alert.status]}`}>
+                    <span className={`rounded-md border px-2.5 py-0.5 font-mono text-xs ${statusTone[alert.status]}`}>
                       {alert.status}
                     </span>
-                    <span className={`rounded-full border px-3 py-1 font-mono text-xs ${severityTone[alert.severity]}`}>
+                    <span className={`rounded-md border px-2.5 py-0.5 font-mono text-xs ${severityTone[alert.severity]}`}>
                       {alert.severity}
                     </span>
-                    <span className="rounded-full border border-slate-700 bg-panel-soft px-3 py-1 font-mono text-xs text-slate-300">
+                    <span className="rounded-md border border-slate-600/80 bg-panel-soft px-2.5 py-0.5 font-mono text-xs text-slate-300">
                       {alert.type}
                     </span>
                   </div>
 
                   <div>
-                    <h3 className="font-display text-2xl text-white">{alert.title}</h3>
+                    <h3 className="font-display text-xl font-semibold text-white">{alert.title}</h3>
                     <p className="mt-2 max-w-3xl text-sm text-slate-400">{alert.description}</p>
                   </div>
 
                   <div className="grid gap-3 text-sm text-slate-300 md:grid-cols-2 xl:grid-cols-4">
                     <div>
-                      <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
+                      <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
                         Firewall
                       </p>
                       <Link href={`/nodes/${alert.node.id}`} className="mt-2 block text-cyan-300 hover:text-cyan-200">
@@ -315,21 +322,21 @@ export default async function AlertsPage({
                       <p className="mt-1 text-slate-500">{alert.node.node_uid}</p>
                     </div>
                     <div>
-                      <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
+                      <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
                         Cliente / Site
                       </p>
                       <p className="mt-2">{alert.client.name}</p>
                       <p className="text-slate-500">{alert.site.name}</p>
                     </div>
                     <div>
-                      <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
+                      <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
                         Tempo
                       </p>
                       <p className="mt-2">Aberto {formatRelativeAge(alert.opened_at)}</p>
                       <p className="text-slate-500">{formatDateTime(alert.opened_at)}</p>
                     </div>
                     <div>
-                      <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
+                      <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
                         Contexto
                       </p>
                       <p className="mt-2">MGMT {alert.node.management_ip ?? '-'}</p>

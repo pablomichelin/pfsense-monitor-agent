@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { AdvancedSection } from '@/components/advanced-section';
+import { CopyButton } from '@/components/copy-button';
 import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 import {
@@ -41,7 +42,7 @@ function Metric({
   value: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4">
+    <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4">
       <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
         {label}
       </p>
@@ -60,7 +61,7 @@ function BootstrapField({
   href?: string | null;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4">
+    <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4">
       <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
         {label}
       </p>
@@ -82,7 +83,7 @@ function BootstrapField({
 
 function CommandBlock({ value }: { value: string }) {
   return (
-    <pre className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-4 font-mono text-xs text-cyan-100">
+    <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-4 font-mono text-xs leading-relaxed text-cyan-100">
       {value}
     </pre>
   );
@@ -317,37 +318,37 @@ export default async function NodeDetailsPage({
     return (
       <div className="space-y-6">
         {created ? (
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
             Node criado com sucesso. Use a secao de bootstrap abaixo para instalar o agente.
           </div>
         ) : null}
         {rekeyed ? (
-          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
             Secret do agente rotacionado. Reinstale ou reconfigure o agente com o novo bootstrap.
           </div>
         ) : null}
         {rekeyError ? (
-          <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
             Falha ao rotacionar secret: {rekeyError}
           </div>
         ) : null}
         {maintenanceState ? (
-          <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">
+          <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">
             Maintenance mode {maintenanceState === 'enabled' ? 'ativado' : 'desativado'} com sucesso.
           </div>
         ) : null}
         {maintenanceError ? (
-          <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
             Falha ao atualizar maintenance mode: {maintenanceError}
           </div>
         ) : null}
         {updated ? (
-          <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">
+          <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">
             Metadados do firewall atualizados com sucesso.
           </div>
         ) : null}
         {updateError ? (
-          <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
             Falha ao atualizar node: {updateError}
           </div>
         ) : null}
@@ -398,7 +399,7 @@ export default async function NodeDetailsPage({
 
         <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-6">
-            <div className="glass-panel rounded-[2rem] p-5">
+            <div className="glass-panel rounded-xl p-5">
               <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
                 Resumo do equipamento
               </p>
@@ -422,13 +423,13 @@ export default async function NodeDetailsPage({
                   />
                 </div>
               ) : (
-                <div className="mt-4 rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-6 text-sm text-slate-400">
+                <div className="mt-4 rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-6 text-sm text-slate-400">
                   Ainda nao ha dados recebidos deste firewall.
                 </div>
               )}
             </div>
 
-            <div className="glass-panel rounded-[2rem] p-5">
+            <div className="glass-panel rounded-xl p-5">
               <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
                 Servicos
               </p>
@@ -437,7 +438,7 @@ export default async function NodeDetailsPage({
                   {node.services.map((service) => (
                     <div
                       key={service.name}
-                      className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4"
+                      className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4"
                     >
                       <div className="flex items-center justify-between">
                         <h3 className="font-display text-lg text-white">{service.name}</h3>
@@ -447,7 +448,7 @@ export default async function NodeDetailsPage({
                   ))}
                 </div>
               ) : (
-                <div className="mt-4 rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-6 text-sm text-slate-400">
+                <div className="mt-4 rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-6 text-sm text-slate-400">
                   Nenhum servico reportado ainda.
                 </div>
               )}
@@ -455,7 +456,7 @@ export default async function NodeDetailsPage({
           </div>
 
           <div className="space-y-6">
-            <div className="glass-panel rounded-[2rem] p-5">
+            <div className="glass-panel rounded-xl p-5">
               <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Dados principais</p>
               <div className="mt-4 space-y-3 text-sm text-slate-300">
                 <p>Hostname: {node.hostname}</p>
@@ -473,7 +474,7 @@ export default async function NodeDetailsPage({
                   />
                   <button
                     type="submit"
-                    className={`rounded-2xl border px-4 py-3 text-sm transition ${
+                    className={`rounded-xl border px-4 py-3 text-sm transition ${
                       node.maintenance_mode
                         ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:border-emerald-400/50'
                         : 'border-amber-500/30 bg-amber-500/10 text-amber-200 hover:border-amber-400/50'
@@ -485,14 +486,14 @@ export default async function NodeDetailsPage({
                   </button>
                 </form>
               ) : (
-                <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4 text-sm text-slate-500">
+                <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4 text-sm text-slate-500">
                   Maintenance mode disponivel apenas para `admin` e `superadmin`.
                 </div>
               )}
             </div>
 
             {canManageNode ? (
-              <div className="glass-panel rounded-[2rem] p-5">
+              <div className="glass-panel rounded-xl p-5">
                 <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Editar cadastro</p>
                 <form action={updateNodeAction} className="mt-4 space-y-3">
                   <input type="hidden" name="node_id" value={node.id} />
@@ -501,53 +502,58 @@ export default async function NodeDetailsPage({
                     name="hostname"
                     defaultValue={node.hostname}
                     placeholder="Hostname"
-                    className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                    className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   />
                   <input
                     type="text"
                     name="display_name"
                     defaultValue={node.display_name ?? ''}
                     placeholder="Nome exibido"
-                    className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                    className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   />
                   <input
                     type="text"
                     name="management_ip"
                     defaultValue={node.management_ip ?? ''}
                     placeholder="IP interno"
-                    className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                    className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   />
                   <input
                     type="text"
                     name="wan_ip"
                     defaultValue={node.wan_ip ?? ''}
                     placeholder="IP publico"
-                    className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                    className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   />
                   <input
                     type="text"
                     name="pfsense_version"
                     defaultValue={node.pfsense_version ?? ''}
                     placeholder="Versao do pfSense"
-                    className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                    className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   />
                   <input
                     type="text"
                     name="agent_version"
                     defaultValue={node.agent_version ?? ''}
                     placeholder="Versao do agente"
-                    className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                    className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   />
-                  <input
-                    type="text"
-                    name="ha_role"
-                    defaultValue={node.ha_role ?? ''}
-                    placeholder="Papel HA"
-                    className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
+                  <AdvancedSection
+                    title="Campos avancados"
+                    description="ha_role e outros campos para ambientes HA/CARP."
+                  >
+                    <input
+                      type="text"
+                      name="ha_role"
+                      defaultValue={node.ha_role ?? ''}
+                      placeholder="Papel HA"
+                      className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                    />
+                  </AdvancedSection>
                   <button
                     type="submit"
-                    className="w-full rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
+                    className="w-full rounded-xl h-11 bg-cyan-500 px-5 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
                   >
                     Salvar metadados
                   </button>
@@ -557,18 +563,18 @@ export default async function NodeDetailsPage({
           </div>
         </section>
 
-        <section className="glass-panel rounded-[2rem] p-5">
+        <section className="glass-panel rounded-xl p-5">
           <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Alertas</p>
           <div className="mt-4 space-y-3">
             {node.recent_alerts.length === 0 ? (
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-6 text-sm text-emerald-200">
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-6 text-sm text-emerald-200">
                 Nenhum alerta recente para este node.
               </div>
             ) : (
               node.recent_alerts.map((alert) => (
                 <div
                   key={alert.id}
-                  className="rounded-2xl border border-slate-800 bg-panel-soft/60 px-4 py-4"
+                  className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4"
                 >
                   <div className="flex items-center justify-between gap-4">
                     <h3 className="font-display text-lg text-white">{alert.title}</h3>
@@ -586,10 +592,10 @@ export default async function NodeDetailsPage({
           </div>
         </section>
 
-        <section className="glass-panel rounded-[2rem] p-5">
+        <section className="glass-panel rounded-xl p-5">
           <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Instalar agente</p>
           <div className="mt-4 space-y-4">
-            <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-sm text-slate-200">Credencial do agente</p>
                 <p className="mt-1 text-sm text-slate-500">Use a instalacao abaixo para conectar este firewall ao painel.</p>
@@ -599,7 +605,7 @@ export default async function NodeDetailsPage({
                   <input type="hidden" name="node_id" value={node.id} />
                   <button
                     type="submit"
-                    className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 transition hover:border-amber-400/50"
+                    className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 transition hover:border-amber-400/50"
                   >
                     Rotacionar secret
                   </button>
@@ -617,30 +623,46 @@ export default async function NodeDetailsPage({
             </div>
 
             {(bootstrap.package_command ?? bootstrap.command) ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="font-mono text-xs uppercase tracking-[0.24em] text-cyan-300">Comando principal</p>
+                  <CopyButton value={bootstrap.package_command ?? bootstrap.command ?? ''} />
+                </div>
                 <p className="text-sm text-slate-400">
-                  Cole este comando em Diagnostics &gt; Command Prompt. Retorna na hora; instalação segue em segundo plano.
+                  Cole no pfSense em <strong>Diagnostics &gt; Command Prompt</strong>. Retorna na hora; instalação segue em segundo plano.
                 </p>
                 <CommandBlock value={bootstrap.package_command ?? bootstrap.command ?? ''} />
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
-                  1. Abra o Command Prompt no pfSense.
-                  2. Cole o comando e execute.
-                  3. Em 1–2 min o firewall deve aparecer online. Acompanhe: tail -f /tmp/monitor-install.log
+                <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
+                  <strong>Uso:</strong> (1) Abra Command Prompt no pfSense. (2) Cole o comando e execute. (3) Em 1–2 min o firewall deve aparecer online. Acompanhe: <code className="text-cyan-200">tail -f /tmp/monitor-install.log</code>
                 </div>
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-200">
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-200">
                   O comando automatico ainda nao esta pronto para este firewall.
                 </div>
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
                   Publique a release do agente ou configure a base de download para o sistema montar o comando automaticamente.
                 </div>
               </div>
             )}
-            <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-              <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">Verificacao rapida</p>
-              <CommandBlock value={bootstrap.verification.command_block} />
+            <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+              <p className="font-mono text-xs uppercase tracking-[0.24em] text-cyan-300">Comandos de teste no pfSense</p>
+              <p className="text-sm text-slate-400">
+                Execute no <strong>Diagnostics &gt; Command Prompt</strong> para validar antes e depois da instalação.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-1 text-xs font-medium text-slate-300">Pré-instalação — versão, DNS e conectividade</p>
+                  <p className="mb-2 text-xs text-slate-500">Valide versão do pfSense, resolução DNS e acesso HTTP/HTTPS aos URLs do controlador e do release.</p>
+                  <CommandBlock value={pfSensePrecheckBlock} />
+                </div>
+                <div>
+                  <p className="mb-1 text-xs font-medium text-slate-300">Pós-instalação — serviço e agente</p>
+                  <p className="mb-2 text-xs text-slate-500">Após instalar: status do serviço, config, test-connection, heartbeat e log. Esperado: serviço rodando e respostas de sucesso.</p>
+                  <CommandBlock value={bootstrap.verification.command_block} />
+                </div>
+              </div>
             </div>
 
             <AdvancedSection
@@ -682,7 +704,7 @@ export default async function NodeDetailsPage({
                 </div>
 
                 {canManageNode ? (
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4">
                     <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">Override operacional</p>
                     <form className="mt-4 flex flex-col gap-3">
                       <input
@@ -690,25 +712,25 @@ export default async function NodeDetailsPage({
                         name="release_base_url"
                         defaultValue={releaseBaseUrl ?? ''}
                         placeholder="https://downloads.systemup.inf.br/monitor-pfsense"
-                        className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                        className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                       />
                       <input
                         type="text"
                         name="controller_url"
                         defaultValue={controllerUrl ?? ''}
                         placeholder="https://pfs-monitor.systemup.inf.br"
-                        className="w-full rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                        className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                       />
                       <div className="flex flex-col gap-3 lg:flex-row">
                         <button
                           type="submit"
-                          className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
+                          className="rounded-xl h-11 bg-cyan-500 px-5 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
                         >
                           Aplicar override
                         </button>
                         <Link
                           href={`/nodes/${node.id}`}
-                          className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+                          className="rounded-xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
                         >
                           Limpar
                         </Link>
@@ -718,11 +740,11 @@ export default async function NodeDetailsPage({
                 ) : null}
 
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4">
                     <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">Pre-check no pfSense</p>
                     <CommandBlock value={pfSensePrecheckBlock} />
                   </div>
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4">
                     <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">Evidencias da rodada</p>
                     <CommandBlock value={evidenceBlock} />
                   </div>
@@ -731,19 +753,19 @@ export default async function NodeDetailsPage({
                 <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap">
                   <Link
                     href={bootstrapHref}
-                    className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-3 text-center text-sm text-cyan-200 transition hover:border-cyan-400/50"
+                    className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-3 text-center text-sm text-cyan-200 transition hover:border-cyan-400/50"
                   >
                     Abrir instalacao guiada
                   </Link>
                   <Link
                     href={testConnectionAuditHref}
-                    className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+                    className="rounded-xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
                   >
                     Ver eventos deste firewall
                   </Link>
                   <Link
                     href="/dashboard"
-                    className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+                    className="rounded-xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
                   >
                     Dashboard
                   </Link>

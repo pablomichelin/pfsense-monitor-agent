@@ -138,6 +138,7 @@ Status:
 - rodada real de homologacao do pacote pfSense executada em `2026-03-13`, com registro completo em `18-homologacao-pfsense-package-real-2026-03-13.md`
 - Onda 1 da simplificacao do painel executada em `2026-03-15`: login, sessions, alertas e menu Auditoria; versao v0.1.2; ver `docs/33-ENTREGA-ONDA-1-SIMPLIFICACAO-2026-03-15.md`
 - Onda 2 da simplificacao executada em `2026-03-15`: nodes (3 cards), bootstrap (3 cards), dashboard (5 cards), admin preservado; versao v0.1.3; ver `docs/35-ENTREGA-ONDA-2-SIMPLIFICACAO-2026-03-15.md`
+- Onda 3 da simplificacao executada em `2026-03-15`: alertas (severity/type em avancado), bootstrap (overrides em avancado), node detail (ha_role em avancado); versao v0.1.4; ver `docs/37-ENTREGA-ONDA-3-SIMPLIFICACAO-2026-03-15.md`
 - menu do pacote validado em `Services > SystemUp Monitor`
 - servico do pacote validado em `Status > Services`
 - assinatura HMAC do agente corrigida e alinhada ao backend usando `timestamp + "\n" + rawBody`

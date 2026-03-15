@@ -96,7 +96,7 @@ export default async function RootLayout({
             <main className="flex-1">{children}</main>
 
             <footer className="mt-6 flex flex-col gap-2 border-t border-slate-800/80 px-1 pt-4 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-              <span>Monitor-Pfsense v0.1.3</span>
+              <span>Monitor-Pfsense v0.1.4</span>
               <a
                 href="https://www.systemup.inf.br"
                 target="_blank"

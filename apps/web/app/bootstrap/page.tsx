@@ -428,20 +428,27 @@ export default async function BootstrapPage({
             <input type="hidden" name="site_id" value={siteId ?? ''} />
             <input type="hidden" name="search" value={search ?? ''} />
             <input type="hidden" name="bucket" value={bucket ?? ''} />
-            <input
-              type="text"
-              name="release_base_url"
-              defaultValue={releaseBaseUrl ?? ''}
-              placeholder="https://downloads.systemup.inf.br/monitor-pfsense"
-              className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-            />
-            <input
-              type="text"
-              name="controller_url"
-              defaultValue={controllerUrl ?? ''}
-              placeholder="https://pfs-monitor.systemup.inf.br"
-              className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-            />
+            <AdvancedSection
+              title="Overrides de homologacao"
+              description="Release base URL e controller URL para ambientes alternativos. Use apenas quando necessario."
+            >
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  name="release_base_url"
+                  defaultValue={releaseBaseUrl ?? ''}
+                  placeholder="https://downloads.systemup.inf.br/monitor-pfsense"
+                  className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                />
+                <input
+                  type="text"
+                  name="controller_url"
+                  defaultValue={controllerUrl ?? ''}
+                  placeholder="https://pfs-monitor.systemup.inf.br"
+                  className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                />
+              </div>
+            </AdvancedSection>
             <div className="flex flex-col gap-3 lg:flex-row">
               <button
                 type="submit"
