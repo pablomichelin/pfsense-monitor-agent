@@ -53,6 +53,7 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 - [docs/39-ETAPA-A-VALIDACAO-SERVIDOR-2026-03-15.md](./docs/39-ETAPA-A-VALIDACAO-SERVIDOR-2026-03-15.md): Etapa A validação servidor/controlador para homologação pacote pfSense.
 - [docs/40-VALIDACAO-PFSENSE-REAL-LASALLE-AGRO-2026-03-15.md](./docs/40-VALIDACAO-PFSENSE-REAL-LASALLE-AGRO-2026-03-15.md): Validação do pfSense real Lasalle Agro (estado atual, sem reinstalar).
 - [docs/41-CORRECAO-DESALINHAMENTO-FLUXO-PACKAGE-2026-03-15.md](./docs/41-CORRECAO-DESALINHAMENTO-FLUXO-PACKAGE-2026-03-15.md): Correção do desalinhamento fluxo package vs fluxo automatizado (API, scripts).
+- [docs/42-VALIDACAO-PRODUCAO-POS-CORRECAO-PACKAGE-2026-03-15.md](./docs/42-VALIDACAO-PRODUCAO-POS-CORRECAO-PACKAGE-2026-03-15.md): Validação em produção pós-correção — PACKAGE_RELEASE_* e package_command confirmados.
 
 ## Arquivos de governanca do projeto
 

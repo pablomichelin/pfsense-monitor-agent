@@ -94,7 +94,7 @@ O desalinhamento entre o fluxo homologado (Lasalle Agro, package 0.2.0) e o flux
 ## 7. Pendências residuais
 
 - `run-smoke-suite.sh` termina com exit 1; `smoke-admin-operations.sh` pode ter falha pré-existente na validação final (inventário/filtros/auditoria). Fora do escopo desta task.
-- Recomendado validar em produção (pfs-monitor.systemup.inf.br) que `PACKAGE_RELEASE_*` está no env do container e que a API retorna `package_command` para nodes existentes.
+- ~~Recomendado validar em produção~~ **Concluído:** doc 42 registra validação em produção com sucesso.
 
 ---
 
@@ -103,3 +103,4 @@ O desalinhamento entre o fluxo homologado (Lasalle Agro, package 0.2.0) e o flux
 - docs/39-ETAPA-A-VALIDACAO-SERVIDOR-2026-03-15.md
 - docs/40-VALIDACAO-PFSENSE-REAL-LASALLE-AGRO-2026-03-15.md
 - docs/18-homologacao-pfsense-package-real-2026-03-13.md
+- docs/42-VALIDACAO-PRODUCAO-POS-CORRECAO-PACKAGE-2026-03-15.md (validação em produção)
