@@ -240,7 +240,7 @@ Restricao principal do ambiente:
 
 Trilha de homologacao e alinhamento do package **encerrada** (doc 43). Próximos focos (trilhas separadas):
 
-1. **Estabilização smoke suite:** diagnosticar smoke-admin-operations se exit 1 for relevante
+1. **Smoke suite:** smoke-admin-operations alinhado ao novo /admin (doc 52); manter run-smoke-suite como referência
 2. **Builder nativo:** copiar `packages/pfsense-package` para builder pfSense, `make package`, validar `pkg add`
 3. **Expansão operacional:** replicar homologação em novos firewalls usando `generate-install-command.sh` e `verify-bootstrap-release.sh`
 4. **Fase B (serviços):** catalogo, MONITOR_AGENT_PACKAGES, GUI — ver `21-evolucao-servicos-e-fase-b-2026-03-13.md`
@@ -271,7 +271,13 @@ Isso deve bastar para retomar o desenvolvimento sem explicar tudo novamente.
 
 ## Ultima entrega registrada
 
-- `2026-03-15`: **Trilha de homologação real e alinhamento do package pfSense encerrada formalmente.** Ver `docs/43-ENCERRAMENTO-TRILHA-HOMOLOGACAO-ALINHAMENTO-PACKAGE-2026-03-15.md`. Versões consolidadas: painel 0.1.4, API 0.1.0, package 0.2.0. Lasalle Agro homologado. API retorna package_command em produção. Scripts alinhados ao fluxo package.
+- `2026-03-15`: **Microtrilha de alinhamento do smoke administrativo com o novo /admin — implementada e encerrada.** Ver `docs/52-ALINHAMENTO-SMOKE-ADMIN-NOVO-ADMIN-2026-03-15.md`. Numeração dos passos corrigida para [1/14]…[14/14]; adicionado passo GET /admin com validação HTTP 200 apenas; smoke continua API-first; sem validação por texto da página.
+- `2026-03-15`: **Trilha de polimento do cadastro inicial no admin — implementada e encerrada.** Ver `docs/50` e `docs/51`. Formulários no `/admin` sob demanda (cards colapsáveis); apenas um card expandido por vez; auto-expansão via `?section=`. Versões: painel 0.1.10, API 0.1.3, package 0.2.0.
+- `2026-03-15`: **Trilha de desmembramento da interface administrativa — implementada e encerrada.** Ver `docs/48` e `docs/49`. Cadastro (`/admin`) enxuto; `/admin/usuarios`, `/admin/clientes-sites`; nav e atalhos. Painel 0.1.9.
+- `2026-03-15`: **Trilha de despoluição visual do dashboard operacional.** Ver `docs/46-DESPOLUICAO-VISUAL-DASHBOARD-OPERACIONAL-2026-03-15.md`. Colunas Host e Site removidas da grade principal; tabela com 11 colunas. Versão painel: 0.1.7.
+- `2026-03-15`: **Trilha de dashboard operacional / lista de servidores.** Ver `docs/45-DASHBOARD-OPERACIONAL-LISTA-SERVIDORES-2026-03-15.md`. Lista/tabela com CPU, memória, disco, uptime; API estendida; fallback "—".
+- `2026-03-15`: **Trilha de exclusão de hosts implementada.** Ver `docs/44-TRILHA-EXCLUSAO-HOSTS-2026-03-15.md`. Exclusão individual e em lote, confirmação obrigatória, RBAC admin/superadmin, auditoria persistente.
+- `2026-03-15`: **Trilha de homologação real e alinhamento do package pfSense encerrada formalmente.** Ver `docs/43-ENCERRAMENTO-TRILHA-HOMOLOGACAO-ALINHAMENTO-PACKAGE-2026-03-15.md`. Versões anteriores: painel 0.1.4, API 0.1.0. Lasalle Agro homologado. API retorna package_command em produção.
 - `2026-03-15`: Validação em produção pós-correção. Ver `docs/42-VALIDACAO-PRODUCAO-POS-CORRECAO-PACKAGE-2026-03-15.md`. PACKAGE_RELEASE_* confirmadas; package_command retornado.
 - `2026-03-15`: Correção do desalinhamento fluxo package. Ver `docs/41-CORRECAO-DESALINHAMENTO-FLUXO-PACKAGE-2026-03-15.md`. verify-bootstrap-release, run-bootstrap-preflight e smoke-bootstrap-flow ajustados para modo package.
 - `2026-03-15`: Validação Lasalle Agro. Ver `docs/40-VALIDACAO-PFSENSE-REAL-LASALLE-AGRO-2026-03-15.md`. package=1, menu=1, service=1. Lasalle Agro HOMOLOGADO.
@@ -283,6 +289,10 @@ Isso deve bastar para retomar o desenvolvimento sem explicar tudo novamente.
 
 ## Notas especificas para o proximo chat
 
+- **Microtrilha doc 52 (alinhamento smoke admin com novo /admin) está encerrada.** Smoke administrativo com 14 passos; passo [2/14] valida GET /admin HTTP 200; smoke continua API-first; sem grep em texto da página.
+- **Trilhas docs 50 e 51 (polimento cadastro inicial admin) estão encerradas.** Formulários em `/admin` são sob demanda (cards colapsáveis); um card expandido por vez. Versões atuais: painel 0.1.10, API 0.1.3.
+- **Trilhas docs 48 e 49 (desmembramento interface admin) estão encerradas.** Cadastro em `/admin` enxuto; Usuários em `/admin/usuarios` (superadmin); Clientes e sites em `/admin/clientes-sites`.
+- **Trilha doc 47 (simplificacao cadastro Cliente+Firewall) está encerrada.** Não reabrir sem decisão explícita. Regra de site: client_id com 0/1/2+ sites; site_id legado mantido.
 - o chat anterior confirmou um exemplo antigo do usuario que criava menu manual no pfSense alterando `/usr/local/www/head.inc` e publicando uma pagina em `/usr/local/www/services_emailbackup.php`
 - esse exemplo foi analisado apenas para confirmar caminhos visuais do pfSense
 - decisao tomada: nao reproduzir essa tecnica no produto final

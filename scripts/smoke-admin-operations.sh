@@ -91,6 +91,7 @@ request_json() {
     curl -skS \
       -b "$COOKIE_JAR" \
       -c "$COOKIE_JAR" \
+      -H "content-type: application/json" \
       "${csrf_header[@]}" \
       -X "$method" \
       "$BASE_URL$path"
@@ -127,7 +128,7 @@ process.stdout.write(crypto.createHmac("sha256", secret).update(payload).digest(
 ' "$timestamp" "$body_path" "$secret"
 }
 
-echo "[1/11] Login em $BASE_URL"
+echo "[1/14] Login em $BASE_URL"
 LOGIN_RESPONSE="$(curl -skS \
   -b "$COOKIE_JAR" \
   -c "$COOKIE_JAR" \
@@ -138,7 +139,11 @@ LOGIN_RESPONSE="$(curl -skS \
 
 json_get "$LOGIN_RESPONSE" "ok" >/dev/null
 
-echo "[2/11] Criando client/site/node"
+echo "[2/14] Verificando rota /admin (HTTP 200)"
+ADMIN_STATUS="$(curl -skS -o /dev/null -w "%{http_code}" -b "$COOKIE_JAR" "$BASE_URL/admin")"
+[[ "$ADMIN_STATUS" == "200" ]]
+
+echo "[3/14] Criando client/site/node"
 CLIENT_RESPONSE="$(request_json POST /api/v1/admin/clients "{\"name\":\"Admin Smoke $SUFFIX\",\"code\":\"$CLIENT_CODE\"}")"
 CLIENT_ID="$(json_get "$CLIENT_RESPONSE" "client.id")"
 
@@ -149,7 +154,7 @@ NODE_RESPONSE="$(request_json POST /api/v1/admin/nodes "{\"site_id\":\"$SITE_ID\
 NODE_ID="$(json_get "$NODE_RESPONSE" "node.id")"
 NODE_SECRET="$(json_get "$NODE_RESPONSE" "bootstrap.node_secret")"
 
-echo "[3/11] Atualizando client/site/node"
+echo "[4/14] Atualizando client/site/node"
 UPDATED_CLIENT_RESPONSE="$(request_json POST "/api/v1/admin/clients/$CLIENT_ID" "{\"name\":\"Admin Smoke Updated $SUFFIX\",\"code\":\"$CLIENT_CODE-U\",\"status\":\"active\"}")"
 UPDATED_SITE_RESPONSE="$(request_json POST "/api/v1/admin/sites/$SITE_ID" "{\"name\":\"Admin Site Updated $SUFFIX\",\"code\":\"$SITE_CODE-U\",\"city\":\"Campinas\",\"state\":\"SP\",\"timezone\":\"America/Sao_Paulo\",\"status\":\"active\"}")"
 UPDATED_NODE_RESPONSE="$(request_json POST "/api/v1/admin/nodes/$NODE_ID" "{\"hostname\":\"$NODE_UID-updated.local\",\"display_name\":\"Admin Firewall Updated $SUFFIX\",\"management_ip\":\"10.250.0.2\",\"wan_ip\":\"198.51.100.51\",\"pfsense_version\":\"2.9.0\",\"agent_version\":\"0.1.1\",\"ha_role\":\"primary\"}")"
@@ -158,19 +163,19 @@ UPDATED_NODE_RESPONSE="$(request_json POST "/api/v1/admin/nodes/$NODE_ID" "{\"ho
 [[ "$(json_get "$UPDATED_SITE_RESPONSE" "site.code")" == "$SITE_CODE-U" ]]
 [[ "$(json_get "$UPDATED_NODE_RESPONSE" "node.management_ip")" == "10.250.0.2" ]]
 
-echo "[4/11] Alternando maintenance mode"
+echo "[5/14] Alternando maintenance mode"
 MAINTENANCE_ON_RESPONSE="$(request_json POST "/api/v1/admin/nodes/$NODE_ID/maintenance" '{"maintenance_mode":true}')"
 [[ "$(json_get "$MAINTENANCE_ON_RESPONSE" "maintenance_mode")" == "true" ]]
 MAINTENANCE_OFF_RESPONSE="$(request_json POST "/api/v1/admin/nodes/$NODE_ID/maintenance" '{"maintenance_mode":false}')"
 [[ "$(json_get "$MAINTENANCE_OFF_RESPONSE" "maintenance_mode")" == "false" ]]
 
-echo "[5/11] Rotacionando secret do node"
+echo "[6/14] Rotacionando secret do node"
 REKEY_RESPONSE="$(request_json POST "/api/v1/admin/nodes/$NODE_ID/rekey")"
 NODE_SECRET="$(json_get "$REKEY_RESPONSE" "bootstrap.node_secret")"
 ROTATED_AT="$(json_get "$REKEY_RESPONSE" "bootstrap.rotated_at")"
 [[ -n "$ROTATED_AT" ]]
 
-echo "[6/11] Validando test-connection com secret novo"
+echo "[7/14] Validando test-connection com secret novo"
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 TEST_SIGNATURE="$(build_test_signature "$TIMESTAMP" "$NODE_SECRET")"
 TEST_CONNECTION_RESPONSE="$(curl -skS \
@@ -181,7 +186,7 @@ TEST_CONNECTION_RESPONSE="$(curl -skS \
   "$BASE_URL/api/v1/ingest/test-connection")"
 [[ "$(json_get "$TEST_CONNECTION_RESPONSE" "message")" == "connection validated" ]]
 
-echo "[7/11] Enviando heartbeat com servico down para abrir alerta"
+echo "[8/14] Enviando heartbeat com servico down para abrir alerta"
 cat > "$BODY_FILE" <<JSON
 {
   "schema_version": "2026-01",
@@ -221,7 +226,7 @@ HEARTBEAT_RESPONSE="$(curl -skS \
   "$BASE_URL/api/v1/ingest/heartbeat")"
 [[ "$(json_get "$HEARTBEAT_RESPONSE" "node_status")" == "degraded" ]]
 
-echo "[8/11] Lendo, reconhecendo e resolvendo alerta"
+echo "[9/14] Lendo, reconhecendo e resolvendo alerta"
 ALERTS_RESPONSE="$(request_json GET "/api/v1/alerts?node_id=$NODE_ID&status=open")"
 ALERT_ID="$(json_get "$ALERTS_RESPONSE" "items.0.id")"
 ALERT_TYPE="$(json_get "$ALERTS_RESPONSE" "items.0.type")"
@@ -233,7 +238,7 @@ ACK_RESPONSE="$(request_json POST "/api/v1/alerts/$ALERT_ID/acknowledge")"
 RESOLVE_RESPONSE="$(request_json POST "/api/v1/alerts/$ALERT_ID/resolve" '{"resolution_note":"smoke resolved"}')"
 [[ "$(json_get "$RESOLVE_RESPONSE" "status")" == "resolved" ]]
 
-echo "[9/12] Emitindo e revogando token auxiliar do agente"
+echo "[10/14] Emitindo e revogando token auxiliar do agente"
 TOKEN_CREATE_RESPONSE="$(request_json POST "/api/v1/admin/nodes/$NODE_ID/agent-tokens" '{}')"
 TOKEN_ID="$(json_get "$TOKEN_CREATE_RESPONSE" "token.id")"
 TOKEN_HINT="$(json_get "$TOKEN_CREATE_RESPONSE" "token.token_hint")"
@@ -248,7 +253,7 @@ TOKENS_LIST_RESPONSE="$(request_json GET "/api/v1/admin/nodes/$NODE_ID/agent-tok
 TOKEN_REVOKE_RESPONSE="$(request_json POST "/api/v1/admin/nodes/$NODE_ID/agent-tokens/$TOKEN_ID/revoke")"
 [[ "$(json_get "$TOKEN_REVOKE_RESPONSE" "token_id")" == "$TOKEN_ID" ]]
 
-echo "[10/12] Criando usuario local e validando login administrativo"
+echo "[11/14] Criando usuario local e validando login administrativo"
 USER_EMAIL="admin-smoke-$SUFFIX@systemup.inf.br"
 USER_PASSWORD="AdminSmoke!$SUFFIX"
 CREATE_USER_RESPONSE="$(request_json POST /api/v1/admin/users "{\"email\":\"$USER_EMAIL\",\"display_name\":\"Admin Smoke User $SUFFIX\",\"password\":\"$USER_PASSWORD\",\"role\":\"admin\",\"status\":\"active\"}")"
@@ -270,7 +275,7 @@ USER_ME_RESPONSE="$(curl -skS -b "$USER_COOKIE_JAR" "$BASE_URL/api/v1/auth/me")"
 USER_ADMIN_USERS_STATUS="$(curl -skS -o /dev/null -w "%{http_code}" -b "$USER_COOKIE_JAR" "$BASE_URL/api/v1/admin/users")"
 [[ "$USER_ADMIN_USERS_STATUS" == "403" ]]
 
-echo "[11/12] Validando protecao do ultimo superadmin"
+echo "[12/14] Validando protecao do ultimo superadmin"
 USERS_RESPONSE="$(request_json GET /api/v1/admin/users)"
 BOOTSTRAP_USER_ID="$(node -e '
 const payload = JSON.parse(process.argv[1]);
@@ -286,7 +291,7 @@ LAST_SUPERADMIN_DEMOTE_RESPONSE="$(request_json POST "/api/v1/admin/users/$BOOTS
 LAST_SUPERADMIN_DISABLE_RESPONSE="$(request_json POST "/api/v1/admin/users/$BOOTSTRAP_USER_ID" '{"status":"inactive"}')"
 [[ "$(json_get "$LAST_SUPERADMIN_DISABLE_RESPONSE" "statusCode")" == "403" ]]
 
-echo "[12/12] Validando inventario, filtros e auditoria atualizados"
+echo "[13/14] Validando inventario, filtros e auditoria atualizados"
 FILTERS_RESPONSE="$(request_json GET /api/v1/nodes/filters)"
 [[ "$(json_get "$FILTERS_RESPONSE" "clients.0.status" || true)" != "" ]]
 NODES_RESPONSE="$(request_json GET "/api/v1/nodes?search=$NODE_UID")"
@@ -304,4 +309,28 @@ AUDIT_PAGE="$(curl -skS -b "$COOKIE_JAR" "$BASE_URL/audit")"
 grep -q 'Auditoria humana' <<<"$AUDIT_PAGE"
 grep -q 'Trilhas recentes' <<<"$AUDIT_PAGE"
 
-echo "Smoke admin OK: inventario, usuarios locais, auditoria, guarda do ultimo superadmin, maintenance, rekey, token auxiliar do agente, test-connection e ciclo de alertas validados."
+echo "[14/14] Excluindo node (exclusao individual)"
+DELETE_RESPONSE="$(request_json DELETE "/api/v1/admin/nodes/$NODE_ID")"
+[[ "$(json_get "$DELETE_RESPONSE" "ok")" == "true" ]]
+[[ "$(json_get "$DELETE_RESPONSE" "node_id")" == "$NODE_ID" ]]
+[[ "$(json_get "$DELETE_RESPONSE" "node_uid")" == "$NODE_UID" ]]
+NODES_AFTER_DELETE="$(request_json GET "/api/v1/nodes?search=$NODE_UID")"
+DELETE_FOUND="$(node -e "
+const p = JSON.parse(process.argv[1]);
+const found = p.items?.some(i => i.id === process.argv[2]);
+process.stdout.write(found ? '1' : '0');
+" "$NODES_AFTER_DELETE" "$NODE_ID")"
+[[ "$DELETE_FOUND" == "0" ]]
+AUDIT_DELETE="$(request_json GET "/api/v1/admin/audit?action=admin.node.delete&limit=5")"
+node -e "
+const p = JSON.parse(process.argv[1]);
+const uid = process.argv[2];
+const match = p.items?.find(i => {
+  if (i.action !== 'admin.node.delete') return false;
+  const meta = i.metadata_json;
+  return meta && typeof meta === 'object' && meta.node_uid === uid;
+});
+if (!match) process.exit(1);
+" "$AUDIT_DELETE" "$NODE_UID"
+
+echo "Smoke admin OK: rota /admin acessivel, inventario, usuarios locais, auditoria, exclusao de host, guarda do ultimo superadmin, maintenance, rekey, token auxiliar do agente, test-connection e ciclo de alertas validados."

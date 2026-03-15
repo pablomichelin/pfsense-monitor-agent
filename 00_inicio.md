@@ -70,6 +70,13 @@ Situacao geral:
 - formato correto da assinatura HMAC do agente contra a API foi validado: `timestamp + "\n" + rawBody`
 - formato correto de `test-connection` e `heartbeat` contra a API foi validado e documentado
 - instalacao do agente no pfSense documentada e funcionando (v0.2.0): ver `docs/INSTALACAO-AGENTE-PFSENSE.md`; comando one-shot gerado automaticamente na pagina do firewall e apos rotacionar secret (API retorna `package_command` quando `PACKAGE_RELEASE_VERSION` e `PACKAGE_RELEASE_SHA256` estao em `.env.api`)
+- trilha de exclusao de hosts implementada (doc 44): exclusao individual e em lote, confirmação obrigatória, RBAC admin/superadmin, auditoria persistente
+- trilha de dashboard operacional / lista de servidores implementada (doc 45): lista/tabela no dashboard com métricas do último heartbeat (CPU, memória, disco, uptime); API de listagem estendida; fallback "—" quando sem métrica
+- trilha de despoluição visual do dashboard operacional implementada (doc 46): colunas Host e Site removidas da grade principal; tabela enxuta com 11 colunas; host/site permanecem no detalhe
+- trilha de simplificação do modelo de cadastro implementada (doc 47): fluxo principal Cliente + Firewall; createNode aceita client_id ou site_id; regra segura 0/1/2+ sites; "Novo site" em Cadastros avancados
+- trilha de desmembramento da interface administrativa implementada (docs 48, 49): /admin enxuto (cadastro inicial + atalhos); /admin/usuarios e /admin/clientes-sites; nav com Usuarios (superadmin) e Clientes e sites; painel 0.1.9
+- trilha de polimento do cadastro inicial no admin implementada (docs 50, 51): formularios sob demanda por card (acordeao); apenas um card expandido por vez; painel 0.1.10
+- microtrilha de alinhamento do smoke administrativo (doc 52): passo GET /admin HTTP 200; numeracao [1/14]…[14/14]; smoke continua API-first
 
 ## O que ja esta decidido
 
@@ -87,6 +94,20 @@ Nao rediscutir sem motivo forte:
 - origem interna do projeto em `192.168.100.244:8088`
 - este host tambem executa `Zabbix`, que tem prioridade operacional
 
+## Trilhas encerradas (nao reabrir sem decisao explicita)
+
+1. Ondas 1, 2 e 3 de simplificacao do frontend (docs 33, 35, 37)
+2. Homologacao real do Lasalle Agro (doc 40)
+3. Alinhamento do fluxo automatizado com o package pfSense 0.2.0 (docs 41, 42)
+4. Encerramento formal da trilha de homologacao/alinhamento (doc 43)
+5. Trilha de exclusao de hosts (doc 44)
+6. Trilha de dashboard operacional / lista de servidores (doc 45)
+7. Trilha de despoluicao visual do dashboard (doc 46)
+8. **Trilha de simplificacao do modelo operacional de cadastro** (doc 47) — Cliente + Firewall; regra segura site; Novo site em Avancado
+9. **Trilha de desmembramento da interface administrativa** (docs 48, 49) — Cadastro enxuto; Usuarios e Clientes e sites em telas proprias; nav e atalhos
+10. **Trilha de polimento do cadastro inicial no admin** (docs 50, 51) — Formularios sob demanda por card (acordeao); um card expandido por vez
+11. **Microtrilha de alinhamento do smoke administrativo com o novo /admin** (doc 52) — Numeração [1/14]…[14/14]; passo GET /admin HTTP 200; smoke continua API-first
+
 ## Restricao mais importante
 
 Nunca alterar o ambiente do Zabbix por conveniencia do projeto.
@@ -99,9 +120,9 @@ Na pratica:
 
 ## Proximo bloco recomendado
 
-Trilha de homologacao e alinhamento do package **encerrada** (doc 43). Próximo trabalho em trilhas separadas:
+Trilhas recentes **encerradas:** homologacao/alinhamento package (doc 43), exclusao hosts (44), dashboard operacional (45), despoluicao dashboard (46), simplificacao cadastro Cliente+Firewall (doc 47), polimento cadastro admin (docs 50, 51), alinhamento smoke admin (doc 52). Proximo trabalho em trilhas separadas:
 
-1. **Estabilização smoke suite:** diagnosticar smoke-admin-operations se exit 1 for relevante
+1. **Smoke suite:** smoke-admin-operations alinhado ao novo /admin (doc 52); manter run-smoke-suite como referencia
 2. **Builder nativo:** copiar `packages/pfsense-package` para builder pfSense, `make package`, validar `pkg add`
 3. **Expansão operacional:** replicar homologação em novos firewalls (generate-install-command, verify-bootstrap-release)
 4. **Fase B (serviços):** catalogo, MONITOR_AGENT_PACKAGES, GUI — ver `21-evolucao-servicos-e-fase-b-2026-03-13.md`
@@ -111,9 +132,9 @@ Trilha de homologacao e alinhamento do package **encerrada** (doc 43). Próximo 
 
 ## Tarefa atual registrada
 
-- `trilha de homologacao real e alinhamento do package pfSense — ENCERRADA (2026-03-15)`
-- documento de encerramento: `docs/43-ENCERRAMENTO-TRILHA-HOMOLOGACAO-ALINHAMENTO-PACKAGE-2026-03-15.md`
-- versões consolidadas: painel 0.1.4, API 0.1.0, package 0.2.0
+- `microtrilha de alinhamento do smoke administrativo com o novo /admin — IMPLEMENTADA (2026-03-15)`
+- documentos: `docs/52-ALINHAMENTO-SMOKE-ADMIN-NOVO-ADMIN-2026-03-15.md`
+- versões consolidadas: painel 0.1.10, API 0.1.3, package 0.2.0 (inalteradas)
 
 ## Smokes e verificacoes que ja viraram referencia
 
@@ -152,6 +173,15 @@ Para contexto rapido:
 - `17-checklist-homologacao-bootstrap-pfsense-real.md`: roteiro da proxima rodada manual em pfSense real
 - `18-homologacao-pfsense-package-real-2026-03-13.md`: linha do tempo real da rodada em pfSense CE 2.8.1
 - `docs/43-ENCERRAMENTO-TRILHA-HOMOLOGACAO-ALINHAMENTO-PACKAGE-2026-03-15.md`: encerramento formal da trilha homologacao + alinhamento package
+- `docs/44-TRILHA-EXCLUSAO-HOSTS-2026-03-15.md`: trilha de exclusao de hosts (individual, lote, auditoria)
+- `docs/45-DASHBOARD-OPERACIONAL-LISTA-SERVIDORES-2026-03-15.md`: trilha de dashboard operacional com lista de servidores e métricas do último heartbeat
+- `docs/46-DESPOLUICAO-VISUAL-DASHBOARD-OPERACIONAL-2026-03-15.md`: despoluição visual da lista operacional (remover Host/Site da grade)
+- `docs/47-SIMPLIFICACAO-MODELO-CADASTRO-CLIENTE-FIREWALL-2026-03-15.md`: simplificação do cadastro (Cliente + Firewall; regra segura site; Novo site em Avançado)
+- `docs/48-ANALISE-DESMEMBRAMENTO-INTERFACE-ADMIN-2026-03-15.md`: análise desmembramento interface admin
+- `docs/49-ENTREGA-DESMEMBRAMENTO-INTERFACE-ADMIN-2026-03-15.md`: entrega desmembramento (admin enxuto; /admin/usuarios; /admin/clientes-sites)
+- `docs/50-ANALISE-POLIMENTO-CADASTRO-INICIAL-ADMIN-2026-03-15.md`: análise polimento cadastro (formulários sob demanda)
+- `docs/51-ENTREGA-POLIMENTO-CADASTRO-INICIAL-ADMIN-2026-03-15.md`: entrega polimento (cards colapsáveis; painel 0.1.10)
+- `docs/52-ALINHAMENTO-SMOKE-ADMIN-NOVO-ADMIN-2026-03-15.md`: alinhamento smoke administrativo ao novo /admin (GET /admin HTTP 200; doc 52)
 - `21-evolucao-servicos-e-fase-b-2026-03-13.md`: evolucao da logica de servicos, limpeza no painel e Fase B (catalogo de pacotes)
 - `docs/COMANDO-ATUALIZAR-PACKAGE-PFSENSE.md`: comando one-shot para instalar/atualizar o package no pfSense (sempre usar esse formato)
 - `scripts/verify-bootstrap-release.sh`: valida node, comando e URLs do release
@@ -191,13 +221,14 @@ Em qualquer novo chat:
 1. ler `LEITURA-INICIAL.md`
 2. ler `CORTEX.md`
 3. ler `00-README.md`
-4. identificar a fase atual
-5. continuar do ponto registrado, sem reabrir decisoes ja fechadas
+4. identificar a fase atual e as **trilhas encerradas** (secao neste arquivo)
+5. continuar do ponto registrado, sem reabrir decisoes ja fechadas nem trilhas encerradas sem decisao explicita
 
-Ao concluir uma iteracao relevante:
+Ao concluir uma iteracao relevante (ou encerrar uma trilha):
 
-- atualizar `LEITURA-INICIAL.md`
-- ajustar documentos impactados
+- atualizar `LEITURA-INICIAL.md` (ultima entrega e notas para proximo chat)
+- atualizar a secao **Trilhas encerradas** neste arquivo, se uma nova trilha for encerrada
+- ajustar documentos impactados (doc da trilha com secao Encerramento quando aplicavel)
 - manter visivel o percentual da fase atual e do plano total
 - **fazer commit e push para `origin main`** — este host e o servidor do projeto; o GitHub deve estar sempre atualizado
 - **apos push (ou quando relevante), executar `git pull origin main` neste host** — nao pedir ao usuario que de pull; o agente faz o pull

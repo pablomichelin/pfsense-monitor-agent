@@ -55,6 +55,15 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 - [docs/41-CORRECAO-DESALINHAMENTO-FLUXO-PACKAGE-2026-03-15.md](./docs/41-CORRECAO-DESALINHAMENTO-FLUXO-PACKAGE-2026-03-15.md): Correção do desalinhamento fluxo package vs fluxo automatizado (API, scripts).
 - [docs/42-VALIDACAO-PRODUCAO-POS-CORRECAO-PACKAGE-2026-03-15.md](./docs/42-VALIDACAO-PRODUCAO-POS-CORRECAO-PACKAGE-2026-03-15.md): Validação em produção pós-correção — PACKAGE_RELEASE_* e package_command confirmados.
 - [docs/43-ENCERRAMENTO-TRILHA-HOMOLOGACAO-ALINHAMENTO-PACKAGE-2026-03-15.md](./docs/43-ENCERRAMENTO-TRILHA-HOMOLOGACAO-ALINHAMENTO-PACKAGE-2026-03-15.md): **Encerramento formal** da trilha de homologação real e alinhamento da automação do package pfSense.
+- [docs/44-TRILHA-EXCLUSAO-HOSTS-2026-03-15.md](./docs/44-TRILHA-EXCLUSAO-HOSTS-2026-03-15.md): Trilha de exclusão de hosts (individual, lote, confirmação, RBAC, auditoria).
+- [docs/45-DASHBOARD-OPERACIONAL-LISTA-SERVIDORES-2026-03-15.md](./docs/45-DASHBOARD-OPERACIONAL-LISTA-SERVIDORES-2026-03-15.md): Dashboard operacional com lista de servidores e métricas do último heartbeat.
+- [docs/46-DESPOLUICAO-VISUAL-DASHBOARD-OPERACIONAL-2026-03-15.md](./docs/46-DESPOLUICAO-VISUAL-DASHBOARD-OPERACIONAL-2026-03-15.md): Despoluição visual da lista operacional (remover Host/Site da grade).
+- [docs/47-SIMPLIFICACAO-MODELO-CADASTRO-CLIENTE-FIREWALL-2026-03-15.md](./docs/47-SIMPLIFICACAO-MODELO-CADASTRO-CLIENTE-FIREWALL-2026-03-15.md): Simplificação do cadastro (Cliente + Firewall; regra segura site; Novo site em Avançado) — **encerrada**.
+- [docs/48-ANALISE-DESMEMBRAMENTO-INTERFACE-ADMIN-2026-03-15.md](./docs/48-ANALISE-DESMEMBRAMENTO-INTERFACE-ADMIN-2026-03-15.md): Análise desmembramento da interface administrativa (dashboard/cadastro/inventário/admin avançado).
+- [docs/49-ENTREGA-DESMEMBRAMENTO-INTERFACE-ADMIN-2026-03-15.md](./docs/49-ENTREGA-DESMEMBRAMENTO-INTERFACE-ADMIN-2026-03-15.md): Entrega desmembramento — admin enxuto, /admin/usuarios, /admin/clientes-sites — **encerrada**.
+- [docs/50-ANALISE-POLIMENTO-CADASTRO-INICIAL-ADMIN-2026-03-15.md](./docs/50-ANALISE-POLIMENTO-CADASTRO-INICIAL-ADMIN-2026-03-15.md): Análise polimento do cadastro inicial (formulários sob demanda).
+- [docs/51-ENTREGA-POLIMENTO-CADASTRO-INICIAL-ADMIN-2026-03-15.md](./docs/51-ENTREGA-POLIMENTO-CADASTRO-INICIAL-ADMIN-2026-03-15.md): Entrega polimento — cards colapsáveis no /admin — **encerrada**.
+- [docs/52-ALINHAMENTO-SMOKE-ADMIN-NOVO-ADMIN-2026-03-15.md](./docs/52-ALINHAMENTO-SMOKE-ADMIN-NOVO-ADMIN-2026-03-15.md): Alinhamento do smoke administrativo ao novo /admin (GET /admin HTTP 200; numeração 14 passos) — **encerrada**.
 
 ## Arquivos de governanca do projeto
 
@@ -64,7 +73,7 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 
 ## Status atual do projeto
 
-Em `2026-03-15`, a `Fase 1 - MVP do controlador` segue operacionalmente concluída e registrada como `100%`, com `93%` do plano total entregue. A **trilha de homologação real e alinhamento do package pfSense** foi encerrada formalmente (doc 43): Lasalle Agro homologado, package 0.2.0 validado, API retornando package_command em produção, scripts alinhados.
+Em `2026-03-15`, a `Fase 1 - MVP do controlador` segue operacionalmente concluída e registrada como `100%`, com `93%` do plano total entregue. A **microtrilha de alinhamento do smoke administrativo** foi implementada e **encerrada** (doc 52): passo GET /admin HTTP 200; 14 passos. Polimento cadastro admin (docs 50, 51); desmembramento admin (48–49); simplificação cadastro (47); despoluição dashboard (46); dashboard operacional (45); exclusão hosts (44); homologação package (43).
 
 Estado atual consolidado:
 
