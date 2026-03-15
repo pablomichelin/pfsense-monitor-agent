@@ -8,7 +8,7 @@ Leia este arquivo primeiro.
 
 ## Estado atual
 
-Data de referencia: `2026-03-13`
+Data de referencia: `2026-03-15`
 
 Fase atual:
 
@@ -18,7 +18,7 @@ Progresso:
 
 - fase atual: `100%`
 - plano total: `93%`
-- tarefa atual: `consolidar a homologacao real do pacote pfSense em pfSense CE 2.8.1 apos a primeira rodada funcional em campo, com foco em endurecer o fluxo e eliminar tentativa e erro`
+- **trilha homologacao real + alinhamento package:** encerrada (doc 43)
 - escopo do servidor/controlador: `100%`
 - observacao de continuidade: `abrir novo chat e seguir a partir deste arquivo e de 00_inicio.md e 00-README.md`
 
@@ -238,15 +238,14 @@ Restricao principal do ambiente:
 
 ## O que falta fazer em seguida
 
-Proximo bloco recomendado:
+Trilha de homologacao e alinhamento do package **encerrada** (doc 43). Próximos focos (trilhas separadas):
 
-1. ler `18-homologacao-pfsense-package-real-2026-03-13.md` antes de qualquer nova mudanca no pacote pfSense
-2. manter a homologacao local do servidor fechada e repetir a suite `scripts/run-smoke-suite.sh` sempre que houver mudanca em `admin`, `alerts`, `rekey`, `maintenance`, `update node`, `update client`, `update site`, `bootstrap` ou `realtime`
-3. revisar por que o firewall real `Lasalle Agro` apareceu como `degraded` apesar de chegar com `agente ativo`
-4. endurecer o fluxo de instalacao do pacote pfSense para nao depender de correcao manual em firewall de cliente
-5. validar novamente o contrato externo do proxy com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh` se houver qualquer ajuste em `ISPConfig`, `Cloudflare` ou `nginx`
-6. usar `17-checklist-homologacao-bootstrap-pfsense-real.md` como roteiro resumido e `18-homologacao-pfsense-package-real-2026-03-13.md` como memoria detalhada da rodada real
-7. copiar `packages/pfsense-package` para um builder compativel com `pfSense CE 2.8.1`, executar `make package` e instalar o artefato gerado no firewall de teste com `pkg add`
+1. **Estabilização smoke suite:** diagnosticar smoke-admin-operations se exit 1 for relevante
+2. **Builder nativo:** copiar `packages/pfsense-package` para builder pfSense, `make package`, validar `pkg add`
+3. **Expansão operacional:** replicar homologação em novos firewalls usando `generate-install-command.sh` e `verify-bootstrap-release.sh`
+4. **Fase B (serviços):** catalogo, MONITOR_AGENT_PACKAGES, GUI — ver `21-evolucao-servicos-e-fase-b-2026-03-13.md`
+5. manter `scripts/run-smoke-suite.sh` como referência após mudanças em admin, alerts, bootstrap, realtime
+6. validar contrato externo com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh` se houver ajuste em ISPConfig/Cloudflare/nginx
 
 ## Definicoes ainda em aberto
 
@@ -272,8 +271,10 @@ Isso deve bastar para retomar o desenvolvimento sem explicar tudo novamente.
 
 ## Ultima entrega registrada
 
-- `2026-03-15`: Validação local no pfSense Lasalle Agro concluída. Ver `docs/40-VALIDACAO-PFSENSE-REAL-LASALLE-AGRO-2026-03-15.md`. package=1, menu=1, service=1, versão 2.8.1-RELEASE. **Lasalle Agro HOMOLOGADO.** Reinstalação não necessária.
-- `2026-03-15`: Etapa A da validação do servidor para homologação do pacote pfSense concluída. Ver `docs/39-ETAPA-A-VALIDACAO-SERVIDOR-2026-03-15.md`. Resultado: generate-install-command OK, verify-origin-contract OK, artefato v0.2.0 acessível; API retorna package_command null (bloqueio conhecido); verify-bootstrap-release e run-bootstrap-preflight validam agente leve, nao pacote. Rodada no pfSense real pode prosseguir usando `./scripts/generate-install-command.sh lasalle-agro`.
+- `2026-03-15`: **Trilha de homologação real e alinhamento do package pfSense encerrada formalmente.** Ver `docs/43-ENCERRAMENTO-TRILHA-HOMOLOGACAO-ALINHAMENTO-PACKAGE-2026-03-15.md`. Versões consolidadas: painel 0.1.4, API 0.1.0, package 0.2.0. Lasalle Agro homologado. API retorna package_command em produção. Scripts alinhados ao fluxo package.
+- `2026-03-15`: Validação em produção pós-correção. Ver `docs/42-VALIDACAO-PRODUCAO-POS-CORRECAO-PACKAGE-2026-03-15.md`. PACKAGE_RELEASE_* confirmadas; package_command retornado.
+- `2026-03-15`: Correção do desalinhamento fluxo package. Ver `docs/41-CORRECAO-DESALINHAMENTO-FLUXO-PACKAGE-2026-03-15.md`. verify-bootstrap-release, run-bootstrap-preflight e smoke-bootstrap-flow ajustados para modo package.
+- `2026-03-15`: Validação Lasalle Agro. Ver `docs/40-VALIDACAO-PFSENSE-REAL-LASALLE-AGRO-2026-03-15.md`. package=1, menu=1, service=1. Lasalle Agro HOMOLOGADO.
 - `2026-03-12`: `packages/pfsense-package` evoluido de scaffold para port empacotavel do pfSense, com `Makefile`, `pkg-plist`, scripts `pkg-install/pkg-deinstall`, runtime do agente embutido, sync da GUI gerando `/usr/local/etc/monitor-pfsense-agent.conf` e controle do servico `monitor_pfsense_agent`; gestao de tokens auxiliares, backup/restore do PostgreSQL, `verify-origin-contract.sh`, `AUTO_STAGE_RELEASE=1` e a suite completa permaneceram validados na mesma iteracao
 - `2026-03-13`: primeira rodada funcional de homologacao real do pacote pfSense concluida com GUI, servico e heartbeat real chegando ao painel para o firewall `Lasalle Agro`; linha do tempo, comandos corretos, erros reais e correcoes registradas em `18-homologacao-pfsense-package-real-2026-03-13.md`
 - `2026-03-13`: runtime do agente ajustado para filtrar a lista padrao de servicos conforme o `config.xml` do pfSense, atacando a causa mais provavel do falso `degraded` observado no node `Lasalle Agro`

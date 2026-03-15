@@ -23,7 +23,7 @@ Regras:
 
 ## Estado atual resumido
 
-Data de referencia: `2026-03-13`
+Data de referencia: `2026-03-15`
 
 Fase atual:
 
@@ -34,6 +34,7 @@ Progresso registrado:
 - fase atual: `100%`
 - plano total: `93%`
 - escopo do servidor/controlador: `100%`
+- **trilha homologacao real + alinhamento package:** encerrada (doc 43)
 
 Situacao geral:
 
@@ -64,7 +65,7 @@ Situacao geral:
 - rodada real de homologacao do pacote pfSense documentada em `18-homologacao-pfsense-package-real-2026-03-13.md`
 - package GUI validado em `Services > SystemUp Monitor`
 - package service validado em `Status > Services`
-- firewall real `Lasalle Agro` chegou ao painel com `agente ativo` e `Agente 0.1.0`
+- firewall real `Lasalle Agro` homologado com package 0.2.0 (agente ativo, package/menu/service validados)
 - fluxo de limpeza total do package no pfSense agora esta documentado e validado
 - formato correto da assinatura HMAC do agente contra a API foi validado: `timestamp + "\n" + rawBody`
 - formato correto de `test-connection` e `heartbeat` contra a API foi validado e documentado
@@ -98,24 +99,21 @@ Na pratica:
 
 ## Proximo bloco recomendado
 
-Seguir nesta ordem:
+Trilha de homologacao e alinhamento do package **encerrada** (doc 43). Próximo trabalho em trilhas separadas:
 
-1. Lasalle Agro HOMOLOGADO (2026-03-15): ver `docs/40-VALIDACAO-PFSENSE-REAL-LASALLE-AGRO-2026-03-15.md`. Validacao local no pfSense concluida: package=1, menu=1, service=1, 2.8.1-RELEASE. Reinstalacao NAO necessaria
-2. conferir ou aplicar no ambiente externo a configuracao versionada do `ISPConfig`
-3. validar o contrato do proxy externo com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh`
-4. manter o servidor local fechado e repetir `scripts/run-smoke-suite.sh` sempre que houver mudanca em `admin`, `alerts`, `rekey`, `maintenance`, `update node`, `update client`, `update site` ou `realtime`
-5. executar `scripts/run-bootstrap-preflight.sh <node_id>` para fechar a checagem pre-rodada (valida agente leve; para pacote usar generate-install-command)
-6. em laboratorio local sem release publicada, preferir `AUTO_STAGE_RELEASE=1 scripts/run-bootstrap-preflight.sh <node_id>`
-7. ler `18-homologacao-pfsense-package-real-2026-03-13.md` antes de nova rodada em pfSense real
-8. revisar por que o node real `Lasalle Agro` apareceu como `degraded` mesmo com `agente ativo`
-9. consolidar um fluxo final do pacote pfSense sem tentativa e erro em firewall de cliente
-10. copiar `packages/pfsense-package` para um builder compativel com `pfSense CE 2.8.1`, executar `make package` e instalar o artefato no firewall de teste com `pkg add`
+1. **Estabilização smoke suite:** diagnosticar smoke-admin-operations se exit 1 for relevante
+2. **Builder nativo:** copiar `packages/pfsense-package` para builder pfSense, `make package`, validar `pkg add`
+3. **Expansão operacional:** replicar homologação em novos firewalls (generate-install-command, verify-bootstrap-release)
+4. **Fase B (serviços):** catalogo, MONITOR_AGENT_PACKAGES, GUI — ver `21-evolucao-servicos-e-fase-b-2026-03-13.md`
+5. conferir ou aplicar no ambiente externo a configuracao versionada do `ISPConfig`
+6. validar o contrato do proxy com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh`
+7. manter `scripts/run-smoke-suite.sh` como referência após mudanças em admin, alerts, bootstrap, realtime
 
 ## Tarefa atual registrada
 
-- `consolidar a homologacao real do pacote pfSense apos a primeira rodada funcional em campo`
-- apoio atual: `suite local de smokes + checklist operacional + preflight do bootstrap + registro completo da rodada em 18-homologacao-pfsense-package-real-2026-03-13.md`
-- observacao: `o escopo do servidor/controlador esta concluido no estado atual; o restante do projeto ficou concentrado no pfSense real, no endurecimento do pacote e no builder nativo`
+- `trilha de homologacao real e alinhamento do package pfSense — ENCERRADA (2026-03-15)`
+- documento de encerramento: `docs/43-ENCERRAMENTO-TRILHA-HOMOLOGACAO-ALINHAMENTO-PACKAGE-2026-03-15.md`
+- versões consolidadas: painel 0.1.4, API 0.1.0, package 0.2.0
 
 ## Smokes e verificacoes que ja viraram referencia
 
@@ -152,7 +150,8 @@ Para contexto rapido:
 - `PLANO.md`: origem conceitual do projeto
 - `16-status-e-progresso-do-projeto.md`: regra de acompanhamento
 - `17-checklist-homologacao-bootstrap-pfsense-real.md`: roteiro da proxima rodada manual em pfSense real
-- `18-homologacao-pfsense-package-real-2026-03-13.md`: linha do tempo real da rodada em pfSense CE 2.8.1, com comandos, erros, correcoes e prompt pronto para novo chat
+- `18-homologacao-pfsense-package-real-2026-03-13.md`: linha do tempo real da rodada em pfSense CE 2.8.1
+- `docs/43-ENCERRAMENTO-TRILHA-HOMOLOGACAO-ALINHAMENTO-PACKAGE-2026-03-15.md`: encerramento formal da trilha homologacao + alinhamento package
 - `21-evolucao-servicos-e-fase-b-2026-03-13.md`: evolucao da logica de servicos, limpeza no painel e Fase B (catalogo de pacotes)
 - `docs/COMANDO-ATUALIZAR-PACKAGE-PFSENSE.md`: comando one-shot para instalar/atualizar o package no pfSense (sempre usar esse formato)
 - `scripts/verify-bootstrap-release.sh`: valida node, comando e URLs do release

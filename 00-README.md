@@ -54,6 +54,7 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 - [docs/40-VALIDACAO-PFSENSE-REAL-LASALLE-AGRO-2026-03-15.md](./docs/40-VALIDACAO-PFSENSE-REAL-LASALLE-AGRO-2026-03-15.md): Validação do pfSense real Lasalle Agro (estado atual, sem reinstalar).
 - [docs/41-CORRECAO-DESALINHAMENTO-FLUXO-PACKAGE-2026-03-15.md](./docs/41-CORRECAO-DESALINHAMENTO-FLUXO-PACKAGE-2026-03-15.md): Correção do desalinhamento fluxo package vs fluxo automatizado (API, scripts).
 - [docs/42-VALIDACAO-PRODUCAO-POS-CORRECAO-PACKAGE-2026-03-15.md](./docs/42-VALIDACAO-PRODUCAO-POS-CORRECAO-PACKAGE-2026-03-15.md): Validação em produção pós-correção — PACKAGE_RELEASE_* e package_command confirmados.
+- [docs/43-ENCERRAMENTO-TRILHA-HOMOLOGACAO-ALINHAMENTO-PACKAGE-2026-03-15.md](./docs/43-ENCERRAMENTO-TRILHA-HOMOLOGACAO-ALINHAMENTO-PACKAGE-2026-03-15.md): **Encerramento formal** da trilha de homologação real e alinhamento da automação do package pfSense.
 
 ## Arquivos de governanca do projeto
 
@@ -63,7 +64,7 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 
 ## Status atual do projeto
 
-Em `2026-03-13`, a `Fase 1 - MVP do controlador` segue operacionalmente concluida e registrada como `100%`, com `93%` do plano total entregue.
+Em `2026-03-15`, a `Fase 1 - MVP do controlador` segue operacionalmente concluída e registrada como `100%`, com `93%` do plano total entregue. A **trilha de homologação real e alinhamento do package pfSense** foi encerrada formalmente (doc 43): Lasalle Agro homologado, package 0.2.0 validado, API retornando package_command em produção, scripts alinhados.
 
 Estado atual consolidado:
 
@@ -97,7 +98,7 @@ Estado atual consolidado:
 - GUI do pacote validada em `Services > SystemUp Monitor`
 - servico do pacote validado em `Status > Services`
 - firewall real `Lasalle Agro` chegou ao painel com `agente ativo` e `Agente 0.1.0`
-- proximo bloco recomendado concentrado em homologacao do bootstrap em pfSense real
+- trilha homologacao + alinhamento package encerrada (doc 43)
 - escopo do servidor/controlador considerado concluido no estado atual
 
 ## Restricao principal do ambiente
@@ -141,11 +142,10 @@ Ja definido:
 - estrategia de MVP primeiro e pacote pfSense depois
 - frontend dark-first e sessao server-side com cookie seguro
 
-Ainda nao concluido:
+Ainda nao concluido (fora da trilha encerrada):
 
-- homologacao final do bootstrap em pfSense real
-- homologacao do agente leve em pelo menos um `pfSense CE 2.8.1`
-- pacote nativo do pfSense com GUI propria
+- builder nativo do package (gerar .txz e pkg add)
+- smoke-admin-operations (possível falha pré-existente)
 - pipelines de build e release mais maduros
 - ampliacao adicional da bateria de testes operacionais
 
