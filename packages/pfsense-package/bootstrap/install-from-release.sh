@@ -21,6 +21,7 @@ Example:
     --node-uid node-123 \
     --node-secret secret-123 \
     --customer-code CLIENTE \
+    --heartbeat-mode normal \
     --enable
 EOF
 }

@@ -4,8 +4,8 @@
 # o loop deve rodar sempre, a cada INTERVAL_SECONDS.
 set -u
 
-# Servico rc.d pode rodar com PATH minimo; curl/openssl/php estao em /usr/local/bin no pfSense
-export PATH="/usr/local/bin:/usr/bin:/bin${PATH:+:$PATH}"
+# Servico rc.d pode rodar com PATH minimo; curl/openssl/php em /usr/local/bin, swanctl em /usr/local/sbin no pfSense
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/bin:/bin${PATH:+:$PATH}"
 
 AGENT_HOME="${AGENT_HOME:-/usr/local/libexec/monitor-pfsense-agent}"
 CONFIG_FILE="${MONITOR_AGENT_CONFIG:-/usr/local/etc/monitor-pfsense-agent.conf}"

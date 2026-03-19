@@ -182,33 +182,111 @@ detect_default_interface() {
   fi
 }
 
-detect_mgmt_ip() {
+# Lista interfaces do config: role (wan, lan, opt1), nome fisico (if), descricao e ipaddr (do XML quando for IPv4).
+# Saida: "role\tifname\tdescr\tipaddr" por linha (ipaddr vazio quando XML tem pppoe/dhcp ou nao e IPv4).
+list_pfsense_interface_roles() {
+  local config_path
+  config_path="$(pfsense_config_path)"
+  if [ ! -f "$config_path" ] || ! command_exists php; then
+    return 0
+  fi
+  PFSENSE_CONFIG_XML="$config_path" php -r '
+    $configPath = getenv("PFSENSE_CONFIG_XML") ?: "/conf/config.xml";
+    $config = @simplexml_load_file($configPath);
+    if (!$config || !isset($config->interfaces)) {
+      exit(0);
+    }
+    foreach ($config->interfaces->children() as $name => $node) {
+      $if = trim((string) ($node->if ?? ""));
+      if ($if === "") { continue; }
+      $descr = trim((string) ($node->descr ?? ""));
+      $ipaddr = trim((string) ($node->ipaddr ?? ""));
+      if ($ipaddr !== "" && !preg_match("/^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}$/", $ipaddr)) {
+        $ipaddr = "";
+      }
+      echo $name . "\t" . $if . "\t" . $descr . "\t" . $ipaddr . "\n";
+    }
+  ' 2>/dev/null
+}
+
+# Retorna IP(s) interno(s): LAN + OPT (todas as interfaces exceto WAN), comma-separated. Variavel MGMT_IP sobrescreve.
+# No painel aparecem em "IP(s) interno(s)".
+detect_mgmt_ips() {
   if [ -n "${MGMT_IP:-}" ]; then
     printf '%s' "$MGMT_IP"
     return
   fi
-
+  _tmp="/tmp/monitor_mgmt_$$"
+  _roles_tmp="/tmp/monitor_mgmt_roles_$$"
+  : > "$_tmp"
+  list_pfsense_interface_roles 2>/dev/null > "$_roles_tmp" || true
+  while IFS='	' read -r role ifname descr ipaddr_xml; do
+    case "$role" in
+      wan) continue ;;
+      lan|opt*) ;;
+      *) continue ;;
+    esac
+    if [ -n "$ipaddr_xml" ]; then
+      ip="$ipaddr_xml"
+    else
+      ip="$(detect_interface_ipv4 "$ifname" 2>/dev/null)"
+    fi
+    [ -n "$ip" ] && echo "$ip" >> "$_tmp"
+  done < "$_roles_tmp"
+  rm -f "$_roles_tmp"
+  if [ -s "$_tmp" ]; then
+    paste -s -d ',' "$_tmp" 2>/dev/null || tr '\n' ',' < "$_tmp" | sed 's/,$//'
+    rm -f "$_tmp"
+    return
+  fi
+  rm -f "$_tmp"
   lan_if="$(read_pfsense_interface_name lan 2>/dev/null || true)"
   if [ -n "${lan_if:-}" ]; then
     detect_interface_ipv4 "$lan_if"
-    return
   fi
 }
 
-detect_wan_ip() {
+# Retorna IP(s) WAN: apenas a interface "wan" (sem opt*). No painel aparecem em "IP(s) publico(s) / WAN". Variavel WAN_IP_REPORTED sobrescreve.
+detect_wan_ips() {
   if [ -n "${WAN_IP_REPORTED:-}" ]; then
     printf '%s' "$WAN_IP_REPORTED"
     return
   fi
-
+  _tmp="/tmp/monitor_wan_$$"
+  _roles_tmp="/tmp/monitor_wan_roles_$$"
+  : > "$_tmp"
+  list_pfsense_interface_roles 2>/dev/null > "$_roles_tmp" || true
+  while IFS='	' read -r role ifname descr ipaddr_xml; do
+    [ "$role" = "wan" ] || continue
+    if [ -n "$ipaddr_xml" ]; then
+      ip="$ipaddr_xml"
+    else
+      ip="$(detect_interface_ipv4 "$ifname" 2>/dev/null)"
+    fi
+    [ -n "$ip" ] && echo "$ip" >> "$_tmp"
+  done < "$_roles_tmp"
+  rm -f "$_roles_tmp"
+  if [ -s "$_tmp" ]; then
+    paste -s -d ',' "$_tmp" 2>/dev/null || tr '\n' ',' < "$_tmp" | sed 's/,$//'
+    rm -f "$_tmp"
+    return
+  fi
+  rm -f "$_tmp"
   wan_if="$(read_pfsense_interface_name wan 2>/dev/null || true)"
   if [ -z "${wan_if:-}" ]; then
     wan_if="$(detect_default_interface 2>/dev/null || true)"
   fi
-
   if [ -n "${wan_if:-}" ]; then
     detect_interface_ipv4 "$wan_if"
   fi
+}
+
+detect_mgmt_ip() {
+  detect_mgmt_ips
+}
+
+detect_wan_ip() {
+  detect_wan_ips
 }
 
 detect_pfsense_version() {
@@ -394,7 +472,7 @@ service_status_from_service_cmd() {
   service_output="$(service "$service_name" status 2>&1 || true)"
   case "$service_output" in
     *"does not exist"*|*"not found"*|*"could not be found"*|*"unknown directive"*)
-      printf 'stopped|%s\n' "$service_output"
+      printf 'not_installed|%s\n' "$service_output"
       return
       ;;
     *"is running as"*|*"running as pid"*|*"is running"*)
@@ -430,6 +508,165 @@ detect_service_status() {
   fi
 
   printf 'unknown|no service detection method available\n'
+}
+
+# Retorna 0 se o serviço está habilitado no rc (para iniciar no boot); 1 caso contrário.
+# Assim, quando status é stopped e o serviço não está enabled, reportamos not_installed (desativado pelo cliente).
+service_is_enabled_in_rc() {
+  local service_name="$1"
+  if ! command_exists service; then
+    return 0
+  fi
+  service "$service_name" enabled 2>/dev/null
+}
+
+# Serviços que podem estar ok com 0 clientes (ex.: OpenVPN server). Se a mensagem indicar "sem clientes", tratamos como running.
+no_clients_message_pattern() {
+  printf '%s' "$1" | grep -qiE 'no clients|0 clients|waiting for clients|nenhum cliente|aguardando clientes'
+}
+
+service_is_no_clients_only() {
+  local service_name="$1"
+  local status="$2"
+  local message="$3"
+  case "$(printf '%s' "$service_name" | tr '[:upper:]' '[:lower:]')" in
+    openvpn|openvpn_server|openvpn_client) ;;
+    openvpn:*) ;;
+    *) return 1 ;;
+  esac
+  case "$status" in
+    stopped|degraded) ;;
+    *) return 1 ;;
+  esac
+  no_clients_message_pattern "$message"
+}
+
+# --- Monitoramento por túnel (OpenVPN, IPsec, WireGuard) ---
+# Cada função imprime uma linha por túnel: name|status|message (name já no formato tipo:id)
+
+list_openvpn_tunnel_status() {
+  local openvpn_etc="${MONITOR_AGENT_OPENVPN_ETC:-/var/etc/openvpn}"
+  local inst
+  local status
+  local msg
+  if [ ! -d "$openvpn_etc" ]; then
+    return 0
+  fi
+  {
+    for conf in "$openvpn_etc"/*.conf; do
+      [ -e "$conf" ] && basename "$conf" .conf
+    done
+    for sock in "$openvpn_etc"/*.sock; do
+      [ -e "$sock" ] && basename "$sock" .sock
+    done
+  } 2>/dev/null | sort -u | while read -r inst; do
+    [ -z "$inst" ] && continue
+    if [ -S "$openvpn_etc/${inst}.sock" ] 2>/dev/null; then
+      status="running"
+      msg="management socket active"
+    elif [ -f "$openvpn_etc/${inst}.conf" ] 2>/dev/null && pgrep -f "openvpn.*${inst}" >/dev/null 2>&1; then
+      status="running"
+      msg="process running"
+    else
+      status="stopped"
+      msg="instance not running"
+    fi
+    printf 'openvpn:%s|%s|%s\n' "$inst" "$status" "$msg"
+  done
+}
+
+# Lista descricoes Phase 1 do IPsec (conN -> Description, disabled) a partir do config do pfSense.
+# Saida: uma linha por phase1 "con{ikeid}|{descr}|{0|1}" (1 = desativada na UI, nao conta como erro).
+get_ipsec_phase1_descriptions() {
+  local config_path
+  config_path="$(pfsense_config_path)"
+  if [ ! -f "$config_path" ] || ! command_exists php; then
+    return 0
+  fi
+  PFSENSE_CONFIG_XML="$config_path" php -r '
+    $configPath = getenv("PFSENSE_CONFIG_XML") ?: "/conf/config.xml";
+    $config = @simplexml_load_file($configPath);
+    if (!$config || !isset($config->ipsec->phase1)) {
+      exit(0);
+    }
+    foreach ($config->ipsec->phase1 as $p1) {
+      $ikeid = (string) ($p1->ikeid ?? "");
+      $descr = (string) ($p1->descr ?? "");
+      $disabled = isset($p1->disabled) ? "1" : "0";
+      if ($ikeid !== "") {
+        echo "con" . $ikeid . "|" . trim($descr) . "|" . $disabled . "\n";
+      }
+    }
+  ' 2>/dev/null
+}
+
+list_ipsec_tunnel_status() {
+  if command_exists swanctl 2>/dev/null; then
+    # Lista TODAS as Phase 1 do config (conN|desc) para reportar running E stopped (tunel desativado = stopped, nao some)
+    _ipsec_descr_file="/tmp/monitor_ipsec_descr_$$"
+    _ipsec_est_file="/tmp/monitor_ipsec_est_$$"
+    get_ipsec_phase1_descriptions > "$_ipsec_descr_file" 2>/dev/null
+
+    # Conexoes estabelecidas: extrair apenas os nomes (con1, con2, ...) que aparecem como ESTABLISHED
+    swanctl --list-sas 2>/dev/null | awk '
+      /^[a-zA-Z0-9_.-]+:/ && !/^  / {
+        conn = $1; gsub(/:$/, "", conn)
+        if (conn != "bypass" && $0 ~ /ESTABLISHED|INSTALLED/) { print conn }
+      }
+    ' | sort -u > "$_ipsec_est_file" 2>/dev/null
+
+    # Para cada Phase 1: disabled no config -> not_installed (cinza, sem falso positivo); senao running/stopped
+    awk -v est_file="$_ipsec_est_file" '
+      BEGIN {
+        while ((getline line < est_file) > 0) { gsub(/\r/, "", line); established[line] = 1 }
+        close(est_file)
+      }
+      {
+        n = index($0, "|")
+        if (n <= 0) { next }
+        conn = substr($0, 1, n-1)
+        rest = substr($0, n+1)
+        gsub(/\r/, "", rest)
+        n2 = index(rest, "|")
+        if (n2 > 0) { msg = substr(rest, 1, n2-1); disabled = substr(rest, n2+1) }
+        else { msg = rest; disabled = "0" }
+        if (msg == "") { msg = "tunnel" }
+        if (disabled == "1") {
+          status = "not_installed"
+          if (msg != "tunnel") { msg = msg " (desativado)" }
+          else { msg = "desativado" }
+        } else {
+          status = (conn in established) ? "running" : "stopped"
+        }
+        print "ipsec:" conn "|" status "|" msg
+      }
+    ' "$_ipsec_descr_file"
+    rm -f "$_ipsec_descr_file" "$_ipsec_est_file"
+    return 0
+  fi
+  if command_exists strongswan 2>/dev/null; then
+    strongswan status 2>/dev/null | awk '
+      /^[a-zA-Z0-9_-]+\[/ { gsub(/\[.*/, ""); gsub(/:.*/, ""); conn=$0; next }
+      conn && /ESTABLISHED|INSTALLED/ { print "ipsec:" conn "|running|established"; conn=""; next }
+      conn && /./ { print "ipsec:" conn "|stopped|" $0; conn=""; next }
+    '
+  fi
+  true
+}
+
+list_wireguard_tunnel_status() {
+  local iface
+  if command_exists wg 2>/dev/null; then
+    wg show interfaces 2>/dev/null | while read -r iface; do
+      [ -z "$iface" ] && continue
+      if wg show "$iface" 2>/dev/null | grep -q .; then
+        printf 'wireguard:%s|running|interface up\n' "$iface"
+      else
+        printf 'wireguard:%s|stopped|no handshake\n' "$iface"
+      fi
+    done
+  fi
+  true
 }
 
 # Fase B: package_name (catalog) -> rc service name no FreeBSD/pfSense
@@ -582,6 +819,31 @@ service_should_be_monitored() {
   ' "$service_name" >/dev/null 2>&1
 }
 
+append_service_json() {
+  local first_item_ref="$1"
+  local sname="$2"
+  local sstatus="$3"
+  local sdetail="$4"
+  local impact="${5:-}"
+  if [ "$(eval printf '%s' \"\$$first_item_ref\")" = "1" ]; then
+    eval "$first_item_ref=\"0\""
+  else
+    printf ','
+  fi
+  if [ -n "$impact" ]; then
+    printf '{"name":"%s","status":"%s","message":%s,"impact_on_status":"%s"}' \
+      "$(json_escape "$sname")" \
+      "$(json_escape "$sstatus")" \
+      "$(json_nullable_string "$sdetail")" \
+      "$(json_escape "$impact")"
+  else
+    printf '{"name":"%s","status":"%s","message":%s}' \
+      "$(json_escape "$sname")" \
+      "$(json_escape "$sstatus")" \
+      "$(json_nullable_string "$sdetail")"
+  fi
+}
+
 build_services_json() {
   services_csv="${MONITOR_AGENT_SERVICES:-unbound,dhcpd,openvpn,ipsec,wireguard,ntpd,dpinger}"
   old_ifs="${IFS}"
@@ -599,20 +861,93 @@ build_services_json() {
       continue
     fi
 
+    case "$service_name" in
+      openvpn)
+        tunnel_list="$(list_openvpn_tunnel_status)"
+        if [ -n "$tunnel_list" ]; then
+          _tunf="/tmp/monitor_ovpn_$$"
+          printf '%s\n' "$tunnel_list" > "$_tunf"
+          while IFS='|' read -r tname tstatus tmsg; do
+            [ -z "$tname" ] && continue
+            service_detail="$(truncate_text "${tmsg}" 255)"
+            if service_is_no_clients_only "$tname" "$tstatus" "$service_detail"; then
+              tstatus="running"
+              service_detail="running, 0 clients"
+            fi
+            append_service_json first_item "$tname" "$tstatus" "$service_detail" ""
+          done < "$_tunf"
+          rm -f "$_tunf"
+        else
+          service_state="$(detect_service_status "$service_name")"
+          service_status="${service_state%%|*}"
+          service_detail="$(truncate_text "${service_state#*|}" 255)"
+          if [ "$service_status" = "stopped" ] && ! service_is_enabled_in_rc "$service_name"; then
+            service_status="not_installed"
+          fi
+          if service_is_no_clients_only "$service_name" "$service_status" "$service_detail"; then
+            service_status="running"
+            service_detail="running, 0 clients"
+          fi
+          append_service_json first_item "$service_name" "$service_status" "$service_detail" ""
+        fi
+        continue
+        ;;
+      ipsec)
+        tunnel_list="$(list_ipsec_tunnel_status)"
+        if [ -n "$tunnel_list" ]; then
+          _tunf="/tmp/monitor_ipsec_$$"
+          printf '%s\n' "$tunnel_list" > "$_tunf"
+          while IFS='|' read -r tname tstatus tmsg; do
+            [ -z "$tname" ] && continue
+            append_service_json first_item "$tname" "$tstatus" "$(truncate_text "${tmsg}" 255)" ""
+          done < "$_tunf"
+          rm -f "$_tunf"
+        else
+          service_state="$(detect_service_status "$service_name")"
+          service_status="${service_state%%|*}"
+          service_detail="$(truncate_text "${service_state#*|}" 255)"
+          if [ "$service_status" = "stopped" ] && ! service_is_enabled_in_rc "$service_name"; then
+            service_status="not_installed"
+          fi
+          append_service_json first_item "$service_name" "$service_status" "$service_detail" ""
+        fi
+        continue
+        ;;
+      wireguard)
+        tunnel_list="$(list_wireguard_tunnel_status)"
+        if [ -n "$tunnel_list" ]; then
+          _tunf="/tmp/monitor_wg_$$"
+          printf '%s\n' "$tunnel_list" > "$_tunf"
+          while IFS='|' read -r tname tstatus tmsg; do
+            [ -z "$tname" ] && continue
+            append_service_json first_item "$tname" "$tstatus" "$(truncate_text "${tmsg}" 255)" ""
+          done < "$_tunf"
+          rm -f "$_tunf"
+        else
+          service_state="$(detect_service_status "$service_name")"
+          service_status="${service_state%%|*}"
+          service_detail="$(truncate_text "${service_state#*|}" 255)"
+          if [ "$service_status" = "stopped" ] && ! service_is_enabled_in_rc "$service_name"; then
+            service_status="not_installed"
+          fi
+          append_service_json first_item "$service_name" "$service_status" "$service_detail" ""
+        fi
+        continue
+        ;;
+    esac
+
     service_state="$(detect_service_status "$service_name")"
     service_status="${service_state%%|*}"
     service_detail="$(truncate_text "${service_state#*|}" 255)"
-
-    if [ "$first_item" = "1" ]; then
-      first_item="0"
-    else
-      printf ','
+    if [ "$service_status" = "stopped" ] && ! service_is_enabled_in_rc "$service_name"; then
+      service_status="not_installed"
+    fi
+    if service_is_no_clients_only "$service_name" "$service_status" "$service_detail"; then
+      service_status="running"
+      service_detail="running, 0 clients"
     fi
 
-    printf '{"name":"%s","status":"%s","message":%s}' \
-      "$(json_escape "$service_name")" \
-      "$(json_escape "$service_status")" \
-      "$(json_nullable_string "$service_detail")"
+    append_service_json first_item "$service_name" "$service_status" "$service_detail" ""
   done
 
   # Fase B: pacotes adicionais (MONITOR_AGENT_PACKAGES = "pkg:impact,pkg2:impact" ou "pkg")
@@ -642,6 +977,13 @@ build_services_json() {
       service_state="$(detect_service_status "$rc_service")"
       service_status="${service_state%%|*}"
       service_detail="$(truncate_text "${service_state#*|}" 255)"
+      if [ "$service_status" = "stopped" ] && ! service_is_enabled_in_rc "$rc_service"; then
+        service_status="not_installed"
+      fi
+      if service_is_no_clients_only "$rc_service" "$service_status" "$service_detail"; then
+        service_status="running"
+        service_detail="running, 0 clients"
+      fi
       if [ "$first_item" = "1" ]; then
         first_item="0"
       else
@@ -662,9 +1004,75 @@ build_gateways_json() {
   printf '[]'
 }
 
+# JSON array de interfaces com nome VISUAL (descr do pfSense). Se list_pfsense_interface_roles nao retornar nada, fallback: LAN + WAN a partir de mgmt/wan.
+# Nota: evita pipe para subshell para garantir que o arquivo _tmp seja preenchido no mesmo processo (compatibilidade /bin/sh).
+build_interfaces_json() {
+  _tmp="/tmp/monitor_if_$$"
+  _roles_tmp="/tmp/monitor_if_roles_$$"
+  : > "$_tmp"
+  list_pfsense_interface_roles 2>/dev/null > "$_roles_tmp" || true
+  while IFS='	' read -r role ifname descr ipaddr_xml; do
+    [ -n "$ifname" ] || continue
+    if [ -n "$ipaddr_xml" ]; then
+      ip="$ipaddr_xml"
+    else
+      ip="$(detect_interface_ipv4 "$ifname" 2>/dev/null)"
+    fi
+    [ -n "$ip" ] || ip="n/a"
+    display_name="$descr"
+    [ -n "$display_name" ] || display_name="$role"
+    [ -n "$display_name" ] || display_name="$ifname"
+    printf '{"name":"%s","ip":"%s","role":"%s"}\n' "$(json_escape "$display_name")" "$(json_escape "$ip")" "$(json_escape "$role")" >> "$_tmp"
+  done < "$_roles_tmp"
+  rm -f "$_roles_tmp"
+  if [ -s "$_tmp" ]; then
+    printf '['
+    first=1
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      [ "$first" = 1 ] || printf ','
+      printf '%s' "$line"
+      first=0
+    done < "$_tmp"
+    printf ']'
+    rm -f "$_tmp"
+    return
+  fi
+  rm -f "$_tmp"
+  # Fallback: quando config/php nao retornam interfaces (ex.: agente sem acesso ao config), montar LAN + WAN a partir dos detectores
+  _mgmt="$(detect_mgmt_ip 2>/dev/null || true)"
+  _wan="$(detect_wan_ip 2>/dev/null || true)"
+  _first=1
+  printf '['
+  if [ -n "$_mgmt" ]; then
+    printf '{"name":"LAN","ip":"%s"}' "$(json_escape "$_mgmt")"
+    _first=0
+  fi
+  if [ -n "$_wan" ]; then
+    [ "$_first" = 1 ] || printf ','
+    printf '{"name":"WAN","ip":"%s"}' "$(json_escape "$_wan")"
+  fi
+  printf ']'
+}
+
 build_payload() {
   mgmt_ip="$(detect_mgmt_ip 2>/dev/null || true)"
   wan_ip="$(detect_wan_ip 2>/dev/null || true)"
+  interfaces_json="$(build_interfaces_json 2>/dev/null)" || interfaces_json="[]"
+  # Garantir que ao menos LAN/WAN apareçam no painel quando temos mgmt_ip ou wan_ip (fallback se build_interfaces_json falhar ou retornar vazio)
+  if [ "$interfaces_json" = "[]" ] && { [ -n "$mgmt_ip" ] || [ -n "$wan_ip" ]; }; then
+    _first=1
+    interfaces_json="["
+    if [ -n "$mgmt_ip" ]; then
+      interfaces_json="${interfaces_json}{\"name\":\"LAN\",\"ip\":\"$(json_escape "$mgmt_ip")\",\"role\":\"lan\"}"
+      _first=0
+    fi
+    if [ -n "$wan_ip" ]; then
+      [ "$_first" = 1 ] || interfaces_json="${interfaces_json},"
+      interfaces_json="${interfaces_json}{\"name\":\"WAN\",\"ip\":\"$(json_escape "$wan_ip")\",\"role\":\"wan\"}"
+    fi
+    interfaces_json="${interfaces_json}]"
+  fi
   pfsense_version="$(detect_pfsense_version 2>/dev/null)" || pfsense_version="unknown"
   uptime_seconds="$(detect_uptime_seconds 2>/dev/null)" || uptime_seconds="0"
   cpu_percent="$(detect_cpu_percent 2>/dev/null || true)"
@@ -672,8 +1080,15 @@ build_payload() {
   disk_percent="$(detect_disk_percent 2>/dev/null || true)"
   heartbeat_id="${NODE_UID}-$(date -u +%Y%m%dT%H%M%SZ)-$$"
   sent_at="$(iso_now)"
-  services_json="$(build_services_json 2>/dev/null)" || services_json="[]"
-  gateways_json="$(build_gateways_json 2>/dev/null)" || gateways_json="[]"
+  # Heartbeat leve: envia apenas dados essenciais; a API mantem ultimo estado de gateways/servicos (reduz carga).
+  light="${MONITOR_AGENT_LIGHT_HEARTBEAT:-0}"
+  if [ "$light" = "1" ] || [ "$light" = "true" ] || [ "$light" = "yes" ]; then
+    services_json=""
+    gateways_json=""
+  else
+    services_json="$(build_services_json 2>/dev/null)" || services_json="[]"
+    gateways_json="$(build_gateways_json 2>/dev/null)" || gateways_json="[]"
+  fi
 
   if [ -n "${MONITOR_AGENT_NOTICES:-}" ]; then
     notices_json="$(json_string_array "$MONITOR_AGENT_NOTICES")"
@@ -681,7 +1096,8 @@ build_payload() {
     notices_json='[]'
   fi
 
-  cat <<EOF
+  if [ -n "$services_json" ]; then
+    cat <<EOF
 {
   "schema_version": "$(json_escape "${SCHEMA_VERSION:-2026-01}")",
   "heartbeat_id": "$(json_escape "$heartbeat_id")",
@@ -699,9 +1115,32 @@ build_payload() {
   "disk_percent": $(json_nullable_number "$disk_percent"),
   "gateways": $gateways_json,
   "services": $services_json,
+  "interfaces": ${interfaces_json:-[]},
   "notices": $notices_json
 }
 EOF
+  else
+    cat <<EOF
+{
+  "schema_version": "$(json_escape "${SCHEMA_VERSION:-2026-01}")",
+  "heartbeat_id": "$(json_escape "$heartbeat_id")",
+  "sent_at": "$(json_escape "$sent_at")",
+  "node_uid": "$(json_escape "$NODE_UID")",
+  "hostname": "$(json_escape "$(detect_hostname)")",
+  "customer_code": "$(json_escape "$CUSTOMER_CODE")",
+  "pfsense_version": "$(json_escape "$pfsense_version")",
+  "uptime_sec": $uptime_seconds,
+  "mgmt_ip": $(json_nullable_string "$mgmt_ip"),
+  "wan_ip_reported": $(json_nullable_string "$wan_ip"),
+  "agent_version": "$(json_escape "${AGENT_VERSION:-0.1.0}")",
+  "cpu_percent": $(json_nullable_number "$cpu_percent"),
+  "memory_percent": $(json_nullable_number "$memory_percent"),
+  "disk_percent": $(json_nullable_number "$disk_percent"),
+  "interfaces": ${interfaces_json:-[]},
+  "notices": $notices_json
+}
+EOF
+  fi
 }
 
 build_test_connection_signature() {

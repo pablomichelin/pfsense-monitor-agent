@@ -9,6 +9,11 @@ import {
   createNode,
   createSite,
   createUser,
+  deleteClient,
+  deleteNode,
+  deleteNodesBatch,
+  deleteUser,
+  getNodeDetails,
   revokeAgentToken,
   revokeAdminUserSession,
   rotateNodeSecret,
@@ -19,14 +24,25 @@ import {
   updateUser,
 } from './api';
 
-const adminRedirect = (section: string, status: 'ok' | 'error', message: string): never => {
-  const params = new URLSearchParams({
-    section,
-    status,
-    message,
-  });
+function buildAdminRedirectUrl(
+  section: string,
+  status: 'ok' | 'error',
+  message: string,
+  returnTo?: string,
+): string {
+  const params = new URLSearchParams({ section, status, message });
+  const base =
+    returnTo && returnTo.startsWith('/admin') ? returnTo.replace(/\?.*$/, '') : '/admin';
+  return `${base}?${params.toString()}`;
+}
 
-  redirect(`/admin?${params.toString()}`);
+const adminRedirect = (
+  section: string,
+  status: 'ok' | 'error',
+  message: string,
+  returnTo?: string,
+): never => {
+  redirect(buildAdminRedirectUrl(section, status, message, returnTo));
 };
 
 const normalizeOptional = (value: FormDataEntryValue | null): string | undefined => {
@@ -82,9 +98,10 @@ export async function createSiteAction(formData: FormData): Promise<void> {
 
 export async function updateClientAction(formData: FormData): Promise<void> {
   const clientId = String(formData.get('client_id') ?? '').trim();
+  const returnTo = normalizeOptional(formData.get('returnTo'));
 
   if (!clientId) {
-    redirect('/admin');
+    redirect(returnTo && returnTo.startsWith('/admin') ? returnTo : '/admin');
   }
 
   try {
@@ -97,20 +114,53 @@ export async function updateClientAction(formData: FormData): Promise<void> {
     });
 
     revalidatePath('/admin');
+    revalidatePath('/admin/clientes');
     revalidatePath('/nodes');
-    adminRedirect('client-edit', 'ok', `Cliente ${response.client.code} atualizado.`);
+    adminRedirect('client-edit', 'ok', `Cliente ${response.client.code} atualizado.`, returnTo);
   } catch (error) {
     rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao atualizar cliente';
-    adminRedirect('client-edit', 'error', message);
+    adminRedirect('client-edit', 'error', message, returnTo);
+  }
+}
+
+export type DeleteClientResult =
+  | { ok: true; redirectUrl: string }
+  | { ok: false; error: string };
+
+export async function deleteClientAction(formData: FormData): Promise<DeleteClientResult> {
+  const clientId = String(formData.get('client_id') ?? '').trim();
+  const returnTo = normalizeOptional(formData.get('returnTo')) || '/admin/clientes';
+  const baseUrl = returnTo.replace(/\?.*$/, '');
+
+  if (!clientId) {
+    redirect(returnTo);
+  }
+
+  try {
+    await deleteClient(clientId);
+    revalidatePath('/admin');
+    revalidatePath('/admin/clientes');
+    revalidatePath('/nodes');
+    revalidatePath('/dashboard');
+    revalidatePath('/bootstrap');
+    return {
+      ok: true,
+      redirectUrl: `${baseUrl}?section=client-delete&status=ok&message=${encodeURIComponent('Cliente excluido')}`,
+    };
+  } catch (error) {
+    rethrowIfRedirectError(error);
+    const message = error instanceof Error ? error.message : 'Falha ao excluir cliente';
+    return { ok: false, error: message };
   }
 }
 
 export async function updateSiteAction(formData: FormData): Promise<void> {
   const siteId = String(formData.get('site_id') ?? '').trim();
+  const returnTo = normalizeOptional(formData.get('returnTo'));
 
   if (!siteId) {
-    redirect('/admin');
+    redirect(returnTo && returnTo.startsWith('/admin') ? returnTo : '/admin');
   }
 
   try {
@@ -126,28 +176,35 @@ export async function updateSiteAction(formData: FormData): Promise<void> {
     });
 
     revalidatePath('/admin');
+    revalidatePath('/admin/clientes');
     revalidatePath('/nodes');
-    adminRedirect('site-edit', 'ok', `Site ${response.site.code} atualizado.`);
+    adminRedirect('site-edit', 'ok', `Site ${response.site.code} atualizado.`, returnTo);
   } catch (error) {
     rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao atualizar site';
-    adminRedirect('site-edit', 'error', message);
+    adminRedirect('site-edit', 'error', message, returnTo);
   }
 }
 
 export async function createNodeAction(formData: FormData): Promise<void> {
   try {
-    const response = await createNode({
-      site_id: String(formData.get('site_id') ?? '').trim(),
+    const siteId = String(formData.get('site_id') ?? '').trim();
+    const clientId = String(formData.get('client_id') ?? '').trim();
+    const payload: Parameters<typeof createNode>[0] = {
       hostname: String(formData.get('hostname') ?? '').trim(),
       display_name: normalizeOptional(formData.get('display_name')),
       management_ip: normalizeOptional(formData.get('management_ip')),
       wan_ip: normalizeOptional(formData.get('wan_ip')),
-      pfsense_version: normalizeOptional(formData.get('pfsense_version')),
-      agent_version: normalizeOptional(formData.get('agent_version')),
       ha_role: normalizeOptional(formData.get('ha_role')),
       maintenance_mode: String(formData.get('maintenance_mode') ?? '') === 'on',
-    });
+    };
+    if (siteId) {
+      payload.site_id = siteId;
+    } else if (clientId) {
+      payload.client_id = clientId;
+    }
+
+    const response = await createNode(payload);
 
     revalidatePath('/admin');
     revalidatePath('/nodes');
@@ -189,9 +246,10 @@ export async function createUserAction(formData: FormData): Promise<void> {
 
 export async function updateUserAction(formData: FormData): Promise<void> {
   const userId = String(formData.get('user_id') ?? '').trim();
+  const returnTo = normalizeOptional(formData.get('returnTo'));
 
   if (!userId) {
-    redirect('/admin');
+    redirect(returnTo && returnTo.startsWith('/admin') ? returnTo : '/admin');
   }
 
   try {
@@ -211,31 +269,55 @@ export async function updateUserAction(formData: FormData): Promise<void> {
     });
 
     revalidatePath('/admin');
-    adminRedirect('user-edit', 'ok', `Usuario ${response.user.email} atualizado.`);
+    revalidatePath('/admin/usuarios');
+    adminRedirect('user-edit', 'ok', `Usuario ${response.user.email} atualizado.`, returnTo);
   } catch (error) {
     rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao atualizar usuario';
-    adminRedirect('user-edit', 'error', message);
+    adminRedirect('user-edit', 'error', message, returnTo);
+  }
+}
+
+export async function deleteUserAction(formData: FormData): Promise<void> {
+  const userId = String(formData.get('user_id') ?? '').trim();
+  const returnTo = normalizeOptional(formData.get('returnTo')) || '/admin/usuarios';
+
+  if (!userId) {
+    redirect(returnTo);
+  }
+
+  try {
+    await deleteUser(userId);
+    revalidatePath('/admin');
+    revalidatePath('/admin/usuarios');
+    redirect(`${returnTo.replace(/\?.*$/, '')}?section=user-edit&status=ok&message=${encodeURIComponent('Usuario excluido')}`);
+  } catch (error) {
+    rethrowIfRedirectError(error);
+    const message = error instanceof Error ? error.message : 'Falha ao excluir usuario';
+    redirect(`${returnTo.replace(/\?.*$/, '')}?section=user-edit&status=error&message=${encodeURIComponent(message)}`);
   }
 }
 
 export async function revokeUserSessionAdminAction(formData: FormData): Promise<void> {
   const userId = String(formData.get('user_id') ?? '').trim();
   const sessionId = String(formData.get('session_id') ?? '').trim();
+  const returnTo = normalizeOptional(formData.get('returnTo'));
+  const base = returnTo && returnTo.startsWith('/admin') ? returnTo.replace(/\?.*$/, '') : '/admin';
 
   if (!userId || !sessionId) {
-    redirect('/admin?section=user-sessions&status=error&message=Sessao%20invalida');
+    redirect(`${base}?section=user-sessions&status=error&message=${encodeURIComponent('Sessao invalida')}`);
   }
 
   try {
     await revokeAdminUserSession(userId, sessionId);
     revalidatePath('/admin');
+    revalidatePath('/admin/usuarios');
     revalidatePath('/sessions');
-    redirect('/admin?section=user-sessions&status=ok&message=Sessao%20revogada');
+    redirect(`${base}?section=user-sessions&status=ok&message=${encodeURIComponent('Sessao revogada')}`);
   } catch (error) {
     rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao revogar sessao';
-    redirect(`/admin?section=user-sessions&status=error&message=${encodeURIComponent(message)}`);
+    redirect(`${base}?section=user-sessions&status=error&message=${encodeURIComponent(message)}`);
   }
 }
 
@@ -318,9 +400,47 @@ export async function setNodeMaintenanceAction(formData: FormData): Promise<void
     revalidatePath('/dashboard');
     redirect(`/nodes/${nodeId}?maintenance=${maintenanceMode ? 'enabled' : 'disabled'}`);
   } catch (error) {
+    rethrowIfRedirectError(error);
     const message =
       error instanceof Error ? error.message : 'Falha ao atualizar maintenance mode';
     redirect(`/nodes/${nodeId}?maintenance_error=${encodeURIComponent(message)}`);
+  }
+}
+
+export async function deleteNodeAction(nodeId: string): Promise<void> {
+  if (!nodeId?.trim()) {
+    redirect('/nodes');
+  }
+  try {
+    await deleteNode(nodeId.trim());
+    revalidatePath('/nodes');
+    revalidatePath('/dashboard');
+    revalidatePath('/admin');
+    revalidatePath('/bootstrap');
+    redirect('/nodes?deleted=1');
+  } catch (error) {
+    rethrowIfRedirectError(error);
+    const message = error instanceof Error ? error.message : 'Falha ao excluir host';
+    redirect(`/nodes?delete_error=${encodeURIComponent(message)}`);
+  }
+}
+
+export async function deleteNodesBatchAction(ids: string[]): Promise<void> {
+  const trimmed = ids.filter((id) => id?.trim()).map((id) => id.trim());
+  if (trimmed.length === 0) {
+    redirect('/nodes?delete_error=Nenhum%20host%20selecionado');
+  }
+  try {
+    await deleteNodesBatch(trimmed);
+    revalidatePath('/nodes');
+    revalidatePath('/dashboard');
+    revalidatePath('/admin');
+    revalidatePath('/bootstrap');
+    redirect(`/nodes?deleted_batch=${trimmed.length}`);
+  } catch (error) {
+    rethrowIfRedirectError(error);
+    const message = error instanceof Error ? error.message : 'Falha ao excluir hosts';
+    redirect(`/nodes?delete_error=${encodeURIComponent(message)}`);
   }
 }
 
@@ -342,8 +462,6 @@ export async function updateNodeAction(formData: FormData): Promise<void> {
       display_name: normalizeOptional('display_name'),
       management_ip: normalizeOptional('management_ip'),
       wan_ip: normalizeOptional('wan_ip'),
-      pfsense_version: normalizeOptional('pfsense_version'),
-      agent_version: normalizeOptional('agent_version'),
       ha_role: normalizeOptional('ha_role'),
     });
     revalidatePath(`/nodes/${nodeId}`);
@@ -351,8 +469,37 @@ export async function updateNodeAction(formData: FormData): Promise<void> {
     revalidatePath('/dashboard');
     redirect(`/nodes/${nodeId}?updated=1`);
   } catch (error) {
+    rethrowIfRedirectError(error);
     const message =
-      error instanceof Error ? error.message : 'Falha ao atualizar node';
+      error instanceof Error ? error.message : 'Falha ao atualizar firewall';
     redirect(`/nodes/${nodeId}?update_error=${encodeURIComponent(message)}`);
   }
+}
+
+export type NodeOpenAlert = {
+  id: string;
+  type: string;
+  severity: string;
+  title: string;
+  description: string;
+  opened_at: string;
+};
+
+export async function getNodeOpenAlertsAction(
+  nodeId: string,
+): Promise<{ alerts: NodeOpenAlert[] }> {
+  const response = await getNodeDetails(nodeId);
+  const open = (response.node.recent_alerts ?? []).filter(
+    (a) => a.status === 'open',
+  );
+  return {
+    alerts: open.map((a) => ({
+      id: a.id,
+      type: a.type,
+      severity: a.severity,
+      title: a.title,
+      description: a.description,
+      opened_at: a.opened_at,
+    })),
+  };
 }

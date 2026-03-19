@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 import { AdvancedSection } from '@/components/advanced-section';
 import { CopyButton } from '@/components/copy-button';
 import { PageHero } from '@/components/page-hero';
-import { RealtimeRefresh } from '@/components/realtime-refresh';
 import {
   ApiError,
   getNodeBootstrapCommand,
@@ -15,6 +14,7 @@ import { formatDateTime, formatRelativeAge } from '@/lib/format';
 export const dynamic = 'force-dynamic';
 
 type BootstrapBucket = 'pending' | 'active' | 'blocked';
+type HeartbeatMode = 'normal' | 'light';
 
 function buildBootstrapHref(filters: {
   clientId?: string;
@@ -24,6 +24,7 @@ function buildBootstrapHref(filters: {
   nodeId?: string;
   releaseBaseUrl?: string;
   controllerUrl?: string;
+  heartbeatMode?: HeartbeatMode;
 }) {
   const params = new URLSearchParams();
 
@@ -54,9 +55,16 @@ function buildBootstrapHref(filters: {
   if (filters.controllerUrl) {
     params.set('controller_url', filters.controllerUrl);
   }
+  if (filters.heartbeatMode) {
+    params.set('heartbeat_mode', filters.heartbeatMode);
+  }
 
   const query = params.toString();
   return query ? `/bootstrap?${query}` : '/bootstrap';
+}
+
+function normalizeHeartbeatMode(value: string | string[] | undefined): HeartbeatMode {
+  return value === 'light' ? 'light' : 'normal';
 }
 
 function getBootstrapBucket(node: {
@@ -218,6 +226,7 @@ export default async function BootstrapPage({
     typeof params.release_base_url === 'string' ? params.release_base_url.trim() : undefined;
   const controllerUrl =
     typeof params.controller_url === 'string' ? params.controller_url.trim() : undefined;
+  const heartbeatMode = normalizeHeartbeatMode(params.heartbeat_mode);
   let nodes;
   let filterOptions;
   let selectedBootstrap = null;
@@ -228,6 +237,7 @@ export default async function BootstrapPage({
         client_id: clientId,
         site_id: siteId,
         search,
+        limit: 200,
       }),
       getNodesFilters(),
     ]);
@@ -258,8 +268,8 @@ export default async function BootstrapPage({
   const hasActiveFilters = Boolean(clientId || siteId || search || bucket);
   const resultSummary =
     filteredItems.length === items.length
-      ? `${filteredItems.length} nodes no escopo atual`
-      : `${filteredItems.length} de ${items.length} nodes no escopo atual`;
+      ? `${filteredItems.length} firewalls no escopo atual`
+      : `${filteredItems.length} de ${items.length} firewalls no escopo atual`;
   const selectedNode =
     items.find((node) => node.id === selectedNodeId) ??
     filteredItems.find((node) => node.bootstrap_bucket === 'pending') ??
@@ -272,6 +282,7 @@ export default async function BootstrapPage({
         selectedNode.id,
         releaseBaseUrl,
         controllerUrl,
+        heartbeatMode,
       );
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -291,6 +302,7 @@ export default async function BootstrapPage({
         nodeId: selectedNode.id,
         releaseBaseUrl,
         controllerUrl,
+        heartbeatMode,
       })
     : null;
   const verifyBootstrapCommand = selectedNode
@@ -335,7 +347,7 @@ export default async function BootstrapPage({
     : null;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHero
         eyebrow="Instalacao"
         title="Instalar agente"
@@ -345,71 +357,64 @@ export default async function BootstrapPage({
           { label: 'Ativos', value: String(active.length), tone: active.length > 0 ? 'success' : 'default' },
           { label: 'Bloqueados', value: String(blocked.length), tone: blocked.length > 0 ? 'danger' : 'default' },
         ]}
-        aside={<RealtimeRefresh renderedAt={nodes.generated_at} />}
       />
 
-      <section className="glass-panel rounded-xl p-5">
-        <form className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center">
-              <select
-                name="client_id"
-                defaultValue={clientId ?? ''}
-                className="rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
-              >
-                <option value="">Todos os clientes</option>
-                {filterOptions.clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name} ({client.node_count})
-                  </option>
-                ))}
-              </select>
-              <select
-                name="site_id"
-                defaultValue={siteId ?? ''}
-                className="rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
-              >
-                <option value="">Todos os sites</option>
-                {sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.client_name} / {site.name} ({site.node_count})
-                  </option>
-                ))}
-              </select>
-              <select
-                name="bucket"
-                defaultValue={bucket ?? ''}
-                className="rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
-              >
-                <option value="">Todos os buckets</option>
-                <option value="pending">Prontos</option>
-                <option value="active">Agentes ativos</option>
-                <option value="blocked">Bloqueados</option>
-              </select>
-              <input
-                type="search"
-                name="search"
-                defaultValue={search ?? ''}
-                placeholder="Buscar por hostname, node UID ou cliente"
-                className="min-w-[18rem] flex-1 rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-              />
-              <button
-                type="submit"
-                className="rounded-xl h-11 bg-cyan-500 px-5 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
-              >
-                Filtrar
-              </button>
-              <Link
-                href="/bootstrap"
-                className="rounded-xl h-11 border border-slate-600/80 px-5 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
-              >
-                Limpar
-              </Link>
+      <section className="glass-panel rounded-xl p-3">
+        <form className="flex flex-wrap items-center gap-2">
+          <select
+            name="client_id"
+            defaultValue={clientId ?? ''}
+            className="rounded-lg h-9 border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200 outline-none"
+          >
+            <option value="">Todos os clientes</option>
+            {filterOptions.clients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name} ({client.node_count})
+              </option>
+            ))}
+          </select>
+          <select
+            name="site_id"
+            defaultValue={siteId ?? ''}
+            className="rounded-lg h-9 border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200 outline-none"
+          >
+            <option value="">Todos</option>
+            {sites.map((site) => (
+              <option key={site.id} value={site.id}>
+                {site.client_name} — {site.name} ({site.node_count})
+              </option>
+            ))}
+          </select>
+          <select
+            name="bucket"
+            defaultValue={bucket ?? ''}
+            className="rounded-lg h-9 border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200 outline-none"
+          >
+            <option value="">Todos</option>
+            <option value="pending">Prontos</option>
+            <option value="active">Ativos</option>
+            <option value="blocked">Bloqueados</option>
+          </select>
+          <input
+            type="search"
+            name="search"
+            defaultValue={search ?? ''}
+            placeholder="Buscar"
+            className="min-w-[10rem] flex-1 rounded-lg h-9 max-w-[16rem] border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+          />
+          <button type="submit" className="rounded-lg h-9 bg-cyan-500 px-4 text-sm font-medium text-slate-950 transition hover:bg-cyan-300">
+            Filtrar
+          </button>
+          <Link href="/bootstrap" className="rounded-lg h-9 border border-slate-600/80 px-4 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
+            Limpar
+          </Link>
         </form>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="glass-panel rounded-xl p-5">
+      <section className="grid gap-5 md:grid-cols-2">
+        <div className="glass-panel rounded-xl p-4">
           <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Escolha o firewall</p>
-          <h3 className="mt-2 font-display text-2xl text-white">Preparar instalacao</h3>
+          <h3 className="mt-1.5 font-display text-xl text-white">Preparar instalacao</h3>
 
           <form className="mt-4 space-y-3">
             <select
@@ -417,10 +422,10 @@ export default async function BootstrapPage({
               defaultValue={selectedNode?.id ?? ''}
               className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
-              <option value="">Selecione um node</option>
+              <option value="">Selecione um firewall</option>
               {filteredItems.map((node) => (
                 <option key={node.id} value={node.id}>
-                  {node.client.name} / {node.site.name} / {node.node_uid}
+                  {node.client.name} — {node.site.name} — {node.node_uid}
                 </option>
               ))}
             </select>
@@ -457,7 +462,7 @@ export default async function BootstrapPage({
                 Abrir
               </button>
               <Link
-                href={buildBootstrapHref({ clientId, siteId, search, bucket })}
+                href={buildBootstrapHref({ clientId, siteId, search, bucket, heartbeatMode })}
                 className="rounded-xl h-11 border border-slate-600/80 px-5 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
               >
                 Limpar preflight
@@ -466,13 +471,13 @@ export default async function BootstrapPage({
           </form>
         </div>
 
-        <div className="glass-panel rounded-xl p-5">
+        <div className="glass-panel rounded-xl p-4">
           <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Instalacao</p>
           {selectedNode && verifyBootstrapCommand && runBootstrapPreflightCommand ? (
             <div className="mt-4 space-y-4">
               <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
                 <p>Firewall: {selectedNode.display_name ?? selectedNode.hostname}</p>
-                <p>Local: {selectedNode.client.name} / {selectedNode.site.name}</p>
+                <p>Local: {selectedNode.client.name} — {selectedNode.site.name}</p>
                 <p>Ultimo contato: {formatRelativeAge(selectedNode.last_seen_at)}</p>
               </div>
               <div className="space-y-2">
@@ -517,21 +522,21 @@ export default async function BootstrapPage({
             </div>
           ) : (
             <div className="mt-4 rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-6 text-sm text-slate-500">
-              Nenhum node selecionado para preflight. Escolha um node no formulario ao lado.
+              Nenhum firewall selecionado para preflight. Escolha um firewall no formulario ao lado.
             </div>
           )}
         </div>
       </section>
 
       {selectedNode && selectedBootstrap ? (
-        <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="glass-panel rounded-xl p-5">
+        <section className="grid gap-5 md:grid-cols-2">
+          <div className="glass-panel rounded-xl p-4">
             <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Resumo</p>
-            <h3 className="mt-2 font-display text-2xl text-white">Firewall selecionado</h3>
+            <h3 className="mt-1.5 font-display text-xl text-white">Firewall selecionado</h3>
 
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
-                <p>Node UID: {selectedBootstrap.node.node_uid}</p>
+                <p>UID: {selectedBootstrap.node.node_uid}</p>
                 <p>Hostname: {selectedNode.hostname}</p>
                 <p>pfSense: {selectedNode.pfsense_version ?? '-'}</p>
                 <p>Bucket: {selectedNode.bootstrap_bucket}</p>
@@ -546,6 +551,58 @@ export default async function BootstrapPage({
 
             {(selectedBootstrap.package_command ?? selectedBootstrap.command) ? (
               <div className="mt-4 space-y-4">
+                <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Modo do heartbeat no install</p>
+                    <span className="text-xs text-slate-500">
+                      Atual: <strong className="text-slate-300">{selectedBootstrap.heartbeat_mode}</strong>
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href={buildBootstrapHref({
+                        clientId,
+                        siteId,
+                        search,
+                        bucket,
+                        nodeId: selectedNode.id,
+                        releaseBaseUrl,
+                        controllerUrl,
+                        heartbeatMode: 'normal',
+                      })}
+                      className={`rounded-lg px-3 py-2 text-sm transition ${
+                        selectedBootstrap.heartbeat_mode === 'normal'
+                          ? 'border border-cyan-400/40 bg-cyan-500/10 text-cyan-200'
+                          : 'border border-slate-700 bg-slate-900/60 text-slate-300 hover:border-slate-500'
+                      }`}
+                    >
+                      Normal
+                    </Link>
+                    <Link
+                      href={buildBootstrapHref({
+                        clientId,
+                        siteId,
+                        search,
+                        bucket,
+                        nodeId: selectedNode.id,
+                        releaseBaseUrl,
+                        controllerUrl,
+                        heartbeatMode: 'light',
+                      })}
+                      className={`rounded-lg px-3 py-2 text-sm transition ${
+                        selectedBootstrap.heartbeat_mode === 'light'
+                          ? 'border border-cyan-400/40 bg-cyan-500/10 text-cyan-200'
+                          : 'border border-slate-700 bg-slate-900/60 text-slate-300 hover:border-slate-500'
+                      }`}
+                    >
+                      Light
+                    </Link>
+                  </div>
+                  <p className="text-sm text-slate-500">
+                    <strong className="text-slate-300">Normal</strong> envia serviços e gateways em todo heartbeat.{' '}
+                    <strong className="text-slate-300">Light</strong> envia só métricas e reaproveita o último estado conhecido.
+                  </p>
+                </div>
                 <div className="space-y-2">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Comando principal</p>
@@ -561,6 +618,16 @@ export default async function BootstrapPage({
                   <p className="text-sm text-slate-400">Valide serviço, config, test-connection e heartbeat no pfSense.</p>
                   <CommandBlock value={selectedBootstrap.verification.command_block} />
                 </div>
+                {selectedBootstrap.uninstall_command ? (
+                  <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="font-mono text-xs uppercase tracking-wider text-slate-400">Remover pacote (uninstall)</p>
+                      <CopyButton value={selectedBootstrap.uninstall_command} />
+                    </div>
+                    <p className="text-sm text-slate-500">Cole no pfSense em Diagnostics &gt; Command Prompt para remover por completo o pacote SystemUp Monitor.</p>
+                    <CommandBlock value={selectedBootstrap.uninstall_command} />
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-200">
@@ -590,17 +657,15 @@ export default async function BootstrapPage({
         </section>
       ) : null}
 
-      <section className="glass-panel rounded-xl p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <section className="glass-panel rounded-xl p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">
-              Escopo atual
-            </p>
-            <h3 className="mt-2 font-display text-2xl text-white">{resultSummary}</h3>
+            <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Escopo atual</p>
+            <h3 className="mt-1 font-display text-lg text-white">{resultSummary}</h3>
             <p className="mt-2 text-sm text-slate-400">
               {hasActiveFilters
                 ? 'A lista abaixo respeita os filtros aplicados nesta tela.'
-                : 'Nenhum filtro aplicado. A tela mostra todos os nodes retornados pelo inventario.'}
+                : 'Nenhum filtro aplicado. A tela mostra todos os firewalls retornados pelo inventario.'}
             </p>
           </div>
 
@@ -610,6 +675,7 @@ export default async function BootstrapPage({
                 clientId,
                 siteId,
                 search,
+                heartbeatMode,
               })}
               className={`rounded-md border px-4 py-2 text-sm transition ${
                 !bucket
@@ -625,6 +691,7 @@ export default async function BootstrapPage({
                 siteId,
                 search,
                 bucket: 'pending',
+                heartbeatMode,
               })}
               className={`rounded-md border px-4 py-2 text-sm transition ${
                 bucket === 'pending'
@@ -640,6 +707,7 @@ export default async function BootstrapPage({
                 siteId,
                 search,
                 bucket: 'active',
+                heartbeatMode,
               })}
               className={`rounded-md border px-4 py-2 text-sm transition ${
                 bucket === 'active'
@@ -655,6 +723,7 @@ export default async function BootstrapPage({
                 siteId,
                 search,
                 bucket: 'blocked',
+                heartbeatMode,
               })}
               className={`rounded-md border px-4 py-2 text-sm transition ${
                 bucket === 'blocked'
@@ -668,17 +737,13 @@ export default async function BootstrapPage({
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="glass-panel rounded-xl p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">
-                Fila de bootstrap
-              </p>
-              <h3 className="mt-2 font-display text-2xl text-white">
-                Firewalls prontos para instalar
-              </h3>
-            </div>
+      <section className="grid gap-5 md:grid-cols-2">
+          <div className="glass-panel rounded-xl p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Fila de bootstrap</p>
+                <h3 className="mt-1 font-display text-lg text-white">Firewalls prontos para instalar</h3>
+              </div>
             <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs text-amber-200">
               {pending.length} pendentes
             </span>
@@ -702,7 +767,7 @@ export default async function BootstrapPage({
                         {node.display_name ?? node.hostname}
                       </h4>
                       <p className="mt-1 text-sm text-slate-400">
-                        {node.client.name} / {node.site.name}
+                        {node.client.name} — {node.site.name}
                       </p>
                       <p className="mt-1 font-mono text-xs text-slate-500">
                         {node.node_uid}
@@ -720,10 +785,8 @@ export default async function BootstrapPage({
         </div>
 
         <div className="space-y-6">
-          <div className="glass-panel rounded-xl p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">
-              Agentes ativos
-            </p>
+          <div className="glass-panel rounded-xl p-4">
+            <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Agentes ativos</p>
             <div className="mt-4 space-y-3">
               {active.slice(0, 6).map((node) => (
                 <Link
@@ -752,10 +815,8 @@ export default async function BootstrapPage({
             </div>
           </div>
 
-          <div className="glass-panel rounded-xl p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">
-              Bloqueios
-            </p>
+          <div className="glass-panel rounded-xl p-4">
+            <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Bloqueios</p>
             <div className="mt-4 space-y-3">
               {blocked.slice(0, 6).map((node) => (
                 <Link

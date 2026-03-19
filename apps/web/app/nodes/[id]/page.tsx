@@ -9,6 +9,7 @@ import {
   setNodeMaintenanceAction,
   updateNodeAction,
 } from '@/lib/admin';
+import { DeleteNodeButton } from '@/components/delete-node-button';
 import {
   ApiError,
   getNodeBootstrapCommand,
@@ -26,6 +27,8 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+type HeartbeatMode = 'normal' | 'light';
+
 const statusTone: Record<string, string> = {
   online: 'bg-signal-online',
   degraded: 'bg-signal-degraded',
@@ -33,6 +36,89 @@ const statusTone: Record<string, string> = {
   maintenance: 'bg-signal-maintenance',
   unknown: 'bg-signal-unknown',
 };
+
+const VPN_GROUP_LABELS: Record<string, string> = {
+  openvpn: 'OpenVPN',
+  ipsec: 'IPsec',
+  wireguard: 'WireGuard',
+};
+
+/** Quebra string de IPs (virgula ou espaco) em array; exibe uma ou varias. */
+function parseIps(value: string | null | undefined): string[] {
+  if (!value || typeof value !== 'string') return [];
+  return value
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** Retorna true se o IP for público (não RFC 1918). Usado para classificar opt com IP público como WAN (multi-WAN). */
+function isPublicIp(ip: string | null | undefined): boolean {
+  const s = (ip ?? '').trim();
+  if (!s || s === 'n/a') return false;
+  const parts = s.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((n) => n < 0 || n > 255 || Number.isNaN(n))) return false;
+  if (parts[0] === 10) return false;
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return false;
+  if (parts[0] === 192 && parts[1] === 168) return false;
+  return true;
+}
+
+type ServiceItem = { name: string; status: string; message?: string | null; observed_at?: string };
+
+function getServiceType(name: string): string {
+  const colon = name.indexOf(':');
+  if (colon >= 0) return name.slice(0, colon).toLowerCase();
+  return name.toLowerCase();
+}
+
+/** Mensagens genéricas que não são descrição do túnel (ex.: "tunnel", "running, 0 clients"). */
+const GENERIC_SERVICE_MESSAGES = new Set([
+  'tunnel', 'established', 'interface up', 'no handshake',
+  'running', 'running, 0 clients', 'stopped',
+]);
+
+/** Nome exibido do serviço: preferir description (message) quando for descrição real (ex. IPsec Phase 1). */
+function getServiceDisplayName(service: ServiceItem): string {
+  const idPart = service.name.includes(':') ? service.name.slice(service.name.indexOf(':') + 1) : service.name;
+  const msg = (service.message ?? '').trim();
+  if (msg && !GENERIC_SERVICE_MESSAGES.has(msg.toLowerCase())) {
+    return msg;
+  }
+  return idPart;
+}
+
+/** Exibir message como subtítulo só quando for diferente do título (evita duplicar description). */
+function getServiceSubtitle(service: ServiceItem): string | null {
+  const displayName = getServiceDisplayName(service);
+  const msg = (service.message ?? '').trim();
+  if (!msg || msg === displayName) return null;
+  if (GENERIC_SERVICE_MESSAGES.has(msg.toLowerCase())) return msg;
+  return null;
+}
+
+function groupServicesByType(services: ServiceItem[]): { type: string; label: string; services: ServiceItem[] }[] {
+  const byType = new Map<string, ServiceItem[]>();
+  for (const s of services) {
+    const type = getServiceType(s.name);
+    const list = byType.get(type) ?? [];
+    list.push(s);
+    byType.set(type, list);
+  }
+  const order = ['openvpn', 'ipsec', 'wireguard'];
+  const result: { type: string; label: string; services: ServiceItem[] }[] = [];
+  for (const type of order) {
+    const list = byType.get(type);
+    if (list?.length) {
+      result.push({ type, label: VPN_GROUP_LABELS[type] ?? type, services: list });
+      byType.delete(type);
+    }
+  }
+  byType.forEach((list, type) => {
+    result.push({ type, label: type, services: list });
+  });
+  return result;
+}
 
 function Metric({
   label,
@@ -89,39 +175,29 @@ function CommandBlock({ value }: { value: string }) {
   );
 }
 
-function buildEvidenceBlock(input: {
-  nodeId: string;
-  nodeUid: string;
-  hostname: string;
-  pfsenseVersion: string | null;
-  releaseVersion: string;
-  artifactUrl: string | null;
-  checksumUrl: string | null;
-  installerUrl: string | null;
-  releaseBaseUrl: string | undefined;
-  controllerUrl: string | undefined;
-  bootstrapCommand: string | null;
-}) {
-  const lines = [
-    `data_registro: ${new Date().toISOString()}`,
-    `node_id: ${input.nodeId}`,
-    `node_uid: ${input.nodeUid}`,
-    `hostname: ${input.hostname}`,
-    `pfsense_version: ${input.pfsenseVersion ?? '-'}`,
-    `agent_release_version: ${input.releaseVersion}`,
-    `artifact_url: ${input.artifactUrl ?? '-'}`,
-    `checksum_url: ${input.checksumUrl ?? '-'}`,
-    `installer_url: ${input.installerUrl ?? '-'}`,
-    `release_base_url_override: ${input.releaseBaseUrl ?? 'nao usado'}`,
-    `controller_url_override: ${input.controllerUrl ?? 'nao usado'}`,
-    'test_connection_resultado: [preencher apos a rodada]',
-    'heartbeat_manual_resultado: [preencher apos a rodada]',
-    'painel_online_evidencia: [preencher com print ou anotacao]',
-    'comando_bootstrap_usado:',
-    input.bootstrapCommand ?? '[indisponivel sem release_base_url configurada]',
-  ];
+function normalizeHeartbeatMode(value: string | string[] | undefined): HeartbeatMode {
+  return value === 'light' ? 'light' : 'normal';
+}
 
-  return lines.join('\n');
+function buildNodeDetailsHref(input: {
+  id: string;
+  heartbeatMode: HeartbeatMode;
+  releaseBaseUrl?: string;
+  controllerUrl?: string;
+}) {
+  const params = new URLSearchParams();
+  params.set('heartbeat_mode', input.heartbeatMode);
+
+  if (input.releaseBaseUrl) {
+    params.set('release_base_url', input.releaseBaseUrl);
+  }
+
+  if (input.controllerUrl) {
+    params.set('controller_url', input.controllerUrl);
+  }
+
+  const query = params.toString();
+  return query ? `/nodes/${input.id}?${query}` : `/nodes/${input.id}`;
 }
 
 function buildAuditHref(input: {
@@ -145,29 +221,6 @@ function buildAuditHref(input: {
 
   const query = params.toString();
   return query ? `/audit?${query}` : '/audit';
-}
-
-function buildBootstrapHref(input: {
-  nodeId: string;
-  nodeUid: string;
-  releaseBaseUrl?: string;
-  controllerUrl?: string;
-}) {
-  const params = new URLSearchParams({
-    bucket: 'pending',
-    search: input.nodeUid,
-    node_id: input.nodeId,
-  });
-
-  if (input.releaseBaseUrl) {
-    params.set('release_base_url', input.releaseBaseUrl);
-  }
-
-  if (input.controllerUrl) {
-    params.set('controller_url', input.controllerUrl);
-  }
-
-  return `/bootstrap?${params.toString()}`;
 }
 
 function extractHostname(value: string | null | undefined) {
@@ -270,29 +323,17 @@ export default async function NodeDetailsPage({
     typeof resolvedSearchParams.controller_url === 'string'
       ? resolvedSearchParams.controller_url.trim()
       : undefined;
+  const heartbeatMode = normalizeHeartbeatMode(resolvedSearchParams.heartbeat_mode);
 
   try {
     const [response, bootstrap, session] = await Promise.all([
       getNodeDetails(id),
-      getNodeBootstrapCommand(id, releaseBaseUrl, controllerUrl),
+      getNodeBootstrapCommand(id, releaseBaseUrl, controllerUrl, heartbeatMode),
       getSession(),
     ]);
     const { node } = response;
     const canManageNode = hasRole(session.user.role, ADMIN_ROLES);
-    const identityLabel = `${node.client.name} / ${node.site.name} / ${node.node_uid}`;
-    const evidenceBlock = buildEvidenceBlock({
-      nodeId: node.id,
-      nodeUid: bootstrap.node.node_uid,
-      hostname: node.hostname,
-      pfsenseVersion: node.pfsense_version,
-      releaseVersion: bootstrap.release.version,
-      artifactUrl: bootstrap.release.artifact_url,
-      checksumUrl: bootstrap.release.checksum_url,
-      installerUrl: bootstrap.release.installer_url,
-      releaseBaseUrl,
-      controllerUrl,
-      bootstrapCommand: bootstrap.package_command ?? bootstrap.command,
-    });
+    const identityLabel = `${node.client.name} — ${node.site.name} — ${node.node_uid}`;
     const testConnectionAuditHref = buildAuditHref({
       action: 'ingest.test_connection',
       targetType: 'node',
@@ -301,12 +342,6 @@ export default async function NodeDetailsPage({
     const nodeAuditHref = buildAuditHref({
       targetType: 'node',
       targetId: node.id,
-    });
-    const bootstrapHref = buildBootstrapHref({
-      nodeId: node.id,
-      nodeUid: bootstrap.node.node_uid,
-      releaseBaseUrl,
-      controllerUrl,
     });
     const pfSensePrecheckBlock = buildPfSensePrecheckBlock({
       controllerUrl: bootstrap.release.controller_url,
@@ -319,7 +354,7 @@ export default async function NodeDetailsPage({
       <div className="space-y-6">
         {created ? (
           <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-            Node criado com sucesso. Use a secao de bootstrap abaixo para instalar o agente.
+            Firewall criado com sucesso. Use a secao de bootstrap abaixo para instalar o agente.
           </div>
         ) : null}
         {rekeyed ? (
@@ -349,7 +384,7 @@ export default async function NodeDetailsPage({
         ) : null}
         {updateError ? (
           <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-            Falha ao atualizar node: {updateError}
+            Falha ao atualizar firewall: {updateError}
           </div>
         ) : null}
 
@@ -360,7 +395,7 @@ export default async function NodeDetailsPage({
           stats={[
             { label: 'Status', value: node.effective_status },
             { label: 'Ultimo contato', value: formatRelativeAge(node.last_seen_at) },
-            { label: 'pfSense', value: node.pfsense_version ?? '-', tone: node.pfsense_version_homologated ? 'success' : 'warning' },
+            { label: 'pfSense', value: node.pfsense_version ?? '-' },
             { label: 'Agente', value: node.agent_version ?? '-' },
           ]}
           aside={
@@ -372,26 +407,21 @@ export default async function NodeDetailsPage({
                   renderedAt={response.generated_at}
                 />
               </div>
-              <div className="flex justify-end">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <Link
                   href="/nodes"
                   className="rounded-full border border-slate-700 bg-panel-soft px-4 py-2 text-sm text-cyan-200 transition hover:border-cyan-400/60 hover:text-white"
                 >
                   Voltar para firewalls
                 </Link>
-              </div>
-              <div className="flex justify-end">
-                <span
-                  className={`rounded-full border px-3 py-1 text-xs ${
-                    node.pfsense_version_homologated
-                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-                      : 'border-amber-500/30 bg-amber-500/10 text-amber-200'
-                  }`}
-                >
-                  {node.pfsense_version_homologated
-                    ? 'Versao pfSense homologada'
-                    : 'Versao pfSense fora da matriz homologada'}
-                </span>
+                {canManageNode && (
+                  <DeleteNodeButton
+                    nodeId={node.id}
+                    nodeUid={node.node_uid}
+                    displayName={node.display_name}
+                    hostname={node.hostname}
+                  />
+                )}
               </div>
             </div>
           }
@@ -434,18 +464,41 @@ export default async function NodeDetailsPage({
                 Servicos
               </p>
               {node.services.length > 0 ? (
-                <div className="mt-4 grid gap-3">
-                  {node.services.map((service) => (
-                    <div
-                      key={service.name}
-                      className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4"
-                    >
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-display text-lg text-white">{service.name}</h3>
-                        <span className="capitalize text-slate-300">{service.status}</span>
+                <div className="mt-4 space-y-4">
+                  {groupServicesByType(node.services).map((group) => {
+                    const isVpn = ['openvpn', 'ipsec', 'wireguard'].includes(group.type);
+                    return (
+                      <div key={group.type}>
+                        <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-wider text-slate-500">
+                          {group.label}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {group.services.map((service) => {
+                            const ok = service.status === 'running';
+                            const na = service.status === 'not_installed';
+                            const dotClass = ok
+                              ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]'
+                              : na
+                                ? 'bg-slate-500'
+                                : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]';
+                            const title = isVpn ? (getServiceSubtitle(service) ?? service.status) : (service.message ?? service.status);
+                            return (
+                              <div
+                                key={service.name}
+                                className="inline-flex items-center gap-2 rounded-full border border-slate-700/80 bg-slate-800/60 py-1.5 pl-2 pr-3"
+                                title={title}
+                              >
+                                <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+                                <span className="max-w-[12rem] truncate text-sm text-slate-200">
+                                  {getServiceDisplayName(service)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="mt-4 rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-6 text-sm text-slate-400">
@@ -457,11 +510,169 @@ export default async function NodeDetailsPage({
 
           <div className="space-y-6">
             <div className="glass-panel rounded-xl p-5">
-              <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Dados principais</p>
+              <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Dados interfaces</p>
               <div className="mt-4 space-y-3 text-sm text-slate-300">
                 <p>Hostname: {node.hostname}</p>
-                <p>IP interno: {node.management_ip ?? '-'}</p>
-                <p>IP publico: {node.wan_ip ?? '-'}</p>
+                {(() => {
+                  type Iface = { name?: string; ip?: string; role?: string };
+                  const ifaces = (node.network_interfaces ?? []) as Iface[];
+                  const hasValidInterfaces =
+                    ifaces.length > 0 &&
+                    ifaces.some(
+                      (iface) => ((iface?.name ?? '').trim() || (iface?.ip ?? '').trim()) !== '',
+                    );
+                  const hasRole = ifaces.some((iface) => (iface?.role ?? '').trim() !== '');
+                  const wanIfaces = hasRole
+                    ? ifaces.filter(
+                        (i) =>
+                          ((i?.name ?? '').trim() || (i?.ip ?? '').trim()) !== '' &&
+                          (() => {
+                            const r = (i?.role ?? '').toLowerCase();
+                            const ip = (i?.ip ?? '').trim();
+                            if (r === 'wan') return true;
+                            if (r.startsWith('opt') && isPublicIp(ip)) return true;
+                            return false;
+                          })(),
+                      )
+                    : [];
+                  const internalIfaces = hasRole
+                    ? ifaces.filter(
+                        (i) =>
+                          ((i?.name ?? '').trim() || (i?.ip ?? '').trim()) !== '' &&
+                          (() => {
+                            const r = (i?.role ?? '').toLowerCase();
+                            const ip = (i?.ip ?? '').trim();
+                            if (r === 'lan') return true;
+                            if (r.startsWith('opt') && !isPublicIp(ip)) return true;
+                            return false;
+                          })(),
+                      )
+                    : [];
+                  const interfacesAllEmpty =
+                    ifaces.length > 0 &&
+                    ifaces.every(
+                      (iface) => !(iface?.name ?? '').trim() && !(iface?.ip ?? '').trim(),
+                    );
+                  if (hasValidInterfaces && hasRole && (internalIfaces.length > 0 || wanIfaces.length > 0)) {
+                    return (
+                      <div className="space-y-3">
+                        <p className="flex flex-wrap items-center gap-1.5">
+                          <span className="shrink-0 font-mono text-xs uppercase tracking-wider text-slate-500">
+                            WAN
+                          </span>
+                          {wanIfaces.length > 0 ? (
+                            <span className="flex flex-wrap gap-2">
+                              {wanIfaces.map((iface, i) => {
+                                const name = (iface?.name ?? '').trim() || '—';
+                                const ip = (iface?.ip ?? '').trim() || 'n/a';
+                                return (
+                                  <span
+                                    key={`wan-${name}-${ip}-${i}`}
+                                    className="inline-flex items-center gap-2 rounded-full border border-slate-600 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-slate-200"
+                                  >
+                                    <span className="font-semibold uppercase text-cyan-300/90">{name}</span>
+                                    <span className={ip === 'n/a' ? 'text-slate-500 italic' : ''}>{ip}</span>
+                                  </span>
+                                );
+                              })}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500">—</span>
+                          )}
+                        </p>
+                        <p className="flex flex-wrap items-center gap-1.5">
+                          <span className="shrink-0 font-mono text-xs uppercase tracking-wider text-slate-500">
+                            Interfaces
+                          </span>
+                          {internalIfaces.length > 0 ? (
+                            <span className="flex flex-wrap gap-2">
+                              {internalIfaces.map((iface, i) => {
+                                const name = (iface?.name ?? '').trim() || '—';
+                                const ip = (iface?.ip ?? '').trim() || 'n/a';
+                                return (
+                                  <span
+                                    key={`int-${name}-${ip}-${i}`}
+                                    className="inline-flex items-center gap-2 rounded-full border border-slate-600 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-slate-200"
+                                  >
+                                    <span className="font-semibold uppercase text-cyan-300/90">{name}</span>
+                                    <span className={ip === 'n/a' ? 'text-slate-500 italic' : ''}>{ip}</span>
+                                  </span>
+                                );
+                              })}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500">—</span>
+                          )}
+                        </p>
+                      </div>
+                    );
+                  }
+                  if (hasValidInterfaces) {
+                    return (
+                      <div>
+                        <div className="flex flex-wrap gap-2">
+                          {ifaces
+                            .filter((iface) => (iface?.name ?? '').trim() !== '' || (iface?.ip ?? '').trim() !== '')
+                            .map((iface, i) => {
+                              const name = (iface?.name ?? '').trim() || '—';
+                              const ip = (iface?.ip ?? '').trim() || 'n/a';
+                              return (
+                                <span
+                                  key={`${name}-${ip}-${i}`}
+                                  className="inline-flex items-center gap-2 rounded-full border border-slate-600 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-slate-200"
+                                >
+                                  <span className="font-semibold uppercase text-cyan-300/90">{name}</span>
+                                  <span className={ip === 'n/a' ? 'text-slate-500 italic' : ''}>{ip}</span>
+                                </span>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <>
+                      <p className="flex flex-wrap items-center gap-1.5">
+                        <span className="shrink-0">IP(s) interno(s):</span>
+                        {parseIps(node.management_ip).length > 0 ? (
+                          parseIps(node.management_ip).map((ip) => (
+                            <span
+                              key={ip}
+                              className="inline-flex rounded-full border border-slate-600 bg-slate-800/80 px-2.5 py-0.5 font-mono text-xs text-slate-200"
+                            >
+                              {ip}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-slate-500">—</span>
+                        )}
+                      </p>
+                      <p className="flex flex-wrap items-center gap-1.5">
+                        <span className="shrink-0">IP(s) publico(s) / WAN:</span>
+                        {parseIps(node.wan_ip).length > 0 ? (
+                          parseIps(node.wan_ip).map((ip) => (
+                            <span
+                              key={ip}
+                              className="inline-flex rounded-full border border-slate-600 bg-slate-800/80 px-2.5 py-0.5 font-mono text-xs text-slate-200"
+                            >
+                              {ip}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-slate-500">—</span>
+                        )}
+                      </p>
+                      {interfacesAllEmpty &&
+                        parseIps(node.management_ip).length === 0 &&
+                        parseIps(node.wan_ip).length === 0 && (
+                          <p className="text-xs text-slate-500">
+                            O agente enviou a lista de interfaces vazia. Para ver interfaces com nome (ADM, P4,
+                            etc.), atualize o agente no firewall para a versão 0.2.20 ou superior e o painel para 0.1.20.
+                          </p>
+                        )}
+                    </>
+                  );
+                })()}
                 <p>Ultimo contato: {formatDateTime(node.latest_heartbeat?.received_at ?? null)}</p>
               </div>
               {canManageNode ? (
@@ -474,7 +685,7 @@ export default async function NodeDetailsPage({
                   />
                   <button
                     type="submit"
-                    className={`rounded-xl border px-4 py-3 text-sm transition ${
+                    className={`rounded-lg border px-3 py-1.5 text-xs transition ${
                       node.maintenance_mode
                         ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:border-emerald-400/50'
                         : 'border-amber-500/30 bg-amber-500/10 text-amber-200 hover:border-amber-400/50'
@@ -497,13 +708,9 @@ export default async function NodeDetailsPage({
                 <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">Editar cadastro</p>
                 <form action={updateNodeAction} className="mt-4 space-y-3">
                   <input type="hidden" name="node_id" value={node.id} />
-                  <input
-                    type="text"
-                    name="hostname"
-                    defaultValue={node.hostname}
-                    placeholder="Hostname"
-                    className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
+                  <input type="hidden" name="hostname" value={node.hostname} />
+                  <input type="hidden" name="management_ip" value={node.management_ip ?? ''} />
+                  <input type="hidden" name="wan_ip" value={node.wan_ip ?? ''} />
                   <input
                     type="text"
                     name="display_name"
@@ -511,34 +718,30 @@ export default async function NodeDetailsPage({
                     placeholder="Nome exibido"
                     className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   />
-                  <input
-                    type="text"
-                    name="management_ip"
-                    defaultValue={node.management_ip ?? ''}
-                    placeholder="IP interno"
-                    className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
-                  <input
-                    type="text"
-                    name="wan_ip"
-                    defaultValue={node.wan_ip ?? ''}
-                    placeholder="IP publico"
-                    className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
-                  <input
-                    type="text"
-                    name="pfsense_version"
-                    defaultValue={node.pfsense_version ?? ''}
-                    placeholder="Versao do pfSense"
-                    className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
-                  <input
-                    type="text"
-                    name="agent_version"
-                    defaultValue={node.agent_version ?? ''}
-                    placeholder="Versao do agente"
-                    className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
+                  <div className="rounded-xl border border-slate-600/80 bg-slate-900/50 px-4 py-3">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider">Hostname</p>
+                    <p className="mt-0.5 font-mono text-sm text-slate-300">{node.hostname || '—'}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-600/80 bg-slate-900/50 px-4 py-3">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider">IP de gerenciamento (resumo)</p>
+                    <p className="mt-0.5 font-mono text-sm text-slate-300">{node.management_ip || '—'}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-600/80 bg-slate-900/50 px-4 py-3">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider">IP WAN (resumo)</p>
+                    <p className="mt-0.5 font-mono text-sm text-slate-300">{node.wan_ip || '—'}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-600/80 bg-slate-900/50 px-4 py-3">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider">Versão pfSense</p>
+                    <p className="mt-0.5 font-mono text-sm text-slate-300">
+                      {node.pfsense_version ? node.pfsense_version.replace(/-RELEASE$/i, '') : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-600/80 bg-slate-900/50 px-4 py-3">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider">Versão do agente</p>
+                    <p className="mt-0.5 font-mono text-sm text-slate-300">
+                      {node.agent_version ?? '—'}
+                    </p>
+                  </div>
                   <AdvancedSection
                     title="Campos avancados"
                     description="ha_role e outros campos para ambientes HA/CARP."
@@ -568,7 +771,7 @@ export default async function NodeDetailsPage({
           <div className="mt-4 space-y-3">
             {node.recent_alerts.length === 0 ? (
               <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-6 text-sm text-emerald-200">
-                Nenhum alerta recente para este node.
+                Nenhum alerta recente para este firewall.
               </div>
             ) : (
               node.recent_alerts.map((alert) => (
@@ -615,7 +818,7 @@ export default async function NodeDetailsPage({
               )}
             </div>
             <div className="grid gap-3 lg:grid-cols-2">
-              <BootstrapField label="Node UID" value={bootstrap.node.node_uid} />
+              <BootstrapField label="UID" value={bootstrap.node.node_uid} />
               <BootstrapField
                 label={canManageNode ? 'Secret' : 'Secret hint'}
                 value={canManageNode ? bootstrap.bootstrap.node_secret : bootstrap.bootstrap.secret_hint}
@@ -624,6 +827,50 @@ export default async function NodeDetailsPage({
 
             {(bootstrap.package_command ?? bootstrap.command) ? (
               <div className="space-y-3">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="font-mono text-xs uppercase tracking-[0.24em] text-cyan-300">Modo do heartbeat no install</p>
+                    <span className="text-xs text-slate-500">
+                      Atual: <strong className="text-slate-300">{bootstrap.heartbeat_mode}</strong>
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                      href={buildNodeDetailsHref({
+                        id: node.id,
+                        heartbeatMode: 'normal',
+                        releaseBaseUrl,
+                        controllerUrl,
+                      })}
+                      className={`rounded-lg px-3 py-2 text-sm transition ${
+                        bootstrap.heartbeat_mode === 'normal'
+                          ? 'border border-cyan-400/40 bg-cyan-500/10 text-cyan-200'
+                          : 'border border-slate-700 bg-slate-900/60 text-slate-300 hover:border-slate-500'
+                      }`}
+                    >
+                      Normal
+                    </Link>
+                    <Link
+                      href={buildNodeDetailsHref({
+                        id: node.id,
+                        heartbeatMode: 'light',
+                        releaseBaseUrl,
+                        controllerUrl,
+                      })}
+                      className={`rounded-lg px-3 py-2 text-sm transition ${
+                        bootstrap.heartbeat_mode === 'light'
+                          ? 'border border-cyan-400/40 bg-cyan-500/10 text-cyan-200'
+                          : 'border border-slate-700 bg-slate-900/60 text-slate-300 hover:border-slate-500'
+                      }`}
+                    >
+                      Light
+                    </Link>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-500">
+                    <strong className="text-slate-300">Normal</strong> envia serviços e gateways em todo heartbeat.{' '}
+                    <strong className="text-slate-300">Light</strong> envia só métricas e reaproveita o último estado conhecido.
+                  </p>
+                </div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <p className="font-mono text-xs uppercase tracking-[0.24em] text-cyan-300">Comando principal</p>
                   <CopyButton value={bootstrap.package_command ?? bootstrap.command ?? ''} />
@@ -635,6 +882,19 @@ export default async function NodeDetailsPage({
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-sm text-slate-400">
                   <strong>Uso:</strong> (1) Abra Command Prompt no pfSense. (2) Cole o comando e execute. (3) Em 1–2 min o firewall deve aparecer online. Acompanhe: <code className="text-cyan-200">tail -f /tmp/monitor-install.log</code>
                 </div>
+
+                {bootstrap.uninstall_command ? (
+                  <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-400">Remover pacote (uninstall)</p>
+                      <CopyButton value={bootstrap.uninstall_command} />
+                    </div>
+                    <p className="text-sm text-slate-500">
+                      Cole no pfSense em <strong>Diagnostics &gt; Command Prompt</strong> para remover por completo o pacote SystemUp Monitor deste firewall.
+                    </p>
+                    <CommandBlock value={bootstrap.uninstall_command} />
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="space-y-3">
@@ -739,24 +999,12 @@ export default async function NodeDetailsPage({
                   </div>
                 ) : null}
 
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-                    <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">Pre-check no pfSense</p>
-                    <CommandBlock value={pfSensePrecheckBlock} />
-                  </div>
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4">
-                    <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">Evidencias da rodada</p>
-                    <CommandBlock value={evidenceBlock} />
-                  </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+                  <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">Pre-check no pfSense</p>
+                  <CommandBlock value={pfSensePrecheckBlock} />
                 </div>
 
                 <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap">
-                  <Link
-                    href={bootstrapHref}
-                    className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-3 text-center text-sm text-cyan-200 transition hover:border-cyan-400/50"
-                  >
-                    Abrir instalacao guiada
-                  </Link>
                   <Link
                     href={testConnectionAuditHref}
                     className="rounded-xl border border-slate-700 px-5 py-3 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"

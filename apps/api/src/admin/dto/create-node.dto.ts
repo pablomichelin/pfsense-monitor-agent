@@ -9,18 +9,24 @@ import {
 } from 'class-validator';
 
 export class CreateNodeDto {
+  @IsOptional()
   @IsUUID()
-  site_id!: string;
+  site_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  client_id?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(128)
   node_uid?: string;
 
+  /** Se omitido, o backend gera um node_uid; hostname e IPs serao preenchidos pelo agente no primeiro heartbeat. */
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(255)
-  hostname!: string;
+  hostname?: string;
 
   @IsOptional()
   @IsString()

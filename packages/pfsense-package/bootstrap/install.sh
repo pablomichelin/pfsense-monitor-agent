@@ -12,12 +12,13 @@ NODE_SECRET=""
 CUSTOMER_CODE=""
 INTERVAL_SECONDS=""
 SERVICES_CSV=""
+HEARTBEAT_MODE="normal"
 ENABLE_PACKAGE="0"
 
 usage() {
   cat <<EOF
 Usage:
-  $0 [--controller-url URL --node-uid UID --node-secret SECRET --customer-code CODE] [--interval-seconds N] [--services CSV] [--enable]
+  $0 [--controller-url URL --node-uid UID --node-secret SECRET --customer-code CODE] [--interval-seconds N] [--services CSV] [--heartbeat-mode normal|light] [--enable]
 
   Com controller-url + node-uid + node-secret + customer-code o serviço é habilitado e iniciado automaticamente (heartbeats a cada 30s).
 
@@ -35,11 +36,18 @@ while [ "$#" -gt 0 ]; do
     --customer-code) CUSTOMER_CODE="$2"; shift 2 ;;
     --interval-seconds) INTERVAL_SECONDS="$2"; shift 2 ;;
     --services) SERVICES_CSV="$2"; shift 2 ;;
+    --heartbeat-mode) HEARTBEAT_MODE="$2"; shift 2 ;;
     --enable) ENABLE_PACKAGE="1"; shift 1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
   esac
 done
+
+case "$(printf '%s' "$HEARTBEAT_MODE" | tr '[:upper:]' '[:lower:]')" in
+  light) HEARTBEAT_MODE="light" ;;
+  normal|"") HEARTBEAT_MODE="normal" ;;
+  *) echo "Invalid heartbeat mode: $HEARTBEAT_MODE (use normal or light)" >&2; exit 1 ;;
+esac
 
 copy_tree() {
   src_dir="$1"
@@ -84,12 +92,18 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
   if [ -n "$SERVICES_CSV" ]; then
     set -- "$@" --services "$SERVICES_CSV"
   fi
+  if [ -n "$HEARTBEAT_MODE" ]; then
+    set -- "$@" --heartbeat-mode "$HEARTBEAT_MODE"
+  fi
   # Com config completa (controller + node_uid + secret + customer), habilita e inicia o serviço em um único passo
   if [ "$ENABLE_PACKAGE" = "1" ] || { [ -n "$CONTROLLER_URL" ] && [ -n "$NODE_UID" ] && [ -n "$NODE_SECRET" ] && [ -n "$CUSTOMER_CODE" ]; }; then
     set -- "$@" --enable
   fi
 
   /usr/local/bin/php -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php "$@" < /dev/null
+
+  # Sempre regenerar o config do agente com a versão atual do package (AGENT_VERSION), mesmo em upgrade
+  /usr/local/bin/php -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php sync < /dev/null 2>/dev/null || true
 
   # Garantir que o serviço está habilitado e rodando (o PHP pode falhar ao iniciar quando o install roda em background)
   if [ -n "$CONTROLLER_URL" ] && [ -n "$NODE_UID" ] && [ -n "$NODE_SECRET" ] && [ -n "$CUSTOMER_CODE" ]; then

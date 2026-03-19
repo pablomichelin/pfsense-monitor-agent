@@ -9,7 +9,7 @@
     <section>Services</section>
     <configfile>systemup_monitor.xml</configfile>
     <tooltiptext>Configure o agente leve do Monitor-Pfsense.</tooltiptext>
-    <url>/pkg.php?xml=systemup_monitor.xml</url>
+    <url>/config_systemup_monitor.php</url>
   </menu>
   <service>
     <name>monitor_pfsense_agent</name>
@@ -27,7 +27,7 @@
   <tabs>
     <tab>
       <text>Configuracao</text>
-      <url>/pkg.php?xml=systemup_monitor.xml</url>
+      <url>/config_systemup_monitor.php</url>
       <active/>
     </tab>
     <tab>
@@ -37,7 +37,15 @@
   </tabs>
   <custom_php_global_functions>systemup_monitor_apply_defaults();</custom_php_global_functions>
   <custom_php_resync_config_command>systemup_monitor_sync_config();</custom_php_resync_config_command>
+  <custom_php_after_head_command>systemup_monitor_render_config_section_header();</custom_php_after_head_command>
   <fields>
+    <field>
+      <fielddescr>Descricao</fielddescr>
+      <fieldname>description</fieldname>
+      <description>Identificacao desta instancia na lista; padrao Agente Principal.</description>
+      <type>input</type>
+      <size>40</size>
+    </field>
     <field>
       <fielddescr>Enable package</fielddescr>
       <fieldname>enabled</fieldname>

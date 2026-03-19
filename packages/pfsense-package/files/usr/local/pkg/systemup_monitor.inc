@@ -12,6 +12,39 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_INTERVAL")) {
 if (!defined("SYSTEMUP_MONITOR_DEFAULT_SERVICES")) {
     define("SYSTEMUP_MONITOR_DEFAULT_SERVICES", "unbound,dhcpd,openvpn,ipsec,wireguard,ntpd,dpinger");
 }
+if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
+    define("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE", "normal");
+}
+/** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
+if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.2.27");
+}
+
+/**
+ * Prepara $tab_array e $pgtitle para as paginas do package (config e diagnostico).
+ * Assim as abas Configuracao | Diagnostico aparecem e o submenu nao some.
+ * @param string $active 'config' ou 'diagnostico'
+ */
+function systemup_monitor_setup_package_tabs($active)
+{
+    global $tab_array, $pgtitle, $pglinks, $shortcut_section;
+    $tab_array = array();
+    $tab_array[1][] = array('Configuracao', $active === 'config', '/config_systemup_monitor.php');
+    $tab_array[1][] = array('Diagnostico', $active === 'diagnostico', '/status_systemup_monitor.php');
+    $pgtitle = array('Package', 'Services: SystemUp Monitor', $active === 'config' ? 'Configuracao' : 'Diagnostico');
+    $pglinks = array('', '', $active === 'config' ? '/config_systemup_monitor.php' : '/status_systemup_monitor.php');
+    $shortcut_section = 'systemup_monitor';
+}
+
+function systemup_monitor_render_config_section_header()
+{
+    echo '<div class="panel panel-default" style="margin-bottom: 1rem;">';
+    echo '  <div class="panel-body" style="padding: 0.75rem 1rem;">';
+    echo '    <p class="text-muted" style="margin: 0 0 0.35rem 0; font-size: 1rem; font-weight: 600;">Configuração do agente</p>';
+    echo '    <p class="text-muted" style="margin: 0; font-size: 0.95rem; line-height: 1.45;">Campos do controlador, identidade do node e serviços monitorados. Use o botão abaixo para alterar URL, node UID, cliente, intervalo e serviços; salve no formulário para aplicar.</p>';
+    echo '  </div>';
+    echo '</div>';
+}
 
 function systemup_monitor_supported_services()
 {
@@ -83,6 +116,12 @@ function systemup_monitor_any_service_checkbox_present($pkg)
     return false;
 }
 
+function systemup_monitor_normalize_heartbeat_mode($value)
+{
+    $normalized = strtolower(trim((string) $value));
+    return $normalized === 'light' ? 'light' : 'normal';
+}
+
 function systemup_monitor_selected_services($pkg)
 {
     $selected = array();
@@ -147,10 +186,12 @@ function &systemup_monitor_config_ref()
 function systemup_monitor_defaults()
 {
     return array(
+        'description' => 'Agente Principal',
         'enabled' => '',
         'controller_url' => SYSTEMUP_MONITOR_DEFAULT_CONTROLLER_URL,
         'interval_seconds' => SYSTEMUP_MONITOR_DEFAULT_INTERVAL,
         'services_csv' => SYSTEMUP_MONITOR_DEFAULT_SERVICES,
+        'heartbeat_mode' => SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE,
         'monitored_packages_csv' => '',
     );
 }
@@ -167,6 +208,7 @@ function systemup_monitor_apply_defaults()
     }
 
     $pkg['services_csv'] = systemup_monitor_normalize_services_csv($pkg['services_csv'] ?? SYSTEMUP_MONITOR_DEFAULT_SERVICES);
+    $pkg['heartbeat_mode'] = systemup_monitor_normalize_heartbeat_mode($pkg['heartbeat_mode'] ?? SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE);
     systemup_monitor_sync_service_fields($pkg);
 }
 
@@ -282,6 +324,8 @@ function systemup_monitor_touch_log_file($path)
 function systemup_monitor_render_agent_config($pkg)
 {
     $selectedServices = implode(',', systemup_monitor_selected_services($pkg));
+    $heartbeatMode = systemup_monitor_normalize_heartbeat_mode($pkg['heartbeat_mode'] ?? SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE);
+    $lightHeartbeat = $heartbeatMode === 'light' ? '1' : '0';
     $monitoredPackages = isset($pkg['monitored_packages_csv'])
         ? trim((string) $pkg['monitored_packages_csv'])
         : '';
@@ -291,11 +335,12 @@ function systemup_monitor_render_agent_config($pkg)
         'NODE_UID="' . systemup_monitor_escape_shell_value($pkg['node_uid']) . '"',
         'NODE_SECRET="' . systemup_monitor_escape_shell_value($pkg['node_secret']) . '"',
         'CUSTOMER_CODE="' . systemup_monitor_escape_shell_value($pkg['customer_code']) . '"',
-        'AGENT_VERSION="0.2.0"',
+        'AGENT_VERSION="' . (defined("SYSTEMUP_MONITOR_AGENT_VERSION") ? SYSTEMUP_MONITOR_AGENT_VERSION : "0.2.0") . '"',
         'SCHEMA_VERSION="2026-01"',
         'MONITOR_AGENT_INTERVAL_SECONDS="' . systemup_monitor_escape_shell_value($pkg['interval_seconds']) . '"',
         'MONITOR_AGENT_LOG_FILE="/var/log/monitor-pfsense-agent.log"',
         'MONITOR_AGENT_SERVICES="' . systemup_monitor_escape_shell_value($selectedServices) . '"',
+        'MONITOR_AGENT_LIGHT_HEARTBEAT="' . $lightHeartbeat . '"',
     );
     if ($monitoredPackages !== '') {
         $lines[] = 'MONITOR_AGENT_PACKAGES="' . systemup_monitor_escape_shell_value($monitoredPackages) . '"';
@@ -428,6 +473,7 @@ function systemup_monitor_runtime_summary()
 
     return array(
         'enabled' => systemup_monitor_is_enabled($pkg),
+        'heartbeat_mode' => systemup_monitor_normalize_heartbeat_mode($pkg['heartbeat_mode'] ?? SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE),
         'config_ready' => $config_ready,
         'missing_fields' => $missing_fields,
         'config_exists' => file_exists($paths['config_file']),

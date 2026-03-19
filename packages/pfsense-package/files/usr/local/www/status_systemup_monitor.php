@@ -3,8 +3,9 @@
 require_once("guiconfig.inc");
 require_once("/usr/local/pkg/systemup_monitor.inc");
 
+systemup_monitor_setup_package_tabs('diagnostico');
+
 $pkg = systemup_monitor_read_config();
-$page_title = array("Status", "SystemUp Monitor");
 $commands = systemup_monitor_local_commands();
 $secret_masked = systemup_monitor_mask_secret($pkg['node_secret']);
 $runtime = systemup_monitor_runtime_summary();
@@ -12,9 +13,14 @@ $selected_services = systemup_monitor_selected_service_labels($pkg);
 
 include("head.inc");
 ?>
-
 <body>
 <?php include("fbegin.inc"); ?>
+<?php if (isset($tab_array) && function_exists('display_top_tabs')): ?>
+<?php foreach ($tab_array as $tab): ?>
+<?php display_top_tabs($tab); ?>
+<?php endforeach; ?>
+<?php endif; ?>
+
 <section class="panel panel-default">
   <div class="panel-heading">
     <h2 class="panel-title">SystemUp Monitor local diagnostics</h2>
@@ -41,6 +47,14 @@ include("head.inc");
         <tr>
           <th>Heartbeat interval</th>
           <td><?=htmlspecialchars($pkg['interval_seconds'])?>s</td>
+        </tr>
+        <tr>
+          <th>Heartbeat mode</th>
+          <td><?=htmlspecialchars($runtime['heartbeat_mode'])?></td>
+        </tr>
+        <tr>
+          <th>Versão do agente</th>
+          <td><?=htmlspecialchars(defined('SYSTEMUP_MONITOR_AGENT_VERSION') ? SYSTEMUP_MONITOR_AGENT_VERSION : '0.2.0')?></td>
         </tr>
         <tr>
           <th>Selected services</th>
@@ -76,13 +90,9 @@ include("head.inc");
     </div>
     <?php endif; ?>
 
-    <div class="alert alert-info" role="alert">
-      Este pacote agora instala o runtime local do agente, mas a homologacao final ainda depende
-      do teste em um pfSense CE 2.8.1 real.
-    </div>
-
-    <h3>Runtime paths</h3>
-    <pre><?php
+    <div style="margin-top: 1rem; padding-left: 1rem; padding-right: 1rem;">
+      <h3 style="margin-top: 1.25rem; margin-bottom: 0.5rem;">Runtime paths</h3>
+      <pre style="margin-top: 0.5rem; margin-bottom: 0; padding: 0.75rem;"><?php
 echo htmlspecialchars("Agent: " . $runtime['agent_bin'] . "\n");
 echo htmlspecialchars("Loop: " . $runtime['loop_bin'] . "\n");
 echo htmlspecialchars("RC: " . $runtime['rc_script'] . "\n");
@@ -92,8 +102,9 @@ if (!empty($runtime['service_detail'])) {
 }
 ?></pre>
 
-    <h3>Operational commands</h3>
-    <pre><?php foreach ($commands as $command) { echo htmlspecialchars($command) . "\n"; } ?></pre>
+      <h3 style="margin-top: 1.25rem; margin-bottom: 0.5rem;">Operational commands</h3>
+      <pre style="margin-top: 0.5rem; margin-bottom: 1.25rem; padding: 0.75rem;"><?php foreach ($commands as $command) { echo htmlspecialchars($command) . "\n"; } ?></pre>
+    </div>
   </div>
 </section>
 <?php include("foot.inc"); ?>

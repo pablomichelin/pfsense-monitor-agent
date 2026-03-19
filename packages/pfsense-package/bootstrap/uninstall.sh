@@ -13,6 +13,7 @@ rm -f \
   "$INSTALL_ROOT/usr/local/etc/rc.d/monitor_pfsense_agent" \
   "$INSTALL_ROOT/usr/local/pkg/systemup_monitor.inc" \
   "$INSTALL_ROOT/usr/local/pkg/systemup_monitor.xml" \
+  "$INSTALL_ROOT/usr/local/www/config_systemup_monitor.php" \
   "$INSTALL_ROOT/usr/local/www/status_systemup_monitor.php" \
   "$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/info.xml" \
   "$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php"

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -14,6 +15,8 @@ import {
   UserRole,
 } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
 import { appConfig } from '../config/app-config';
 import { NodeSecretCryptoService } from '../common/node-secret-crypto.service';
 import { AuthService } from '../auth/auth.service';
@@ -28,6 +31,7 @@ import { UpdateNodeDto } from './dto/update-node.dto';
 import { UpdateSiteDto } from './dto/update-site.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAgentTokenDto } from './dto/create-agent-token.dto';
+import { ListUsersQueryDto } from './dto/list-users-query.dto';
 
 const toSlug = (value: string): string =>
   value
@@ -45,6 +49,50 @@ const normalizeOptional = (value?: string): string | undefined => {
   const normalized = value?.trim();
   return normalized ? normalized : undefined;
 };
+
+type BootstrapHeartbeatMode = 'normal' | 'light';
+
+const normalizeBootstrapHeartbeatMode = (
+  rawValue?: string | null,
+): BootstrapHeartbeatMode => (rawValue?.trim().toLowerCase() === 'light' ? 'light' : 'normal');
+
+/** Lê config/package-release.env em runtime para o comando de bootstrap refletir sempre a versão atual (após git pull). */
+function readPackageReleaseFromFile(): {
+  version: string;
+  sha256: string;
+  repoRawBase: string;
+} | null {
+  const paths = [
+    '/app/config/package-release.env', // caminho do volume no container (compose)
+    join(process.cwd(), 'config', 'package-release.env'),
+    join(__dirname, '..', '..', '..', 'config', 'package-release.env'),
+  ];
+  for (const filePath of paths) {
+    if (!existsSync(filePath)) continue;
+    try {
+      const raw = readFileSync(filePath, 'utf-8');
+      const out: Record<string, string> = {};
+      for (const line of raw.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eq = trimmed.indexOf('=');
+        if (eq <= 0) continue;
+        const key = trimmed.slice(0, eq).trim();
+        const value = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+        out[key] = value;
+      }
+      const version = out['PACKAGE_RELEASE_VERSION']?.trim();
+      const sha256 = out['PACKAGE_RELEASE_SHA256']?.trim();
+      const repoRawBase = out['PACKAGE_RELEASE_REPO_RAW_BASE']?.trim();
+      if (version && sha256 && repoRawBase) {
+        return { version, sha256, repoRawBase };
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
 
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
 
@@ -128,7 +176,7 @@ export class AdminService {
     throw new ConflictException('unable to generate a unique node_uid');
   }
 
-  async listUsers(): Promise<{
+  async listUsers(query?: ListUsersQueryDto): Promise<{
     items: Array<{
       id: string;
       email: string;
@@ -139,7 +187,10 @@ export class AdminService {
       updated_at: string;
     }>;
   }> {
+    const statusFilter =
+      query?.status === 'inactive' ? EntityStatus.inactive : EntityStatus.active;
     const users = await this.prisma.user.findMany({
+      where: { status: statusFilter },
       orderBy: [
         { role: 'asc' },
         { email: 'asc' },
@@ -169,6 +220,7 @@ export class AdminService {
       action: string;
       target_type: string;
       target_id: string | null;
+      target_display_name: string | null;
       ip_address: string | null;
       metadata_json: Prisma.JsonValue | null;
       created_at: string;
@@ -204,22 +256,63 @@ export class AdminService {
       new Set(logs.map((log) => log.actorId).filter((value): value is string => Boolean(value))),
     );
 
-    const actors =
-      actorIds.length > 0
-        ? await this.prisma.user.findMany({
-            where: {
-              id: {
-                in: actorIds,
-              },
-            },
-            select: {
-              id: true,
-              email: true,
-            },
-          })
-        : [];
+    const nodeIds = Array.from(
+      new Set(
+        logs
+          .filter((l) => l.targetType === 'node' && l.targetId != null)
+          .map((l) => l.targetId as string),
+      ),
+    );
+    const clientIds = Array.from(
+      new Set(
+        logs
+          .filter((l) => l.targetType === 'client' && l.targetId != null)
+          .map((l) => l.targetId as string),
+      ),
+    );
+    const targetUserIds = Array.from(
+      new Set(
+        logs
+          .filter((l) => l.targetType === 'user' && l.targetId != null)
+          .map((l) => l.targetId as string),
+      ),
+    );
+    const allUserIds = Array.from(new Set([...actorIds, ...targetUserIds]));
 
-    const actorEmailById = new Map(actors.map((actor) => [actor.id, actor.email]));
+    const [users, nodes, clients] = await Promise.all([
+      allUserIds.length > 0
+        ? this.prisma.user.findMany({
+            where: { id: { in: allUserIds } },
+            select: { id: true, email: true },
+          })
+        : [],
+      nodeIds.length > 0
+        ? this.prisma.node.findMany({
+            where: { id: { in: nodeIds } },
+            select: { id: true, displayName: true, hostname: true },
+          })
+        : [],
+      clientIds.length > 0
+        ? this.prisma.client.findMany({
+            where: { id: { in: clientIds } },
+            select: { id: true, name: true },
+          })
+        : [],
+    ]);
+
+    const actorEmailById = new Map(users.map((u) => [u.id, u.email]));
+    const nodeDisplayById = new Map(
+      nodes.map((n) => [n.id, n.displayName?.trim() || n.hostname]),
+    );
+    const clientDisplayById = new Map(clients.map((c) => [c.id, c.name]));
+
+    const getTargetDisplayName = (targetType: string, targetId: string | null): string | null => {
+      if (!targetId) return null;
+      if (targetType === 'node') return nodeDisplayById.get(targetId) ?? null;
+      if (targetType === 'client') return clientDisplayById.get(targetId) ?? null;
+      if (targetType === 'user') return actorEmailById.get(targetId) ?? null;
+      return null;
+    };
 
     return {
       generated_at: new Date().toISOString(),
@@ -231,6 +324,7 @@ export class AdminService {
         action: log.action,
         target_type: log.targetType,
         target_id: log.targetId,
+        target_display_name: getTargetDisplayName(log.targetType, log.targetId),
         ip_address: log.ipAddress,
         metadata_json: log.metadataJson,
         created_at: log.createdAt.toISOString(),
@@ -417,6 +511,50 @@ export class AdminService {
         updated_at: updatedUser.updatedAt.toISOString(),
       },
     };
+  }
+
+  async deleteUser(
+    userId: string,
+    actorId?: string,
+    actorIp?: string,
+  ): Promise<{ ok: true; user_id: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, role: true, status: true },
+    });
+    if (!user) {
+      throw new NotFoundException('user not found');
+    }
+    if (actorId && actorId === userId) {
+      throw new ForbiddenException('cannot delete your own user');
+    }
+    if (user.role === UserRole.superadmin && user.status === EntityStatus.active) {
+      const activeSuperadminCount = await this.prisma.user.count({
+        where: {
+          role: UserRole.superadmin,
+          status: EntityStatus.active,
+        },
+      });
+      if (activeSuperadminCount <= 1) {
+        throw new ForbiddenException('cannot delete the last active superadmin');
+      }
+    }
+    await this.writeAuditLog({
+      actorId,
+      action: 'admin.user.delete',
+      targetType: 'user',
+      targetId: userId,
+      ipAddress: actorIp,
+      metadataJson: { email: user.email } as Prisma.JsonObject,
+    });
+    await this.prisma.userSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    await this.prisma.user.delete({
+      where: { id: userId },
+    });
+    return { ok: true, user_id: userId };
   }
 
   async listUserSessions(
@@ -714,6 +852,53 @@ export class AdminService {
     };
   }
 
+  async deleteClient(
+    clientId: string,
+    actorId?: string,
+    actorIp?: string,
+  ): Promise<{ ok: true; client_id: string }> {
+    const client = await this.prisma.client.findUnique({
+      where: { id: clientId },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        sites: {
+          select: {
+            _count: { select: { nodes: true } },
+          },
+        },
+      },
+    });
+    if (!client) {
+      throw new NotFoundException('client not found');
+    }
+    const nodeCount = client.sites.reduce(
+      (sum, site) => sum + site._count.nodes,
+      0,
+    );
+    if (nodeCount > 0) {
+      throw new ConflictException(
+        `Cliente possui ${nodeCount} firewall(s) vinculado(s). Remova os firewalls antes de excluir o cliente.`,
+      );
+    }
+    await this.writeAuditLog({
+      actorId,
+      action: 'admin.client.delete',
+      targetType: 'client',
+      targetId: clientId,
+      ipAddress: actorIp,
+      metadataJson: {
+        name: client.name,
+        code: client.code,
+      } as Prisma.JsonObject,
+    });
+    await this.prisma.client.delete({
+      where: { id: clientId },
+    });
+    return { ok: true, client_id: clientId };
+  }
+
   async updateSite(
     siteId: string,
     dto: UpdateSiteDto,
@@ -812,22 +997,58 @@ export class AdminService {
       secret_hint: string;
     };
   }> {
-    const site = await this.prisma.site.findUnique({
-      where: {
-        id: dto.site_id,
-      },
-      select: {
-        id: true,
-      },
-    });
-    if (!site) {
-      throw new NotFoundException('site not found');
+    const hasSiteId = Boolean(dto.site_id?.trim());
+    const hasClientId = Boolean(dto.client_id?.trim());
+    if (hasSiteId === hasClientId) {
+      throw new BadRequestException(
+        'Provide exactly one of site_id or client_id to create the firewall.',
+      );
     }
 
-    const hostname = dto.hostname.trim();
+    let siteId: string;
+    if (hasSiteId) {
+      const site = await this.prisma.site.findUnique({
+        where: { id: dto.site_id! },
+        select: { id: true },
+      });
+      if (!site) {
+        throw new NotFoundException('site not found');
+      }
+      siteId = site.id;
+    } else {
+      const clientId = dto.client_id!;
+      const client = await this.prisma.client.findUnique({
+        where: { id: clientId },
+        select: { id: true, sites: { select: { id: true } } },
+      });
+      if (!client) {
+        throw new NotFoundException('client not found');
+      }
+      const siteCount = client.sites.length;
+      if (siteCount === 0) {
+        const defaultSite = await this.prisma.site.create({
+          data: {
+            clientId: client.id,
+            name: 'Principal',
+            code: await this.buildUniqueSiteCode(client.id, 'default'),
+            status: EntityStatus.active,
+          },
+        });
+        siteId = defaultSite.id;
+      } else {
+        // 1+ sites: use first site so UX never needs to expose "site" to the operator
+        siteId = client.sites[0].id;
+      }
+    }
+
+    const hostnameRaw = dto.hostname?.trim();
+    const generatedId =
+      hostnameRaw ||
+      `fw-${Math.random().toString(36).slice(2, 10)}`;
     const nodeUid = await this.buildUniqueNodeUid(
-      dto.node_uid?.trim() || hostname || dto.display_name?.trim() || 'firewall',
+      dto.node_uid?.trim() || generatedId || dto.display_name?.trim() || 'firewall',
     );
+    const hostname = hostnameRaw || nodeUid;
 
     const bootstrapSecret = this.generateNodeSecret();
     const secretHint = this.buildSecretHint(bootstrapSecret);
@@ -837,14 +1058,12 @@ export class AdminService {
     const node = await this.prisma.$transaction(async (tx) => {
       const createdNode = await tx.node.create({
         data: {
-          siteId: dto.site_id,
+          siteId,
           nodeUid,
           hostname,
           displayName: normalizeOptional(dto.display_name),
           managementIp: normalizeOptional(dto.management_ip),
           wanIp: normalizeOptional(dto.wan_ip),
-          pfsenseVersion: normalizeOptional(dto.pfsense_version),
-          agentVersion: normalizeOptional(dto.agent_version),
           haRole: normalizeOptional(dto.ha_role),
           maintenanceMode: dto.maintenance_mode ?? false,
           status: NodeStatus.unknown,
@@ -1011,14 +1230,6 @@ export class AdminService {
             : undefined,
         wanIp:
           dto.wan_ip !== undefined ? normalizeOptional(dto.wan_ip) : undefined,
-        pfsenseVersion:
-          dto.pfsense_version !== undefined
-            ? normalizeOptional(dto.pfsense_version)
-            : undefined,
-        agentVersion:
-          dto.agent_version !== undefined
-            ? normalizeOptional(dto.agent_version)
-            : undefined,
         haRole:
           dto.ha_role !== undefined ? normalizeOptional(dto.ha_role) : undefined,
       },
@@ -1292,10 +1503,120 @@ export class AdminService {
     };
   }
 
+  async deleteNode(
+    nodeId: string,
+    actorId?: string,
+    actorIp?: string,
+  ): Promise<{
+    ok: true;
+    node_id: string;
+    node_uid: string;
+    deleted_at: string;
+  }> {
+    const node = await this.prisma.node.findUnique({
+      where: { id: nodeId },
+      select: {
+        id: true,
+        nodeUid: true,
+        hostname: true,
+        displayName: true,
+      },
+    });
+    if (!node) {
+      throw new NotFoundException('node not found');
+    }
+
+    const targetName = node.displayName ?? node.hostname;
+
+    await this.writeAuditLog({
+      actorId,
+      action: 'admin.node.delete',
+      targetType: 'node',
+      targetId: nodeId,
+      ipAddress: actorIp,
+      metadataJson: {
+        mode: 'single',
+        node_uid: node.nodeUid,
+        target_name: targetName,
+      } as Prisma.JsonObject,
+    });
+
+    await this.prisma.node.delete({
+      where: { id: nodeId },
+    });
+
+    return {
+      ok: true,
+      node_id: nodeId,
+      node_uid: node.nodeUid,
+      deleted_at: new Date().toISOString(),
+    };
+  }
+
+  async deleteNodesBatch(
+    ids: string[],
+    actorId?: string,
+    actorIp?: string,
+  ): Promise<{
+    ok: true;
+    deleted_count: number;
+    deleted_ids: string[];
+    deleted_at: string;
+  }> {
+    const uniqueIds = Array.from(new Set(ids));
+    if (uniqueIds.length === 0) {
+      throw new ConflictException('ids must contain at least one node id');
+    }
+
+    const nodes = await this.prisma.node.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true, nodeUid: true, hostname: true, displayName: true },
+    });
+
+    const foundIds = new Set(nodes.map((n) => n.id));
+    const missingIds = uniqueIds.filter((id) => !foundIds.has(id));
+    if (missingIds.length > 0) {
+      throw new NotFoundException(
+        `node(s) not found: ${missingIds.slice(0, 5).join(', ')}${missingIds.length > 5 ? ` and ${missingIds.length - 5} more` : ''}`,
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          actorType: 'user_session',
+          actorId,
+          action: 'admin.node.delete',
+          targetType: 'node',
+          targetId: uniqueIds[0],
+          ipAddress: actorIp,
+          metadataJson: {
+            mode: 'batch',
+            ids: uniqueIds,
+            node_uids: nodes.map((n) => n.nodeUid),
+            target_names: nodes.map((n) => n.displayName ?? n.hostname),
+          } as Prisma.JsonObject,
+        },
+      });
+
+      await tx.node.deleteMany({
+        where: { id: { in: uniqueIds } },
+      });
+    });
+
+    return {
+      ok: true,
+      deleted_count: uniqueIds.length,
+      deleted_ids: uniqueIds,
+      deleted_at: new Date().toISOString(),
+    };
+  }
+
   async getBootstrapCommand(
     nodeId: string,
     releaseBaseUrlOverride?: string,
     controllerUrlOverride?: string,
+    heartbeatModeOverride?: string,
   ): Promise<{
     node: {
       id: string;
@@ -1305,6 +1626,7 @@ export class AdminService {
       client_code: string;
       site_code: string;
     };
+    heartbeat_mode: BootstrapHeartbeatMode;
     release: {
       version: string;
       release_base_url: string | null;
@@ -1317,6 +1639,7 @@ export class AdminService {
     };
     command: string | null;
     package_command: string | null;
+    uninstall_command: string | null;
     bootstrap: {
       node_secret: string;
       secret_hint: string;
@@ -1358,6 +1681,7 @@ export class AdminService {
     }
 
     const bootstrapSecret = this.nodeSecretCrypto.decrypt(credential.secretEncrypted);
+    const heartbeatMode = normalizeBootstrapHeartbeatMode(heartbeatModeOverride);
     const version = appConfig.systemVersion;
     const artifactName = `monitor-pfsense-agent-v${version}.tar.gz`;
     const releaseBaseUrl =
@@ -1378,12 +1702,20 @@ export class AdminService {
           `fetch -o /tmp/monitor-pfsense-agent.sha256 ${shellQuote(checksumUrl!)}`,
           `chmod +x /tmp/install-from-release.sh`,
           `SHA256_VALUE=$(awk 'NR==1 {print $1}' /tmp/monitor-pfsense-agent.sha256)`,
-          `/tmp/install-from-release.sh --release-url ${shellQuote(artifactUrl!)} --sha256 "$SHA256_VALUE" --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)}`,
+          `/tmp/install-from-release.sh --release-url ${shellQuote(artifactUrl!)} --sha256 "$SHA256_VALUE" --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)} --heartbeat-mode ${shellQuote(heartbeatMode)}`,
         ].join(' && ')
       : null;
 
-    const { packageRelease } = appConfig;
+    // Preferência: ficheiro em runtime (sempre atualizado após git pull); fallback: env (appConfig)
+    const packageReleaseFromFile = readPackageReleaseFromFile();
+    const packageRelease = packageReleaseFromFile ?? {
+      version: appConfig.packageRelease.version,
+      sha256: appConfig.packageRelease.sha256,
+      repoRawBase: appConfig.packageRelease.repoRawBase,
+    };
+
     let package_command: string | null = null;
+    let uninstall_command: string | null = null;
     if (
       packageRelease.version &&
       packageRelease.sha256 &&
@@ -1393,12 +1725,16 @@ export class AdminService {
       const installerUrlPkg = `${base}/packages/pfsense-package/bootstrap/install-from-release.sh`;
       const artifactUrlPkg = `${base}/dist/pfsense-package/monitor-pfsense-package-v${packageRelease.version}.tar.gz`;
       package_command =
-        `fetch -o /tmp/install-from-release.sh ${shellQuote(installerUrlPkg)} && chmod +x /tmp/install-from-release.sh && nohup /tmp/install-from-release.sh --release-url ${shellQuote(artifactUrlPkg)} --sha256 ${shellQuote(packageRelease.sha256)} --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)} </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'`;
+        `fetch -o /tmp/install-from-release.sh ${shellQuote(installerUrlPkg)} && chmod +x /tmp/install-from-release.sh && nohup /tmp/install-from-release.sh --release-url ${shellQuote(artifactUrlPkg)} --sha256 ${shellQuote(packageRelease.sha256)} --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)} --heartbeat-mode ${shellQuote(heartbeatMode)} </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'`;
+      const uninstallScriptUrl = `${base}/packages/pfsense-package/bootstrap/uninstall.sh`;
+      uninstall_command =
+        `fetch -o /tmp/uninstall-systemup-monitor.sh ${shellQuote(uninstallScriptUrl)} && chmod +x /tmp/uninstall-systemup-monitor.sh && /tmp/uninstall-systemup-monitor.sh`;
     }
 
     const postInstallSteps = [
       'service monitor_pfsense_agent status',
       '/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh print-config',
+      "egrep '^(MONITOR_AGENT_LIGHT_HEARTBEAT|MONITOR_AGENT_SERVICES)=' /usr/local/etc/monitor-pfsense-agent.conf",
       '/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh test-connection',
       '/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh heartbeat',
       'tail -n 50 /var/log/monitor-pfsense-agent.log',
@@ -1413,6 +1749,7 @@ export class AdminService {
         client_code: node.site.client.code,
         site_code: node.site.code,
       },
+      heartbeat_mode: heartbeatMode,
       release: {
         version,
         release_base_url: releaseBaseUrl,
@@ -1425,6 +1762,7 @@ export class AdminService {
       },
       command,
       package_command,
+      uninstall_command,
       bootstrap: {
         node_secret: bootstrapSecret,
         secret_hint: credential.secretHint,

@@ -20,10 +20,6 @@ export type SummaryResponse = {
     maintenance: number;
     unknown: number;
     open_alerts: number;
-    versions_out_of_matrix: number;
-  };
-  version_matrix: {
-    homologated_pfsense_versions: string[];
   };
 };
 
@@ -42,16 +38,20 @@ export type NodesListResponse = {
     maintenance_mode: boolean;
     last_seen_at: string | null;
     pfsense_version: string | null;
-    pfsense_version_homologated: boolean;
     agent_version: string | null;
     management_ip: string | null;
     wan_ip: string | null;
     open_alerts: number;
+    cpu_percent: number | null;
+    memory_percent: number | null;
+    disk_percent: number | null;
+    uptime_seconds: number | null;
   }>;
 };
 
 export type NodesFiltersResponse = {
   generated_at: string;
+  inactive_client_count?: number;
   clients: Array<{
     id: string;
     name: string;
@@ -96,8 +96,8 @@ export type NodeDetailsResponse = {
     };
     management_ip: string | null;
     wan_ip: string | null;
+    network_interfaces: Array<{ name: string; ip: string }> | null;
     pfsense_version: string | null;
-    pfsense_version_homologated: boolean;
     agent_version: string | null;
     ha_role: string | null;
     last_seen_at: string | null;
@@ -338,6 +338,7 @@ export type NodeBootstrapCommandResponse = {
     client_code: string;
     site_code: string;
   };
+  heartbeat_mode: 'normal' | 'light';
   release: {
     version: string;
     release_base_url: string | null;
@@ -350,6 +351,7 @@ export type NodeBootstrapCommandResponse = {
   };
   command: string | null;
   package_command: string | null;
+  uninstall_command: string | null;
   bootstrap: {
     node_secret: string;
     secret_hint: string;
@@ -414,6 +416,7 @@ export type AuditLogsResponse = {
     action: string;
     target_type: string;
     target_id: string | null;
+    target_display_name: string | null;
     ip_address: string | null;
     metadata_json: unknown;
     created_at: string;
@@ -421,7 +424,7 @@ export type AuditLogsResponse = {
 };
 
 type ApiFetchOptions = {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'DELETE';
   body?: unknown;
   csrfProtected?: boolean;
 };
@@ -461,33 +464,59 @@ async function getRequestCookieHeader(): Promise<string | null> {
 
 async function apiFetch<T>(path: string, options?: ApiFetchOptions): Promise<T> {
   const cookieHeader = await getRequestCookieHeader();
-  const requestHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const method = options?.method ?? 'GET';
+  const hasBody =
+    options?.body !== undefined &&
+    options?.body !== null &&
+    method !== 'DELETE';
+  const bodyPayload = hasBody
+    ? JSON.stringify(options.body)
+    : method === 'POST'
+      ? '{}'
+      : undefined;
 
+  const requestHeaders: Record<string, string> = {};
   if (cookieHeader) {
     requestHeaders.Cookie = cookieHeader;
   }
-
-    if (options?.csrfProtected) {
-      const cookieStore = await cookies();
+  if (bodyPayload !== undefined) {
+    requestHeaders['Content-Type'] = 'application/json';
+  }
+  if (options?.csrfProtected) {
+    const cookieStore = await cookies();
     const csrfToken = cookieStore.get(csrfCookieName)?.value;
     if (csrfToken) {
       requestHeaders['X-CSRF-Token'] = csrfToken;
     }
   }
 
-  const method = options?.method ?? 'GET';
-  const hasBody = options?.body !== undefined && options?.body !== null;
-  const bodyPayload =
-    hasBody ? JSON.stringify(options.body) : (method !== 'GET' ? '{}' : undefined);
+  const timeoutMs = 28000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  const response = await fetch(`${requireEnv(apiBaseUrl, 'MONITOR_API_BASE_URL')}${path}`, {
-    method,
-    headers: requestHeaders,
-    body: bodyPayload,
-    cache: 'no-store',
-  });
+  let response: Response;
+  try {
+    response = await fetch(
+      `${requireEnv(apiBaseUrl, 'MONITOR_API_BASE_URL')}${path}`,
+      {
+        method,
+        headers: requestHeaders,
+        body: bodyPayload,
+        cache: 'no-store',
+        signal: controller.signal,
+      },
+    );
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new ApiError(
+        `A requisição demorou mais de ${timeoutMs / 1000}s e foi cancelada. O servidor pode estar lento.`,
+        408,
+      );
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     let message = `API request failed with status ${response.status}`;
@@ -518,6 +547,9 @@ export async function getNodesList(query?: {
   site_id?: string;
   status?: string;
   search?: string;
+  sort_by?: 'name' | 'agent_version' | 'version';
+  sort_order?: 'asc' | 'desc';
+  limit?: number;
 }): Promise<NodesListResponse> {
   const params = new URLSearchParams();
   if (query?.client_id) {
@@ -531,6 +563,15 @@ export async function getNodesList(query?: {
   }
   if (query?.search) {
     params.set('search', query.search);
+  }
+  if (query?.sort_by) {
+    params.set('sort_by', query.sort_by);
+  }
+  if (query?.sort_order) {
+    params.set('sort_order', query.sort_order);
+  }
+  if (query?.limit != null) {
+    params.set('limit', String(query.limit));
   }
 
   const suffix = params.toString() ? `?${params.toString()}` : '';
@@ -549,6 +590,7 @@ export async function getNodeBootstrapCommand(
   id: string,
   releaseBaseUrl?: string,
   controllerUrl?: string,
+  heartbeatMode?: 'normal' | 'light',
 ): Promise<NodeBootstrapCommandResponse> {
   const params = new URLSearchParams();
   if (releaseBaseUrl?.trim()) {
@@ -556,6 +598,9 @@ export async function getNodeBootstrapCommand(
   }
   if (controllerUrl?.trim()) {
     params.set('controller_url', controllerUrl.trim());
+  }
+  if (heartbeatMode) {
+    params.set('heartbeat_mode', heartbeatMode);
   }
 
   const suffix = params.toString() ? `?${params.toString()}` : '';
@@ -666,8 +711,18 @@ export async function createClient(input: {
   });
 }
 
-export async function getUsersList(): Promise<UsersListResponse> {
-  return apiFetch<UsersListResponse>('/api/v1/admin/users');
+export async function getUsersList(params?: {
+  status?: 'active' | 'inactive';
+}): Promise<UsersListResponse> {
+  const search = params?.status ? `?status=${params.status}` : '';
+  return apiFetch<UsersListResponse>(`/api/v1/admin/users${search}`);
+}
+
+export async function deleteUser(id: string): Promise<{ ok: true; user_id: string }> {
+  return apiFetch(`/api/v1/admin/users/${id}`, {
+    method: 'DELETE',
+    csrfProtected: true,
+  });
 }
 
 export async function createUser(input: {
@@ -734,6 +789,13 @@ export async function updateClient(
   });
 }
 
+export async function deleteClient(id: string): Promise<{ ok: true; client_id: string }> {
+  return apiFetch(`/api/v1/admin/clients/${id}`, {
+    method: 'DELETE',
+    csrfProtected: true,
+  });
+}
+
 export async function createSite(input: {
   client_id: string;
   name: string;
@@ -769,7 +831,8 @@ export async function updateSite(
 }
 
 export async function createNode(input: {
-  site_id: string;
+  site_id?: string;
+  client_id?: string;
   node_uid?: string;
   hostname: string;
   display_name?: string;
@@ -833,6 +896,31 @@ export async function setNodeMaintenance(
     body: {
       maintenance_mode,
     },
+    csrfProtected: true,
+  });
+}
+
+export async function deleteNode(id: string): Promise<{
+  ok: true;
+  node_id: string;
+  node_uid: string;
+  deleted_at: string;
+}> {
+  return apiFetch(`/api/v1/admin/nodes/${id}`, {
+    method: 'DELETE',
+    csrfProtected: true,
+  });
+}
+
+export async function deleteNodesBatch(ids: string[]): Promise<{
+  ok: true;
+  deleted_count: number;
+  deleted_ids: string[];
+  deleted_at: string;
+}> {
+  return apiFetch('/api/v1/admin/nodes/delete-batch', {
+    method: 'POST',
+    body: { ids },
     csrfProtected: true,
   });
 }

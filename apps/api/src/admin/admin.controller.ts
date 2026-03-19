@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
@@ -27,6 +28,8 @@ import { UpdateNodeDto } from './dto/update-node.dto';
 import { UpdateSiteDto } from './dto/update-site.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAgentTokenDto } from './dto/create-agent-token.dto';
+import { DeleteNodesBatchDto } from './dto/delete-nodes-batch.dto';
+import { ListUsersQueryDto } from './dto/list-users-query.dto';
 
 @Roles(UserRole.superadmin, UserRole.admin)
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -36,8 +39,22 @@ export class AdminController {
 
   @Get('users')
   @Roles(UserRole.superadmin)
-  listUsers() {
-    return this.adminService.listUsers();
+  listUsers(@Query() query: ListUsersQueryDto) {
+    return this.adminService.listUsers(query);
+  }
+
+  @Delete('users/:id')
+  @Roles(UserRole.superadmin)
+  deleteUser(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Headers('cf-connecting-ip') cfConnectingIp?: string,
+  ) {
+    return this.adminService.deleteUser(
+      id,
+      request.auth?.userId,
+      cfConnectingIp ?? request.ip,
+    );
   }
 
   @Get('audit')
@@ -129,6 +146,19 @@ export class AdminController {
     );
   }
 
+  @Delete('clients/:id')
+  deleteClient(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Headers('cf-connecting-ip') cfConnectingIp?: string,
+  ) {
+    return this.adminService.deleteClient(
+      id,
+      request.auth?.userId,
+      cfConnectingIp ?? request.ip,
+    );
+  }
+
   @Post('sites')
   createSite(
     @Body() body: CreateSiteDto,
@@ -165,6 +195,19 @@ export class AdminController {
   ) {
     return this.adminService.createNode(
       body,
+      request.auth?.userId,
+      cfConnectingIp ?? request.ip,
+    );
+  }
+
+  @Post('nodes/delete-batch')
+  deleteNodesBatch(
+    @Body() body: DeleteNodesBatchDto,
+    @Req() request: RawBodyRequest & AuthenticatedRequest,
+    @Headers('cf-connecting-ip') cfConnectingIp?: string,
+  ) {
+    return this.adminService.deleteNodesBatch(
+      body.ids,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
     );
@@ -253,7 +296,21 @@ export class AdminController {
     @Param('id') id: string,
     @Query('release_base_url') releaseBaseUrl?: string,
     @Query('controller_url') controllerUrl?: string,
+    @Query('heartbeat_mode') heartbeatMode?: string,
   ) {
-    return this.adminService.getBootstrapCommand(id, releaseBaseUrl, controllerUrl);
+    return this.adminService.getBootstrapCommand(id, releaseBaseUrl, controllerUrl, heartbeatMode);
+  }
+
+  @Delete('nodes/:id')
+  deleteNode(
+    @Param('id') id: string,
+    @Req() request: RawBodyRequest & AuthenticatedRequest,
+    @Headers('cf-connecting-ip') cfConnectingIp?: string,
+  ) {
+    return this.adminService.deleteNode(
+      id,
+      request.auth?.userId,
+      cfConnectingIp ?? request.ip,
+    );
   }
 }

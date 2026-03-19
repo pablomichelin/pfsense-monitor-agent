@@ -12,7 +12,8 @@ function systemup_monitor_cli_usage()
 {
     $usage = <<<TXT
 Usage:
-  systemup_monitor_cli.php seed [--controller-url URL] [--node-uid UID] [--node-secret SECRET] [--customer-code CODE] [--interval-seconds N] [--services CSV] [--enable]
+  systemup_monitor_cli.php seed [--controller-url URL] [--node-uid UID] [--node-secret SECRET] [--customer-code CODE] [--interval-seconds N] [--services CSV] [--heartbeat-mode normal|light] [--enable]
+  systemup_monitor_cli.php sync   Regenera o config do agente com a versão atual do package (AGENT_VERSION).
   systemup_monitor_cli.php remove
 TXT;
 
@@ -47,6 +48,9 @@ function systemup_monitor_cli_parse_args($argv)
             case '--services':
                 $options['services_csv'] = $argv[++$index] ?? '';
                 break;
+            case '--heartbeat-mode':
+                $options['heartbeat_mode'] = $argv[++$index] ?? '';
+                break;
             case '--enable':
                 $options['enable'] = true;
                 break;
@@ -69,6 +73,9 @@ function systemup_monitor_cli_seed($options)
         if (isset($options[$field]) && $options[$field] !== '') {
             $pkg[$field] = $options[$field];
         }
+    }
+    if (isset($options['heartbeat_mode']) && $options['heartbeat_mode'] !== '') {
+        $pkg['heartbeat_mode'] = systemup_monitor_normalize_heartbeat_mode($options['heartbeat_mode']);
     }
 
     $pkg['enabled'] = $options['enable'] ? 'on' : '';
@@ -101,6 +108,10 @@ try {
     switch ($action) {
         case 'seed':
             systemup_monitor_cli_seed(systemup_monitor_cli_parse_args($argv));
+            exit(0);
+        case 'sync':
+            systemup_monitor_sync_config();
+            echo "Config do agente regenerado (AGENT_VERSION=" . (defined('SYSTEMUP_MONITOR_AGENT_VERSION') ? SYSTEMUP_MONITOR_AGENT_VERSION : '0.2.0') . ").\n";
             exit(0);
         case 'remove':
             systemup_monitor_cli_remove();

@@ -22,6 +22,7 @@ AGENT_VERSION="0.1.0"
 SCHEMA_VERSION="2026-01"
 INTERVAL_SECONDS="30"
 MONITOR_AGENT_SERVICES="unbound,dhcpd,openvpn,ipsec,wireguard,ntpd,dpinger"
+HEARTBEAT_MODE="normal"
 AUTO_START="1"
 
 usage() {
@@ -42,6 +43,7 @@ Options:
   --schema-version VALUE
   --interval-seconds VALUE
   --services CSV
+  --heartbeat-mode normal|light
   --no-start
 EOF
 }
@@ -64,11 +66,23 @@ while [ "$#" -gt 0 ]; do
     --schema-version) SCHEMA_VERSION="$2"; shift 2 ;;
     --interval-seconds) INTERVAL_SECONDS="$2"; shift 2 ;;
     --services) MONITOR_AGENT_SERVICES="$2"; shift 2 ;;
+    --heartbeat-mode) HEARTBEAT_MODE="$2"; shift 2 ;;
     --no-start) AUTO_START="0"; shift 1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
   esac
 done
+
+case "$(printf '%s' "$HEARTBEAT_MODE" | tr '[:upper:]' '[:lower:]')" in
+  light) HEARTBEAT_MODE="light" ;;
+  normal|"") HEARTBEAT_MODE="normal" ;;
+  *) echo "Invalid heartbeat mode: $HEARTBEAT_MODE (use normal or light)" >&2; exit 1 ;;
+esac
+
+MONITOR_AGENT_LIGHT_HEARTBEAT="0"
+if [ "$HEARTBEAT_MODE" = "light" ]; then
+  MONITOR_AGENT_LIGHT_HEARTBEAT="1"
+fi
 
 for required in CONTROLLER_URL NODE_UID NODE_SECRET CUSTOMER_CODE; do
   eval "value=\${$required}"
@@ -105,6 +119,7 @@ SCHEMA_VERSION="$SCHEMA_VERSION"
 MONITOR_AGENT_INTERVAL_SECONDS="$INTERVAL_SECONDS"
 MONITOR_AGENT_LOG_FILE="/var/log/monitor-pfsense-agent.log"
 MONITOR_AGENT_SERVICES="$MONITOR_AGENT_SERVICES"
+MONITOR_AGENT_LIGHT_HEARTBEAT="$MONITOR_AGENT_LIGHT_HEARTBEAT"
 EOF
 
 if [ -n "$HOSTNAME_OVERRIDE" ]; then

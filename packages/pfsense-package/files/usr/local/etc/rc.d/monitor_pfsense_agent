@@ -22,8 +22,8 @@ onecmd="YES"
 
 monitor_pfsense_agent_start()
 {
-	# Garantir PATH com /usr/local/bin para o loop achar curl/openssl/php
-	export PATH="/usr/local/bin:/usr/bin:/bin${PATH:+:$PATH}"
+	# Garantir PATH com /usr/local/bin e /usr/local/sbin (swanctl) para o loop
+	export PATH="/usr/local/sbin:/usr/local/bin:/usr/bin:/bin${PATH:+:$PATH}"
 	/usr/sbin/daemon -p "${pidfile}" "${agent_loop}"
 }
 
