@@ -1,0 +1,986 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mockup - Backup pfSense</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #050a12;
+        --panel: #0c1728;
+        --panel-soft: #101e33;
+        --line: rgba(100, 116, 139, 0.34);
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --cyan: #22d3ee;
+        --green: #22c55e;
+        --yellow: #eab308;
+        --red: #ef4444;
+        --blue: #2563eb;
+        --pf-bg: #f3f5f7;
+        --pf-panel: #ffffff;
+        --pf-line: #d7dde4;
+        --pf-text: #263238;
+        --pf-muted: #667085;
+        --pf-blue: #337ab7;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at 10% 0%, rgba(34, 211, 238, 0.16), transparent 24%),
+          radial-gradient(circle at 85% 4%, rgba(59, 130, 246, 0.14), transparent 22%),
+          linear-gradient(180deg, #040914 0%, #07101d 48%, #050a12 100%);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      .page {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 28px;
+      }
+
+      .mock-nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 22px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 36px;
+        height: 36px;
+        place-items: center;
+        border: 1px solid rgba(34, 211, 238, 0.45);
+        border-radius: 10px;
+        background: rgba(34, 211, 238, 0.08);
+        color: var(--cyan);
+        font-weight: 800;
+      }
+
+      .mock-switch {
+        display: flex;
+        gap: 8px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.76);
+      }
+
+      .mock-switch span {
+        padding: 8px 12px;
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .mock-switch .active {
+        background: rgba(34, 211, 238, 0.14);
+        color: #cffafe;
+      }
+
+      .mock-title {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 18px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--cyan);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 8px;
+        font-size: clamp(28px, 4vw, 44px);
+        letter-spacing: 0;
+      }
+
+      .lead {
+        max-width: 760px;
+        margin-bottom: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .screen {
+        overflow: hidden;
+        border: 1px solid rgba(100, 116, 139, 0.42);
+        border-radius: 18px;
+        background: rgba(2, 6, 23, 0.7);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+      }
+
+      .monitor-shell {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        min-height: 760px;
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--line);
+        background: rgba(8, 17, 31, 0.92);
+        padding: 22px 16px;
+      }
+
+      .side-logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 28px;
+        font-weight: 800;
+      }
+
+      .side-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        color: #aab7c8;
+        font-size: 14px;
+      }
+
+      .side-item.active {
+        border: 1px solid rgba(34, 211, 238, 0.32);
+        background: rgba(34, 211, 238, 0.1);
+        color: #e0faff;
+      }
+
+      .monitor-main {
+        padding: 24px;
+      }
+
+      .node-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 18px;
+      }
+
+      .crumb {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .node-header h2 {
+        margin: 8px 0 8px;
+        font-size: 28px;
+        letter-spacing: 0;
+      }
+
+      .status-pill,
+      .pf-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .status-pill {
+        padding: 8px 12px;
+        border: 1px solid rgba(34, 197, 94, 0.36);
+        background: rgba(34, 197, 94, 0.1);
+        color: #bbf7d0;
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        background: currentColor;
+        box-shadow: 0 0 12px currentColor;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .metric,
+      .card,
+      .backup-panel {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(12, 23, 40, 0.92), rgba(8, 17, 31, 0.9));
+      }
+
+      .metric {
+        padding: 14px;
+      }
+
+      .label {
+        margin-bottom: 8px;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+      }
+
+      .metric strong {
+        display: block;
+        color: #fff;
+        font-size: 22px;
+      }
+
+      .grid-two {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+        gap: 14px;
+      }
+
+      .backup-panel {
+        padding: 18px;
+      }
+
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .section-head h3 {
+        margin-bottom: 4px;
+        font-size: 20px;
+      }
+
+      .section-head p {
+        margin-bottom: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .button,
+      .button-muted,
+      .button-danger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 36px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 750;
+      }
+
+      .button {
+        border: 1px solid rgba(34, 211, 238, 0.42);
+        background: rgba(34, 211, 238, 0.13);
+        color: #cffafe;
+      }
+
+      .button-muted {
+        border: 1px solid var(--line);
+        background: rgba(15, 23, 42, 0.62);
+        color: #dbeafe;
+      }
+
+      .button-danger {
+        border: 1px solid rgba(239, 68, 68, 0.34);
+        background: rgba(239, 68, 68, 0.1);
+        color: #fecaca;
+      }
+
+      .backup-summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+
+      .mini {
+        border: 1px solid rgba(71, 85, 105, 0.42);
+        border-radius: 12px;
+        background: rgba(15, 23, 42, 0.58);
+        padding: 12px;
+      }
+
+      .mini strong {
+        display: block;
+        color: #fff;
+        font-size: 18px;
+      }
+
+      .hash {
+        color: #67e8f9;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+
+      .backup-table {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: 12px;
+        font-size: 13px;
+      }
+
+      .backup-table th,
+      .backup-table td {
+        border-bottom: 1px solid rgba(71, 85, 105, 0.36);
+        padding: 11px 10px;
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      .backup-table th {
+        color: #94a3b8;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .backup-table tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .ok {
+        color: #86efac;
+      }
+
+      .warn {
+        color: #fde68a;
+      }
+
+      .side-card {
+        padding: 16px;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 12px;
+      }
+
+      .event {
+        display: grid;
+        grid-template-columns: 12px 1fr;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .event-dot {
+        width: 10px;
+        height: 10px;
+        margin-top: 4px;
+        border-radius: 999px;
+        background: var(--cyan);
+      }
+
+      .pf-screen {
+        overflow: hidden;
+        background: var(--pf-bg);
+        color: var(--pf-text);
+        font-family:
+          Arial, Helvetica, sans-serif;
+      }
+
+      .pf-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 52px;
+        padding: 0 22px;
+        background: #1f2933;
+        color: #fff;
+      }
+
+      .pf-logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .pf-logo-mark {
+        display: grid;
+        width: 32px;
+        height: 32px;
+        place-items: center;
+        border-radius: 5px;
+        background: #d9232e;
+        font-weight: 800;
+      }
+
+      .pf-menu {
+        display: flex;
+        gap: 20px;
+        color: #dbe4ee;
+        font-size: 13px;
+      }
+
+      .pf-wrap {
+        padding: 20px;
+      }
+
+      .pf-breadcrumb {
+        margin-bottom: 12px;
+        color: var(--pf-muted);
+        font-size: 13px;
+      }
+
+      .pf-titlebar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .pf-titlebar h2 {
+        margin: 0;
+        color: #1f2937;
+        font-size: 24px;
+        font-weight: 500;
+      }
+
+      .pf-tabs {
+        display: flex;
+        gap: 2px;
+        margin-bottom: 14px;
+        border-bottom: 1px solid var(--pf-line);
+      }
+
+      .pf-tabs span {
+        padding: 10px 14px;
+        border: 1px solid transparent;
+        border-bottom: 0;
+        border-radius: 4px 4px 0 0;
+        color: var(--pf-blue);
+        font-size: 13px;
+      }
+
+      .pf-tabs .active {
+        border-color: var(--pf-line);
+        background: #fff;
+        color: #222;
+      }
+
+      .pf-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 16px;
+      }
+
+      .pf-panel {
+        border: 1px solid var(--pf-line);
+        border-radius: 4px;
+        background: var(--pf-panel);
+        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+      }
+
+      .pf-panel-head {
+        padding: 11px 14px;
+        border-bottom: 1px solid var(--pf-line);
+        background: #f8fafc;
+        color: #263238;
+        font-weight: 700;
+      }
+
+      .pf-panel-body {
+        padding: 14px;
+      }
+
+      .pf-field {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: 14px;
+        align-items: start;
+        padding: 12px 0;
+        border-bottom: 1px solid #edf1f5;
+      }
+
+      .pf-field:last-child {
+        border-bottom: 0;
+      }
+
+      .pf-field label {
+        color: #374151;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .pf-help {
+        margin-top: 5px;
+        color: var(--pf-muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .pf-input,
+      .pf-select {
+        width: 100%;
+        height: 34px;
+        border: 1px solid #cfd7df;
+        border-radius: 4px;
+        background: #fff;
+        color: #111827;
+        padding: 6px 9px;
+        font-size: 13px;
+      }
+
+      .pf-check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 34px;
+        color: #263238;
+        font-size: 13px;
+      }
+
+      .pf-actions {
+        display: flex;
+        gap: 8px;
+        padding-top: 14px;
+      }
+
+      .pf-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 34px;
+        padding: 6px 12px;
+        border: 1px solid #2e6da4;
+        border-radius: 4px;
+        background: #337ab7;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .pf-btn.secondary {
+        border-color: #ccc;
+        background: #fff;
+        color: #333;
+      }
+
+      .pf-btn.success {
+        border-color: #4cae4c;
+        background: #5cb85c;
+      }
+
+      .pf-badge {
+        padding: 6px 9px;
+        border: 1px solid #b7ebc6;
+        background: #e7f8ec;
+        color: #1f7a3b;
+      }
+
+      .pf-stat {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        padding: 10px 0;
+        border-bottom: 1px solid #edf1f5;
+        font-size: 13px;
+      }
+
+      .pf-stat:last-child {
+        border-bottom: 0;
+      }
+
+      .pf-stat span {
+        color: var(--pf-muted);
+      }
+
+      .pf-stat strong {
+        color: #1f2937;
+        max-width: 170px;
+        overflow-wrap: anywhere;
+        text-align: right;
+      }
+
+      .pf-code {
+        overflow: auto;
+        margin: 0;
+        border: 1px solid #d7dde4;
+        border-radius: 4px;
+        background: #101820;
+        color: #c6f6d5;
+        padding: 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .caption {
+        margin: 16px 0 28px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      @media (max-width: 940px) {
+        .monitor-shell,
+        .grid-two,
+        .pf-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          display: none;
+        }
+
+        .metrics,
+        .backup-summary {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .pf-field {
+          grid-template-columns: 1fr;
+          gap: 6px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <nav class="mock-nav">
+        <div class="brand">
+          <div class="brand-mark">SU</div>
+          <div>
+            <div>Mockup Backup pfSense</div>
+            <div style="color: var(--muted); font-size: 12px;">Painel web + package pfSense</div>
+          </div>
+        </div>
+        <div class="mock-switch">
+          <span class="active">Painel pfs-monitor</span>
+          <span>App pfSense</span>
+        </div>
+      </nav>
+
+      <section class="mock-title">
+        <div>
+          <p class="eyebrow">MVP proposto</p>
+          <h1>Backup de configuração integrado</h1>
+          <p class="lead">
+            O painel mostra inventário, saúde e histórico dos backups. A tela do pfSense
+            controla se o envio está ativo, quando roda e permite diagnóstico local.
+          </p>
+        </div>
+      </section>
+
+      <section class="screen" aria-label="Mockup do painel pfs-monitor">
+        <div class="monitor-shell">
+          <aside class="sidebar">
+            <div class="side-logo">
+              <div class="brand-mark">PF</div>
+              <span>Monitor-Pfsense</span>
+            </div>
+            <div class="side-item">Dashboard</div>
+            <div class="side-item active">Firewalls</div>
+            <div class="side-item">Alertas</div>
+            <div class="side-item">Auditoria</div>
+            <div class="side-item">Administração</div>
+          </aside>
+
+          <section class="monitor-main">
+            <div class="node-header">
+              <div>
+                <div class="crumb">Clientes / Ortoclin / Firewall Matriz</div>
+                <h2>pfSense Ortoclin</h2>
+                <p class="lead">Node <span class="hash">ortoclin-fw01</span> · pfSense 2.8.1 · heartbeat há 22s</p>
+              </div>
+              <span class="status-pill"><span class="dot"></span> Online</span>
+            </div>
+
+            <div class="metrics">
+              <div class="metric">
+                <div class="label">Gateway</div>
+                <strong>18 ms</strong>
+              </div>
+              <div class="metric">
+                <div class="label">Perda</div>
+                <strong>0%</strong>
+              </div>
+              <div class="metric">
+                <div class="label">VPNs</div>
+                <strong>3 OK</strong>
+              </div>
+              <div class="metric">
+                <div class="label">Agente</div>
+                <strong>0.3.0</strong>
+              </div>
+            </div>
+
+            <div class="grid-two">
+              <section class="backup-panel">
+                <div class="section-head">
+                  <div>
+                    <h3>Backups de configuração</h3>
+                    <p>Histórico do <span class="hash">/conf/config.xml</span> enviado pelo package pfSense.</p>
+                  </div>
+                  <div class="actions">
+                    <span class="status-pill"><span class="dot"></span> Em dia</span>
+                    <span class="button">Solicitar backup agora</span>
+                    <span class="button-muted">Auditoria</span>
+                  </div>
+                </div>
+
+                <div class="backup-summary">
+                  <div class="mini">
+                    <div class="label">Último backup</div>
+                    <strong>Hoje 02:14</strong>
+                  </div>
+                  <div class="mini">
+                    <div class="label">Idade</div>
+                    <strong>3h 18m</strong>
+                  </div>
+                  <div class="mini">
+                    <div class="label">Tamanho</div>
+                    <strong>412 KB</strong>
+                  </div>
+                  <div class="mini">
+                    <div class="label">SHA256</div>
+                    <strong class="hash">a91f0c7d</strong>
+                  </div>
+                </div>
+
+                <table class="backup-table">
+                  <thead>
+                    <tr>
+                      <th>Recebido</th>
+                      <th>Status</th>
+                      <th>Tamanho</th>
+                      <th>Hash</th>
+                      <th>Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>09/06/2026 02:14</td>
+                      <td class="ok">armazenado</td>
+                      <td>412 KB</td>
+                      <td class="hash">a91f0c7d</td>
+                      <td><span class="button">Baixar</span></td>
+                    </tr>
+                    <tr>
+                      <td>08/06/2026 02:09</td>
+                      <td class="ok">armazenado</td>
+                      <td>410 KB</td>
+                      <td class="hash">7f2bd110</td>
+                      <td><span class="button-muted">Baixar</span></td>
+                    </tr>
+                    <tr>
+                      <td>07/06/2026 02:11</td>
+                      <td class="warn">duplicado</td>
+                      <td>410 KB</td>
+                      <td class="hash">7f2bd110</td>
+                      <td><span class="button-muted">Sem arquivo novo</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
+
+              <aside class="card side-card">
+                <div class="section-head">
+                  <div>
+                    <h3>Operação</h3>
+                    <p>Leitura rápida para suporte.</p>
+                  </div>
+                </div>
+                <div class="timeline">
+                  <div class="event">
+                    <span class="event-dot"></span>
+                    <div><strong class="ok">Upload validado</strong><br />HMAC conferido, payload criptografado em disco.</div>
+                  </div>
+                  <div class="event">
+                    <span class="event-dot" style="background: var(--yellow);"></span>
+                    <div><strong>Retenção</strong><br />30 backups por firewall. Mais recente nunca é removido.</div>
+                  </div>
+                  <div class="event">
+                    <span class="event-dot" style="background: var(--blue);"></span>
+                    <div><strong>Permissão</strong><br />Download disponível apenas para superadmin, sempre auditado.</div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </section>
+        </div>
+      </section>
+      <p class="caption">
+        Estado alternativo previsto: se não houver backup, este bloco mostra "Nunca enviado";
+        se passar de 36h, mostra "Atrasado" e vira candidato a alerta operacional.
+      </p>
+
+      <section class="screen pf-screen" aria-label="Mockup da tela do package no pfSense">
+        <div class="pf-top">
+          <div class="pf-logo">
+            <div class="pf-logo-mark">pf</div>
+            <span>pfSense</span>
+          </div>
+          <div class="pf-menu">
+            <span>System</span>
+            <span>Interfaces</span>
+            <span>Firewall</span>
+            <span>Services</span>
+            <span>Status</span>
+            <span>Diagnostics</span>
+          </div>
+        </div>
+
+        <div class="pf-wrap">
+          <div class="pf-breadcrumb">Services / SystemUp Monitor</div>
+          <div class="pf-titlebar">
+            <h2>SystemUp Monitor</h2>
+            <span class="pf-badge">Agent running</span>
+          </div>
+
+          <div class="pf-tabs">
+            <span>Configuração</span>
+            <span>Diagnóstico</span>
+            <span class="active">Backup</span>
+          </div>
+
+          <div class="pf-grid">
+            <section class="pf-panel">
+              <div class="pf-panel-head">Backup do config.xml</div>
+              <div class="pf-panel-body">
+                <div class="pf-field">
+                  <label>Enable config backup</label>
+                  <div>
+                    <div class="pf-check"><input type="checkbox" checked /> Enviar backup do /conf/config.xml para o controlador</div>
+                    <div class="pf-help">O arquivo é enviado por HTTPS com HMAC do node e armazenado criptografado no servidor.</div>
+                  </div>
+                </div>
+
+                <div class="pf-field">
+                  <label>Backup interval hours</label>
+                  <div>
+                    <input class="pf-input" value="24" />
+                    <div class="pf-help">Intervalo padrão: uma vez por dia.</div>
+                  </div>
+                </div>
+
+                <div class="pf-field">
+                  <label>Backup only on change</label>
+                  <div>
+                    <div class="pf-check"><input type="checkbox" checked /> Não reenviar se o SHA256 do config.xml não mudou</div>
+                  </div>
+                </div>
+
+                <div class="pf-field">
+                  <label>Compress before upload</label>
+                  <div>
+                    <div class="pf-check"><input type="checkbox" checked /> Compactar antes do envio</div>
+                  </div>
+                </div>
+
+                <div class="pf-field">
+                  <label>Accept panel requests</label>
+                  <div>
+                    <div class="pf-check"><input type="checkbox" checked /> Aceitar solicitacao "backup agora" enviada pelo painel</div>
+                    <div class="pf-help">O agente recebe a solicitacao no proximo heartbeat e executa o backup localmente.</div>
+                  </div>
+                </div>
+
+                <div class="pf-field">
+                  <label>Controller endpoint</label>
+                  <div>
+                    <input class="pf-input" value="https://pfs-monitor.systemup.inf.br/api/v1/ingest/config-backup" />
+                    <div class="pf-help">Derivado da URL do controlador configurada no package.</div>
+                  </div>
+                </div>
+
+                <div class="pf-actions">
+                  <span class="pf-btn success">Save</span>
+                  <span class="pf-btn">Enviar backup agora</span>
+                  <span class="pf-btn secondary">Test connection</span>
+                </div>
+              </div>
+            </section>
+
+            <aside class="pf-panel">
+              <div class="pf-panel-head">Local status</div>
+              <div class="pf-panel-body">
+                <div class="pf-stat">
+                  <span>Last backup</span>
+                  <strong>09/06/2026 02:14</strong>
+                </div>
+                <div class="pf-stat">
+                  <span>Last result</span>
+                  <strong style="color: #1f7a3b;">stored</strong>
+                </div>
+                <div class="pf-stat">
+                  <span>Config hash</span>
+                  <strong>a91f0c7d</strong>
+                </div>
+                <div class="pf-stat">
+                  <span>Payload size</span>
+                  <strong>412 KB</strong>
+                </div>
+                <div class="pf-stat">
+                  <span>Next run</span>
+                  <strong>in 20h 42m</strong>
+                </div>
+                <div class="pf-stat">
+                  <span>State dir</span>
+                  <strong>/var/db/monitor-pfsense-agent</strong>
+                </div>
+
+                <pre class="pf-code"># comando local
+/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh backup-config
+
+# log
+tail -n 50 /var/log/monitor-pfsense-agent.log</pre>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+      <p class="caption">
+        No pfSense, a tela precisa ser mais utilitária: habilitar/desabilitar, intervalo,
+        "somente se mudou", compressão, envio manual e diagnóstico local.
+      </p>
+    </main>
+  </body>
+</html>

@@ -11,13 +11,18 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 
 1. `LEITURA-INICIAL.md`
 2. `CORTEX.md`
-3. `00-README.md`
-4. `01-objetivo-e-escopo.md`
-5. `12-roadmap-de-fases.md`
-6. `14-encerramento-da-fase-de-planejamento.md`
+3. `docs/00-INDICE-OPERACIONAL.md`
+4. `00-README.md`
+5. `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md`
+6. `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`, quando a tarefa envolver backup do pfSense
+7. `docs/DIRETRIZES-E-FUNCIONAMENTO.md`
+8. `docs/HISTORICO-E-LINHA-DO-TEMPO.md`, quando for refatorar ou reabrir assunto antigo
 
 ## Indice da documentacao
 
+- [docs/00-INDICE-OPERACIONAL.md](./docs/00-INDICE-OPERACIONAL.md): mapa atual para retomada de novos chats, camadas documentais e regras para reorganizacao segura.
+- [docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md](./docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md): plano mestre de organizacao, saneamento, qualidade e roadmap do backup pfSense.
+- [docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md](./docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md): especificacao tecnica do modulo de backup do `config.xml`.
 - [01-objetivo-e-escopo.md](./01-objetivo-e-escopo.md)
 - [02-prerequisitos-de-infraestrutura.md](./02-prerequisitos-de-infraestrutura.md)
 - [03-arquitetura-do-controlador-ubuntu.md](./03-arquitetura-do-controlador-ubuntu.md)
@@ -37,6 +42,8 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 - [17-checklist-homologacao-bootstrap-pfsense-real.md](./17-checklist-homologacao-bootstrap-pfsense-real.md)
 - [18-homologacao-pfsense-package-real-2026-03-13.md](./18-homologacao-pfsense-package-real-2026-03-13.md)
 - [PROMPT-CONTINUACAO-PFSENSE-PACKAGE.md](./PROMPT-CONTINUACAO-PFSENSE-PACKAGE.md)
+- [docs/DIRETRIZES-E-FUNCIONAMENTO.md](./docs/DIRETRIZES-E-FUNCIONAMENTO.md): **diretrizes e funcionamento** — versões (package, agente, painel), release, cadastro, sync no firewall, regras (referência para retomada).
+- [docs/HISTORICO-E-LINHA-DO-TEMPO.md](./docs/HISTORICO-E-LINHA-DO-TEMPO.md): **histórico e linha do tempo** — o que foi feito, decisões e erros a não repetir (manutenção, VPN por túnel, interfaces, cadastro, UI).
 - [docs/CADASTRO-E-COMANDOS-PFSENSE.md](./docs/CADASTRO-E-COMANDOS-PFSENSE.md): cadastro, comandos e testes no pfSense (operacional).
 - [docs/22-diagnostico-cadastro-e-comandos-2026-03-14.md](./docs/22-diagnostico-cadastro-e-comandos-2026-03-14.md): diagnóstico técnico cadastro/comandos.
 - [docs/23-analise-duplicacao-cadastro-2026-03-14.md](./docs/23-analise-duplicacao-cadastro-2026-03-14.md): análise duplicação de cadastro.
@@ -64,6 +71,14 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 - [docs/50-ANALISE-POLIMENTO-CADASTRO-INICIAL-ADMIN-2026-03-15.md](./docs/50-ANALISE-POLIMENTO-CADASTRO-INICIAL-ADMIN-2026-03-15.md): Análise polimento do cadastro inicial (formulários sob demanda).
 - [docs/51-ENTREGA-POLIMENTO-CADASTRO-INICIAL-ADMIN-2026-03-15.md](./docs/51-ENTREGA-POLIMENTO-CADASTRO-INICIAL-ADMIN-2026-03-15.md): Entrega polimento — cards colapsáveis no /admin — **encerrada**.
 - [docs/52-ALINHAMENTO-SMOKE-ADMIN-NOVO-ADMIN-2026-03-15.md](./docs/52-ALINHAMENTO-SMOKE-ADMIN-NOVO-ADMIN-2026-03-15.md): Alinhamento do smoke administrativo ao novo /admin (GET /admin HTTP 200; numeração 14 passos) — **encerrada**.
+- [docs/53-ENTREGA-SIMPLIFICACAO-VISUAL-CADASTRO-AUDIT-BOOTSTRAP-2026-03-15.md](./docs/53-ENTREGA-SIMPLIFICACAO-VISUAL-CADASTRO-AUDIT-BOOTSTRAP-2026-03-15.md): Simplificação visual — cadastro (só cliente+firewall na superfície), auditoria (compacta, payload sob demanda), instalação (layout equilibrado) — painel 0.1.11.
+- [docs/54-TRILHA-MODELO-OPERACIONAL-CLIENTE-FIREWALL-2026-03-15.md](./docs/54-TRILHA-MODELO-OPERACIONAL-CLIENTE-FIREWALL-2026-03-15.md): Modelo operacional Cliente/Firewall; Site invisível na UX; cadastro só Cliente+Firewall; Usuários com abas; página Clientes — painel 0.1.12.
+- [docs/55-MICROTRILHA-VARREDURA-NOMENCLATURA-CLIENTE-FIREWALL-2026-03-15.md](./docs/55-MICROTRILHA-VARREDURA-NOMENCLATURA-CLIENTE-FIREWALL-2026-03-15.md): Varredura final de nomenclatura; revalidatePath, "Todos", "Cliente / Local", separador " — " — painel 0.1.13.
+- [docs/56-TRILHA-NAVEGACAO-ADMIN-E-SANEAMENTO-CICLO-VIDA-2026-03-15.md](./docs/56-TRILHA-NAVEGACAO-ADMIN-E-SANEAMENTO-CICLO-VIDA-2026-03-15.md): Navegação admin (menu longest-match); Minha conta compacta; gestão real usuários; deleção/limpeza — painel 0.1.14, API 0.1.4.
+- [docs/57-TRILHA-SEMANTICA-DELECAO-E-SANEAMENTO-DADOS-2026-03-15.md](./docs/57-TRILHA-SEMANTICA-DELECAO-E-SANEAMENTO-DADOS-2026-03-15.md): Semântica deleção e saneamento (delete usuário; getFilters ativos; listSessions não revogadas) — painel 0.1.15, API 0.1.5.
+- [docs/58-TRILHA-DELECAO-REAL-CLIENTES-2026-03-15.md](./docs/58-TRILHA-DELECAO-REAL-CLIENTES-2026-03-15.md): Deleção real de clientes (DELETE clients/:id; botão na UI; bloqueio se 1+ firewalls) — painel 0.1.16, API 0.1.6.
+- [docs/61-REFATORACAO-SNAPSHOT-OPERACIONAL-2026-03-19.md](./docs/61-REFATORACAO-SNAPSHOT-OPERACIONAL-2026-03-19.md): refatoração para snapshot operacional sem histórico de telemetria; heartbeats deixam de crescer continuamente; Zabbix fica como histórico.
+- [docs/62-MODO-HEARTBEAT-INSTALACAO-PFSENSE-2026-03-19.md](./docs/62-MODO-HEARTBEAT-INSTALACAO-PFSENSE-2026-03-19.md): instalação do package com seleção explícita de heartbeat `normal` ou `light`; `normal` vira padrão.
 
 ## Arquivos de governanca do projeto
 
@@ -73,7 +88,22 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 
 ## Status atual do projeto
 
-Em `2026-03-15`, a `Fase 1 - MVP do controlador` segue operacionalmente concluída e registrada como `100%`, com `93%` do plano total entregue. A **microtrilha de alinhamento do smoke administrativo** foi implementada e **encerrada** (doc 52): passo GET /admin HTTP 200; 14 passos. Polimento cadastro admin (docs 50, 51); desmembramento admin (48–49); simplificação cadastro (47); despoluição dashboard (46); dashboard operacional (45); exclusão hosts (44); homologação package (43).
+Em `2026-03-15`, a `Fase 1 - MVP do controlador` segue operacionalmente concluída e registrada como `100%`, com `93%` do plano total entregue. A **trilha de deleção real de clientes** (doc 58) foi implementada: DELETE clients/:id; botão Deletar cliente na UI; painel 0.1.16, API 0.1.6. Trilha semântica deleção (doc 57): delete usuário; getFilters só ativos; listSessions só não revogadas. Trilha navegação admin (doc 56); microtrilha varredura nomenclatura (doc 55); trilha modelo operacional (doc 54); simplificação visual (doc 53); smoke admin (doc 52) encerradas. Polimento cadastro admin (50, 51); desmembramento admin (48–49); simplificação cadastro (47); despoluição dashboard (46); dashboard operacional (45); exclusão hosts (44); homologação package (43).
+
+Atualização em `2026-03-19`:
+
+- controlador passou a priorizar **snapshot operacional** em vez de histórico de heartbeats
+- `heartbeats` deixa de ser fonte principal do painel; `Node` agora carrega o estado atual necessário
+- nova trilha documentada em `docs/61-REFATORACAO-SNAPSHOT-OPERACIONAL-2026-03-19.md`
+- fluxo de instalação do pfSense agora permite escolher `normal` ou `light` na tela e no script; ver `docs/62-MODO-HEARTBEAT-INSTALACAO-PFSENSE-2026-03-19.md`
+
+Atualizacao em `2026-06-08`:
+
+- criada camada canonica de retomada em `docs/00-INDICE-OPERACIONAL.md`
+- criado plano mestre de organizacao, qualidade e backup pfSense em `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md`
+- criada especificacao tecnica do modulo de backup do `config.xml` em `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`
+- decisao registrada: antes de codar backup, sanear publicacao/origem interna, limite de upload e criptografia em repouso
+- modulo de backup de `config.xml` ainda nao esta implementado; o estado atual e planejamento/documentacao
 
 Estado atual consolidado:
 

@@ -4,22 +4,40 @@ Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
 ## Leitura obrigatoria
 
-Leia estes 3 arquivos primeiro:
+Leia estes arquivos primeiro:
 
 1. `LEITURA-INICIAL.md`
 2. `CORTEX.md`
-3. `00-README.md`
+3. `docs/00-INDICE-OPERACIONAL.md`
+4. `00-README.md`
+5. `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md`
+6. `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`, quando a tarefa envolver backup do pfSense
 
 ## Ponto oficial de continuidade
 
-Considere esses 3 arquivos como a base oficial para retomar o trabalho.
+Considere esses arquivos como a base oficial para retomar o trabalho.
 
 Regras:
 
 - nao reiniciar arquitetura ou decisoes ja fechadas sem necessidade real
 - continuar sempre do estado registrado em `LEITURA-INICIAL.md`
 - tratar `CORTEX.md` como regra duravel de produto, arquitetura e operacao
-- usar `00-README.md` como indice da documentacao e mapa do repositorio
+- usar `docs/00-INDICE-OPERACIONAL.md` como mapa atual de retomada
+- usar `00-README.md` como indice historico e mapa amplo do repositorio
+
+## Atualizacao de rumo em 2026-06-08
+
+Nova trilha planejada:
+
+- organizacao documental sem mover arquivos antigos em massa
+- saneamento de publicacao e limites antes de aceitar backup de `config.xml`
+- criacao do modulo de backup pfSense com upload assinado, armazenamento criptografado, retencao, auditoria, painel e alertas
+
+Documentos novos:
+
+- `docs/00-INDICE-OPERACIONAL.md`
+- `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md`
+- `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`
 
 ## Estado atual resumido
 
@@ -77,6 +95,14 @@ Situacao geral:
 - trilha de desmembramento da interface administrativa implementada (docs 48, 49): /admin enxuto (cadastro inicial + atalhos); /admin/usuarios e /admin/clientes-sites; nav com Usuarios (superadmin) e Clientes e sites; painel 0.1.9
 - trilha de polimento do cadastro inicial no admin implementada (docs 50, 51): formularios sob demanda por card (acordeao); apenas um card expandido por vez; painel 0.1.10
 - microtrilha de alinhamento do smoke administrativo (doc 52): passo GET /admin HTTP 200; numeracao [1/14]…[14/14]; smoke continua API-first
+- microtrilha de simplificacao visual cadastro/auditoria/instalacao (doc 53): cadastro so Novo cliente + Novo firewall na superficie; auditoria compacta com payload sob demanda; bootstrap layout equilibrado; painel 0.1.11
+- trilha de correcao do modelo operacional e limpeza da interface admin (doc 54): Site 100% invisivel na UX; cadastro apenas Novo cliente e Novo firewall; usuarios com abas Usuarios/Sessoes; pagina Clientes (ex-clientes-sites) so clientes ativos e firewalls; painel 0.1.12
+- microtrilha de varredura final de nomenclatura (doc 55): revalidatePath /admin/clientes; opcao "Todos os sites" -> "Todos"; label "Cliente / Site" -> "Cliente / Local"; separador " — " em exibicoes; painel 0.1.13
+- trilha de navegacao administrativa e saneamento do ciclo de vida (doc 56): menu longest-match; Minha conta compacta (tabela); gestao real de usuarios (listar ativos, deletar, ver inativos); delecao/limpeza coerente; painel 0.1.14, API 0.1.4
+- trilha de correcao REAL da semantica de delecao e saneamento dos dados operacionais (doc 57): delete usuario (body/Content-Type); getFilters so clientes/sites ativos; listSessions so nao revogadas; painel 0.1.15, API 0.1.5
+- trilha de delecao real de clientes (doc 58): DELETE /api/v1/admin/clients/:id; botao Deletar cliente na UI (0 firewalls); bloqueio com mensagem se 1+ firewalls; painel 0.1.16, API 0.1.6
+- refatoracao snapshot operacional (doc 61): heartbeat passa a atualizar snapshot atual no `Node`; sem historico continuo de telemetria; `heartbeats` vira tabela legada para purge
+- seletor de modo de heartbeat na instalacao (doc 62): package passa a usar `normal` por padrao; telas `/nodes/[id]` e `/bootstrap` permitem alternar `normal/light`; comando inclui `--heartbeat-mode`
 
 ## O que ja esta decidido
 
@@ -91,7 +117,7 @@ Nao rediscutir sem motivo forte:
 - heartbeat do agente em `30s`
 - dominio unico do MVP: `https://pfs-monitor.systemup.inf.br`
 - proxy externo por `Cloudflare -> ISPConfig -> origin`
-- origem interna do projeto em `192.168.100.244:8088`
+- origem interna historicamente documentada como `192.168.100.244:8088`, mas em `2026-06-08` este ponto foi marcado para saneamento porque o ambiente informado/observado usa `192.168.100.221`, tambem com publicacao em `192.168.100.221:3031`
 - este host tambem executa `Zabbix`, que tem prioridade operacional
 
 ## Trilhas encerradas (nao reabrir sem decisao explicita)
@@ -107,6 +133,16 @@ Nao rediscutir sem motivo forte:
 9. **Trilha de desmembramento da interface administrativa** (docs 48, 49) — Cadastro enxuto; Usuarios e Clientes e sites em telas proprias; nav e atalhos
 10. **Trilha de polimento do cadastro inicial no admin** (docs 50, 51) — Formularios sob demanda por card (acordeao); um card expandido por vez
 11. **Microtrilha de alinhamento do smoke administrativo com o novo /admin** (doc 52) — Numeração [1/14]…[14/14]; passo GET /admin HTTP 200; smoke continua API-first
+12. **Microtrilha de simplificação visual cadastro/auditoria/instalação** (doc 53) — Cadastro: apenas Novo cliente e Novo firewall na superfície; Auditoria: compacta, payload sob demanda; Instalação: layout equilibrado; painel 0.1.11 — **encerrada**
+13. **Trilha de correção do modelo operacional e limpeza da interface administrativa** (doc 54) — Site invisível na UX; cadastro só Cliente e Firewall; Usuários com abas; página Clientes (sem sites); painel 0.1.12 — **encerrada**
+14. **Microtrilha de varredura final de nomenclatura Cliente/Firewall** (doc 55) — revalidatePath, "Todos", "Cliente / Local", separador " — "; painel 0.1.13 — **encerrada**
+15. **Trilha de correção de navegação administrativa e saneamento do ciclo de vida** (doc 56) — menu longest-match; Minha conta compacta; gestão real de usuários; listagens sem resíduos; painel 0.1.14, API 0.1.4 — **encerrada**
+16. **Trilha de correção REAL da semântica de deleção e saneamento dos dados operacionais** (doc 57) — delete usuário (body/Content-Type); getFilters só ativos; listSessions só não revogadas; painel 0.1.15, API 0.1.5 — **encerrada**
+17. **Trilha de deleção real de clientes** (doc 58) — DELETE clients/:id; botão Deletar cliente (0 firewalls); bloqueio se 1+ firewalls; painel 0.1.16, API 0.1.6 — **encerrada**
+
+## Documentação de referência (retomada e refatoração)
+
+- **Histórico e linha do tempo:** `docs/HISTORICO-E-LINHA-DO-TEMPO.md` — alterações (manutenção, VPN por túnel, interfaces, cadastro, UI), decisões e erros a não repetir; consultar antes de refatorar ou reabrir temas fechados.
 
 ## Restricao mais importante
 
@@ -120,21 +156,26 @@ Na pratica:
 
 ## Proximo bloco recomendado
 
-Trilhas recentes **encerradas:** homologacao/alinhamento package (doc 43), exclusao hosts (44), dashboard operacional (45), despoluicao dashboard (46), simplificacao cadastro Cliente+Firewall (doc 47), polimento cadastro admin (docs 50, 51), alinhamento smoke admin (doc 52). Proximo trabalho em trilhas separadas:
+Trilhas recentes **encerradas:** homologacao/alinhamento package (doc 43), exclusao hosts (44), dashboard operacional (45), despoluicao dashboard (46), simplificacao cadastro Cliente+Firewall (doc 47), polimento cadastro admin (docs 50, 51), alinhamento smoke admin (doc 52), snapshot operacional (doc 61) e seletor de heartbeat (doc 62).
 
-1. **Smoke suite:** smoke-admin-operations alinhado ao novo /admin (doc 52); manter run-smoke-suite como referencia
-2. **Builder nativo:** copiar `packages/pfsense-package` para builder pfSense, `make package`, validar `pkg add`
-3. **Expansão operacional:** replicar homologação em novos firewalls (generate-install-command, verify-bootstrap-release)
-4. **Fase B (serviços):** catalogo, MONITOR_AGENT_PACKAGES, GUI — ver `21-evolucao-servicos-e-fase-b-2026-03-13.md`
-5. conferir ou aplicar no ambiente externo a configuracao versionada do `ISPConfig`
-6. validar o contrato do proxy com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh`
-7. manter `scripts/run-smoke-suite.sh` como referência após mudanças em admin, alerts, bootstrap, realtime
+Proximo trabalho em trilhas separadas:
+
+1. **Saneamento antes do backup pfSense:** alinhar origem interna/publicacao, atualizar referencias antigas `192.168.100.244`, definir limite de upload para backup e validar contrato externo.
+2. **Modulo backup pfSense:** seguir `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md` e `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`.
+3. **Smoke suite:** manter `scripts/run-smoke-suite.sh` como referencia apos mudancas em admin, alerts, bootstrap, realtime e backup.
+4. **Builder nativo:** copiar `packages/pfsense-package` para builder pfSense, `make package`, validar `pkg add`.
+5. **Expansao operacional:** replicar homologacao em novos firewalls (generate-install-command, verify-bootstrap-release).
+6. **Fase B (servicos):** catalogo, MONITOR_AGENT_PACKAGES, GUI — ver `21-evolucao-servicos-e-fase-b-2026-03-13.md`.
 
 ## Tarefa atual registrada
 
-- `microtrilha de alinhamento do smoke administrativo com o novo /admin — IMPLEMENTADA (2026-03-15)`
-- documentos: `docs/52-ALINHAMENTO-SMOKE-ADMIN-NOVO-ADMIN-2026-03-15.md`
-- versões consolidadas: painel 0.1.10, API 0.1.3, package 0.2.0 (inalteradas)
+- `trilha de deleção real de clientes — IMPLEMENTADA (2026-03-15)`
+- documentos: `docs/58-TRILHA-DELECAO-REAL-CLIENTES-2026-03-15.md`
+- versões consolidadas: painel 0.1.16, API 0.1.6, package 0.2.0 (inalterado)
+- `refatoracao snapshot operacional — IMPLEMENTADA (2026-03-19)`
+- documento: `docs/61-REFATORACAO-SNAPSHOT-OPERACIONAL-2026-03-19.md`
+- `planejamento organizacao + backup pfSense — DOCUMENTADO (2026-06-08)`
+- documentos: `docs/00-INDICE-OPERACIONAL.md`, `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md`, `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`
 
 ## Smokes e verificacoes que ja viraram referencia
 
@@ -158,7 +199,7 @@ Trilhas recentes **encerradas:** homologacao/alinhamento package (doc 43), exclu
 - em laboratorio local sem release publicada, preferir `AUTO_STAGE_RELEASE=1 scripts/run-bootstrap-preflight.sh <node_id>`
 - override temporario de `controller_url` e `release_base_url` apenas quando houver necessidade de homologacao
 - checksum `.sha256` presente no release usado pelo bootstrap
-- origem publica e origem interna coerentes com `Cloudflare -> ISPConfig -> 192.168.100.244:8088`
+- origem publica e origem interna coerentes com a origem validada em producao antes da rodada
 - nenhuma mudanca impactando portas ou servicos do ecossistema `Zabbix`
 
 ## Arquivos mais importantes para desenvolvimento
@@ -182,6 +223,13 @@ Para contexto rapido:
 - `docs/50-ANALISE-POLIMENTO-CADASTRO-INICIAL-ADMIN-2026-03-15.md`: análise polimento cadastro (formulários sob demanda)
 - `docs/51-ENTREGA-POLIMENTO-CADASTRO-INICIAL-ADMIN-2026-03-15.md`: entrega polimento (cards colapsáveis; painel 0.1.10)
 - `docs/52-ALINHAMENTO-SMOKE-ADMIN-NOVO-ADMIN-2026-03-15.md`: alinhamento smoke administrativo ao novo /admin (GET /admin HTTP 200; doc 52)
+- `docs/53-ENTREGA-SIMPLIFICACAO-VISUAL-CADASTRO-AUDIT-BOOTSTRAP-2026-03-15.md`: simplificação visual cadastro (só cliente+firewall), auditoria (compacta, payload sob demanda), instalação (layout equilibrado); painel 0.1.11
+- `docs/54-TRILHA-MODELO-OPERACIONAL-CLIENTE-FIREWALL-2026-03-15.md`: modelo operacional Cliente/Firewall; Site invisível na UX; cadastro só Cliente+Firewall; Usuários com abas; página Clientes; painel 0.1.12
+- `docs/55-MICROTRILHA-VARREDURA-NOMENCLATURA-CLIENTE-FIREWALL-2026-03-15.md`: varredura final nomenclatura; revalidatePath /admin/clientes; "Todos", "Cliente / Local"; separador " — "; painel 0.1.13
+- `docs/56-TRILHA-NAVEGACAO-ADMIN-E-SANEAMENTO-CICLO-VIDA-2026-03-15.md`: navegação admin (menu longest-match); Minha conta compacta; gestão real usuários; deleção/limpeza; painel 0.1.14, API 0.1.4
+- `docs/57-TRILHA-SEMANTICA-DELECAO-E-SANEAMENTO-DADOS-2026-03-15.md`: semântica deleção e saneamento (delete usuário; getFilters ativos; listSessions não revogadas); painel 0.1.15, API 0.1.5
+- `docs/58-TRILHA-DELECAO-REAL-CLIENTES-2026-03-15.md`: deleção real de clientes (DELETE clients/:id; botão na UI; bloqueio se 1+ firewalls); painel 0.1.16, API 0.1.6
+- `docs/61-REFATORACAO-SNAPSHOT-OPERACIONAL-2026-03-19.md`: refatoração para snapshot operacional sem histórico de telemetria; Node passa a carregar o estado atual usado pelo painel; script de purge dos heartbeats legado
 - `21-evolucao-servicos-e-fase-b-2026-03-13.md`: evolucao da logica de servicos, limpeza no painel e Fase B (catalogo de pacotes)
 - `docs/COMANDO-ATUALIZAR-PACKAGE-PFSENSE.md`: comando one-shot para instalar/atualizar o package no pfSense (sempre usar esse formato)
 - `scripts/verify-bootstrap-release.sh`: valida node, comando e URLs do release

@@ -6,6 +6,30 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
+## Atualizacao critica em 2026-06-08
+
+Foi criada uma camada canonica para organizar a retomada do projeto e preparar o modulo de backup do `config.xml` dos pfSense.
+
+Ordem de leitura atualizada para novos chats:
+
+1. `LEITURA-INICIAL.md`
+2. `CORTEX.md`
+3. `docs/00-INDICE-OPERACIONAL.md`
+4. `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md`
+5. `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`, quando a tarefa envolver backup
+6. `docs/DIRETRIZES-E-FUNCIONAMENTO.md`
+7. `docs/HISTORICO-E-LINHA-DO-TEMPO.md`, quando for refatorar ou reabrir assunto antigo
+
+Estado observado em `2026-06-08`:
+
+- stack `docker compose` esta rodando com `api`, `web`, `db` e `nginx` saudaveis
+- dominio publico `https://pfs-monitor.systemup.inf.br/healthz` responde `200`
+- package pfSense atual publicado pelo fluxo do projeto: `0.2.27`
+- ainda nao existe modulo de backup de `config.xml` implementado
+- ha desalinhamento documental/operacional sobre origem interna: documentos antigos citam `192.168.100.244:8088`, enquanto o ambiente informado e observado usa `192.168.100.221`, com publicacao tambem em `192.168.100.221:3031`
+- limite atual de payload e `64 KB`; isso serve para heartbeat, mas nao para backups reais de `config.xml`
+- antes de codar backup, seguir a Fase B do plano mestre: alinhar publicacao, limites, chave de criptografia e validacao operacional
+
 ## Estado atual
 
 Data de referencia: `2026-03-15`
@@ -21,6 +45,8 @@ Progresso:
 - **trilha homologacao real + alinhamento package:** encerrada (doc 43)
 - escopo do servidor/controlador: `100%`
 - observacao de continuidade: `abrir novo chat e seguir a partir deste arquivo e de 00_inicio.md e 00-README.md`
+- **diretrizes e funcionamento:** `docs/DIRETRIZES-E-FUNCIONAMENTO.md` — versões (package, agente, painel), release, cadastro (versões só do cliente), sync do config no firewall, regras Cursor
+- **histórico e linha do tempo:** `docs/HISTORICO-E-LINHA-DO-TEMPO.md` — o que foi feito (manutenção, VPN por túnel, interfaces, cadastro, UI), decisões e **erros a não repetir**
 
 Status:
 
@@ -160,6 +186,12 @@ Status:
 - configuracao de referencia do proxy externo no `ISPConfig` agora esta versionada em `infra/ispconfig`
 - suite local reexecutada com sucesso em `2026-03-12` apos incluir o smoke de bootstrap, concluindo `realtime`, `auth sessions`, `bootstrap`, `admin` e `RBAC` em `19s`
 - suite local reexecutada com sucesso em `2026-03-12` apos incluir o smoke de release do agente, concluindo `agent release`, `realtime`, `auth sessions`, `bootstrap`, `admin` e `RBAC` em `19s`
+- versão do agente: definida em `SYSTEMUP_MONITOR_AGENT_VERSION` no `.inc`; enviada no heartbeat; exibida no painel (coluna Agente, editar cadastro só leitura) e em Services > SystemUp Monitor > Diagnóstico; CLI `systemup_monitor_cli.php sync` regera o config no firewall; install.sh chama sync após seed
+- cadastro de node: versões pfSense e agente somente leitura (preenchidas pelo heartbeat); API não aceita alteração desses campos no create/update
+- painel: versão no rodapé lida de `package.json` (layout); dashboard com colunas Versão (sem -RELEASE) e Agente; indicador de manutenção (M) ao lado de Abrir
+- package pfSense 0.2.11: tela Configuração com lista Description/Actions; Diagnóstico com "Versão do agente" e sem mensagem de homologação; comando uninstall na página de bootstrap do node
+- controlador refatorado em `2026-03-19` para modelo de **snapshot operacional**: `heartbeats` deixa de crescer como histórico contínuo; o `Node` passa a armazenar o estado atual usado por dashboard/inventário/detalhe; ver `docs/61-REFATORACAO-SNAPSHOT-OPERACIONAL-2026-03-19.md`
+- instalação do package no pfSense agora aceita `--heartbeat-mode normal|light`; o painel e a rota `/bootstrap` expõem essa escolha e o modo `normal` passou a ser o padrão; ver `docs/62-MODO-HEARTBEAT-INSTALACAO-PFSENSE-2026-03-19.md`
 
 Restricao principal do ambiente:
 
@@ -180,7 +212,7 @@ Restricao principal do ambiente:
 - dominio publico do MVP: `https://pfs-monitor.systemup.inf.br`
 - Cloudflare na frente do dominio
 - `ISPConfig` em `192.168.100.253` como proxy reverso e ponto de TLS
-- origem interna do Monitor-Pfsense em `192.168.100.244:8088`
+- origem interna historicamente documentada como `192.168.100.244:8088`, mas em `2026-06-08` este ponto foi marcado para saneamento porque o ambiente informado/observado usa `192.168.100.221`, tambem com publicacao em `192.168.100.221:3031`
 - heartbeat fixado em `30s`
 - um unico dominio no MVP para painel e ingestao
 - bootstrap por release versionada e controlada
@@ -240,12 +272,13 @@ Restricao principal do ambiente:
 
 Trilha de homologacao e alinhamento do package **encerrada** (doc 43). Próximos focos (trilhas separadas):
 
-1. **Smoke suite:** smoke-admin-operations alinhado ao novo /admin (doc 52); manter run-smoke-suite como referência
-2. **Builder nativo:** copiar `packages/pfsense-package` para builder pfSense, `make package`, validar `pkg add`
-3. **Expansão operacional:** replicar homologação em novos firewalls usando `generate-install-command.sh` e `verify-bootstrap-release.sh`
-4. **Fase B (serviços):** catalogo, MONITOR_AGENT_PACKAGES, GUI — ver `21-evolucao-servicos-e-fase-b-2026-03-13.md`
-5. manter `scripts/run-smoke-suite.sh` como referência após mudanças em admin, alerts, bootstrap, realtime
-6. validar contrato externo com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh` se houver ajuste em ISPConfig/Cloudflare/nginx
+1. **Saneamento antes do backup pfSense:** alinhar origem interna/publicacao, atualizar referencias antigas `192.168.100.244`, definir limite de upload para backup, criar chave `BACKUP_ENCRYPTION_KEY_BASE64` fora do repositorio e validar o contrato externo.
+2. **Modulo backup pfSense:** seguir `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md` e `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`.
+3. **Smoke suite:** manter `scripts/run-smoke-suite.sh` como referencia apos mudancas em admin, alerts, bootstrap, realtime e backup.
+4. **Builder nativo:** copiar `packages/pfsense-package` para builder pfSense, `make package`, validar `pkg add`.
+5. **Expansao operacional:** replicar homologacao em novos firewalls usando `generate-install-command.sh` e `verify-bootstrap-release.sh`.
+6. **Fase B (servicos):** catalogo, MONITOR_AGENT_PACKAGES, GUI — ver `21-evolucao-servicos-e-fase-b-2026-03-13.md`.
+7. Validar contrato externo com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh` se houver ajuste em ISPConfig/Cloudflare/nginx.
 
 ## Definicoes ainda em aberto
 
@@ -265,13 +298,22 @@ Cole ou informe que o novo contexto deve considerar:
 
 - `LEITURA-INICIAL.md`
 - `CORTEX.md`
+- `docs/00-INDICE-OPERACIONAL.md`
 - `00-README.md`
+- `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md`, se a conversa envolver rumo, organizacao ou backup
+- `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`, se a conversa envolver implementacao de backup
 
 Isso deve bastar para retomar o desenvolvimento sem explicar tudo novamente.
 
 ## Ultima entrega registrada
 
-- `2026-03-15`: **Microtrilha de alinhamento do smoke administrativo com o novo /admin — implementada e encerrada.** Ver `docs/52-ALINHAMENTO-SMOKE-ADMIN-NOVO-ADMIN-2026-03-15.md`. Numeração dos passos corrigida para [1/14]…[14/14]; adicionado passo GET /admin com validação HTTP 200 apenas; smoke continua API-first; sem validação por texto da página.
+- `2026-03-15`: **Trilha de deleção real de clientes — implementada.** Ver `docs/58-TRILHA-DELECAO-REAL-CLIENTES-2026-03-15.md`. DELETE /api/v1/admin/clients/:id; botão Deletar cliente na UI (0 firewalls); bloqueio com mensagem se 1+ firewalls; painel 0.1.16, API 0.1.6.
+- `2026-03-15`: **Trilha de correção REAL da semântica de deleção e saneamento dos dados operacionais — implementada.** Ver `docs/57-TRILHA-SEMANTICA-DELECAO-E-SANEAMENTO-DADOS-2026-03-15.md`. Delete usuário (body/Content-Type); getFilters só clientes/sites ativos; listSessions só não revogadas; painel 0.1.15, API 0.1.5.
+- `2026-03-15`: **Trilha de correção de navegação administrativa e saneamento do ciclo de vida — implementada.** Ver `docs/56-TRILHA-NAVEGACAO-ADMIN-E-SANEAMENTO-CICLO-VIDA-2026-03-15.md`. Menu longest-match; Minha conta compacta (tabela); gestão real de usuários (listar ativos, deletar, ver inativos); deleção/limpeza coerente; painel 0.1.14, API 0.1.4.
+- `2026-03-15`: **Microtrilha de varredura final de nomenclatura Cliente/Firewall — implementada.** Ver `docs/55-MICROTRILHA-VARREDURA-NOMENCLATURA-CLIENTE-FIREWALL-2026-03-15.md`. revalidatePath /admin/clientes; opção "Todos" em filtros; label "Cliente / Local"; separador " — "; painel 0.1.13.
+- `2026-03-15`: **Trilha de correção do modelo operacional e limpeza da interface administrativa — implementada.** Ver `docs/54-TRILHA-MODELO-OPERACIONAL-CLIENTE-FIREWALL-2026-03-15.md`. Site 100% invisível na UX; cadastro apenas Novo cliente e Novo firewall (sem Novo site); Usuários com abas Usuarios/Sessoes; página Clientes (ex-clientes-sites) só clientes ativos e firewalls; painel 0.1.12.
+- `2026-03-15`: **Microtrilha de simplificação visual cadastro/auditoria/instalação — implementada.** Ver `docs/53-ENTREGA-SIMPLIFICACAO-VISUAL-CADASTRO-AUDIT-BOOTSTRAP-2026-03-15.md`. Cadastro: apenas Novo cliente e Novo firewall na superfície; Novo site, Novo usuário e Token em Cadastros avançados. Auditoria: lista compacta, payload sob demanda (Detalhes). Instalação: layout equilibrado (md:grid-cols-2), filtros compactos. Painel 0.1.11.
+- `2026-03-15`: **Microtrilha de alinhamento do smoke administrativo com o novo /admin — encerrada.** Ver doc 52. Numeração [1/14]…[14/14]; passo GET /admin HTTP 200; smoke API-first.
 - `2026-03-15`: **Trilha de polimento do cadastro inicial no admin — implementada e encerrada.** Ver `docs/50` e `docs/51`. Formulários no `/admin` sob demanda (cards colapsáveis); apenas um card expandido por vez; auto-expansão via `?section=`. Versões: painel 0.1.10, API 0.1.3, package 0.2.0.
 - `2026-03-15`: **Trilha de desmembramento da interface administrativa — implementada e encerrada.** Ver `docs/48` e `docs/49`. Cadastro (`/admin`) enxuto; `/admin/usuarios`, `/admin/clientes-sites`; nav e atalhos. Painel 0.1.9.
 - `2026-03-15`: **Trilha de despoluição visual do dashboard operacional.** Ver `docs/46-DESPOLUICAO-VISUAL-DASHBOARD-OPERACIONAL-2026-03-15.md`. Colunas Host e Site removidas da grade principal; tabela com 11 colunas. Versão painel: 0.1.7.
@@ -291,7 +333,9 @@ Isso deve bastar para retomar o desenvolvimento sem explicar tudo novamente.
 
 - **Microtrilha doc 52 (alinhamento smoke admin com novo /admin) está encerrada.** Smoke administrativo com 14 passos; passo [2/14] valida GET /admin HTTP 200; smoke continua API-first; sem grep em texto da página.
 - **Trilhas docs 50 e 51 (polimento cadastro inicial admin) estão encerradas.** Formulários em `/admin` são sob demanda (cards colapsáveis); um card expandido por vez. Versões atuais: painel 0.1.10, API 0.1.3.
-- **Trilhas docs 48 e 49 (desmembramento interface admin) estão encerradas.** Cadastro em `/admin` enxuto; Usuários em `/admin/usuarios` (superadmin); Clientes e sites em `/admin/clientes-sites`.
+- **Trilhas docs 48 e 49 (desmembramento interface admin) estão encerradas.** Cadastro em `/admin` enxuto; Usuários em `/admin/usuarios` (superadmin); Clientes em `/admin/clientes` (redirect de `/admin/clientes-sites`).
+- **Trilha doc 54 (modelo operacional Cliente/Firewall) está encerrada.** Site invisível na UX; cadastro só Novo cliente e Novo firewall; Usuários com abas; página Clientes só clientes ativos. Painel 0.1.12.
+- **Microtrilha doc 55 (varredura nomenclatura) está encerrada.** revalidatePath /admin/clientes; "Todos" nos filtros; "Cliente / Local"; separador " — ". Painel 0.1.13.
 - **Trilha doc 47 (simplificacao cadastro Cliente+Firewall) está encerrada.** Não reabrir sem decisão explícita. Regra de site: client_id com 0/1/2+ sites; site_id legado mantido.
 - o chat anterior confirmou um exemplo antigo do usuario que criava menu manual no pfSense alterando `/usr/local/www/head.inc` e publicando uma pagina em `/usr/local/www/services_emailbackup.php`
 - esse exemplo foi analisado apenas para confirmar caminhos visuais do pfSense
@@ -365,10 +409,11 @@ Entrega:
 - regra de protecao do ultimo `superadmin` adicionada ao backend e validada no smoke administrativo
 - smoke `scripts/smoke-rbac-roles.sh` adicionado e validado cobrindo `operator` e `readonly`
 - referencia versionada do proxy externo em `infra/ispconfig/nginx.monitor-pfsense.conf` e `infra/ispconfig/README.md`
-- documentacao de deploy atualizada para usar `192.168.100.244:8088` como origem unica tambem no `ISPConfig`
+- historico: documentacao de deploy chegou a ser atualizada para usar `192.168.100.244:8088`; em `2026-06-08`, este ponto foi marcado para saneamento porque o ambiente observado/informado usa `192.168.100.221`
 
 Pendencias imediatas:
 
+- sanear origem interna/publicacao antes de liberar rota sensivel de backup
 - transformar o esqueleto do agente em bootstrap inicial utilizavel no pfSense
 - validar o bootstrap inicial do agente em um pfSense homologado
 - validar o artefato versionado do bootstrap em um pfSense homologado
@@ -402,7 +447,7 @@ Portas reservadas do ecossistema Zabbix:
 - `10052/TCP`
 - `10053/TCP`
 
-## Fluxo externo decidido
+## Fluxo externo historicamente decidido
 
 ```text
 pfSense cliente
@@ -410,5 +455,7 @@ pfSense cliente
 -> Cloudflare
 -> ISPConfig 192.168.100.253
 -> proxy reverso
--> Monitor-Pfsense 192.168.100.244:8088
+-> Monitor-Pfsense origem interna validada
 ```
+
+Observacao em `2026-06-08`: documentos antigos citam `192.168.100.244:8088`, mas o ambiente informado/observado usa `192.168.100.221`, tambem com publicacao em `192.168.100.221:3031`. Antes do modulo de backup, a origem efetiva deve ser saneada e registrada.

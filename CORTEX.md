@@ -40,6 +40,9 @@ O agente coleta estado local e envia heartbeat por HTTPS.
 - a primeira homologacao oficial do agente mira `pfSense CE 2.8.1`
 - o projeto usa `Semantic Versioning`
 - o painel deve exibir a versao do sistema e `Desenvolvido por Systemup`
+- backup de `config.xml` do pfSense deve seguir arquitetura `push`, com upload iniciado pelo firewall
+- backup de `config.xml` deve ser armazenado criptografado em repouso e auditado
+- restore automatico no pfSense nao faz parte do primeiro MVP de backup
 
 ## O que nunca deve ser feito sem decisao explicita
 
@@ -50,6 +53,8 @@ O agente coleta estado local e envia heartbeat por HTTPS.
 - depender de HTTP sem TLS
 - mexer em `zabbix-server`, `zabbix-agent`, `apache2` ou `mysql` por conveniencia do projeto
 - publicar portas do ecossistema Zabbix para o Monitor-Pfsense
+- salvar `config.xml` puro no PostgreSQL ou em disco persistente
+- liberar download de backup sem RBAC e auditoria
 
 ## Norma principal do ambiente
 
@@ -117,7 +122,8 @@ Se houver qualquer conflito entre o projeto e o Zabbix do host:
 - banco com migracoes versionadas
 - deploy repetivel por Compose no inicio
 - coexistencia obrigatoria com servicos ja ativos no host
-- origem interna do MVP em `192.168.100.244:8088`
+- origem interna deve ser unica, validada e documentada antes de liberar novas rotas sensiveis
+- em `2026-06-08`, ha desalinhamento entre documentos antigos (`192.168.100.244:8088`) e ambiente observado/informado (`192.168.100.221`, tambem publicado em `192.168.100.221:3031`); sanear antes do modulo de backup
 - publicacao externa via `ISPConfig` em `192.168.100.253`
 - endpoint de ingestao do heartbeat: `POST /api/v1/ingest/heartbeat`
 - heartbeat com limite de `64 KB`
@@ -146,8 +152,10 @@ Ao iniciar uma nova conversa:
 
 1. ler `LEITURA-INICIAL.md`
 2. ler `CORTEX.md`
-3. identificar a fase atual
-4. continuar do ponto registrado, sem reiniciar desenho ja decidido
+3. ler `docs/00-INDICE-OPERACIONAL.md`
+4. identificar a fase atual
+5. continuar do ponto registrado, sem reiniciar desenho ja decidido
+6. se a tarefa envolver backup do pfSense, ler tambem `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md` e `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`
 
 Ao encerrar uma nova iteracao:
 

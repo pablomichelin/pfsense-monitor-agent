@@ -107,11 +107,39 @@ Entregas:
 - central de alertas mais madura
 - filtros por cliente e site
 - auditoria administrativa
-- backups e restore testados
+- backups e restore do controlador testados
+- modulo de backup do `config.xml` do pfSense planejado, com upload assinado, criptografia em repouso, retencao, auditoria e painel
 
 Criterio de saida:
 
 - multiplos firewalls operando com estabilidade
+- pelo menos um pfSense real enviando backup de config com sucesso, sem email e sem crontab manual
+
+### Trilha 4A - Backup pfSense
+
+Objetivo:
+
+- substituir o backup por email do pfSense por um fluxo integrado ao Monitor-Pfsense
+
+Documentos de referencia:
+
+- `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md`
+- `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`
+
+Sequencia:
+
+1. sanear publicacao, origem interna e limites de upload
+2. implementar backend de upload e armazenamento criptografado
+3. implementar package/agente com comando `backup-config`
+4. implementar painel por firewall
+5. implementar alertas de backup atrasado
+6. validar em pfSense real
+
+Criterio de seguranca:
+
+- nenhum `config.xml` puro persistido em banco ou disco
+- download permitido apenas com RBAC e auditoria
+- restore automatico fora do MVP
 
 ## Fase 5 - Endurecimento e escala
 
