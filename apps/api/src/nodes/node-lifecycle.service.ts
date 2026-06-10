@@ -139,17 +139,14 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
             resolvedAlerts += 1;
           }
         });
-
-        this.realtimeService.publishDashboardRefresh({
-          source: 'node_reconciled',
-          occurred_at: now.toISOString(),
-          node_id: node.id,
-          node_uid: node.nodeUid,
-          reason,
-        });
       }
 
       if (changedNodes > 0 || openedAlerts > 0 || resolvedAlerts > 0) {
+        this.realtimeService.publishDashboardRefresh({
+          source: 'node_reconciled',
+          occurred_at: now.toISOString(),
+          reason,
+        });
         this.logger.log(
           `node lifecycle reconciliation reason=${reason} updated_nodes=${changedNodes} opened_alerts=${openedAlerts} resolved_alerts=${resolvedAlerts}`,
         );

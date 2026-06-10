@@ -1,16 +1,61 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { AlertStatus, Prisma } from '@prisma/client';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  AlertStatus,
+  ConfigBackupStatus,
+  NodeCommandStatus,
+  NodeCommandType,
+  Prisma,
+} from '@prisma/client';
+import { deriveBackupVisualStatus } from './backup-visual-status.util';
+import { AccessActor } from '../auth/access-actor.type';
+import { AccessPolicyService } from '../auth/access-policy.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveEffectiveNodeStatus } from './node-status.util';
-import { ListNodesQueryDto } from './dto/list-nodes-query.dto';
-import { isPfSenseVersionHomologated } from '../common/version-matrix.util';
+import { LIST_NODES_DEFAULT_LIMIT, ListNodesQueryDto } from './dto/list-nodes-query.dto';
+
+const FILTERS_CACHE_TTL_MS = 120_000;
+
+type FiltersBaseCache = {
+  clientsWithCount: Array<{
+    id: string;
+    name: string;
+    code: string;
+    status: string;
+    site_count: number;
+    node_count: number;
+  }>;
+  sites: Array<{
+    id: string;
+    name: string;
+    code: string;
+    client_id: string;
+    client_name: string;
+    city: string | null;
+    state: string | null;
+    timezone: string | null;
+    status: string;
+    node_count: number;
+  }>;
+  inactiveClientCount: number;
+  expiresAt: number;
+};
 
 @Injectable()
 export class NodesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private filtersBaseCache: FiltersBaseCache | null = null;
 
-  async getFilters(): Promise<{
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessPolicy: AccessPolicyService,
+  ) {}
+
+  invalidateFiltersCache(): void {
+    this.filtersBaseCache = null;
+  }
+
+  async getFilters(actor: AccessActor): Promise<{
     generated_at: string;
+    inactive_client_count: number;
     clients: Array<{
       id: string;
       name: string;
@@ -32,10 +77,32 @@ export class NodesService {
       node_count: number;
     }>;
   }> {
-    const now = new Date();
+    const base = await this.getFiltersBase();
+    const allowedClientIds = await this.accessPolicy.getAllowedClientIds(actor);
+    const allowedSet =
+      allowedClientIds === null ? null : new Set(allowedClientIds);
 
-    const [clients, sites] = await Promise.all([
+    return {
+      generated_at: new Date().toISOString(),
+      inactive_client_count: base.inactiveClientCount,
+      clients: base.clientsWithCount.filter(
+        (client) => allowedSet === null || allowedSet.has(client.id),
+      ),
+      sites: base.sites.filter(
+        (site) => allowedSet === null || allowedSet.has(site.client_id),
+      ),
+    };
+  }
+
+  private async getFiltersBase(): Promise<FiltersBaseCache> {
+    const now = Date.now();
+    if (this.filtersBaseCache && this.filtersBaseCache.expiresAt > now) {
+      return this.filtersBaseCache;
+    }
+
+    const [clients, sites, inactiveClientCount] = await Promise.all([
       this.prisma.client.findMany({
+        where: { status: 'active' },
         orderBy: [{ name: 'asc' }],
         include: {
           _count: {
@@ -44,6 +111,7 @@ export class NodesService {
             },
           },
           sites: {
+            where: { status: 'active' },
             select: {
               _count: {
                 select: {
@@ -55,6 +123,10 @@ export class NodesService {
         },
       }),
       this.prisma.site.findMany({
+        where: {
+          status: 'active',
+          client: { status: 'active' },
+        },
         orderBy: [{ client: { name: 'asc' } }, { name: 'asc' }],
         include: {
           client: {
@@ -70,11 +142,11 @@ export class NodesService {
           },
         },
       }),
+      this.prisma.client.count({ where: { status: 'inactive' } }),
     ]);
 
-    return {
-      generated_at: now.toISOString(),
-      clients: clients.map((client) => ({
+    const base: FiltersBaseCache = {
+      clientsWithCount: clients.map((client) => ({
         id: client.id,
         name: client.name,
         code: client.code,
@@ -97,10 +169,15 @@ export class NodesService {
         status: site.status,
         node_count: site._count.nodes,
       })),
+      inactiveClientCount,
+      expiresAt: now + FILTERS_CACHE_TTL_MS,
     };
+
+    this.filtersBaseCache = base;
+    return base;
   }
 
-  async listNodes(query: ListNodesQueryDto): Promise<{
+  async listNodes(actor: AccessActor, query: ListNodesQueryDto): Promise<{
     items: Array<{
       id: string;
       node_uid: string;
@@ -119,17 +196,23 @@ export class NodesService {
       maintenance_mode: boolean;
       last_seen_at: string | null;
       pfsense_version: string | null;
-      pfsense_version_homologated: boolean;
       agent_version: string | null;
       management_ip: string | null;
       wan_ip: string | null;
       open_alerts: number;
+      backup_status: 'ok' | 'late' | 'failed' | 'never';
+      latest_backup_received_at: string | null;
+      cpu_percent: number | null;
+      memory_percent: number | null;
+      disk_percent: number | null;
+      uptime_seconds: number | null;
     }>;
     generated_at: string;
   }> {
     const now = new Date();
     const searchTerm = query.search?.trim();
-    const where: Prisma.NodeWhereInput = {
+    await this.accessPolicy.assertRequestedClientFilter(actor, query.client_id);
+    const baseWhere: Prisma.NodeWhereInput = {
       siteId: query.site_id,
       site: query.client_id
         ? {
@@ -177,10 +260,27 @@ export class NodesService {
           ]
         : undefined,
     };
+    const where = await this.accessPolicy.mergeNodeWhere(actor, baseWhere);
 
+    const limit = Math.min(query.limit ?? LIST_NODES_DEFAULT_LIMIT, 1000);
+    const sortOrder = query.sort_order ?? 'asc';
+    const sortBy = query.sort_by ?? 'name';
+    const nullsLast = 'last' as const;
+    const orderBy: Prisma.NodeOrderByWithRelationInput[] = [
+      { site: { client: { name: sortOrder } } },
+      ...(sortBy === 'name'
+        ? [
+            { displayName: { sort: sortOrder, nulls: nullsLast } },
+            { hostname: sortOrder },
+          ]
+        : sortBy === 'agent_version'
+          ? [{ agentVersion: { sort: sortOrder, nulls: nullsLast } }]
+          : [{ pfsenseVersion: { sort: sortOrder, nulls: nullsLast } }]),
+    ];
     const nodes = await this.prisma.node.findMany({
       where,
-      orderBy: [{ hostname: 'asc' }],
+      orderBy,
+      take: limit,
       include: {
         site: {
           include: {
@@ -195,12 +295,59 @@ export class NodesService {
             id: true,
           },
         },
+        configBackups: {
+          where: {
+            status: {
+              in: [ConfigBackupStatus.stored, ConfigBackupStatus.duplicate],
+            },
+          },
+          orderBy: {
+            receivedAt: 'desc',
+          },
+          take: 1,
+          select: {
+            receivedAt: true,
+            status: true,
+          },
+        },
+        nodeCommands: {
+          where: {
+            type: NodeCommandType.config_backup_now,
+            status: NodeCommandStatus.failed,
+          },
+          orderBy: {
+            requestedAt: 'desc',
+          },
+          take: 1,
+          select: {
+            completedAt: true,
+            requestedAt: true,
+          },
+        },
       },
     });
 
     const items = nodes
       .map((node) => {
         const effectiveStatus = deriveEffectiveNodeStatus(node, now);
+        const latestStoredBackup = node.configBackups.find(
+          (backup) => backup.status === ConfigBackupStatus.stored,
+        );
+        const latestBackupReceivedAt =
+          latestStoredBackup?.receivedAt ??
+          node.configBackups[0]?.receivedAt ??
+          null;
+        const latestFailedCommand = node.nodeCommands[0];
+        const latestFailedCommandAt =
+          latestFailedCommand?.completedAt ??
+          latestFailedCommand?.requestedAt ??
+          null;
+        const backupStatus = deriveBackupVisualStatus({
+          latestBackupReceivedAt,
+          latestFailedCommandAt,
+          now,
+        });
+
         return {
           id: node.id,
           node_uid: node.nodeUid,
@@ -222,11 +369,16 @@ export class NodesService {
           maintenance_mode: node.maintenanceMode,
           last_seen_at: node.lastSeenAt?.toISOString() ?? null,
           pfsense_version: node.pfsenseVersion,
-          pfsense_version_homologated: isPfSenseVersionHomologated(node.pfsenseVersion),
           agent_version: node.agentVersion,
           management_ip: node.managementIp,
           wan_ip: node.wanIp,
           open_alerts: node.alerts.length,
+          backup_status: backupStatus,
+          latest_backup_received_at: latestBackupReceivedAt?.toISOString() ?? null,
+          cpu_percent: node.cpuPercent ?? null,
+          memory_percent: node.memoryPercent ?? null,
+          disk_percent: node.diskPercent ?? null,
+          uptime_seconds: node.uptimeSeconds ?? null,
         };
       })
       .filter((node) => (query.status ? node.effective_status === query.status : true));
@@ -237,7 +389,7 @@ export class NodesService {
     };
   }
 
-  async getNodeById(id: string): Promise<{
+  async getNodeById(actor: AccessActor, id: string): Promise<{
     generated_at: string;
     node: {
       id: string;
@@ -252,8 +404,8 @@ export class NodesService {
       site: { id: string; name: string; code: string; city: string | null; state: string | null; timezone: string | null };
       management_ip: string | null;
       wan_ip: string | null;
+      network_interfaces: Array<{ name: string; ip: string; role?: string }> | null;
       pfsense_version: string | null;
-      pfsense_version_homologated: boolean;
       agent_version: string | null;
       ha_role: string | null;
       last_seen_at: string | null;
@@ -306,12 +458,6 @@ export class NodesService {
             client: true,
           },
         },
-        heartbeats: {
-          orderBy: {
-            receivedAt: 'desc',
-          },
-          take: 1,
-        },
         services: {
           orderBy: {
             serviceName: 'asc',
@@ -335,7 +481,13 @@ export class NodesService {
       throw new NotFoundException('node not found');
     }
 
-    const latestHeartbeat = node.heartbeats[0];
+    const allowedClientIds = await this.accessPolicy.getAllowedClientIds(actor);
+    if (
+      allowedClientIds !== null &&
+      !allowedClientIds.includes(node.site.client.id)
+    ) {
+      throw new ForbiddenException('node out of scope');
+    }
 
     return {
       generated_at: now.toISOString(),
@@ -363,24 +515,25 @@ export class NodesService {
         },
         management_ip: node.managementIp,
         wan_ip: node.wanIp,
+        network_interfaces:
+          (node.networkInterfacesJson as Array<{ name: string; ip: string; role?: string }> | null) ?? null,
         pfsense_version: node.pfsenseVersion,
-        pfsense_version_homologated: isPfSenseVersionHomologated(node.pfsenseVersion),
         agent_version: node.agentVersion,
         ha_role: node.haRole,
         last_seen_at: node.lastSeenAt?.toISOString() ?? null,
         last_boot_at: node.lastBootAt?.toISOString() ?? null,
-        latest_heartbeat: latestHeartbeat
+        latest_heartbeat: node.lastHeartbeatId && node.lastSeenAt
           ? {
-              received_at: latestHeartbeat.receivedAt.toISOString(),
-              sent_at: latestHeartbeat.sentAt.toISOString(),
-              heartbeat_id: latestHeartbeat.heartbeatId,
-              latency_ms: latestHeartbeat.latencyMs,
-              uptime_seconds: latestHeartbeat.uptimeSeconds,
-              cpu_percent: latestHeartbeat.cpuPercent,
-              memory_percent: latestHeartbeat.memoryPercent,
-              disk_percent: latestHeartbeat.diskPercent,
-              schema_version: latestHeartbeat.schemaVersion,
-              customer_code: latestHeartbeat.customerCode,
+              received_at: node.lastSeenAt.toISOString(),
+              sent_at: node.lastHeartbeatSentAt?.toISOString() ?? node.lastSeenAt.toISOString(),
+              heartbeat_id: node.lastHeartbeatId,
+              latency_ms: node.lastLatencyMs ?? null,
+              uptime_seconds: node.uptimeSeconds ?? null,
+              cpu_percent: node.cpuPercent ?? null,
+              memory_percent: node.memoryPercent ?? null,
+              disk_percent: node.diskPercent ?? null,
+              schema_version: node.schemaVersion ?? 'unknown',
+              customer_code: node.customerCode ?? 'unknown',
             }
           : null,
         services: node.services.map((service) => ({

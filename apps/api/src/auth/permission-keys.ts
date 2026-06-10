@@ -1,0 +1,27 @@
+export const PERMISSION_KEYS = [
+  'clients.view',
+  'clients.create',
+  'clients.update',
+  'clients.delete',
+  'firewalls.view',
+  'firewalls.create',
+  'firewalls.update',
+  'firewalls.delete',
+  'backups.run',
+  'backups.view',
+  'backups.download',
+  'users.view',
+  'users.create',
+  'users.update',
+  'users.delete',
+  'roles.manage',
+  'audit.view',
+  'settings.manage',
+  'bootstrap.view',
+  'bootstrap.execute',
+  'alerts.view',
+  'alerts.acknowledge',
+  'alerts.resolve',
+] as const;
+
+export type PermissionKey = (typeof PERMISSION_KEYS)[number];

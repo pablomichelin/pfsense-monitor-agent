@@ -4,6 +4,18 @@
 
 :root {
   color-scheme: dark;
+  --app-max-w: 80rem;
+  --app-shell-width: min(96vw, 1280px);
+  --app-gutter: 1.5rem;
+  --section-gap: 2rem;
+  --card-radius: 1rem;
+  --card-padding: 1.5rem;
+  --input-h: 2.75rem;
+  --nav-h: 2.5rem;
+  --label-tracking: 0.08em;
+  --sidebar-width: 15rem;
+  --sidebar-width-collapsed: 4rem;
+  --header-height: 3.5rem;
 }
 
 * {
@@ -82,11 +94,85 @@ textarea:focus-visible {
     0 0 0 5px rgba(8, 145, 178, 0.12);
 }
 
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  width: var(--app-shell-width);
+  max-width: 100%;
+  margin-inline: auto;
+  flex-direction: column;
+  padding-inline: var(--app-gutter);
+  padding-block: 1.5rem;
+  min-width: 0;
+}
+
+@media (min-width: 1440px) {
+  :root {
+    --app-shell-width: min(94vw, 1520px);
+  }
+}
+
+@media (min-width: 1800px) {
+  :root {
+    --app-shell-width: min(92vw, 1760px);
+  }
+}
+
+@media (min-width: 2200px) {
+  :root {
+    --app-shell-width: min(90vw, 1920px);
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --app-gutter: 0.75rem;
+    --app-shell-width: calc(100vw - 24px);
+  }
+}
+
+.app-page {
+  width: 100%;
+  min-width: 0;
+}
+
+.app-layout {
+  display: flex;
+  flex-direction: row;
+  min-height: 100vh;
+  width: 100%;
+  min-width: 0;
+}
+
+.app-main-column {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.app-header-bar {
+  height: var(--header-height);
+  min-height: var(--header-height);
+}
+
 .glass-panel {
+  width: 100%;
   background: linear-gradient(180deg, rgba(12, 23, 40, 0.9), rgba(8, 17, 31, 0.88));
   border: 1px solid rgba(71, 85, 105, 0.38);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(18px);
+}
+
+/* Após .glass-panel: width:100% da sidebar empurrava a coluna principal para fora do viewport */
+.app-sidebar {
+  flex-shrink: 0;
+  width: var(--sidebar-width);
+  transition: width 200ms ease;
+}
+
+.app-sidebar--collapsed {
+  width: var(--sidebar-width-collapsed);
 }
 
 .status-dot {
@@ -95,6 +181,72 @@ textarea:focus-visible {
   width: 0.75rem;
   border-radius: 9999px;
   box-shadow: 0 0 14px currentColor;
+}
+
+.client-scope-scroll {
+  /* 16 linhas × 28px + 15 gaps × 6px + padding 16px — sem scroll vertical */
+  height: calc(16 * 28px + 15 * 6px + 16px);
+  max-height: calc(16 * 28px + 15 * 6px + 16px);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.client-scope-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(16, 28px);
+  grid-auto-columns: 280px;
+  column-gap: 24px;
+  row-gap: 6px;
+  width: max-content;
+  min-width: 100%;
+  align-content: start;
+  justify-content: start;
+}
+
+.client-scope-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  min-width: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  border-radius: 0.25rem;
+  padding: 0 0.25rem;
+  font-size: 0.875rem;
+  line-height: 1;
+  transition: background-color 160ms ease;
+}
+
+.client-scope-item:hover {
+  background-color: rgba(30, 41, 59, 0.4);
+}
+
+.client-scope-item--selected {
+  background-color: rgba(34, 211, 238, 0.05);
+}
+
+.client-scope-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  color: #e2e8f0;
+}
+
+.client-scope-code {
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 9rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  opacity: 0.65;
+  color: #64748b;
 }
 
 @media (prefers-reduced-motion: reduce) {

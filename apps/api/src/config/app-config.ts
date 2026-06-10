@@ -1,3 +1,13 @@
+// Carregar config versionado do package pfSense (usado no bootstrap-command)
+try {
+  const path = require('path');
+  const dotenv = require('dotenv');
+  const pkgReleasePath = path.resolve(process.cwd(), 'config/package-release.env');
+  dotenv.config({ path: pkgReleasePath });
+} catch {
+  // dotenv ou path indisponível; variáveis vêm do env (ex.: Docker env_file)
+}
+
 const parseNumber = (
   input: string | undefined,
   fallback: number,
@@ -40,12 +50,10 @@ const requireEnv = (fieldName: string): string => {
   return value;
 };
 
-const parseEncryptionKey = (value: string): Buffer => {
+const parseEncryptionKey = (value: string, fieldName: string): Buffer => {
   const key = Buffer.from(value, 'base64');
   if (key.length !== 32) {
-    throw new Error(
-      'NODE_SECRET_ENCRYPTION_KEY_BASE64 must decode to exactly 32 bytes',
-    );
+    throw new Error(`${fieldName} must decode to exactly 32 bytes`);
   }
 
   return key;
@@ -90,7 +98,7 @@ export const appConfig = Object.freeze({
     ),
     reconcileIntervalSeconds: parseNumber(
       process.env.NODE_RECONCILE_INTERVAL_SECONDS,
-      30,
+      60,
       'NODE_RECONCILE_INTERVAL_SECONDS',
     ),
   },
@@ -109,6 +117,10 @@ export const appConfig = Object.freeze({
       'AUTH_SESSION_TTL_HOURS',
     ),
     cookieSecure: parseBoolean(process.env.AUTH_COOKIE_SECURE, true),
+    bootstrapLoginEnabled: parseBoolean(
+      process.env.AUTH_BOOTSTRAP_LOGIN_ENABLED,
+      true,
+    ),
   },
   gateway: {
     degradedLatencyMs: parseNumber(
@@ -132,15 +144,49 @@ export const appConfig = Object.freeze({
       process.env.PACKAGE_RELEASE_REPO_RAW_BASE?.trim() ||
       'https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main',
   },
-  versionMatrix: {
-    homologatedPfSenseVersions: (() => {
-      const versions = parseList(process.env.HOMOLOGATED_PFSENSE_VERSIONS);
-      return versions.length > 0 ? versions : ['2.8.1'];
-    })(),
-  },
   nodeSecretEncryptionKey: parseEncryptionKey(
     requireEnv('NODE_SECRET_ENCRYPTION_KEY_BASE64'),
+    'NODE_SECRET_ENCRYPTION_KEY_BASE64',
   ),
+  configBackup: {
+    maxBytes: parseNumber(
+      process.env.CONFIG_BACKUP_MAX_BYTES,
+      5 * 1024 * 1024,
+      'CONFIG_BACKUP_MAX_BYTES',
+    ),
+    retentionCount: parseNumber(
+      process.env.CONFIG_BACKUP_RETENTION_COUNT,
+      30,
+      'CONFIG_BACKUP_RETENTION_COUNT',
+    ),
+    retentionMaxBytesPerNode: parseNumber(
+      process.env.CONFIG_BACKUP_RETENTION_MAX_BYTES_PER_NODE,
+      250 * 1024 * 1024,
+      'CONFIG_BACKUP_RETENTION_MAX_BYTES_PER_NODE',
+    ),
+    storageDir:
+      process.env.BACKUP_STORAGE_DIR?.trim() ||
+      '/app/data/pfsense-config-backups',
+    commandExpireMinutes: parseNumber(
+      process.env.CONFIG_BACKUP_COMMAND_EXPIRE_MINUTES,
+      15,
+      'CONFIG_BACKUP_COMMAND_EXPIRE_MINUTES',
+    ),
+    attemptIdempotencyHours: parseNumber(
+      process.env.CONFIG_BACKUP_ATTEMPT_IDEMPOTENCY_HOURS,
+      24,
+      'CONFIG_BACKUP_ATTEMPT_IDEMPOTENCY_HOURS',
+    ),
+    encryptionVersion: 'aes-256-gcm:v1',
+  },
+  backupEncryptionKey: parseEncryptionKey(
+    requireEnv('BACKUP_ENCRYPTION_KEY_BASE64'),
+    'BACKUP_ENCRYPTION_KEY_BASE64',
+  ),
+  rbac: {
+    scopeEnabled: parseBoolean(process.env.RBAC_SCOPE_ENABLED, true),
+    permissionsEnabled: parseBoolean(process.env.RBAC_PERMISSIONS_ENABLED, true),
+  },
 });
 
 export type AppConfig = typeof appConfig;

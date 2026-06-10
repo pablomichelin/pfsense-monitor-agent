@@ -11,6 +11,10 @@ services:
     ports:
       - "8088:8088"
     restart: unless-stopped
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test:
         - CMD-SHELL
@@ -29,7 +33,21 @@ services:
         condition: service_healthy
     env_file:
       - ./.env.api
+      - ./config/package-release.env
+    volumes:
+      # Monta o ficheiro em runtime para o comando de bootstrap refletir sempre a versão atual (após git pull), sem restart
+      - ./config/package-release.env:/app/config/package-release.env:ro
+      - ./data/pfsense-config-backups:/app/data/pfsense-config-backups
     restart: unless-stopped
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 1G
     healthcheck:
       test:
         - CMD-SHELL
@@ -49,6 +67,10 @@ services:
     env_file:
       - ./.env.web
     restart: unless-stopped
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test:
         - CMD-SHELL
@@ -63,6 +85,10 @@ services:
     env_file:
       - ./.env.db
     restart: unless-stopped
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:

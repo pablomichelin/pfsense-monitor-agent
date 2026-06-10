@@ -144,7 +144,7 @@ process.stdout.write(crypto.createHmac("sha256", secret).update(payload).digest(
 ' "$timestamp" "$body_path" "$secret"
 }
 
-echo "[1/7] Login bootstrap admin"
+echo "[1/8] Login bootstrap admin"
 LOGIN_RESPONSE="$(curl -skS \
   -b "$ADMIN_COOKIE_JAR" \
   -c "$ADMIN_COOKIE_JAR" \
@@ -154,7 +154,7 @@ LOGIN_RESPONSE="$(curl -skS \
   --data "{\"email\":\"$AUTH_EMAIL\",\"password\":\"$AUTH_PASSWORD\"}")"
 json_get "$LOGIN_RESPONSE" "ok" >/dev/null
 
-echo "[2/7] Criando inventario minimo e alerta de teste"
+echo "[2/8] Criando inventario minimo e alerta de teste"
 CLIENT_RESPONSE="$(request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/clients "{\"name\":\"RBAC Smoke $SUFFIX\",\"code\":\"$CLIENT_CODE\"}")"
 CLIENT_ID="$(json_get "$CLIENT_RESPONSE" "client.id")"
 SITE_RESPONSE="$(request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/sites "{\"client_id\":\"$CLIENT_ID\",\"name\":\"RBAC Site $SUFFIX\",\"code\":\"$SITE_CODE\",\"city\":\"Sao Paulo\",\"state\":\"SP\",\"timezone\":\"America/Sao_Paulo\"}")"
@@ -205,13 +205,13 @@ HEARTBEAT_RESPONSE="$(curl -skS \
 ALERTS_RESPONSE="$(request_json "$ADMIN_COOKIE_JAR" GET "/api/v1/alerts?node_id=$NODE_ID&status=open")"
 ALERT_ID="$(json_get "$ALERTS_RESPONSE" "items.0.id")"
 
-echo "[3/7] Criando usuarios operator e readonly"
-OPERATOR_CREATE_RESPONSE="$(request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/users "{\"email\":\"$OPERATOR_EMAIL\",\"display_name\":\"RBAC Operator $SUFFIX\",\"password\":\"$OPERATOR_PASSWORD\",\"role\":\"operator\",\"status\":\"active\"}")"
-READONLY_CREATE_RESPONSE="$(request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/users "{\"email\":\"$READONLY_EMAIL\",\"display_name\":\"RBAC Readonly $SUFFIX\",\"password\":\"$READONLY_PASSWORD\",\"role\":\"readonly\",\"status\":\"active\"}")"
+echo "[3/8] Criando usuarios operator e readonly"
+OPERATOR_CREATE_RESPONSE="$(request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/users "{\"email\":\"$OPERATOR_EMAIL\",\"display_name\":\"RBAC Operator $SUFFIX\",\"password\":\"$OPERATOR_PASSWORD\",\"role\":\"operator\",\"status\":\"active\",\"client_ids\":[\"$CLIENT_ID\"]}")"
+READONLY_CREATE_RESPONSE="$(request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/users "{\"email\":\"$READONLY_EMAIL\",\"display_name\":\"RBAC Readonly $SUFFIX\",\"password\":\"$READONLY_PASSWORD\",\"role\":\"readonly\",\"status\":\"active\",\"client_ids\":[\"$CLIENT_ID\"]}")"
 [[ "$(json_get "$OPERATOR_CREATE_RESPONSE" "user.role")" == "operator" ]]
 [[ "$(json_get "$READONLY_CREATE_RESPONSE" "user.role")" == "readonly" ]]
 
-echo "[4/7] Login operator e readonly"
+echo "[4/8] Login operator e readonly"
 OPERATOR_LOGIN_RESPONSE="$(curl -skS \
   -b "$OPERATOR_COOKIE_JAR" \
   -c "$OPERATOR_COOKIE_JAR" \
@@ -229,7 +229,7 @@ READONLY_LOGIN_RESPONSE="$(curl -skS \
 [[ "$(json_get "$OPERATOR_LOGIN_RESPONSE" "user.role")" == "operator" ]]
 [[ "$(json_get "$READONLY_LOGIN_RESPONSE" "user.role")" == "readonly" ]]
 
-echo "[5/7] Validando leitura para operator e readonly"
+echo "[5/8] Validando leitura para operator e readonly"
 [[ "$(json_get "$(request_json "$OPERATOR_COOKIE_JAR" GET /api/v1/dashboard/summary)" "totals.nodes" || true)" != "" ]]
 [[ "$(json_get "$(request_json "$READONLY_COOKIE_JAR" GET /api/v1/dashboard/summary)" "totals.nodes" || true)" != "" ]]
 [[ "$(json_get "$(request_json "$OPERATOR_COOKIE_JAR" GET /api/v1/nodes)" "items.0.id" || true)" != "" ]]
@@ -237,7 +237,7 @@ echo "[5/7] Validando leitura para operator e readonly"
 [[ "$(json_get "$(request_json "$OPERATOR_COOKIE_JAR" GET "/api/v1/alerts?node_id=$NODE_ID&status=open")" "items.0.id")" == "$ALERT_ID" ]]
 [[ "$(json_get "$(request_json "$READONLY_COOKIE_JAR" GET "/api/v1/alerts?node_id=$NODE_ID&status=open")" "items.0.id")" == "$ALERT_ID" ]]
 
-echo "[6/7] Validando bloqueios e permissoes de escrita"
+echo "[6/8] Validando bloqueios e permissoes de escrita"
 [[ "$(request_with_status "$OPERATOR_COOKIE_JAR" GET /api/v1/admin/users)" == "403" ]]
 [[ "$(request_with_status "$READONLY_COOKIE_JAR" GET /api/v1/admin/users)" == "403" ]]
 [[ "$(request_with_status "$OPERATOR_COOKIE_JAR" GET /api/v1/admin/audit)" == "403" ]]
@@ -249,7 +249,16 @@ OPERATOR_ACK_RESPONSE="$(request_json "$OPERATOR_COOKIE_JAR" POST "/api/v1/alert
 OPERATOR_RESOLVE_RESPONSE="$(request_json "$OPERATOR_COOKIE_JAR" POST "/api/v1/alerts/$ALERT_ID/resolve" '{"resolution_note":"operator resolved"}')"
 [[ "$(json_get "$OPERATOR_RESOLVE_RESPONSE" "status")" == "resolved" ]]
 
-echo "[7/7] Validando que readonly continua sem mutacao administrativa"
+echo "[7/8] Validando que readonly continua sem mutacao administrativa"
 [[ "$(request_with_status "$READONLY_COOKIE_JAR" POST "/api/v1/admin/users" "{\"email\":\"deny-$SUFFIX@systemup.inf.br\",\"password\":\"Denied!$SUFFIX\",\"role\":\"readonly\"}")" == "403" ]]
 
-echo "Smoke RBAC OK: operator e readonly validados em leitura, escrita de alertas e bloqueio administrativo incluindo auditoria."
+echo "[8/8] Validando detalhe do node para operator e readonly"
+OPERATOR_DETAIL="$(request_json "$OPERATOR_COOKIE_JAR" GET "/api/v1/nodes/$NODE_ID")"
+[[ "$(json_get "$OPERATOR_DETAIL" "node.id")" == "$NODE_ID" ]]
+READONLY_DETAIL="$(request_json "$READONLY_COOKIE_JAR" GET "/api/v1/nodes/$NODE_ID")"
+[[ "$(json_get "$READONLY_DETAIL" "node.id")" == "$NODE_ID" ]]
+[[ "$(request_with_status "$OPERATOR_COOKIE_JAR" GET "/api/v1/admin/nodes/$NODE_ID/bootstrap-command")" == "403" ]]
+OPERATOR_PAGE_HTTP="$(curl -skS -b "$OPERATOR_COOKIE_JAR" -o "$RESPONSE_BODY_FILE" -w '%{http_code}' "$BASE_URL/nodes/$NODE_ID")"
+[[ "$OPERATOR_PAGE_HTTP" == "200" ]]
+
+echo "Smoke RBAC OK: operator e readonly validados em leitura, detalhe do node, escrita de alertas e bloqueio administrativo incluindo auditoria."

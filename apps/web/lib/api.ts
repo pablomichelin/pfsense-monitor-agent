@@ -42,6 +42,8 @@ export type NodesListResponse = {
     management_ip: string | null;
     wan_ip: string | null;
     open_alerts: number;
+    backup_status: 'ok' | 'late' | 'failed' | 'never';
+    latest_backup_received_at: string | null;
     cpu_percent: number | null;
     memory_percent: number | null;
     disk_percent: number | null;
@@ -140,6 +142,64 @@ export type NodeDetailsResponse = {
   };
 };
 
+export type ConfigBackupItem = {
+  id: string;
+  backup_uid: string;
+  status: 'stored' | 'duplicate';
+  source: string;
+  received_at: string;
+  config_sha256: string;
+  size_bytes: number;
+  compression: string | null;
+  agent_version: string | null;
+  pfsense_version: string | null;
+  command_id: string | null;
+};
+
+export type NodeConfigBackupsResponse = {
+  items: ConfigBackupItem[];
+  summary: {
+    total_count: number;
+    stored_count: number;
+    total_stored_bytes: number;
+    latest_received_at: string | null;
+    latest_status: 'stored' | 'duplicate' | null;
+  };
+};
+
+export type ConfigBackupRequestResponse = {
+  command_id: string;
+  status:
+    | 'pending'
+    | 'picked_up'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'expired'
+    | 'cancelled';
+  expires_at: string;
+};
+
+export type ConfigBackupCommandStatusResponse = {
+  command_id: string;
+  node_id: string;
+  type: string;
+  status:
+    | 'pending'
+    | 'picked_up'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'expired'
+    | 'cancelled';
+  requested_at: string;
+  picked_up_at: string | null;
+  completed_at: string | null;
+  expires_at: string;
+  result_json: Record<string, unknown> | null;
+  error_message: string | null;
+};
+
 export type SessionResponse = {
   authenticated: true;
   session: {
@@ -150,6 +210,7 @@ export type SessionResponse = {
     email: string;
     role: string;
   };
+  permissions: string[];
 };
 
 export type AuthSessionsResponse = {
@@ -186,6 +247,8 @@ export type UsersListResponse = {
     display_name: string | null;
     role: string;
     status: string;
+    client_ids: string[];
+    client_id: string | null;
     created_at: string;
     updated_at: string;
   }>;
@@ -412,11 +475,14 @@ export type AuditLogsResponse = {
     id: string;
     actor_type: string;
     actor_id: string | null;
+    actor_role: string | null;
     actor_email: string | null;
     action: string;
     target_type: string;
     target_id: string | null;
     target_display_name: string | null;
+    client_id: string | null;
+    result: string;
     ip_address: string | null;
     metadata_json: unknown;
     created_at: string;
@@ -586,12 +652,42 @@ export async function getNodeDetails(id: string): Promise<NodeDetailsResponse> {
   return apiFetch<NodeDetailsResponse>(`/api/v1/nodes/${id}`);
 }
 
-export async function getNodeBootstrapCommand(
+export async function getNodeConfigBackups(
+  nodeId: string,
+): Promise<NodeConfigBackupsResponse> {
+  return apiFetch<NodeConfigBackupsResponse>(
+    `/api/v1/nodes/${nodeId}/config-backups`,
+  );
+}
+
+export async function requestNodeConfigBackup(
+  nodeId: string,
+): Promise<ConfigBackupRequestResponse> {
+  return apiFetch<ConfigBackupRequestResponse>(
+    `/api/v1/nodes/${nodeId}/config-backups/request`,
+    {
+      method: 'POST',
+      csrfProtected: true,
+    },
+  );
+}
+
+export async function getNodeConfigBackupCommandStatus(
+  nodeId: string,
+  commandId: string,
+): Promise<ConfigBackupCommandStatusResponse> {
+  return apiFetch<ConfigBackupCommandStatusResponse>(
+    `/api/v1/nodes/${nodeId}/config-backups/requests/${commandId}`,
+  );
+}
+
+function buildBootstrapCommandPath(
   id: string,
   releaseBaseUrl?: string,
   controllerUrl?: string,
   heartbeatMode?: 'normal' | 'light',
-): Promise<NodeBootstrapCommandResponse> {
+  configBackupEnabled?: 'yes' | 'no',
+): string {
   const params = new URLSearchParams();
   if (releaseBaseUrl?.trim()) {
     params.set('release_base_url', releaseBaseUrl.trim());
@@ -602,11 +698,55 @@ export async function getNodeBootstrapCommand(
   if (heartbeatMode) {
     params.set('heartbeat_mode', heartbeatMode);
   }
+  if (configBackupEnabled) {
+    params.set('config_backup_enabled', configBackupEnabled);
+  }
 
   const suffix = params.toString() ? `?${params.toString()}` : '';
+  return `/api/v1/admin/nodes/${id}/bootstrap-command${suffix}`;
+}
+
+export async function getNodeBootstrapCommand(
+  id: string,
+  releaseBaseUrl?: string,
+  controllerUrl?: string,
+  heartbeatMode?: 'normal' | 'light',
+  configBackupEnabled?: 'yes' | 'no',
+): Promise<NodeBootstrapCommandResponse> {
   return apiFetch<NodeBootstrapCommandResponse>(
-    `/api/v1/admin/nodes/${id}/bootstrap-command${suffix}`,
+    buildBootstrapCommandPath(
+      id,
+      releaseBaseUrl,
+      controllerUrl,
+      heartbeatMode,
+      configBackupEnabled,
+    ),
   );
+}
+
+/** Retorna null em 403 (perfil sem acesso admin); propaga demais erros. */
+export async function getNodeBootstrapCommandIfAllowed(
+  id: string,
+  releaseBaseUrl?: string,
+  controllerUrl?: string,
+  heartbeatMode?: 'normal' | 'light',
+  configBackupEnabled?: 'yes' | 'no',
+): Promise<NodeBootstrapCommandResponse | null> {
+  try {
+    return await getNodeBootstrapCommand(
+      id,
+      releaseBaseUrl,
+      controllerUrl,
+      heartbeatMode,
+      configBackupEnabled,
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 403) {
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 export async function getAlertsList(query?: {
@@ -649,7 +789,12 @@ export async function getAuditLogs(query?: {
   action?: string;
   target_type?: string;
   target_id?: string;
+  result?: string;
+  from?: string;
+  to?: string;
+  actor_email?: string;
   limit?: number;
+  offset?: number;
 }): Promise<AuditLogsResponse> {
   const params = new URLSearchParams();
   if (query?.action) {
@@ -661,8 +806,23 @@ export async function getAuditLogs(query?: {
   if (query?.target_id) {
     params.set('target_id', query.target_id);
   }
+  if (query?.result) {
+    params.set('result', query.result);
+  }
+  if (query?.from) {
+    params.set('from', query.from);
+  }
+  if (query?.to) {
+    params.set('to', query.to);
+  }
+  if (query?.actor_email) {
+    params.set('actor_email', query.actor_email);
+  }
   if (query?.limit) {
     params.set('limit', String(query.limit));
+  }
+  if (query?.offset) {
+    params.set('offset', String(query.offset));
   }
 
   const suffix = params.toString() ? `?${params.toString()}` : '';
@@ -729,8 +889,10 @@ export async function createUser(input: {
   email: string;
   display_name?: string;
   password: string;
-  role?: 'superadmin' | 'admin' | 'operator' | 'readonly';
+  role?: 'superadmin' | 'admin' | 'operator' | 'readonly' | 'client';
   status?: 'active' | 'inactive';
+  client_id?: string;
+  client_ids?: string[];
 }): Promise<CreateUserResponse> {
   return apiFetch<CreateUserResponse>('/api/v1/admin/users', {
     method: 'POST',
@@ -745,8 +907,10 @@ export async function updateUser(
     email?: string;
     display_name?: string;
     password?: string;
-    role?: 'superadmin' | 'admin' | 'operator' | 'readonly';
+    role?: 'superadmin' | 'admin' | 'operator' | 'readonly' | 'client';
     status?: 'active' | 'inactive';
+    client_id?: string;
+    client_ids?: string[];
   },
 ): Promise<UpdateUserResponse> {
   return apiFetch<UpdateUserResponse>(`/api/v1/admin/users/${id}`, {
@@ -758,6 +922,17 @@ export async function updateUser(
 
 export async function getAdminUserSessions(id: string): Promise<AdminUserSessionsResponse> {
   return apiFetch<AdminUserSessionsResponse>(`/api/v1/admin/users/${id}/sessions`);
+}
+
+export async function setUserClientScopes(
+  userId: string,
+  clientIds: string[],
+): Promise<{ user_id: string; client_ids: string[] }> {
+  return apiFetch(`/api/v1/admin/users/${userId}/client-scopes`, {
+    method: 'POST',
+    body: { client_ids: clientIds },
+    csrfProtected: true,
+  });
 }
 
 export async function revokeAdminUserSession(
@@ -940,6 +1115,59 @@ export async function updateNode(
   return apiFetch<UpdateNodeResponse>(`/api/v1/admin/nodes/${id}`, {
     method: 'POST',
     body: input,
+    csrfProtected: true,
+  });
+}
+
+export type RoleSummary = {
+  code: string;
+  label: string;
+  is_system: boolean;
+};
+
+export type PermissionsMatrixResponse = {
+  generated_at: string;
+  roles: RoleSummary[];
+  permissions: Array<{
+    id: string;
+    description: string | null;
+  }>;
+  role_permissions: Record<string, string[]>;
+};
+
+export async function getPermissionsMatrix(): Promise<PermissionsMatrixResponse> {
+  return apiFetch<PermissionsMatrixResponse>('/api/v1/admin/permissions-matrix');
+}
+
+export async function getRolesList(): Promise<{ items: Array<RoleSummary & { status: string }> }> {
+  return apiFetch('/api/v1/admin/roles');
+}
+
+export async function createRole(input: {
+  code: string;
+  label: string;
+}): Promise<{ role: RoleSummary }> {
+  return apiFetch('/api/v1/admin/roles', {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function deleteRole(code: string): Promise<{ deleted: true; code: string }> {
+  return apiFetch(`/api/v1/admin/roles/${encodeURIComponent(code)}`, {
+    method: 'DELETE',
+    csrfProtected: true,
+  });
+}
+
+export async function setRolePermissions(
+  code: string,
+  permissionIds: string[],
+): Promise<{ role: string; permission_ids: string[] }> {
+  return apiFetch(`/api/v1/admin/roles/${encodeURIComponent(code)}/permissions`, {
+    method: 'POST',
+    body: { permission_ids: permissionIds },
     csrfProtected: true,
   });
 }

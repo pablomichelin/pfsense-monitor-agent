@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,14 +10,19 @@ import {
   AlertType,
   Prisma,
 } from '@prisma/client';
+import { AccessActor } from '../auth/access-actor.type';
+import { AccessPolicyService } from '../auth/access-policy.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListAlertsQueryDto } from './dto/list-alerts-query.dto';
 
 @Injectable()
 export class AlertsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessPolicy: AccessPolicyService,
+  ) {}
 
-  async listAlerts(query: ListAlertsQueryDto): Promise<{
+  async listAlerts(actor: AccessActor, query: ListAlertsQueryDto): Promise<{
     generated_at: string;
     totals: {
       open: number;
@@ -61,7 +67,11 @@ export class AlertsService {
   }> {
     const now = new Date();
     const searchTerm = query.search?.trim();
-    const where: Prisma.AlertWhereInput = {
+    await this.accessPolicy.assertRequestedClientFilter(actor, query.client_id);
+    if (query.node_id) {
+      await this.accessPolicy.assertNodeAccess(actor, query.node_id);
+    }
+    const baseWhere: Prisma.AlertWhereInput = {
       status: query.status as AlertStatus | undefined,
       severity: query.severity as AlertSeverity | undefined,
       type: query.type as AlertType | undefined,
@@ -137,6 +147,7 @@ export class AlertsService {
           ]
         : undefined,
     };
+    const where = await this.accessPolicy.mergeAlertWhere(actor, baseWhere);
 
     const alerts = await this.prisma.alert.findMany({
       where,
@@ -207,6 +218,7 @@ export class AlertsService {
   }
 
   async acknowledgeAlert(
+    accessActor: AccessActor,
     alertId: string,
     actor: { userId?: string; email?: string },
     actorIp?: string,
@@ -223,11 +235,21 @@ export class AlertsService {
       select: {
         id: true,
         status: true,
+        nodeId: true,
       },
     });
 
     if (!alert) {
       throw new NotFoundException('alert not found');
+    }
+
+    try {
+      await this.accessPolicy.assertNodeAccess(accessActor, alert.nodeId);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new ForbiddenException('alert out of scope');
+      }
+      throw error;
     }
 
     if (alert.status === AlertStatus.resolved) {
@@ -268,6 +290,7 @@ export class AlertsService {
   }
 
   async resolveAlert(
+    accessActor: AccessActor,
     alertId: string,
     input: { resolution_note?: string },
     actor: { userId?: string; email?: string },
@@ -285,11 +308,21 @@ export class AlertsService {
       select: {
         id: true,
         status: true,
+        nodeId: true,
       },
     });
 
     if (!alert) {
       throw new NotFoundException('alert not found');
+    }
+
+    try {
+      await this.accessPolicy.assertNodeAccess(accessActor, alert.nodeId);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new ForbiddenException('alert out of scope');
+      }
+      throw error;
     }
 
     if (alert.status === AlertStatus.resolved) {

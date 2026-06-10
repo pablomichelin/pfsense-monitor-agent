@@ -5,8 +5,9 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { EntityStatus, UserRole } from '@prisma/client';
+import { EntityStatus } from '@prisma/client';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { AuditService } from '../audit/audit.service';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
 import { hashPassword, verifyPassword } from './password-hash';
@@ -15,15 +16,19 @@ export interface AuthenticatedSession {
   sessionId: string;
   userId: string;
   email: string;
-  role: UserRole;
+  role: string;
   csrfTokenHash: string;
 }
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly sessionTouchIntervalMs = 5 * 60 * 1000;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   async login(input: {
     email: string;
@@ -38,7 +43,7 @@ export class AuthService {
       id: string;
       email: string;
       display_name: string;
-      role: UserRole;
+      role: string;
     };
   }> {
     const configuredEmail = appConfig.auth.bootstrapEmail;
@@ -61,7 +66,7 @@ export class AuthService {
 
     if (existingUser?.passwordHash && verifyPassword(input.password, existingUser.passwordHash)) {
       authenticated = true;
-    } else {
+    } else if (appConfig.auth.bootstrapLoginEnabled) {
       const emailMatches = this.safeEqual(normalizedEmail, expectedEmail);
       const passwordMatches = this.safeEqual(input.password, configuredPassword);
 
@@ -74,13 +79,13 @@ export class AuthService {
             email: expectedEmail,
             displayName: appConfig.auth.bootstrapDisplayName,
             passwordHash: hashPassword(configuredPassword),
-            role: UserRole.superadmin,
+            role: 'superadmin',
             status: EntityStatus.active,
           },
           update: {
             displayName: appConfig.auth.bootstrapDisplayName,
             passwordHash: hashPassword(configuredPassword),
-            role: UserRole.superadmin,
+            role: 'superadmin',
             status: EntityStatus.active,
           },
         });
@@ -148,7 +153,12 @@ export class AuthService {
       }
     }
 
-    if (options?.touch !== false) {
+    const shouldTouchSession =
+      options?.touch !== false &&
+      (!session.lastSeenAt ||
+        Date.now() - session.lastSeenAt.getTime() > this.sessionTouchIntervalMs);
+
+    if (shouldTouchSession) {
       await this.prisma.userSession.update({
         where: {
           id: session.id,
@@ -196,8 +206,9 @@ export class AuthService {
       },
     });
 
-    await this.writeAuditLog({
+    await this.auditService.record({
       actorId: session.user.id,
+      actorRole: session.user.role,
       action: 'auth.logout',
       targetType: 'user',
       targetId: session.user.id,
@@ -228,8 +239,9 @@ export class AuthService {
     const sessions = await this.prisma.userSession.findMany({
       where: {
         userId: actor.userId,
+        revokedAt: null,
       },
-      orderBy: [{ revokedAt: 'asc' }, { createdAt: 'desc' }],
+      orderBy: [{ createdAt: 'desc' }],
     });
 
     return {
@@ -292,7 +304,7 @@ export class AuthService {
       },
     });
 
-    await this.writeAuditLog({
+    await this.auditService.record({
       actorId: actor.userId,
       action: 'auth.session.revoke',
       targetType: 'user_session',
@@ -377,7 +389,7 @@ export class AuthService {
       id: string;
       email: string;
       displayName: string | null;
-      role: UserRole;
+      role: string;
     };
     ipAddress?: string;
     userAgent?: string;
@@ -389,7 +401,7 @@ export class AuthService {
       id: string;
       email: string;
       display_name: string;
-      role: UserRole;
+      role: string;
     };
   }> {
     const sessionToken = randomBytes(32).toString('base64url');
@@ -410,15 +422,15 @@ export class AuthService {
       },
     });
 
-    await this.writeAuditLog({
+    await this.auditService.record({
       actorId: input.user.id,
+      actorRole: input.user.role,
       action: 'auth.login',
       targetType: 'user',
       targetId: input.user.id,
       ipAddress: input.ipAddress,
       metadataJson: {
         email: input.user.email,
-        role: input.user.role,
       },
     });
 
@@ -450,24 +462,4 @@ export class AuthService {
     return timingSafeEqual(leftBuffer, rightBuffer);
   }
 
-  private async writeAuditLog(input: {
-    actorId?: string;
-    action: string;
-    targetType: string;
-    targetId?: string;
-    ipAddress?: string;
-    metadataJson?: Record<string, string>;
-  }): Promise<void> {
-    await this.prisma.auditLog.create({
-      data: {
-        actorType: 'user_session',
-        actorId: input.actorId,
-        action: input.action,
-        targetType: input.targetType,
-        targetId: input.targetId,
-        ipAddress: input.ipAddress,
-        metadataJson: input.metadataJson,
-      },
-    });
-  }
 }

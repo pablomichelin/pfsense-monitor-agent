@@ -15,8 +15,9 @@ Leia nesta ordem:
 5. `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`, quando a tarefa envolver backup do `config.xml`
 6. `docs/65-FRONTEND-E-DEPLOY-BACKUP-PFSENSE-2026-06-08.md`, quando a tarefa envolver painel, deploy ou package pfSense
 7. `docs/66-DECISAO-MODULO-BACKUP-INTEGRADO-SYSTEMUP-MONITOR-2026-06-08.md`, quando houver duvida entre modulo integrado e software separado
-8. `docs/DIRETRIZES-E-FUNCIONAMENTO.md`
-9. `docs/HISTORICO-E-LINHA-DO-TEMPO.md`, quando for refatorar ou reabrir tema ja mexido
+8. `docs/67-CHECKLIST-REVISAO-PLANO-BACKUP-2026-06-08.md`, quando for implementar ou validar o plano de backup
+9. `docs/DIRETRIZES-E-FUNCIONAMENTO.md`
+10. `docs/HISTORICO-E-LINHA-DO-TEMPO.md`, quando for refatorar ou reabrir tema ja mexido
 
 ## Estado verdadeiro em 2026-06-08
 
@@ -33,8 +34,10 @@ Observado no servidor conectado:
 - decisao atual: backup sera modulo integrado ao Monitor-Pfsense e nova aba `Backup` dentro de `Services > SystemUp Monitor`, sem software separado
 - worktree esta com muitas alteracoes nao commitadas e arquivos novos
 - documentacao esta funcional, mas espalhada entre raiz e `docs/`
-- ha desalinhamento documental/operacional sobre origem interna: documentos antigos citam `192.168.100.244:8088`; o ambiente informado e observado usa `192.168.100.221`, com publicacao tambem em `192.168.100.221:3031`
-- o limite de payload atual do gateway/API e `64 KB`, suficiente para heartbeat, insuficiente para `config.xml` real de muitos pfSense
+- origem interna canonica no repositorio: `http://192.168.100.221:3031` (documentos historicos na raiz podem ainda citar `192.168.100.244`)
+- limite heartbeat: `64 KB`; rota de backup preparada para `5 MB` em `infra/nginx/default.conf` e `infra/ispconfig/nginx.monitor-pfsense.conf`
+- volume de backups de pfSense preparado: `data/pfsense-config-backups/` montado na API via `compose.yaml`
+- Fase B parcial: falta aplicar snippet ISPConfig no host, criar chave `BACKUP_ENCRYPTION_KEY_BASE64` e medir `config.xml` em homolog
 
 ## Regra para os documentos antigos
 
@@ -101,14 +104,90 @@ Use esses arquivos para entender por que algo foi feito. Evite usa-los como cont
 
 ### 5. Plano atual de evolucao
 
-Arquivos novos criados em `2026-06-08`:
+#### Trilha RBAC (**encerrada** 2026-06-09)
+
+Plano mestre na raiz:
+
+- `22-plano-mestre-rbac-usuarios-permissoes-escopo-2026-06-09.md`
+- `23-matriz-permissoes-e-escopo-rbac-2026-06-09.md`
+
+Trilhas operacionais em `docs/`:
+
+- `docs/68-DIAGNOSTICO-RBAC-USUARIOS-PERMISSOES-2026-06-09.md` — baseline
+- `docs/69` a `docs/74` — fases A a F
+- `docs/75-CHECKLIST-TESTES-RBAC-ESCOPO-2026-06-09.md`
+- `docs/76-ENCERRAMENTO-TRILHA-RBAC-2026-06-09.md` — **encerramento formal**
+
+Versoes atuais: API `0.2.7`, painel `1.0.0`. **Roadmap UX plano 24 encerrado** — encerramento formal: `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`; entrega Fase 8: `docs/87-ENTREGA-FRONTEND-FASE8-DESIGN-SYSTEM-PAGES-RESTANTES-2026-06-09.md`. Entrega Fase 7 auditoria filtros: `docs/86-ENTREGA-FRONTEND-FASE7-AUDITORIA-FILTROS-AMIGAVEIS-2026-06-09.md`. Entrega Fase 6 conta separada: `docs/85-ENTREGA-FRONTEND-FASE6-CONTA-SEPARADA-POLIMENTO-PTBR-2026-06-09.md`. Entrega Fase 5 backups frota: `docs/84-ENTREGA-FRONTEND-FASE5-BACKUPS-FROTA-MENU-2026-06-09.md`. Entrega Fase 4 detalhe abas: `docs/83-ENTREGA-FRONTEND-FASE4-DETALHE-FIREWALL-ABAS-2026-06-09.md`. Entrega Fase 3 inventario: `docs/82-ENTREGA-FRONTEND-FASE3-FIREWALLS-INVENTARIO-2026-06-09.md`. Entrega Fase 2 dashboard: `docs/81-ENTREGA-FRONTEND-FASE2-DASHBOARD-ENXUTO-2026-06-09.md`. Entrega Fase 0+1 layout: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`. Entrega pos-RBAC: `docs/77-ENTREGA-POS-RBAC-UX-LAYOUT-2026-06-09.md`. Versionamento: `.cursor/rules/versioning.mdc`. Nao reabrir trilha RBAC sem decisao explicita.
+
+#### Roadmap UX front-end — encerramento formal (**plano 24 encerrado**)
+
+- `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md` — **encerramento formal** (fases 0–8; trilhas `docs/79`–`docs/87`)
+- Plano mestre: `24-plano-fase0-fase1-layout-navegacao-ui-foundation-2026-06-09.md`
+
+#### Trilha UX front-end — Fase 0 + Fase 1 (**concluida**)
+
+Plano mestre na raiz:
+
+- `24-plano-fase0-fase1-layout-navegacao-ui-foundation-2026-06-09.md`
+
+Trilha executavel:
+
+- `docs/79-TRILHA-FRONTEND-FASE0-FASE1-LAYOUT-NAVEGACAO-2026-06-09.md`
+
+Entrega: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`. Versao painel: `0.2.8` (+ hotfix `0.2.9`).
+
+#### Trilha UX front-end — Fase 2 dashboard (**concluida**)
+
+- Plano: `25-plano-fase2-dashboard-enxuto-kpis-zona-quente-2026-06-09.md`
+- Trilha: `docs/81-TRILHA-FRONTEND-FASE2-DASHBOARD-ENXUTO-2026-06-09.md`
+- Entrega: `docs/81-ENTREGA-FRONTEND-FASE2-DASHBOARD-ENXUTO-2026-06-09.md` — painel `0.3.0`
+
+#### Trilha UX front-end — Fase 3 inventario (**concluida**)
+
+- Plano: `26-plano-fase3-firewalls-inventario-backup-alertas-2026-06-09.md`
+- Trilha: `docs/82-TRILHA-FRONTEND-FASE3-FIREWALLS-INVENTARIO-2026-06-09.md`
+- Entrega: `docs/82-ENTREGA-FRONTEND-FASE3-FIREWALLS-INVENTARIO-2026-06-09.md` — painel `0.4.0`, API `0.2.6`
+
+#### Trilha UX front-end — Fase 8 design system (**concluida** — roadmap plano 24 encerrado)
+
+- Plano: `31-plano-fase8-design-system-pages-restantes-2026-06-09.md`
+- Trilha: `docs/87-TRILHA-FRONTEND-FASE8-DESIGN-SYSTEM-PAGES-RESTANTES-2026-06-09.md`
+- Entrega: `docs/87-ENTREGA-FRONTEND-FASE8-DESIGN-SYSTEM-PAGES-RESTANTES-2026-06-09.md` — painel `1.0.0`
+
+#### Trilha UX front-end — Fase 7 auditoria filtros (**concluida**)
+
+- Plano: `30-plano-fase7-auditoria-filtros-amigaveis-2026-06-09.md`
+- Trilha: `docs/86-TRILHA-FRONTEND-FASE7-AUDITORIA-FILTROS-AMIGAVEIS-2026-06-09.md`
+- Entrega: `docs/86-ENTREGA-FRONTEND-FASE7-AUDITORIA-FILTROS-AMIGAVEIS-2026-06-09.md` — painel `0.8.0`, API `0.2.7`
+
+#### Trilha UX front-end — Fase 6 conta separada (**concluida**)
+
+- Plano: `29-plano-fase6-conta-separada-polimento-ptbr-2026-06-09.md`
+- Trilha: `docs/85-TRILHA-FRONTEND-FASE6-CONTA-SEPARADA-POLIMENTO-PTBR-2026-06-09.md`
+- Entrega: `docs/85-ENTREGA-FRONTEND-FASE6-CONTA-SEPARADA-POLIMENTO-PTBR-2026-06-09.md` — painel `0.7.0`
+
+#### Trilha UX front-end — Fase 5 backups frota (**concluida**)
+
+- Plano: `28-plano-fase5-backups-frota-menu-2026-06-09.md`
+- Trilha: `docs/84-TRILHA-FRONTEND-FASE5-BACKUPS-FROTA-MENU-2026-06-09.md`
+- Entrega: `docs/84-ENTREGA-FRONTEND-FASE5-BACKUPS-FROTA-MENU-2026-06-09.md` — painel `0.6.0`
+
+#### Trilha UX front-end — Fase 4 detalhe abas (**concluida**)
+
+- Plano: `27-plano-fase4-detalhe-firewall-abas-2026-06-09.md`
+- Trilha: `docs/83-TRILHA-FRONTEND-FASE4-DETALHE-FIREWALL-ABAS-2026-06-09.md`
+- Entrega: `docs/83-ENTREGA-FRONTEND-FASE4-DETALHE-FIREWALL-ABAS-2026-06-09.md` — painel `0.5.0`
+
+#### Trilha backup pfSense (2026-06-08)
 
 - `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md`
 - `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`
 - `docs/65-FRONTEND-E-DEPLOY-BACKUP-PFSENSE-2026-06-08.md`
 - `docs/66-DECISAO-MODULO-BACKUP-INTEGRADO-SYSTEMUP-MONITOR-2026-06-08.md`
+- `docs/67-CHECKLIST-REVISAO-PLANO-BACKUP-2026-06-08.md`
 
-Eles devem orientar a organizacao da casa e a criacao do modulo de backup do pfSense.
+Modulo de backup ja implementado no controlador; RBAC reforça escopo e download auditado.
 
 ## Estrutura de pastas atual
 

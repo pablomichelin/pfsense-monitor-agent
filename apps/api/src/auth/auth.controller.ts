@@ -12,8 +12,10 @@ import {
 import { FastifyReply } from 'fastify';
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
 import { RawBodyRequest } from '../common/raw-body-request.type';
+
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { PermissionsService } from './permissions.service';
 import { SessionAuthGuard } from './session-auth.guard';
 import { appConfig } from '../config/app-config';
 
@@ -44,7 +46,10 @@ const parseCookies = (headerValue?: string | string[]): Record<string, string> =
 
 @Controller('api/v1/auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
   @Post('login')
   async login(
@@ -77,7 +82,10 @@ export class AuthController {
 
   @UseGuards(SessionAuthGuard)
   @Get('me')
-  getSession(@Req() request: AuthenticatedRequest) {
+  async getSession(@Req() request: AuthenticatedRequest) {
+    const role = request.auth?.role as string;
+    const permissions = await this.permissionsService.getPermissionsForRole(role);
+
     return {
       authenticated: true,
       session: {
@@ -88,6 +96,7 @@ export class AuthController {
         email: request.auth?.email,
         role: request.auth?.role,
       },
+      permissions,
     };
   }
 

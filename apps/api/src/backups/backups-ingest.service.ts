@@ -1,0 +1,368 @@
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  PayloadTooLargeException,
+} from '@nestjs/common';
+import { ConfigBackupStatus } from '@prisma/client';
+import { gunzipSync } from 'zlib';
+import { appConfig } from '../config/app-config';
+import { NodeRequestAuthService } from '../common/node-request-auth.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { BackupsCommandService } from './backups-command.service';
+import { BackupsRetentionService } from './backups-retention.service';
+import { BackupsStorageService } from './backups-storage.service';
+
+const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+@Injectable()
+export class BackupsIngestService {
+  private readonly logger = new Logger(BackupsIngestService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly nodeRequestAuth: NodeRequestAuthService,
+    private readonly storage: BackupsStorageService,
+    private readonly retention: BackupsRetentionService,
+    private readonly commandService: BackupsCommandService,
+  ) {}
+
+  async ingestConfigBackup(request: {
+    rawBody: Buffer;
+    headerNodeUid?: string;
+    headerTimestamp?: string;
+    headerSignature?: string;
+    headerConfigSha256?: string;
+    headerConfigSize?: string;
+    headerBackupId?: string;
+    headerCommandId?: string;
+    headerAgentVersion?: string;
+    headerPfsenseVersion?: string;
+    headerConfigCompression?: string;
+    contentType?: string;
+    clientIp?: string;
+  }): Promise<{
+    ok: true;
+    server_time: string;
+    backup_id: string;
+    stored: boolean;
+    duplicate: boolean;
+    sha256: string;
+  }> {
+    const receivedAt = new Date();
+    this.assertPayloadSize(request.rawBody);
+
+    const { headerNodeUid, node, credential } =
+      await this.nodeRequestAuth.authenticateNodeRequest({
+        headerNodeUid: request.headerNodeUid,
+        headerTimestamp: request.headerTimestamp,
+        headerSignature: request.headerSignature,
+        rawBody: request.rawBody,
+        receivedAt,
+      });
+
+    const configSha256 = this.requireHeader(
+      'X-Config-Sha256',
+      request.headerConfigSha256,
+    ).toLowerCase();
+    const configSize = this.parsePositiveInt(
+      this.requireHeader('X-Config-Size', request.headerConfigSize),
+      'X-Config-Size',
+    );
+    const attemptId = this.requireHeader('X-Backup-Id', request.headerBackupId);
+    if (!UUID_V4_REGEX.test(attemptId)) {
+      throw new BadRequestException('X-Backup-Id must be a UUID v4');
+    }
+
+    const compression = request.headerConfigCompression?.trim().toLowerCase();
+    const isGzip =
+      compression === 'gzip' ||
+      request.contentType?.toLowerCase() === 'application/gzip';
+
+    if (request.rawBody.byteLength === 0) {
+      throw new BadRequestException('backup payload cannot be empty');
+    }
+
+    const payloadSha256 = this.storage.sha256Hex(request.rawBody);
+    let xmlBytes = request.rawBody;
+    if (isGzip) {
+      try {
+        xmlBytes = gunzipSync(request.rawBody);
+      } catch {
+        throw new BadRequestException('invalid gzip payload');
+      }
+    }
+
+    if (xmlBytes.byteLength !== configSize) {
+      throw new BadRequestException('X-Config-Size does not match payload');
+    }
+
+    const computedSha256 = this.storage.sha256Hex(xmlBytes);
+    if (computedSha256 !== configSha256) {
+      throw new BadRequestException('X-Config-Sha256 does not match payload');
+    }
+
+    const idempotencySince = new Date(
+      receivedAt.getTime() -
+        appConfig.configBackup.attemptIdempotencyHours * 60 * 60 * 1000,
+    );
+    const priorAttempt = await this.prisma.nodeConfigBackup.findFirst({
+      where: {
+        nodeId: node.id,
+        attemptId,
+        configSha256,
+        receivedAt: {
+          gte: idempotencySince,
+        },
+        status: {
+          in: [ConfigBackupStatus.stored, ConfigBackupStatus.duplicate],
+        },
+      },
+      orderBy: {
+        receivedAt: 'desc',
+      },
+    });
+
+    if (priorAttempt) {
+      if (request.headerCommandId) {
+        await this.commandService.markCommandSucceeded({
+          nodeId: node.id,
+          commandId: request.headerCommandId,
+          duplicate: priorAttempt.status === ConfigBackupStatus.duplicate,
+          sha256: configSha256,
+          backupUid: priorAttempt.backupUid,
+        });
+      }
+
+      await this.prisma.nodeCredential.update({
+        where: { id: credential.id },
+        data: { lastUsedAt: receivedAt },
+      });
+
+      return {
+        ok: true,
+        server_time: receivedAt.toISOString(),
+        backup_id: priorAttempt.backupUid,
+        stored: priorAttempt.status === ConfigBackupStatus.stored,
+        duplicate: true,
+        sha256: configSha256,
+      };
+    }
+
+    const latestStored = await this.prisma.nodeConfigBackup.findFirst({
+      where: {
+        nodeId: node.id,
+        status: ConfigBackupStatus.stored,
+      },
+      orderBy: {
+        receivedAt: 'desc',
+      },
+    });
+
+    const isDuplicate =
+      latestStored !== null && latestStored.configSha256 === configSha256;
+    const source = request.headerCommandId ? 'manual_request' : 'scheduled';
+    const storedBackupUid = this.buildBackupUid(receivedAt, configSha256);
+
+    if (isDuplicate) {
+      const duplicateBackupUid = `cfgbdup_${attemptId.replace(/-/g, '')}`;
+      const duplicateRecord = await this.prisma.nodeConfigBackup.create({
+        data: {
+          nodeId: node.id,
+          commandId: request.headerCommandId ?? null,
+          backupUid: duplicateBackupUid,
+          attemptId,
+          status: ConfigBackupStatus.duplicate,
+          source,
+          receivedAt,
+          configSha256,
+          payloadSha256,
+          sizeBytes: configSize,
+          payloadSizeBytes: request.rawBody.byteLength,
+          compression: isGzip ? 'gzip' : null,
+          agentVersion: request.headerAgentVersion ?? null,
+          pfsenseVersion: request.headerPfsenseVersion ?? null,
+          metadataJson: {
+            duplicate_of: latestStored?.backupUid ?? null,
+          },
+        },
+      });
+
+      await this.prisma.auditLog.create({
+        data: {
+          actorType: 'node_credential',
+          actorId: credential.id,
+          action: 'backup.config.duplicate',
+          targetType: 'node_config_backup',
+          targetId: duplicateRecord.id,
+          ipAddress: request.clientIp,
+          metadataJson: {
+            node_id: node.id,
+            node_uid: headerNodeUid,
+            backup_uid: duplicateBackupUid,
+            sha256: configSha256,
+            command_id: request.headerCommandId ?? null,
+          },
+        },
+      });
+
+      if (request.headerCommandId) {
+        await this.commandService.markCommandSucceeded({
+          nodeId: node.id,
+          commandId: request.headerCommandId,
+          duplicate: true,
+          sha256: configSha256,
+          backupUid: latestStored?.backupUid,
+        });
+      }
+
+      await this.prisma.nodeCredential.update({
+        where: { id: credential.id },
+        data: { lastUsedAt: receivedAt },
+      });
+
+      this.logger.log(
+        `config backup duplicate node_uid=${headerNodeUid} sha256=${configSha256.slice(0, 8)}`,
+      );
+
+      return {
+        ok: true,
+        server_time: receivedAt.toISOString(),
+        backup_id: latestStored?.backupUid ?? duplicateBackupUid,
+        stored: false,
+        duplicate: true,
+        sha256: configSha256,
+      };
+    }
+
+    const { relativePath, absolutePath } = this.storage.buildStoragePath(
+      headerNodeUid,
+      receivedAt,
+      configSha256,
+    );
+
+    try {
+      await this.storage.encryptToFile(xmlBytes, absolutePath);
+    } catch (error) {
+      await this.storage.removeFile(absolutePath);
+      await this.prisma.auditLog.create({
+        data: {
+          actorType: 'node_credential',
+          actorId: credential.id,
+          action: 'backup.config.failure',
+          targetType: 'node',
+          targetId: node.id,
+          ipAddress: request.clientIp,
+          metadataJson: {
+            node_uid: headerNodeUid,
+            reason: 'encryption_failed',
+          },
+        },
+      });
+      throw error;
+    }
+
+    const storedRecord = await this.prisma.nodeConfigBackup.create({
+      data: {
+        nodeId: node.id,
+        commandId: request.headerCommandId ?? null,
+        backupUid: storedBackupUid,
+        attemptId,
+        status: ConfigBackupStatus.stored,
+        source,
+        receivedAt,
+        configSha256,
+        payloadSha256,
+        sizeBytes: configSize,
+        payloadSizeBytes: request.rawBody.byteLength,
+        compression: isGzip ? 'gzip' : null,
+        storagePath: absolutePath,
+        encryptionVersion: appConfig.configBackup.encryptionVersion,
+        agentVersion: request.headerAgentVersion ?? null,
+        pfsenseVersion: request.headerPfsenseVersion ?? null,
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorType: 'node_credential',
+        actorId: credential.id,
+        action: 'backup.config.ingest',
+        targetType: 'node_config_backup',
+        targetId: storedRecord.id,
+        ipAddress: request.clientIp,
+        metadataJson: {
+          node_id: node.id,
+          node_uid: headerNodeUid,
+          backup_uid: storedBackupUid,
+          sha256: configSha256,
+          size_bytes: configSize,
+          command_id: request.headerCommandId ?? null,
+          storage_path: relativePath,
+        },
+      },
+    });
+
+    if (request.headerCommandId) {
+      await this.commandService.markCommandSucceeded({
+        nodeId: node.id,
+        commandId: request.headerCommandId,
+        duplicate: false,
+        sha256: configSha256,
+        backupUid: storedBackupUid,
+      });
+    }
+
+    await this.prisma.nodeCredential.update({
+      where: { id: credential.id },
+      data: { lastUsedAt: receivedAt },
+    });
+
+    await this.retention.enforceRetention(node.id);
+
+    this.logger.log(
+      `config backup stored node_uid=${headerNodeUid} backup_uid=${storedBackupUid} size=${configSize}`,
+    );
+
+    return {
+      ok: true,
+      server_time: receivedAt.toISOString(),
+      backup_id: storedBackupUid,
+      stored: true,
+      duplicate: false,
+      sha256: configSha256,
+    };
+  }
+
+  private buildBackupUid(receivedAt: Date, configSha256: string): string {
+    const timestamp = receivedAt
+      .toISOString()
+      .replace(/[-:]/g, '')
+      .replace(/\.\d{3}Z$/, 'Z');
+    return `cfgb_${timestamp}_${configSha256.slice(0, 8)}`;
+  }
+
+  private requireHeader(name: string, value?: string): string {
+    if (!value?.trim()) {
+      throw new BadRequestException(`${name} header is required`);
+    }
+    return value.trim();
+  }
+
+  private parsePositiveInt(value: string, fieldName: string): number {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new BadRequestException(`${fieldName} must be a positive integer`);
+    }
+    return parsed;
+  }
+
+  private assertPayloadSize(rawBody: Buffer): void {
+    if (rawBody.byteLength > appConfig.configBackup.maxBytes) {
+      throw new PayloadTooLargeException(
+        `config backup payload exceeds ${appConfig.configBackup.maxBytes} bytes`,
+      );
+    }
+  }
+}

@@ -1,10 +1,49 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { AuditEventRow } from '@/components/audit-event-row';
 import { PageHero } from '@/components/page-hero';
+import { Alert, Button, Card, PageSection } from '@/components/ui';
+import {
+  AUDIT_ACTION_GROUPS,
+  AUDIT_LIMIT_OPTIONS,
+  AUDIT_PERIOD_OPTIONS,
+  AUDIT_RESULT_OPTIONS,
+  AUDIT_TARGET_TYPE_OPTIONS,
+  resolveAuditPeriodBounds,
+} from '@/lib/audit-labels';
 import { ApiError, getAuditLogs, getSession } from '@/lib/api';
-import { ADMIN_ROLES, hasRole } from '@/lib/authz';
-import { formatRelativeAge } from '@/lib/format';
+import { hasPermission } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
+
+const inputClassName =
+  'h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500';
+const selectClassName =
+  'h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none';
+
+function parseLimit(value: string | undefined): number {
+  const parsed = Number(value);
+  return AUDIT_LIMIT_OPTIONS.includes(parsed as (typeof AUDIT_LIMIT_OPTIONS)[number])
+    ? parsed
+    : 50;
+}
+
+function buildAuditQueryString(
+  values: Record<string, string | undefined>,
+  extra?: Record<string, string | undefined>,
+): string {
+  const params = new URLSearchParams();
+  const merged = { ...values, ...extra };
+
+  for (const [key, value] of Object.entries(merged)) {
+    if (value?.trim()) {
+      params.set(key, value.trim());
+    }
+  }
+
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
 
 export default async function AuditPage({
   searchParams,
@@ -15,6 +54,25 @@ export default async function AuditPage({
   const action = typeof params.action === 'string' ? params.action : undefined;
   const targetType = typeof params.target_type === 'string' ? params.target_type : undefined;
   const targetId = typeof params.target_id === 'string' ? params.target_id : undefined;
+  const result = typeof params.result === 'string' ? params.result : undefined;
+  const actorEmail = typeof params.actor_email === 'string' ? params.actor_email : undefined;
+  const period = typeof params.period === 'string' ? params.period : undefined;
+  const fromParam = typeof params.from === 'string' ? params.from : undefined;
+  const toParam = typeof params.to === 'string' ? params.to : undefined;
+  const limit = parseLimit(typeof params.limit === 'string' ? params.limit : undefined);
+  const offset = Math.max(0, Number(typeof params.offset === 'string' ? params.offset : '0') || 0);
+
+  let from: string | undefined;
+  let to: string | undefined;
+
+  if (period === '24h' || period === '7d' || period === '30d') {
+    const presetBounds = resolveAuditPeriodBounds(period);
+    from = presetBounds.from;
+    to = presetBounds.to;
+  } else if (fromParam || toParam) {
+    from = fromParam;
+    to = toParam;
+  }
 
   let session;
   let audit;
@@ -26,7 +84,12 @@ export default async function AuditPage({
         action,
         target_type: targetType,
         target_id: targetId,
-        limit: 50,
+        result,
+        from,
+        to,
+        actor_email: actorEmail,
+        limit,
+        offset,
       }),
     ]);
   } catch (error) {
@@ -37,103 +100,234 @@ export default async function AuditPage({
     throw error;
   }
 
-  if (!hasRole(session.user.role, ADMIN_ROLES)) {
+  if (!hasPermission(session.permissions ?? [], 'audit.view')) {
     redirect('/dashboard');
   }
-  const actionCount = new Set(audit.items.map((item) => item.action)).size;
-  const targetTypeCount = new Set(audit.items.map((item) => item.target_type)).size;
+
+  const filterState = {
+    action,
+    target_type: targetType,
+    target_id: targetId,
+    result,
+    actor_email: actorEmail,
+    period,
+    from: fromParam,
+    to: toParam,
+    limit: String(limit),
+    offset: offset > 0 ? String(offset) : undefined,
+  };
+
+  const currentQuery = buildAuditQueryString(filterState);
+  const nextOffset = offset + audit.items.length;
+  const hasMore = audit.items.length === limit;
+  const loadMoreHref = hasMore
+    ? `/audit${buildAuditQueryString(filterState, { offset: String(nextOffset) })}`
+    : undefined;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHero
-        eyebrow="Governanca"
+        eyebrow="Governança"
         title="Auditoria"
-        description="Historico de acoes administrativas."
+        description="Histórico de ações administrativas e operacionais. Use os filtros para localizar eventos por período, ator ou recurso."
         stats={[
-          { label: 'Eventos', value: String(audit.items.length) },
-          { label: 'Acoes', value: String(actionCount) },
-          { label: 'Targets', value: String(targetTypeCount) },
+          { label: 'Eventos exibidos', value: String(audit.items.length) },
+          { label: 'Limite', value: String(limit) },
         ]}
       />
 
-      <section className="glass-panel rounded-[2rem] p-5">
-        <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-          <input
-            type="text"
-            name="action"
-            defaultValue={action ?? ''}
-            placeholder="Filtro por prefixo de acao"
-            className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-          />
-          <input
-            type="text"
-            name="target_type"
-            defaultValue={targetType ?? ''}
-            placeholder="target_type"
-            className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-          />
-          <input
-            type="text"
-            name="target_id"
-            defaultValue={targetId ?? ''}
-            placeholder="target_id"
-            className="rounded-2xl border border-slate-700 bg-panel-soft px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 md:col-span-2"
-          />
-          <button
-            type="submit"
-            className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
+      <PageSection
+        title="Filtros"
+        description="Refine por período, ação, ator, tipo de recurso ou resultado."
+        actions={
+          <Link
+            href="/audit"
+            className="inline-flex h-9 min-h-9 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-xs font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white"
           >
-            Filtrar
-          </button>
-        </form>
-      </section>
+            Limpar filtros
+          </Link>
+        }
+      >
+        <Card className="p-6">
+          <form className="flex flex-col gap-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-slate-300">Período</span>
+                <select
+                  name="period"
+                  defaultValue={period ?? ''}
+                  className={`${selectClassName} w-full`}
+                >
+                  {AUDIT_PERIOD_OPTIONS.map((option) => (
+                    <option key={option.value || 'all'} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-      <section className="glass-panel rounded-[2rem] p-5">
-        <div className="space-y-4">
-          {audit.items.length === 0 ? (
-            <div className="rounded-2xl border border-slate-800 bg-panel-soft/50 px-4 py-6 text-sm text-slate-400">
-              Nenhum evento encontrado para o recorte atual.
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-slate-300">Ação</span>
+                <select
+                  name="action"
+                  defaultValue={action ?? ''}
+                  className={`${selectClassName} w-full`}
+                >
+                  {AUDIT_ACTION_GROUPS.map((option) => (
+                    <option key={option.value || 'all'} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-slate-300">Ator (e-mail)</span>
+                <input
+                  type="search"
+                  name="actor_email"
+                  defaultValue={actorEmail ?? ''}
+                  placeholder="Buscar por e-mail"
+                  className={`${inputClassName} w-full`}
+                />
+              </label>
+
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-slate-300">Tipo de recurso</span>
+                <select
+                  name="target_type"
+                  defaultValue={targetType ?? ''}
+                  className={`${selectClassName} w-full`}
+                >
+                  {AUDIT_TARGET_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value || 'all'} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-slate-300">ID do recurso</span>
+                <input
+                  type="text"
+                  name="target_id"
+                  defaultValue={targetId ?? ''}
+                  placeholder="UUID ou identificador"
+                  className={`${inputClassName} w-full font-mono text-xs`}
+                />
+              </label>
+
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-slate-300">Resultado</span>
+                <select
+                  name="result"
+                  defaultValue={result ?? ''}
+                  className={`${selectClassName} w-full`}
+                >
+                  {AUDIT_RESULT_OPTIONS.map((option) => (
+                    <option key={option.value || 'all'} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-slate-300">De</span>
+                <input
+                  type="date"
+                  name="from"
+                  defaultValue={fromParam ?? ''}
+                  className={`${inputClassName} w-full`}
+                />
+              </label>
+
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-slate-300">Até</span>
+                <input
+                  type="date"
+                  name="to"
+                  defaultValue={toParam ?? ''}
+                  className={`${inputClassName} w-full`}
+                />
+              </label>
+
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-slate-300">Quantidade</span>
+                <select
+                  name="limit"
+                  defaultValue={String(limit)}
+                  className={`${selectClassName} w-full`}
+                >
+                  {AUDIT_LIMIT_OPTIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {value} eventos
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-          ) : (
-            audit.items.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-2xl border border-slate-800 bg-panel-soft/50 p-4"
-              >
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-200">
-                        {item.action}
-                      </span>
-                      <span className="rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1 text-xs text-slate-300">
-                        {item.target_type}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-300">
-                      Ator: {item.actor_email ?? item.actor_id ?? 'nao identificado'}
-                    </p>
-                    <p className="text-sm text-slate-400">
-                      Alvo: {item.target_id ?? 'sem target_id'}
-                    </p>
-                    <p className="text-sm text-slate-400">IP: {item.ip_address ?? 'nao informado'}</p>
-                    {item.metadata_json ? (
-                      <pre className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-xs text-slate-300">
-                        {JSON.stringify(item.metadata_json, null, 2)}
-                      </pre>
-                    ) : null}
-                  </div>
 
-                  <div className="shrink-0 text-sm text-slate-400">
-                    <p>{new Date(item.created_at).toLocaleString('pt-BR')}</p>
-                    <p>{formatRelativeAge(item.created_at)}</p>
-                  </div>
-                </div>
-              </div>
-            ))
+            <p className="text-xs text-slate-500">
+              Para período personalizado, selecione &quot;Personalizado&quot; e informe as datas De/Até.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="submit">Aplicar filtros</Button>
+              {offset > 0 ? (
+                <Link
+                  href={`/audit${buildAuditQueryString({ ...filterState, offset: undefined })}`}
+                  className="inline-flex h-10 min-h-10 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white"
+                >
+                  Voltar ao início
+                </Link>
+              ) : null}
+            </div>
+          </form>
+        </Card>
+      </PageSection>
+
+      <PageSection
+        title="Eventos"
+        description="Lista em ordem cronológica decrescente. Detalhes técnicos (payload) sob demanda."
+      >
+        <Card className="p-4 sm:p-5">
+          {audit.items.length === 0 ? (
+            <Alert variant="info">
+              Nenhum evento encontrado para os filtros atuais. Tente ampliar o período ou remover
+              critérios.
+            </Alert>
+          ) : (
+            <div className="space-y-2">
+              {audit.items.map((item) => (
+                <AuditEventRow key={item.id} item={item} />
+              ))}
+            </div>
           )}
-        </div>
-      </section>
+        </Card>
+
+        {hasMore && loadMoreHref ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Link
+              href={loadMoreHref}
+              className="inline-flex h-10 min-h-10 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white"
+            >
+              Próxima página
+            </Link>
+            <p className="text-xs text-slate-500">
+              Exibindo até {limit} eventos por página. Há mais registros compatíveis com os filtros.
+            </p>
+          </div>
+        ) : null}
+
+        {offset > 0 ? (
+          <p className="mt-3 text-xs text-slate-500">
+            Exibindo eventos a partir do deslocamento {offset}.
+            {currentQuery ? ` Filtros ativos preservados.` : ''}
+          </p>
+        ) : null}
+      </PageSection>
     </div>
   );
 }

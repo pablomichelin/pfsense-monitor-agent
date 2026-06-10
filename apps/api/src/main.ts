@@ -11,20 +11,33 @@ import { appConfig } from './config/app-config';
 
 async function bootstrap(): Promise<void> {
   const fastifyAdapter = new FastifyAdapter({
-    bodyLimit: appConfig.heartbeat.maxPayloadBytes,
+    bodyLimit: Math.max(
+      appConfig.heartbeat.maxPayloadBytes,
+      appConfig.configBackup.maxBytes,
+    ),
   });
 
-  // POST com application/json e body vazio: Fastify rejeita. Injetar '{}' para rotas como rekey/revoke.
+  // POST/DELETE com application/json e body vazio: Fastify rejeita. Injetar '{}' para evitar erro.
   const instance = fastifyAdapter.getInstance();
+  instance.addContentTypeParser(
+    ['application/xml', 'application/gzip'],
+    { parseAs: 'buffer' },
+    (request, body, done) => {
+      const rawBody = Buffer.isBuffer(body) ? body : Buffer.from(body);
+      (request as { rawBody?: Buffer }).rawBody = rawBody;
+      done(null, rawBody);
+    },
+  );
   instance.addHook('preParsing', (request, _reply, payload, done) => {
     const contentType = request.headers['content-type']?.toLowerCase();
     const contentLength = request.headers['content-length'];
+    const noBody = contentLength === '0' || contentLength === undefined;
     if (
-      request.method === 'POST' &&
+      (request.method === 'POST' || request.method === 'DELETE') &&
       contentType?.startsWith('application/json') &&
-      (contentLength === '0' || contentLength === undefined)
+      noBody
     ) {
-      done(null, Readable.from(['{}']));
+      done(null, Readable.from([Buffer.from('{}', 'utf8')]));
       return;
     }
     done(null, payload);

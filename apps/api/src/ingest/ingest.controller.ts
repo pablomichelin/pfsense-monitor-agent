@@ -34,6 +34,11 @@ export class IngestController {
     ok: true;
     server_time: string;
     node_status: string;
+    commands?: Array<{
+      id: string;
+      type: string;
+      expires_at: string;
+    }>;
   }> {
     if (!request.rawBody) {
       throw new InternalServerErrorException('raw body capture is not enabled');

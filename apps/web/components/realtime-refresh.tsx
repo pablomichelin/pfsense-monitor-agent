@@ -40,8 +40,11 @@ export function RealtimeRefresh({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const refreshTimerRef = useRef<number | null>(null);
+  const lastRefreshAtRef = useRef<number>(0);
   const [streamState, setStreamState] = useState<StreamState>('connecting');
   const [lastEvent, setLastEvent] = useState<DashboardRefreshEvent | null>(null);
+
+  const REFRESH_THROTTLE_MS = 30000;
 
   useEffect(() => {
     const eventSource = new EventSource('/api/realtime/dashboard');
@@ -55,8 +58,13 @@ export function RealtimeRefresh({
         return;
       }
 
+      if (Date.now() - lastRefreshAtRef.current < REFRESH_THROTTLE_MS) {
+        return;
+      }
+
       refreshTimerRef.current = window.setTimeout(() => {
         refreshTimerRef.current = null;
+        lastRefreshAtRef.current = Date.now();
         startTransition(() => {
           router.refresh();
         });
@@ -119,7 +127,7 @@ export function RealtimeRefresh({
         : 'Tempo real ativo';
 
   return (
-    <div className="inline-flex min-w-[15rem] items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs text-slate-400">
+    <div className="inline-flex min-w-[14rem] items-center justify-between gap-4 rounded-xl border border-slate-700/80 bg-slate-950/40 px-3 py-2 text-xs text-slate-400">
       <div className="flex items-center gap-2">
         <span
           className={`status-dot ${

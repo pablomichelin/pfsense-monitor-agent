@@ -10,9 +10,12 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
 import { RawBodyRequest } from '../common/raw-body-request.type';
+import { getAccessActor } from '../auth/access-actor.util';
+import { RequirePermissions } from '../auth/permissions.decorator';
+import { PermissionsGuard } from '../auth/permissions.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
@@ -23,6 +26,7 @@ import { CreateSiteDto } from './dto/create-site.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ListAuditLogsQueryDto } from './dto/list-audit-logs-query.dto';
 import { SetNodeMaintenanceDto } from './dto/set-node-maintenance.dto';
+import { SetUserClientScopesDto } from './dto/set-user-client-scopes.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 import { UpdateNodeDto } from './dto/update-node.dto';
 import { UpdateSiteDto } from './dto/update-site.dto';
@@ -30,21 +34,81 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAgentTokenDto } from './dto/create-agent-token.dto';
 import { DeleteNodesBatchDto } from './dto/delete-nodes-batch.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
+import { CreateRoleDto } from './dto/create-role.dto';
+import { SetRolePermissionsDto } from './dto/set-role-permissions.dto';
 
-@Roles(UserRole.superadmin, UserRole.admin)
-@UseGuards(SessionAuthGuard, RolesGuard)
+@Roles('superadmin', 'admin')
+@UseGuards(SessionAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('api/v1/admin')
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
+  @Get('permissions-matrix')
+  @RequirePermissions('users.view')
+  listPermissionsMatrix() {
+    return this.adminService.listPermissionsMatrix();
+  }
+
+  @Get('roles')
+  @RequirePermissions('users.view')
+  listRoles() {
+    return this.adminService.listRoles();
+  }
+
+  @Post('roles')
+  @RequirePermissions('roles.manage')
+  createRole(
+    @Body() body: CreateRoleDto,
+    @Req() request: RawBodyRequest & AuthenticatedRequest,
+    @Headers('cf-connecting-ip') cfConnectingIp?: string,
+  ) {
+    return this.adminService.createRole(
+      body,
+      request.auth?.userId,
+      cfConnectingIp ?? request.ip,
+    );
+  }
+
+  @Delete('roles/:code')
+  @RequirePermissions('roles.manage')
+  deleteRole(
+    @Param('code') code: string,
+    @Req() request: RawBodyRequest & AuthenticatedRequest,
+    @Headers('cf-connecting-ip') cfConnectingIp?: string,
+  ) {
+    return this.adminService.deleteRole(
+      code,
+      request.auth?.userId,
+      cfConnectingIp ?? request.ip,
+    );
+  }
+
+  @Post('roles/:code/permissions')
+  @RequirePermissions('roles.manage')
+  setRolePermissions(
+    @Param('code') code: string,
+    @Body() body: SetRolePermissionsDto,
+    @Req() request: RawBodyRequest & AuthenticatedRequest,
+    @Headers('cf-connecting-ip') cfConnectingIp?: string,
+  ) {
+    return this.adminService.setRolePermissions(
+      code,
+      body,
+      request.auth?.userId,
+      cfConnectingIp ?? request.ip,
+    );
+  }
+
   @Get('users')
-  @Roles(UserRole.superadmin)
+  @Roles('superadmin')
+  @RequirePermissions('users.view')
   listUsers(@Query() query: ListUsersQueryDto) {
     return this.adminService.listUsers(query);
   }
 
   @Delete('users/:id')
-  @Roles(UserRole.superadmin)
+  @Roles('superadmin')
+  @RequirePermissions('users.delete')
   deleteUser(
     @Param('id') id: string,
     @Req() request: AuthenticatedRequest,
@@ -58,12 +122,17 @@ export class AdminController {
   }
 
   @Get('audit')
-  listAuditLogs(@Query() query: ListAuditLogsQueryDto) {
-    return this.adminService.listAuditLogs(query);
+  @RequirePermissions('audit.view')
+  listAuditLogs(
+    @Query() query: ListAuditLogsQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.adminService.listAuditLogs(getAccessActor(request), query);
   }
 
   @Post('users')
-  @Roles(UserRole.superadmin)
+  @Roles('superadmin')
+  @RequirePermissions('users.create')
   createUser(
     @Body() body: CreateUserDto,
     @Req() request: RawBodyRequest & AuthenticatedRequest,
@@ -77,7 +146,8 @@ export class AdminController {
   }
 
   @Post('users/:id')
-  @Roles(UserRole.superadmin)
+  @Roles('superadmin')
+  @RequirePermissions('users.update')
   updateUser(
     @Param('id') id: string,
     @Body() body: UpdateUserDto,
@@ -92,8 +162,33 @@ export class AdminController {
     );
   }
 
+  @Get('users/:id/client-scopes')
+  @Roles('superadmin')
+  @RequirePermissions('users.view')
+  listUserClientScopes(@Param('id') id: string) {
+    return this.adminService.listUserClientScopes(id);
+  }
+
+  @Post('users/:id/client-scopes')
+  @Roles('superadmin')
+  @RequirePermissions('users.update')
+  setUserClientScopes(
+    @Param('id') id: string,
+    @Body() body: SetUserClientScopesDto,
+    @Req() request: RawBodyRequest & AuthenticatedRequest,
+    @Headers('cf-connecting-ip') cfConnectingIp?: string,
+  ) {
+    return this.adminService.setUserClientScopes(
+      id,
+      body,
+      request.auth?.userId,
+      cfConnectingIp ?? request.ip,
+    );
+  }
+
   @Get('users/:id/sessions')
-  @Roles(UserRole.superadmin)
+  @Roles('superadmin')
+  @RequirePermissions('users.view')
   listUserSessions(
     @Param('id') id: string,
     @Req() request: AuthenticatedRequest,
@@ -104,7 +199,8 @@ export class AdminController {
   }
 
   @Post('users/:id/sessions/:sessionId/revoke')
-  @Roles(UserRole.superadmin)
+  @Roles('superadmin')
+  @RequirePermissions('users.update')
   revokeUserSession(
     @Param('id') id: string,
     @Param('sessionId') sessionId: string,
@@ -119,6 +215,7 @@ export class AdminController {
   }
 
   @Post('clients')
+  @RequirePermissions('clients.create')
   createClient(
     @Body() body: CreateClientDto,
     @Req() request: RawBodyRequest & AuthenticatedRequest,
@@ -132,6 +229,7 @@ export class AdminController {
   }
 
   @Post('clients/:id')
+  @RequirePermissions('clients.update')
   updateClient(
     @Param('id') id: string,
     @Body() body: UpdateClientDto,
@@ -143,10 +241,12 @@ export class AdminController {
       body,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
+      getAccessActor(request),
     );
   }
 
   @Delete('clients/:id')
+  @RequirePermissions('clients.delete')
   deleteClient(
     @Param('id') id: string,
     @Req() request: AuthenticatedRequest,
@@ -156,10 +256,12 @@ export class AdminController {
       id,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
+      getAccessActor(request),
     );
   }
 
   @Post('sites')
+  @RequirePermissions('clients.create')
   createSite(
     @Body() body: CreateSiteDto,
     @Req() request: RawBodyRequest & AuthenticatedRequest,
@@ -169,10 +271,12 @@ export class AdminController {
       body,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
+      getAccessActor(request),
     );
   }
 
   @Post('sites/:id')
+  @RequirePermissions('clients.update')
   updateSite(
     @Param('id') id: string,
     @Body() body: UpdateSiteDto,
@@ -184,10 +288,12 @@ export class AdminController {
       body,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
+      getAccessActor(request),
     );
   }
 
   @Post('nodes')
+  @RequirePermissions('firewalls.create')
   createNode(
     @Body() body: CreateNodeDto,
     @Req() request: RawBodyRequest & AuthenticatedRequest,
@@ -197,10 +303,12 @@ export class AdminController {
       body,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
+      getAccessActor(request),
     );
   }
 
   @Post('nodes/delete-batch')
+  @RequirePermissions('firewalls.delete')
   deleteNodesBatch(
     @Body() body: DeleteNodesBatchDto,
     @Req() request: RawBodyRequest & AuthenticatedRequest,
@@ -210,10 +318,12 @@ export class AdminController {
       body.ids,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
+      getAccessActor(request),
     );
   }
 
   @Post('nodes/:id/rekey')
+  @RequirePermissions('bootstrap.execute')
   rotateNodeSecret(
     @Param('id') id: string,
     @Req() request: RawBodyRequest & AuthenticatedRequest,
@@ -223,10 +333,12 @@ export class AdminController {
       id,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
+      getAccessActor(request),
     );
   }
 
   @Post('nodes/:id')
+  @RequirePermissions('firewalls.update')
   updateNode(
     @Param('id') id: string,
     @Body() body: UpdateNodeDto,
@@ -238,10 +350,12 @@ export class AdminController {
       body,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
+      getAccessActor(request),
     );
   }
 
   @Post('nodes/:id/maintenance')
+  @RequirePermissions('firewalls.update')
   setNodeMaintenance(
     @Param('id') id: string,
     @Body() body: SetNodeMaintenanceDto,
@@ -253,15 +367,21 @@ export class AdminController {
       body.maintenance_mode,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
+      getAccessActor(request),
     );
   }
 
   @Get('nodes/:id/agent-tokens')
-  listAgentTokens(@Param('id') id: string) {
-    return this.adminService.listAgentTokens(id);
+  @RequirePermissions('firewalls.view')
+  listAgentTokens(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.adminService.listAgentTokens(id, getAccessActor(request));
   }
 
   @Post('nodes/:id/agent-tokens')
+  @RequirePermissions('bootstrap.execute')
   createAgentToken(
     @Param('id') id: string,
     @Body() body: CreateAgentTokenDto,
@@ -273,10 +393,12 @@ export class AdminController {
       body,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
+      getAccessActor(request),
     );
   }
 
   @Post('nodes/:id/agent-tokens/:tokenId/revoke')
+  @RequirePermissions('bootstrap.execute')
   revokeAgentToken(
     @Param('id') id: string,
     @Param('tokenId') tokenId: string,
@@ -288,20 +410,32 @@ export class AdminController {
       tokenId,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
+      getAccessActor(request),
     );
   }
 
   @Get('nodes/:id/bootstrap-command')
+  @RequirePermissions('bootstrap.view')
   getBootstrapCommand(
     @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
     @Query('release_base_url') releaseBaseUrl?: string,
     @Query('controller_url') controllerUrl?: string,
     @Query('heartbeat_mode') heartbeatMode?: string,
+    @Query('config_backup_enabled') configBackupEnabled?: string,
   ) {
-    return this.adminService.getBootstrapCommand(id, releaseBaseUrl, controllerUrl, heartbeatMode);
+    return this.adminService.getBootstrapCommand(
+      id,
+      releaseBaseUrl,
+      controllerUrl,
+      heartbeatMode,
+      configBackupEnabled,
+      getAccessActor(request),
+    );
   }
 
   @Delete('nodes/:id')
+  @RequirePermissions('firewalls.delete')
   deleteNode(
     @Param('id') id: string,
     @Req() request: RawBodyRequest & AuthenticatedRequest,
@@ -311,6 +445,7 @@ export class AdminController {
       id,
       request.auth?.userId,
       cfConnectingIp ?? request.ip,
+      getAccessActor(request),
     );
   }
 }

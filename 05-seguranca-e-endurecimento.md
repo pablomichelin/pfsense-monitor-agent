@@ -139,6 +139,32 @@ Registrar no minimo:
 - mudancas de configuracao no controlador
 - acks e resolucoes de alertas
 - operacoes administrativas futuras
+- negações de acesso relevantes (`access.denied`) com `actor_role`, `client_id` e `result`
+
+Campos padronizados em `audit_logs` (Fase F RBAC):
+
+- `actor_role` — perfil do ator no momento do evento
+- `client_id` — escopo do cliente quando aplicavel
+- `result` — `success`, `denied` ou `failure`
+
+## Backups `config.xml`
+
+- armazenamento criptografado em disco (`BACKUP_ENCRYPTION_KEY_BASE64`)
+- download restrito a `backups.download` (superadmin no MVP)
+- cada download gera auditoria com `actor_role`, `client_id` e IP de origem
+- retencao por firewall: `CONFIG_BACKUP_RETENTION_COUNT` e `CONFIG_BACKUP_RETENTION_MAX_BYTES_PER_NODE`
+- politica operacional: baixar apenas em ambiente seguro; nao redistribuir fora do escopo autorizado
+
+## Login bootstrap de ambiente
+
+- `AUTH_BOOTSTRAP_EMAIL` / `AUTH_BOOTSTRAP_PASSWORD` existem para bootstrap inicial
+- em producao, definir `AUTH_BOOTSTRAP_LOGIN_ENABLED=false` apos criar usuarios locais
+- com a flag desligada, apenas contas com `password_hash` no banco autenticam
+
+## Endpoint publico do agente
+
+- `GET /api/v1/agent/package-release` permanece sem autenticacao para instalacao do package
+- rate limit por IP (60 req/min) reduz abuso de leitura
 
 ## Politica de logs
 

@@ -123,7 +123,8 @@ Se houver qualquer conflito entre o projeto e o Zabbix do host:
 - deploy repetivel por Compose no inicio
 - coexistencia obrigatoria com servicos ja ativos no host
 - origem interna deve ser unica, validada e documentada antes de liberar novas rotas sensiveis
-- em `2026-06-08`, ha desalinhamento entre documentos antigos (`192.168.100.244:8088`) e ambiente observado/informado (`192.168.100.221`, tambem publicado em `192.168.100.221:3031`); sanear antes do modulo de backup
+- origem interna canonica no repositorio: `http://192.168.100.221:3031`; docs historicos podem citar `192.168.100.244`; aplicar snippet ISPConfig no host antes da Fase C
+- rota de backup preparada com limite `5 MB` em nginx interno e referencia ISPConfig; heartbeat permanece em `64 KB`
 - publicacao externa via `ISPConfig` em `192.168.100.253`
 - endpoint de ingestao do heartbeat: `POST /api/v1/ingest/heartbeat`
 - heartbeat com limite de `64 KB`

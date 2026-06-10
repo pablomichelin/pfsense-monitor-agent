@@ -96,13 +96,44 @@ enum AgentTokenStatus {
   @@map("agent_token_status")
 }
 
-enum UserRole {
-  superadmin
-  admin
-  operator
-  readonly
+enum ConfigBackupStatus {
+  stored
+  duplicate
+  rejected
+  failed
 
-  @@map("user_role")
+  @@map("config_backup_status")
+}
+
+enum NodeCommandType {
+  config_backup_now
+
+  @@map("node_command_type")
+}
+
+enum NodeCommandStatus {
+  pending
+  picked_up
+  running
+  succeeded
+  failed
+  expired
+  cancelled
+
+  @@map("node_command_status")
+}
+
+model Role {
+  code             String           @id
+  label            String
+  isSystem         Boolean          @default(false) @map("is_system")
+  status           EntityStatus     @default(active)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  users            User[]
+  rolePermissions  RolePermission[]
+
+  @@map("roles")
 }
 
 model Client {
@@ -113,6 +144,9 @@ model Client {
   createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
   sites     Site[]
+  userScopes UserClientScope[]
+  clientUsers User[] @relation("ClientProfileUsers")
+  auditLogs AuditLog[]
 
   @@map("clients")
 }
@@ -122,13 +156,52 @@ model User {
   email       String       @unique
   displayName String?      @map("display_name")
   passwordHash String?     @map("password_hash")
-  role        UserRole     @default(superadmin)
+  role        String       @default("readonly")
   status      EntityStatus @default(active)
+  clientId    String?      @map("client_id") @db.Uuid
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
   sessions    UserSession[]
+  roleRef     Role         @relation(fields: [role], references: [code], onDelete: Restrict)
+  client      Client?      @relation("ClientProfileUsers", fields: [clientId], references: [id], onDelete: SetNull)
+  clientScopes UserClientScope[]
+  grantedClientScopes UserClientScope[] @relation("UserClientScopeGrantedBy")
 
+  @@index([clientId])
   @@map("users")
+}
+
+model UserClientScope {
+  userId          String   @map("user_id") @db.Uuid
+  clientId        String   @map("client_id") @db.Uuid
+  grantedByUserId String?  @map("granted_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  grantedBy       User?    @relation("UserClientScopeGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+
+  @@id([userId, clientId])
+  @@index([clientId])
+  @@map("user_client_scopes")
+}
+
+model Permission {
+  id              String           @id
+  description     String?
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  role         String     @map("role")
+  permissionId String     @map("permission_id")
+  roleRef      Role       @relation(fields: [role], references: [code], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([role, permissionId])
+  @@map("role_permissions")
 }
 
 model UserSession {
@@ -181,6 +254,16 @@ model Node {
   haRole          String?             @map("ha_role")
   lastBootAt      DateTime?           @map("last_boot_at") @db.Timestamptz(6)
   lastSeenAt      DateTime?           @map("last_seen_at") @db.Timestamptz(6)
+  lastHeartbeatId String?             @map("last_heartbeat_id")
+  lastHeartbeatSentAt DateTime?       @map("last_heartbeat_sent_at") @db.Timestamptz(6)
+  lastLatencyMs   Int?                @map("last_latency_ms")
+  uptimeSeconds   Int?                @map("uptime_seconds")
+  cpuPercent      Float?              @map("cpu_percent")
+  memoryPercent   Float?              @map("memory_percent")
+  diskPercent     Float?              @map("disk_percent")
+  schemaVersion   String?             @map("schema_version")
+  customerCode    String?             @map("customer_code")
+  networkInterfacesJson Json?         @map("network_interfaces_json")
   status          NodeStatus          @default(unknown)
   maintenanceMode Boolean             @default(false) @map("maintenance_mode")
   createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -192,6 +275,8 @@ model Node {
   services        NodeServiceStatus[]
   gateways        NodeGatewayStatus[]
   alerts          Alert[]
+  configBackups   NodeConfigBackup[]
+  nodeCommands    NodeCommand[]
 
   @@index([siteId, status])
   @@map("nodes")
@@ -305,17 +390,77 @@ model Alert {
   @@map("alerts")
 }
 
+model NodeConfigBackup {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nodeId            String             @map("node_id") @db.Uuid
+  commandId         String?            @map("command_id") @db.Uuid
+  backupUid         String             @unique @map("backup_uid")
+  attemptId         String?            @map("attempt_id")
+  status            ConfigBackupStatus @default(stored)
+  source            String             @default("scheduled") @map("source")
+  receivedAt        DateTime           @default(now()) @map("received_at") @db.Timestamptz(6)
+  sentAt            DateTime?          @map("sent_at") @db.Timestamptz(6)
+  configSha256      String             @map("config_sha256")
+  payloadSha256     String             @map("payload_sha256")
+  sizeBytes         Int                @map("size_bytes")
+  payloadSizeBytes  Int                @map("payload_size_bytes")
+  compression       String?            @map("compression")
+  storagePath       String?            @map("storage_path")
+  encryptionVersion String?            @map("encryption_version")
+  agentVersion      String?            @map("agent_version")
+  pfsenseVersion    String?            @map("pfsense_version")
+  failureReason     String?            @map("failure_reason")
+  metadataJson      Json?              @map("metadata_json")
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  node              Node               @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  command           NodeCommand?       @relation(fields: [commandId], references: [id], onDelete: SetNull)
+
+  @@index([nodeId, receivedAt])
+  @@index([nodeId, configSha256])
+  @@index([commandId])
+  @@index([attemptId])
+  @@map("node_config_backups")
+}
+
+model NodeCommand {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nodeId            String            @map("node_id") @db.Uuid
+  type              NodeCommandType
+  status            NodeCommandStatus @default(pending)
+  requestedByUserId String?           @map("requested_by_user_id") @db.Uuid
+  requestedAt       DateTime          @default(now()) @map("requested_at") @db.Timestamptz(6)
+  pickedUpAt        DateTime?         @map("picked_up_at") @db.Timestamptz(6)
+  completedAt       DateTime?         @map("completed_at") @db.Timestamptz(6)
+  expiresAt         DateTime          @map("expires_at") @db.Timestamptz(6)
+  resultJson        Json?             @map("result_json")
+  errorMessage      String?           @map("error_message")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  node              Node              @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  configBackups     NodeConfigBackup[]
+
+  @@index([nodeId, status])
+  @@index([expiresAt])
+  @@map("node_commands")
+}
+
 model AuditLog {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  actorType    String   @map("actor_type")
-  actorId      String?  @map("actor_id")
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorType    String    @map("actor_type")
+  actorId      String?   @map("actor_id")
+  actorRole    String?   @map("actor_role")
+  clientId     String?   @map("client_id") @db.Uuid
   action       String
-  targetType   String   @map("target_type")
-  targetId     String?  @map("target_id")
-  ipAddress    String?  @map("ip_address")
-  metadataJson Json?    @map("metadata_json")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  targetType   String    @map("target_type")
+  targetId     String?   @map("target_id")
+  result       String    @default("success")
+  ipAddress    String?   @map("ip_address")
+  metadataJson Json?     @map("metadata_json")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  client       Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
+  @@index([action, targetType, createdAt])
+  @@index([clientId, createdAt])
+  @@index([result, createdAt])
   @@map("audit_logs")
 }

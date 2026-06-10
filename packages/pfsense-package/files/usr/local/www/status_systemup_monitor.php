@@ -10,7 +10,6 @@ $commands = systemup_monitor_local_commands();
 $secret_masked = systemup_monitor_mask_secret($pkg['node_secret']);
 $runtime = systemup_monitor_runtime_summary();
 $selected_services = systemup_monitor_selected_service_labels($pkg);
-
 include("head.inc");
 ?>
 <body>
@@ -19,6 +18,10 @@ include("head.inc");
 <?php foreach ($tab_array as $tab): ?>
 <?php display_top_tabs($tab); ?>
 <?php endforeach; ?>
+<?php endif; ?>
+
+<?php if (!empty($savemsg)): ?>
+<div class="alert alert-info"><?=htmlspecialchars($savemsg)?></div>
 <?php endif; ?>
 
 <section class="panel panel-default">

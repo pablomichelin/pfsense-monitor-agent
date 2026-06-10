@@ -1158,6 +1158,492 @@ build_payload_signature() {
   } | hex_hmac "$NODE_SECRET"
 }
 
+build_signed_body_signature() {
+  timestamp="$1"
+  body_file="$2"
+
+  {
+    printf '%s\n' "$timestamp"
+    cat "$body_file"
+  } | hex_hmac "$NODE_SECRET"
+}
+
+resolve_curl_cmd() {
+  if command -v curl >/dev/null 2>&1; then
+    printf '%s' "curl"
+    return 0
+  fi
+  if [ -x /usr/local/bin/curl ]; then
+    printf '%s' "/usr/local/bin/curl"
+    return 0
+  fi
+  return 1
+}
+
+is_uuid_v4() {
+  uuid_value="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$uuid_value" in
+    ????????-????-4???-[89ab]???-????????????) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+generate_uuid_v4() {
+  candidate=""
+
+  if command_exists php; then
+    candidate="$(php -r '
+      $data = random_bytes(16);
+      $data[6] = chr((ord($data[6]) & 0x0f) | 0x40);
+      $data[8] = chr((ord($data[8]) & 0x3f) | 0x80);
+      echo vsprintf("%s%s-%s-%s-%s-%s%s%s", str_split(bin2hex($data), 4));
+    ' 2>/dev/null)" || candidate=""
+    if [ -n "$candidate" ] && is_uuid_v4 "$candidate"; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  fi
+
+  if command -v uuidgen >/dev/null 2>&1; then
+    if uuidgen -r >/dev/null 2>&1; then
+      candidate="$(uuidgen -r 2>/dev/null | tr -d '\r\n')"
+    else
+      candidate="$(uuidgen 2>/dev/null | tr -d '\r\n')"
+    fi
+    if [ -n "$candidate" ] && is_uuid_v4 "$candidate"; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+sha256_file() {
+  file_path="$1"
+  if command -v sha256 >/dev/null 2>&1; then
+    sha256 -q "$file_path"
+    return 0
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file_path" | awk '{print $1}'
+    return 0
+  fi
+  if command_exists openssl; then
+    openssl dgst -sha256 "$file_path" | awk '{print $NF}'
+    return 0
+  fi
+  return 1
+}
+
+backup_state_dir() {
+  printf '%s' "${MONITOR_AGENT_CONFIG_BACKUP_STATE_DIR:-/var/db/monitor-pfsense-agent}"
+}
+
+backup_lock_dir() {
+  printf '%s' "/var/run/monitor-pfsense-agent-backup.lock"
+}
+
+backup_is_enabled() {
+  case "${MONITOR_AGENT_CONFIG_BACKUP_ENABLED:-0}" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+backup_accepts_remote_requests() {
+  case "${MONITOR_AGENT_CONFIG_BACKUP_ACCEPT_REMOTE_REQUESTS:-1}" in
+    0|false|no|off) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+backup_ensure_state_dir() {
+  state_dir="$(backup_state_dir)"
+  mkdir -p "$state_dir" 2>/dev/null || true
+}
+
+backup_write_state() {
+  field="$1"
+  value="$2"
+  backup_ensure_state_dir
+  case "$field" in
+    sha256) printf '%s' "$value" > "$(backup_state_dir)/last-config-backup.sha256" ;;
+    at) printf '%s' "$value" > "$(backup_state_dir)/last-config-backup-at" ;;
+    error) printf '%s' "$value" > "$(backup_state_dir)/last-config-backup-error" ;;
+  esac
+}
+
+backup_acquire_lock() {
+  lock_dir="$(backup_lock_dir)"
+  if mkdir "$lock_dir" 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+backup_release_lock() {
+  rmdir "$(backup_lock_dir)" 2>/dev/null || true
+}
+
+backup_should_compress() {
+  case "${MONITOR_AGENT_CONFIG_BACKUP_COMPRESS:-1}" in
+    0|false|no|off) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+backup_config_xml_path() {
+  printf '%s' "${MONITOR_AGENT_PFSENSE_CONFIG_XML:-/conf/config.xml}"
+}
+
+backup_post_signed_json() {
+  endpoint="$1"
+  body_file="$2"
+  CURL_CMD="$3"
+  timestamp="$(iso_now)"
+  signature="$(build_signed_body_signature "$timestamp" "$body_file")"
+
+  $CURL_CMD -fsS \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -H "X-Node-Uid: $NODE_UID" \
+    -H "X-Timestamp: $timestamp" \
+    -H "X-Signature: $signature" \
+    --data-binary @"$body_file" \
+    "${CONTROLLER_URL}${endpoint}"
+}
+
+backup_post_command_ack() {
+  command_id="$1"
+  status="$2"
+  CURL_CMD="$3"
+  body_file="$(mktemp)"
+  trap 'rm -f "$body_file"' EXIT INT TERM
+  printf '{"command_id":"%s","status":"%s"}\n' "$(json_escape "$command_id")" "$(json_escape "$status")" >"$body_file"
+  backup_post_signed_json "/api/v1/ingest/command-ack" "$body_file" "$CURL_CMD"
+}
+
+backup_post_command_failed() {
+  command_id="$1"
+  error_message="$2"
+  CURL_CMD="$3"
+  body_file="$(mktemp)"
+  trap 'rm -f "$body_file"' EXIT INT TERM
+  truncated="$(truncate_text "$error_message" 500)"
+  printf '{"command_id":"%s","status":"failed","error_message":"%s"}\n' \
+    "$(json_escape "$command_id")" \
+    "$(json_escape "$truncated")" >"$body_file"
+  backup_post_signed_json "/api/v1/ingest/command-result" "$body_file" "$CURL_CMD"
+}
+
+backup_upload_config() {
+  command_id="${1:-}"
+  CURL_CMD="$2"
+  config_path="$(backup_config_xml_path)"
+  upload_file=""
+  payload_file=""
+  cleanup_files=""
+
+  if [ ! -f "$config_path" ] || [ ! -r "$config_path" ]; then
+    echo "backup-config: config.xml not found at $config_path" >&2
+    return 1
+  fi
+
+  if ! backup_acquire_lock; then
+    echo "backup-config: another backup is running" >&2
+    return 1
+  fi
+
+  config_sha256="$(sha256_file "$config_path")" || {
+    backup_release_lock
+    echo "backup-config: unable to hash config.xml" >&2
+    return 1
+  }
+  config_size="$(wc -c < "$config_path" | tr -d ' ')"
+  attempt_id="$(generate_uuid_v4)" || {
+    backup_release_lock
+    echo "backup-config: unable to generate backup id" >&2
+    return 1
+  }
+
+  upload_file="$(mktemp)"
+  payload_file="$upload_file"
+  cleanup_files="$upload_file"
+
+  if backup_should_compress; then
+    if ! gzip -c "$config_path" >"$upload_file" 2>/dev/null; then
+      backup_release_lock
+      rm -f "$upload_file"
+      echo "backup-config: gzip failed" >&2
+      return 1
+    fi
+    content_type="application/gzip"
+    compression_header="gzip"
+  else
+    cp "$config_path" "$upload_file"
+    content_type="application/xml"
+    compression_header=""
+  fi
+
+  timestamp="$(iso_now)"
+  signature="$(build_signed_body_signature "$timestamp" "$upload_file")"
+  response_file="$(mktemp)"
+  cleanup_files="$cleanup_files $response_file"
+
+  set -- \
+    -X POST \
+    -H "Content-Type: $content_type" \
+    -H "X-Node-Uid: $NODE_UID" \
+    -H "X-Timestamp: $timestamp" \
+    -H "X-Signature: $signature" \
+    -H "X-Config-Sha256: $config_sha256" \
+    -H "X-Config-Size: $config_size" \
+    -H "X-Backup-Id: $attempt_id" \
+    -H "X-Agent-Version: ${AGENT_VERSION:-0.1.0}" \
+    -H "X-Pfsense-Version: $(detect_pfsense_version 2>/dev/null || printf unknown)"
+
+  if [ -n "$compression_header" ]; then
+    set -- "$@" -H "X-Config-Compression: $compression_header"
+  fi
+  if [ -n "$command_id" ]; then
+    set -- "$@" -H "X-Command-Id: $command_id"
+  fi
+
+  if ! $CURL_CMD -sS "$@" --data-binary @"$upload_file" -o "$response_file" -w '%{http_code}' \
+    "${CONTROLLER_URL}/api/v1/ingest/config-backup" >"${response_file}.http" 2>"${response_file}.err"; then
+    upload_error="upload failed: $(truncate_text "$(cat "${response_file}.err" 2>/dev/null)" 200)"
+    backup_write_state error "$upload_error"
+    if [ -n "$command_id" ]; then
+      backup_post_command_failed "$command_id" "$upload_error" "$CURL_CMD" >/dev/null 2>&1 || true
+    fi
+    echo "$upload_error" >&2
+    backup_release_lock
+    rm -f "$upload_file" "$response_file" "${response_file}.http" "${response_file}.err"
+    return 1
+  fi
+
+  http_code="$(cat "${response_file}.http" 2>/dev/null)"
+  if [ -z "$http_code" ] || [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+    api_message="$(truncate_text "$(cat "$response_file" 2>/dev/null)" 300)"
+    if [ -n "$api_message" ]; then
+      upload_error="upload failed (HTTP ${http_code:-?}): $api_message"
+    else
+      upload_error="upload failed (HTTP ${http_code:-?})"
+    fi
+    backup_write_state error "$upload_error"
+    if [ -n "$command_id" ]; then
+      backup_post_command_failed "$command_id" "$upload_error" "$CURL_CMD" >/dev/null 2>&1 || true
+    fi
+    echo "$upload_error" >&2
+    backup_release_lock
+    rm -f "$upload_file" "$response_file" "${response_file}.http" "${response_file}.err"
+    return 1
+  fi
+
+  rm -f "${response_file}.http" "${response_file}.err"
+
+  backup_write_state sha256 "$config_sha256"
+  backup_write_state at "$(iso_now)"
+  backup_write_state error ""
+  backup_release_lock
+  cat "$response_file"
+  rm -f "$upload_file" "$response_file"
+  return 0
+}
+
+backup_config_now() {
+  command_id="${1:-}"
+  require_var CONTROLLER_URL
+  require_var NODE_UID
+  require_var NODE_SECRET
+
+  CURL_CMD=""
+  if ! resolve_curl_cmd >/dev/null 2>&1; then
+    CURL_CMD=""
+  else
+    CURL_CMD="$(resolve_curl_cmd)"
+  fi
+  if [ -z "$CURL_CMD" ]; then
+    echo "backup-config: curl not found" >&2
+    return 1
+  fi
+
+  if [ -n "$command_id" ]; then
+    backup_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
+  fi
+
+  backup_upload_config "$command_id" "$CURL_CMD"
+}
+
+backup_status() {
+  backup_ensure_state_dir
+  printf 'enabled=%s\n' "$(backup_is_enabled && printf yes || printf no)"
+  printf 'config_xml=%s\n' "$(backup_config_xml_path)"
+  if [ -f "$(backup_state_dir)/last-config-backup.sha256" ]; then
+    printf 'last_sha256=%s\n' "$(cat "$(backup_state_dir)/last-config-backup.sha256" 2>/dev/null)"
+  else
+    printf 'last_sha256=\n'
+  fi
+  if [ -f "$(backup_state_dir)/last-config-backup-at" ]; then
+    printf 'last_at=%s\n' "$(cat "$(backup_state_dir)/last-config-backup-at" 2>/dev/null)"
+  else
+    printf 'last_at=\n'
+  fi
+  if [ -f "$(backup_state_dir)/last-config-backup-error" ]; then
+    printf 'last_error=%s\n' "$(cat "$(backup_state_dir)/last-config-backup-error" 2>/dev/null)"
+  else
+    printf 'last_error=\n'
+  fi
+}
+
+backup_schedule_due() {
+  last_at_file="$(backup_state_dir)/last-config-backup-at"
+  last_at=""
+  if [ -f "$last_at_file" ]; then
+    last_at="$(cat "$last_at_file" 2>/dev/null)"
+  fi
+
+  mode="${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_MODE:-hours}"
+  interval_hours="${MONITOR_AGENT_CONFIG_BACKUP_INTERVAL_HOURS:-24}"
+  schedule_time="${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_TIME:-03:00}"
+  schedule_dow="${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_DOW:-1}"
+  schedule_dom="${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_DOM:-1}"
+
+  php -r '
+    $lastRaw = trim($argv[1]);
+    $lastAt = $lastRaw !== "" ? strtotime($lastRaw) : false;
+    $now = time();
+    if ($lastAt === false) {
+      exit(0);
+    }
+
+    $mode = $argv[2];
+    $hours = max(1, (int) $argv[3]);
+    $time = $argv[4];
+    $dow = (int) $argv[5];
+    $dom = (int) $argv[6];
+
+    if ($mode === "hours") {
+      exit(($now - $lastAt) >= ($hours * 3600) ? 0 : 1);
+    }
+
+    if (!preg_match("/^(\d{2}):(\d{2})$/", $time, $parts)) {
+      exit(1);
+    }
+
+    $hour = (int) $parts[1];
+    $minute = (int) $parts[2];
+    $tz = new DateTimeZone(date_default_timezone_get());
+    $cursor = new DateTime("@".$lastAt);
+    $cursor->setTimezone($tz);
+    $cursor->modify("+1 minute");
+
+    $next = null;
+    if ($mode === "daily") {
+      $next = clone $cursor;
+      $next->setTime($hour, $minute, 0);
+      if ($next <= $cursor) {
+        $next->modify("+1 day");
+      }
+    } elseif ($mode === "weekly") {
+      for ($i = 0; $i < 8; $i++) {
+        $candidate = clone $cursor;
+        $candidate->setTime($hour, $minute, 0);
+        $delta = ($dow - (int) $candidate->format("w") + 7) % 7;
+        if ($delta === 0 && $candidate <= $cursor) {
+          $delta = 7;
+        }
+        if ($delta > 0) {
+          $candidate->modify("+".$delta." days");
+        }
+        $next = $candidate;
+        break;
+      }
+    } elseif ($mode === "monthly") {
+      $candidate = clone $cursor;
+      $candidate->setDate((int) $candidate->format("Y"), (int) $candidate->format("n"), min($dom, (int) $candidate->format("t")));
+      $candidate->setTime($hour, $minute, 0);
+      if ($candidate <= $cursor) {
+        $candidate->modify("first day of next month");
+        $candidate->setDate((int) $candidate->format("Y"), (int) $candidate->format("n"), min($dom, (int) $candidate->format("t")));
+        $candidate->setTime($hour, $minute, 0);
+      }
+      $next = $candidate;
+    } else {
+      exit(($now - $lastAt) >= ($hours * 3600) ? 0 : 1);
+    }
+
+    if ($next === null) {
+      exit(1);
+    }
+
+    exit($now >= $next->getTimestamp() ? 0 : 1);
+  ' "$last_at" "$mode" "$interval_hours" "$schedule_time" "$schedule_dow" "$schedule_dom"
+}
+
+backup_content_changed() {
+  config_path="$(backup_config_xml_path)"
+  last_sha_file="$(backup_state_dir)/last-config-backup.sha256"
+  if [ ! -f "$last_sha_file" ]; then
+    return 0
+  fi
+  current_sha="$(sha256_file "$config_path" 2>/dev/null || true)"
+  last_sha="$(cat "$last_sha_file" 2>/dev/null)"
+  [ -n "$current_sha" ] && [ "$current_sha" != "$last_sha" ]
+}
+
+backup_should_run_scheduled() {
+  backup_is_enabled || return 1
+  backup_schedule_due || return 0
+  case "${MONITOR_AGENT_CONFIG_BACKUP_ON_CHANGE:-1}" in
+    0|false|no|off) return 1 ;;
+    *) backup_content_changed ;;
+  esac
+}
+
+backup_scheduled() {
+  if ! backup_should_run_scheduled; then
+    return 0
+  fi
+  backup_config_now ""
+}
+
+process_heartbeat_commands() {
+  response_file="$1"
+  CURL_CMD="$2"
+
+  backup_is_enabled || return 0
+  backup_accepts_remote_requests || return 0
+  command_exists php || return 0
+  [ -f "$response_file" ] || return 0
+
+  commands="$(php -r '
+    $payload = json_decode(file_get_contents($argv[1]), true);
+    if (!is_array($payload["commands"] ?? null)) {
+      exit(0);
+    }
+    foreach ($payload["commands"] as $command) {
+      if (($command["type"] ?? "") !== "config_backup_now") {
+        continue;
+      }
+      $id = trim((string) ($command["id"] ?? ""));
+      if ($id !== "") {
+        echo $id . "\n";
+      }
+    }
+  ' "$response_file" 2>/dev/null)" || return 0
+
+  if [ -z "${commands:-}" ]; then
+    return 0
+  fi
+
+  printf '%s\n' "$commands" | while IFS= read -r command_id; do
+    [ -z "$command_id" ] && continue
+    backup_config_now "$command_id" >>/dev/null 2>&1 || true
+  done
+}
+
 print_config() {
   cat "$CONFIG_FILE"
 }
@@ -1169,18 +1655,16 @@ heartbeat() {
   require_var CUSTOMER_CODE
 
   CURL_CMD=""
-  if command -v curl >/dev/null 2>&1; then
-    CURL_CMD="curl"
-  elif [ -x /usr/local/bin/curl ]; then
-    CURL_CMD="/usr/local/bin/curl"
-  else
+  if ! resolve_curl_cmd >/dev/null 2>&1; then
     echo "heartbeat: curl not found (PATH=$PATH)" >&2
     exit 1
   fi
+  CURL_CMD="$(resolve_curl_cmd)"
 
   timestamp="$(iso_now)"
   payload_file="$(mktemp)"
-  trap 'rm -f "$payload_file"' EXIT INT TERM
+  response_file="$(mktemp)"
+  trap 'rm -f "$payload_file" "$response_file"' EXIT INT TERM
   build_payload >"$payload_file" 2>/dev/null
   if [ ! -s "$payload_file" ]; then
     echo "heartbeat: build_payload failed" >&2
@@ -1195,7 +1679,11 @@ heartbeat() {
     -H "X-Timestamp: $timestamp" \
     -H "X-Signature: $signature" \
     --data-binary @"$payload_file" \
+    -o "$response_file" \
     "${CONTROLLER_URL}/api/v1/ingest/heartbeat"
+
+  process_heartbeat_commands "$response_file" "$CURL_CMD"
+  cat "$response_file"
 }
 
 test_connection() {
@@ -1231,6 +1719,9 @@ Usage:
   $0 heartbeat
   $0 test-connection
   $0 print-config
+  $0 backup-config [command-id]
+  $0 backup-status
+  $0 backup-scheduled
 EOF
 }
 
@@ -1244,6 +1735,15 @@ case "$command_name" in
     ;;
   print-config)
     print_config
+    ;;
+  backup-config)
+    backup_config_now "${2:-}"
+    ;;
+  backup-status)
+    backup_status
+    ;;
+  backup-scheduled)
+    backup_scheduled
     ;;
   *)
     usage >&2

@@ -3,10 +3,22 @@ import type { Config } from 'tailwindcss';
 const config: Config = {
   content: [
     './app/**/*.{ts,tsx}',
+    './components/**/*.{ts,tsx}',
     './lib/**/*.{ts,tsx}',
   ],
   theme: {
     extend: {
+      maxWidth: {
+        'app': 'var(--app-max-w)',
+      },
+      spacing: {
+        'section': 'var(--section-gap)',
+        'card': 'var(--card-padding)',
+        'gutter': 'var(--app-gutter)',
+      },
+      borderRadius: {
+        'card': 'var(--card-radius)',
+      },
       colors: {
         panel: {
           bg: '#08111f',

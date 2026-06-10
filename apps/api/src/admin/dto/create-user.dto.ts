@@ -1,5 +1,15 @@
-import { EntityStatus, UserRole } from '@prisma/client';
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { EntityStatus } from '@prisma/client';
+import {
+  ArrayUnique,
+  IsArray,
+  IsEmail,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  MinLength,
+} from 'class-validator';
 
 export class CreateUserDto {
   @IsEmail()
@@ -14,10 +24,21 @@ export class CreateUserDto {
   password!: string;
 
   @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
+  @IsString()
+  @Matches(/^[a-z][a-z0-9-]*$/)
+  role?: string;
 
   @IsOptional()
   @IsEnum(EntityStatus)
   status?: EntityStatus;
+
+  @IsOptional()
+  @IsUUID('4')
+  client_id?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  client_ids?: string[];
 }

@@ -57,6 +57,22 @@ export class HeartbeatServiceDto {
   impact_on_status?: (typeof HEARTBEAT_SERVICE_IMPACT)[number];
 }
 
+export class HeartbeatInterfaceDto {
+  @IsString()
+  @MaxLength(255)
+  name!: string;
+
+  @IsString()
+  @MaxLength(45)
+  ip!: string;
+
+  /** wan, lan, opt1, opt2, ... — usado pelo painel para agrupar interno vs WAN. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  role?: string;
+}
+
 export class HeartbeatGatewayDto {
   @IsString()
   @IsNotEmpty()
@@ -115,12 +131,16 @@ export class HeartbeatDto {
   @MaxLength(64)
   customer_code!: string;
 
+  /** IP(s) de gerenciamento (LAN); multiplas IPs separadas por virgula. */
   @IsOptional()
-  @IsIP()
+  @IsString()
+  @MaxLength(512)
   mgmt_ip?: string;
 
+  /** IP(s) WAN reportada(s); multiplas IPs separadas por virgula. */
   @IsOptional()
-  @IsIP()
+  @IsString()
+  @MaxLength(512)
   wan_ip_reported?: string;
 
   @IsString()
@@ -159,17 +179,21 @@ export class HeartbeatDto {
   @Max(100)
   disk_percent?: number;
 
+  /** Opcional: quando omitido, a API mantém o último estado conhecido (heartbeat leve). */
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(32)
   @ValidateNested({ each: true })
   @Type(() => HeartbeatGatewayDto)
-  gateways!: HeartbeatGatewayDto[];
+  gateways?: HeartbeatGatewayDto[];
 
+  /** Opcional: quando omitido, a API mantém o último estado conhecido (heartbeat leve). */
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(32)
   @ValidateNested({ each: true })
   @Type(() => HeartbeatServiceDto)
-  services!: HeartbeatServiceDto[];
+  services?: HeartbeatServiceDto[];
 
   @IsOptional()
   @IsArray()
@@ -177,5 +201,13 @@ export class HeartbeatDto {
   @IsString({ each: true })
   @MaxLength(255, { each: true })
   notices?: string[];
+
+  /** Interfaces de rede: name = descricao (ex.: ADM, P4), ip, role = wan/lan/opt1/... para o painel agrupar. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(32)
+  @ValidateNested({ each: true })
+  @Type(() => HeartbeatInterfaceDto)
+  interfaces?: HeartbeatInterfaceDto[];
 }
 

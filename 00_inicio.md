@@ -139,6 +139,9 @@ Nao rediscutir sem motivo forte:
 15. **Trilha de correção de navegação administrativa e saneamento do ciclo de vida** (doc 56) — menu longest-match; Minha conta compacta; gestão real de usuários; listagens sem resíduos; painel 0.1.14, API 0.1.4 — **encerrada**
 16. **Trilha de correção REAL da semântica de deleção e saneamento dos dados operacionais** (doc 57) — delete usuário (body/Content-Type); getFilters só ativos; listSessions só não revogadas; painel 0.1.15, API 0.1.5 — **encerrada**
 17. **Trilha de deleção real de clientes** (doc 58) — DELETE clients/:id; botão Deletar cliente (0 firewalls); bloqueio se 1+ firewalls; painel 0.1.16, API 0.1.6 — **encerrada**
+18. **Trilha RBAC Fase A — correções urgentes** (doc 69) — bootstrap desacoplado do detalhe do node; menu Instalação só admin; smoke node detail; painel 0.1.21 — **encerrada**
+19. **Trilha RBAC completa (Fases A–F)** (docs 69–74, encerramento doc 76) — escopo por cliente, permissões granulares, perfil `client`, UX administrativa, auditoria endurecida; API `0.2.4`, painel `0.2.3` na trilha — **encerrada (2026-06-09)**
+20. **Pós-RBAC UX/layout** (`docs/77`) — escopo clientes multi-coluna, purge smoke, shell responsivo; painel **`0.2.5`** — **entregue (2026-06-09)**
 
 ## Documentação de referência (retomada e refatoração)
 
@@ -156,32 +159,47 @@ Na pratica:
 
 ## Proximo bloco recomendado
 
-Trilhas recentes **encerradas:** homologacao/alinhamento package (doc 43), exclusao hosts (44), dashboard operacional (45), despoluicao dashboard (46), simplificacao cadastro Cliente+Firewall (doc 47), polimento cadastro admin (docs 50, 51), alinhamento smoke admin (doc 52), snapshot operacional (doc 61) e seletor de heartbeat (doc 62).
+Trilha RBAC **encerrada** em `2026-06-09` — ver `docs/76-ENCERRAMENTO-TRILHA-RBAC-2026-06-09.md`.
 
-Proximo trabalho em trilhas separadas:
+Roadmap UX front-end (plano 24, fases 0–8) **encerrado** em `2026-06-09` — ver `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`. Versoes finais: painel `1.0.0`, API `0.2.7`.
 
-1. **Saneamento antes do backup pfSense:** alinhar origem interna/publicacao, atualizar referencias antigas `192.168.100.244`, definir limite de upload para backup e validar contrato externo.
-2. **Modulo backup pfSense:** seguir `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md` e `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`.
-3. **Smoke suite:** manter `scripts/run-smoke-suite.sh` como referencia apos mudancas em admin, alerts, bootstrap, realtime e backup.
-4. **Builder nativo:** copiar `packages/pfsense-package` para builder pfSense, `make package`, validar `pkg add`.
-5. **Expansao operacional:** replicar homologacao em novos firewalls (generate-install-command, verify-bootstrap-release).
-6. **Fase B (servicos):** catalogo, MONITOR_AGENT_PACKAGES, GUI — ver `21-evolucao-servicos-e-fase-b-2026-03-13.md`.
+Proximas trilhas independentes (escolher uma por vez):
+
+1. **Homologacao / expansao** em novos firewalls
+2. **Fase B servicos** — `21-evolucao-servicos-e-fase-b-2026-03-13.md`
+3. **Fase G RBAC (opcional)** — apenas com decisao explicita do produto
+
+Referencias RBAC (manutencao, nao reimplementar):
+
+- plano mestre: `22-plano-mestre-rbac-usuarios-permissoes-escopo-2026-06-09.md`
+- matriz: `23-matriz-permissoes-e-escopo-rbac-2026-06-09.md`
+- checklist: `docs/75-CHECKLIST-TESTES-RBAC-ESCOPO-2026-06-09.md`
 
 ## Tarefa atual registrada
 
-- `trilha de deleção real de clientes — IMPLEMENTADA (2026-03-15)`
-- documentos: `docs/58-TRILHA-DELECAO-REAL-CLIENTES-2026-03-15.md`
-- versões consolidadas: painel 0.1.16, API 0.1.6, package 0.2.0 (inalterado)
-- `refatoracao snapshot operacional — IMPLEMENTADA (2026-03-19)`
-- documento: `docs/61-REFATORACAO-SNAPSHOT-OPERACIONAL-2026-03-19.md`
-- `planejamento organizacao + backup pfSense — DOCUMENTADO (2026-06-08)`
-- documentos: `docs/00-INDICE-OPERACIONAL.md`, `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md`, `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`
+- `Roadmap UX front-end Fases 0–8 — ENCERRADO (2026-06-09)` — encerramento `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`, painel `1.0.0`, API `0.2.7`
+- `Trilha UX front-end Fase 8 — CONCLUIDA (2026-06-09)` — plano `31-plano-fase8-design-system-pages-restantes-2026-06-09.md`, trilha `docs/87`, entrega `docs/87-ENTREGA-FRONTEND-FASE8-DESIGN-SYSTEM-PAGES-RESTANTES-2026-06-09.md`, painel `1.0.0`, API `0.2.7` — **roadmap plano 24 encerrado**
+- `Trilha UX front-end Fase 7 — CONCLUIDA (2026-06-09)` — plano `30-plano-fase7-auditoria-filtros-amigaveis-2026-06-09.md`, trilha `docs/86`, entrega `docs/86-ENTREGA-FRONTEND-FASE7-AUDITORIA-FILTROS-AMIGAVEIS-2026-06-09.md`, painel `0.8.0`, API `0.2.7`
+- `Trilha UX front-end Fase 6 — CONCLUIDA (2026-06-09)` — plano `29-plano-fase6-conta-separada-polimento-ptbr-2026-06-09.md`, trilha `docs/85`, entrega `docs/85-ENTREGA-FRONTEND-FASE6-CONTA-SEPARADA-POLIMENTO-PTBR-2026-06-09.md`, painel `0.7.0`, API `0.2.6`
+- `Trilha UX front-end Fase 5 — CONCLUIDA (2026-06-09)` — plano `28-plano-fase5-backups-frota-menu-2026-06-09.md`, trilha `docs/84`, entrega `docs/84-ENTREGA-FRONTEND-FASE5-BACKUPS-FROTA-MENU-2026-06-09.md`, painel `0.6.0`, API `0.2.6`
+- `Trilha UX front-end Fase 4 — CONCLUIDA (2026-06-09)` — plano `27-plano-fase4-detalhe-firewall-abas-2026-06-09.md`, trilha `docs/83`, entrega `docs/83-ENTREGA-FRONTEND-FASE4-DETALHE-FIREWALL-ABAS-2026-06-09.md`, painel `0.5.0`, API `0.2.6`
+- `Trilha UX front-end Fase 3 — CONCLUIDA (2026-06-09)` — plano `26-plano-fase3-firewalls-inventario-backup-alertas-2026-06-09.md`, trilha `docs/82`, entrega `docs/82-ENTREGA-FRONTEND-FASE3-FIREWALLS-INVENTARIO-2026-06-09.md`, painel `0.4.0`, API `0.2.6`
+- `Trilha UX front-end Fase 2 — CONCLUIDA (2026-06-09)` — plano `25-plano-fase2-dashboard-enxuto-kpis-zona-quente-2026-06-09.md`, trilha `docs/81`, entrega `docs/81-ENTREGA-FRONTEND-FASE2-DASHBOARD-ENXUTO-2026-06-09.md`, painel `0.3.0`
+- `Trilha UX front-end Fase 0 + Fase 1 — CONCLUIDA (2026-06-09)` — plano `24-plano-fase0-fase1-layout-navegacao-ui-foundation-2026-06-09.md`, trilha `docs/79`, entrega `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`, painel `0.2.9`
+- `Trilha RBAC — ENCERRADA (2026-06-09)` — API `0.2.4`, painel `0.2.5`
+- documento de encerramento: `docs/76-ENCERRAMENTO-TRILHA-RBAC-2026-06-09.md`
+- fases A–F em `docs/69` a `docs/74`
 
 ## Smokes e verificacoes que ja viraram referencia
 
 - `scripts/run-smoke-suite.sh`
 - `scripts/smoke-admin-operations.sh`
 - `scripts/smoke-rbac-roles.sh`
+- `scripts/smoke-rbac-client-scope.sh`
+- `scripts/smoke-rbac-permissions.sh`
+- `scripts/smoke-rbac-client-profile.sh`
+- `scripts/smoke-rbac-admin-ux.sh`
+- `scripts/smoke-rbac-audit-hardening.sh`
 - `scripts/smoke-bootstrap-flow.sh`
 - `scripts/verify-sse-stream.sh`
 - `scripts/test-agent-connection.sh`

@@ -18,6 +18,43 @@ const DEGRADED_SERVICE_STATUSES = new Set<ServiceStatus>([
   'unknown',
 ]);
 
+/** Serviços que podem estar ok mesmo com 0 clientes conectados (ex.: OpenVPN server). */
+const ALLOW_NO_CLIENTS_SERVICES = new Set([
+  'openvpn',
+  'openvpn_server',
+  'openvpn_client',
+]);
+
+/** Padrão de mensagem que indica "serviço ok, só não tem clientes" — não degrada nem gera alerta. */
+const NO_CLIENTS_MESSAGE_PATTERN =
+  /no clients|0 clients|waiting for clients|nenhum cliente|aguardando clientes/i;
+
+/** Tipo do serviço: prefixo antes de ":" (ex.: openvpn:ovpns1 -> openvpn) ou nome inteiro. */
+export function getServiceType(serviceName: string): string {
+  const name = serviceName.trim();
+  const colon = name.indexOf(':');
+  if (colon >= 0) {
+    return name.slice(0, colon).toLowerCase();
+  }
+  return name.toLowerCase();
+}
+
+function isNoClientsOnly(service: HeartbeatServiceDto): boolean {
+  const name = service.name.toLowerCase();
+  const type = getServiceType(service.name);
+  const allowed =
+    ALLOW_NO_CLIENTS_SERVICES.has(name) || type === 'openvpn';
+  if (!allowed) {
+    return false;
+  }
+  const status = mapServiceStatus(service.status);
+  if (status !== 'stopped' && status !== 'degraded') {
+    return false;
+  }
+  const msg = (service.message ?? '').trim();
+  return NO_CLIENTS_MESSAGE_PATTERN.test(msg);
+}
+
 export const mapServiceStatus = (
   status: HeartbeatServiceDto['status'],
 ): ServiceStatus => status;
@@ -26,8 +63,19 @@ export const mapGatewayStatus = (
   status: HeartbeatGatewayDto['status'],
 ): GatewayStatus => status;
 
-export const isServiceProblem = (service: HeartbeatServiceDto): boolean =>
-  DEGRADED_SERVICE_STATUSES.has(mapServiceStatus(service.status));
+/** true se o serviço deve ser considerado problema. Exceção: not_installed e "sem clientes" em serviços da allow-list. */
+export const isServiceProblem = (service: HeartbeatServiceDto): boolean => {
+  if (mapServiceStatus(service.status) === 'not_installed') {
+    return false;
+  }
+  if (!DEGRADED_SERVICE_STATUSES.has(mapServiceStatus(service.status))) {
+    return false;
+  }
+  if (isNoClientsOnly(service)) {
+    return false;
+  }
+  return true;
+};
 
 export const isGatewayProblem = (gateway: HeartbeatGatewayDto): boolean => {
   if (mapGatewayStatus(gateway.status) !== GatewayStatus.online) {
@@ -116,20 +164,25 @@ export const buildServiceAlert = (
     return null;
   }
 
-  const normalizedName = service.name.toLowerCase();
+  const serviceType = getServiceType(service.name);
   const severity =
-    CRITICAL_SERVICES.has(normalizedName) && service.status === 'stopped'
+    CRITICAL_SERVICES.has(serviceType) && service.status === 'stopped'
       ? AlertSeverity.critical
-      : WARNING_SERVICES.has(normalizedName)
+      : WARNING_SERVICES.has(serviceType)
         ? AlertSeverity.warning
         : AlertSeverity.warning;
 
+  const displayName =
+    serviceType !== service.name.toLowerCase()
+      ? `${serviceType} tunnel ${service.name.slice(serviceType.length + 1)}`
+      : service.name;
+
   return {
     severity,
-    title: `Service ${service.name} ${service.status}`,
+    title: `Service ${displayName} ${service.status}`,
     description:
       service.message ||
-      `The monitored service ${service.name} reported status ${service.status}.`,
+      `The monitored service ${displayName} reported status ${service.status}.`,
   };
 };
 

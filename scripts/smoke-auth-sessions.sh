@@ -141,8 +141,8 @@ fi
 
 echo "[3/10] Validando renderizacao da tela /sessions"
 SESSIONS_PAGE="$(curl -skS -b "$COOKIE_A" "$BASE_URL/sessions")"
-grep -q 'Sessoes da conta' <<<"$SESSIONS_PAGE"
-grep -q 'Revogar sessao' <<<"$SESSIONS_PAGE"
+grep -qE 'Sess[oõ]es (da conta|ativas|registradas)' <<<"$SESSIONS_PAGE"
+grep -q 'Revogar' <<<"$SESSIONS_PAGE"
 grep -q "$SESSION_B_ID" <<<"$SESSIONS_PAGE"
 
 echo "[4/10] Criando usuario humano adicional para governanca administrativa"

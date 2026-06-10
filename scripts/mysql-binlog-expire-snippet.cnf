@@ -1,0 +1,7 @@
+# Snippet para colocar em my.cnf (ex.: /etc/mysql/mysql.conf.d/mysqld.cnf)
+# para tornar permanente a expiração de binlogs em 3 dias.
+# Depois: sudo systemctl restart mysql
+
+[mysqld]
+# Expirar binary logs após 3 dias (259200 segundos)
+binlog_expire_logs_seconds = 259200

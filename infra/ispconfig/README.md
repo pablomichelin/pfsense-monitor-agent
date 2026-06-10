@@ -7,7 +7,7 @@ Topologia oficial desta fase:
 - dominio publico: `https://pfs-monitor.systemup.inf.br`
 - Cloudflare na frente
 - `ISPConfig` em `192.168.100.253` como termino TLS e proxy reverso
-- origem interna do Monitor-Pfsense em `http://192.168.100.244:8088`
+- origem interna canonica do Monitor-Pfsense em `http://192.168.100.221:3031` (gateway interno do compose na porta `8088`)
 
 ## Arquivo de referencia atual
 
@@ -20,8 +20,24 @@ Este arquivo representa a configuracao alvo quando o vhost do `ISPConfig` estive
 - manter painel, API e ingestao no mesmo dominio
 - preservar `Host`, `Cookie`, `CF-Connecting-IP` e cadeia `X-Forwarded-*`
 - desabilitar buffering no caminho do stream `SSE`
-- limitar payloads de ingestao a `64k`
+- limitar payloads de heartbeat a `64k` no caminho geral
+- permitir `5m` somente em `/api/v1/ingest/config-backup`
 - nao introduzir cache no stream
+
+## Aplicacao no host ISPConfig
+
+No host `192.168.100.253`:
+
+```bash
+scp scripts/ispconfig-apply-monitor-backup-limit.sh root@192.168.100.253:/tmp/
+ssh root@192.168.100.253 'bash /tmp/ispconfig-apply-monitor-backup-limit.sh'
+```
+
+Diagnostico a partir do servidor do compose (`192.168.100.221`):
+
+```bash
+./scripts/diagnose-backup-upload-path.sh
+```
 
 ## Validacao operacional minima
 
@@ -30,11 +46,13 @@ Depois de aplicar o snippet no `ISPConfig`, validar:
 1. `curl -skI https://pfs-monitor.systemup.inf.br/login`
 2. `curl -skI https://pfs-monitor.systemup.inf.br/healthz`
 3. `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh`
-4. `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-sse-stream.sh`
-5. `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/smoke-realtime-refresh.sh`
+4. `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-config-backup-upload-limit.sh`
+5. `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-sse-stream.sh`
+6. `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/smoke-realtime-refresh.sh`
 
 ## Observacoes
 
 - este diretorio nao altera `apache2`, `mysql`, `zabbix-server` ou `zabbix-agent`
 - o arquivo e referencia versionada; a aplicacao final no `ISPConfig` deve respeitar o mecanismo real do host
 - se o site no `ISPConfig` usar `Apache` como proxy final, manter este arquivo como contrato de comportamento e traduzir diretivas equivalentes
+- documentos historicos na raiz podem ainda citar `192.168.100.244`; a origem canonica atual e `192.168.100.221:3031`

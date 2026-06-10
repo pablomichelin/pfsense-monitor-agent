@@ -12,14 +12,29 @@ import {
   NodeStatus,
   NodeUidStatus,
   Prisma,
-  UserRole,
 } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { appConfig } from '../config/app-config';
+import { AccessActor } from '../auth/access-actor.type';
+import { AccessPolicyService } from '../auth/access-policy.service';
 import { NodeSecretCryptoService } from '../common/node-secret-crypto.service';
+import { AuditService } from '../audit/audit.service';
 import { AuthService } from '../auth/auth.service';
+import { PermissionsService } from '../auth/permissions.service';
+import {
+  CLIENT_ROLE,
+  DEFAULT_USER_ROLE,
+  isClientRole,
+  isSuperadminRole,
+  isSystemRoleCode,
+  SUPERADMIN_ROLE,
+} from '../auth/role-codes';
+import { PERMISSION_KEYS } from '../auth/permission-keys';
+import { CreateRoleDto } from './dto/create-role.dto';
+import { SetRolePermissionsDto } from './dto/set-role-permissions.dto';
+import { NodesService } from '../nodes/nodes.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { CreateNodeDto } from './dto/create-node.dto';
@@ -32,6 +47,7 @@ import { UpdateSiteDto } from './dto/update-site.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAgentTokenDto } from './dto/create-agent-token.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
+import { SetUserClientScopesDto } from './dto/set-user-client-scopes.dto';
 
 const toSlug = (value: string): string =>
   value
@@ -55,6 +71,19 @@ type BootstrapHeartbeatMode = 'normal' | 'light';
 const normalizeBootstrapHeartbeatMode = (
   rawValue?: string | null,
 ): BootstrapHeartbeatMode => (rawValue?.trim().toLowerCase() === 'light' ? 'light' : 'normal');
+
+const normalizeConfigBackupEnabled = (
+  rawValue?: string | null,
+): 'yes' | 'no' | null => {
+  const normalized = rawValue?.trim().toLowerCase();
+  if (normalized === 'yes' || normalized === '1' || normalized === 'true' || normalized === 'on') {
+    return 'yes';
+  }
+  if (normalized === 'no' || normalized === '0' || normalized === 'false' || normalized === 'off') {
+    return 'no';
+  }
+  return null;
+};
 
 /** Lê config/package-release.env em runtime para o comando de bootstrap refletir sempre a versão atual (após git pull). */
 function readPackageReleaseFromFile(): {
@@ -102,11 +131,52 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly nodeSecretCrypto: NodeSecretCryptoService,
     private readonly authService: AuthService,
+    private readonly accessPolicy: AccessPolicyService,
+    private readonly nodesService: NodesService,
+    private readonly auditService: AuditService,
+    private readonly permissionsService: PermissionsService,
   ) {}
+
+  private invalidateNodesFiltersCache(): void {
+    this.nodesService.invalidateFiltersCache();
+  }
 
   private ensureNonEmptySlug(value: string, fallback: string): string {
     const normalized = toSlug(value);
     return normalized || fallback;
+  }
+
+  private async withClientScope(
+    scopeActor: AccessActor | undefined,
+    clientId: string,
+  ): Promise<void> {
+    if (!scopeActor) {
+      return;
+    }
+
+    await this.accessPolicy.assertClientAccess(scopeActor, clientId);
+  }
+
+  private async withNodeScope(
+    scopeActor: AccessActor | undefined,
+    nodeId: string,
+  ): Promise<void> {
+    if (!scopeActor) {
+      return;
+    }
+
+    await this.accessPolicy.assertNodeAccess(scopeActor, nodeId);
+  }
+
+  private async withSiteScope(
+    scopeActor: AccessActor | undefined,
+    siteId: string,
+  ): Promise<void> {
+    if (!scopeActor) {
+      return;
+    }
+
+    await this.accessPolicy.assertSiteAccess(scopeActor, siteId);
   }
 
   private async buildUniqueClientCode(nameOrCode: string): Promise<string> {
@@ -176,13 +246,257 @@ export class AdminService {
     throw new ConflictException('unable to generate a unique node_uid');
   }
 
+  async listPermissionsMatrix(): Promise<{
+    generated_at: string;
+    roles: Array<{ code: string; label: string; is_system: boolean }>;
+    permissions: Array<{
+      id: string;
+      description: string | null;
+    }>;
+    role_permissions: Record<string, string[]>;
+  }> {
+    const [roles, permissions, rolePermissions] = await Promise.all([
+      this.prisma.role.findMany({
+        where: { status: EntityStatus.active },
+        orderBy: [{ isSystem: 'desc' }, { code: 'asc' }],
+        select: {
+          code: true,
+          label: true,
+          isSystem: true,
+        },
+      }),
+      this.prisma.permission.findMany({
+        orderBy: { id: 'asc' },
+        select: {
+          id: true,
+          description: true,
+        },
+      }),
+      this.prisma.rolePermission.findMany({
+        orderBy: [{ role: 'asc' }, { permissionId: 'asc' }],
+        select: {
+          role: true,
+          permissionId: true,
+        },
+      }),
+    ]);
+
+    const matrix = Object.fromEntries(
+      roles.map((role) => [role.code, [] as string[]]),
+    ) as Record<string, string[]>;
+
+    for (const row of rolePermissions) {
+      matrix[row.role]?.push(row.permissionId);
+    }
+
+    return {
+      generated_at: new Date().toISOString(),
+      roles: roles.map((role) => ({
+        code: role.code,
+        label: role.label,
+        is_system: role.isSystem,
+      })),
+      permissions,
+      role_permissions: matrix,
+    };
+  }
+
+  async listRoles(): Promise<{
+    items: Array<{
+      code: string;
+      label: string;
+      is_system: boolean;
+      status: EntityStatus;
+    }>;
+  }> {
+    const roles = await this.prisma.role.findMany({
+      where: { status: EntityStatus.active },
+      orderBy: [{ isSystem: 'desc' }, { code: 'asc' }],
+      select: {
+        code: true,
+        label: true,
+        isSystem: true,
+        status: true,
+      },
+    });
+
+    return {
+      items: roles.map((role) => ({
+        code: role.code,
+        label: role.label,
+        is_system: role.isSystem,
+        status: role.status,
+      })),
+    };
+  }
+
+  async createRole(
+    dto: CreateRoleDto,
+    actorId?: string,
+    ipAddress?: string,
+  ): Promise<{ role: { code: string; label: string; is_system: boolean } }> {
+    const code = dto.code.trim().toLowerCase();
+    if (isSystemRoleCode(code)) {
+      throw new ConflictException('role code reserved for system profile');
+    }
+
+    const existing = await this.prisma.role.findUnique({ where: { code } });
+    if (existing) {
+      throw new ConflictException('role already exists');
+    }
+
+    const role = await this.prisma.role.create({
+      data: {
+        code,
+        label: dto.label.trim(),
+        isSystem: false,
+        status: EntityStatus.active,
+      },
+      select: {
+        code: true,
+        label: true,
+        isSystem: true,
+      },
+    });
+
+    await this.auditService.record({
+      actorId,
+      ipAddress,
+      action: 'role.create',
+      targetType: 'role',
+      targetId: role.code,
+      metadataJson: {
+        label: role.label,
+      },
+    });
+
+    return {
+      role: {
+        code: role.code,
+        label: role.label,
+        is_system: role.isSystem,
+      },
+    };
+  }
+
+  async deleteRole(
+    code: string,
+    actorId?: string,
+    ipAddress?: string,
+  ): Promise<{ deleted: true; code: string }> {
+    const role = await this.prisma.role.findUnique({
+      where: { code },
+      select: {
+        code: true,
+        isSystem: true,
+        _count: { select: { users: true } },
+      },
+    });
+
+    if (!role) {
+      throw new NotFoundException('role not found');
+    }
+
+    if (role.isSystem) {
+      throw new BadRequestException('system roles cannot be deleted');
+    }
+
+    if (role._count.users > 0) {
+      throw new ConflictException('role is assigned to users');
+    }
+
+    await this.prisma.role.delete({ where: { code } });
+    this.permissionsService.invalidateRoleCache(code);
+
+    await this.auditService.record({
+      actorId,
+      ipAddress,
+      action: 'role.delete',
+      targetType: 'role',
+      targetId: code,
+    });
+
+    return { deleted: true, code };
+  }
+
+  async setRolePermissions(
+    code: string,
+    dto: SetRolePermissionsDto,
+    actorId?: string,
+    ipAddress?: string,
+  ): Promise<{ role: string; permission_ids: string[] }> {
+    if (isSuperadminRole(code)) {
+      throw new BadRequestException('superadmin permissions are immutable');
+    }
+
+    const role = await this.prisma.role.findUnique({
+      where: { code },
+      select: { code: true, status: true },
+    });
+
+    if (!role || role.status !== EntityStatus.active) {
+      throw new NotFoundException('role not found');
+    }
+
+    const permissionIds = [...new Set(dto.permission_ids.map((id) => id.trim()))];
+    const known = await this.prisma.permission.findMany({
+      where: { id: { in: permissionIds } },
+      select: { id: true },
+    });
+
+    if (known.length !== permissionIds.length) {
+      throw new BadRequestException('unknown permission id');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.rolePermission.deleteMany({ where: { role: code } }),
+      this.prisma.rolePermission.createMany({
+        data: permissionIds.map((permissionId) => ({
+          role: code,
+          permissionId,
+        })),
+      }),
+    ]);
+
+    this.permissionsService.invalidateRoleCache(code);
+
+    await this.auditService.record({
+      actorId,
+      ipAddress,
+      action: 'role.permissions.update',
+      targetType: 'role',
+      targetId: code,
+      metadataJson: {
+        permission_count: permissionIds.length,
+      },
+    });
+
+    return {
+      role: code,
+      permission_ids: permissionIds.sort(),
+    };
+  }
+
+  private async assertAssignableRole(code: string): Promise<void> {
+    const role = await this.prisma.role.findUnique({
+      where: { code },
+      select: { status: true },
+    });
+
+    if (!role || role.status !== EntityStatus.active) {
+      throw new BadRequestException('invalid role');
+    }
+  }
+
   async listUsers(query?: ListUsersQueryDto): Promise<{
     items: Array<{
       id: string;
       email: string;
       display_name: string | null;
-      role: UserRole;
+      role: string;
       status: EntityStatus;
+      client_ids: string[];
+      client_id: string | null;
       created_at: string;
       updated_at: string;
     }>;
@@ -195,6 +509,13 @@ export class AdminService {
         { role: 'asc' },
         { email: 'asc' },
       ],
+      include: {
+        clientScopes: {
+          select: {
+            clientId: true,
+          },
+        },
+      },
     });
 
     return {
@@ -204,52 +525,292 @@ export class AdminService {
         display_name: user.displayName,
         role: user.role,
         status: user.status,
+        client_id: user.clientId,
+        client_ids:
+          user.role === CLIENT_ROLE && user.clientId
+            ? [user.clientId]
+            : user.clientScopes.map((scope) => scope.clientId),
         created_at: user.createdAt.toISOString(),
         updated_at: user.updatedAt.toISOString(),
       })),
     };
   }
 
-  async listAuditLogs(query: ListAuditLogsQueryDto): Promise<{
+  async listUserClientScopes(userId: string): Promise<{
+    user_id: string;
+    client_ids: string[];
+    clients: Array<{
+      id: string;
+      name: string;
+      code: string;
+    }>;
+  }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) {
+      throw new NotFoundException('user not found');
+    }
+
+    const scopes = await this.prisma.userClientScope.findMany({
+      where: { userId },
+      include: {
+        client: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+      },
+      orderBy: {
+        client: {
+          name: 'asc',
+        },
+      },
+    });
+
+    return {
+      user_id: userId,
+      client_ids: scopes.map((scope) => scope.clientId),
+      clients: scopes.map((scope) => scope.client),
+    };
+  }
+
+  async setUserClientScopes(
+    userId: string,
+    dto: SetUserClientScopesDto,
+    grantedByUserId?: string,
+    actorIp?: string,
+  ): Promise<{
+    user_id: string;
+    client_ids: string[];
+  }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, email: true },
+    });
+    if (!user) {
+      throw new NotFoundException('user not found');
+    }
+    if (user.role === SUPERADMIN_ROLE) {
+      throw new BadRequestException('superadmin does not use client scopes');
+    }
+
+    await this.replaceUserClientScopes(userId, dto.client_ids, grantedByUserId);
+
+    await this.writeAuditLog({
+      actorId: grantedByUserId,
+      action: 'admin.user_client_scopes.update',
+      targetType: 'user',
+      targetId: userId,
+      ipAddress: actorIp,
+      metadataJson: {
+        email: user.email,
+        client_ids: dto.client_ids,
+      },
+    });
+
+    return {
+      user_id: userId,
+      client_ids: dto.client_ids,
+    };
+  }
+
+  private async resolveUserClientBinding(
+    role: string,
+    input: { clientId?: string; clientIds?: string[] },
+  ): Promise<{ boundClientId: string | null; scopeClientIds: string[] }> {
+    if (role === CLIENT_ROLE) {
+      const boundId = input.clientId ?? input.clientIds?.[0];
+      if (!boundId) {
+        throw new BadRequestException('client_id is required for client role');
+      }
+
+      if (input.clientIds && input.clientIds.length > 1) {
+        throw new BadRequestException('client role accepts exactly one client');
+      }
+
+      if (
+        input.clientId &&
+        input.clientIds &&
+        input.clientIds.length > 0 &&
+        input.clientId !== input.clientIds[0]
+      ) {
+        throw new BadRequestException('client_id and client_ids conflict for client role');
+      }
+
+      const client = await this.prisma.client.findFirst({
+        where: {
+          id: boundId,
+          status: EntityStatus.active,
+        },
+        select: {
+          id: true,
+        },
+      });
+      if (!client) {
+        throw new BadRequestException('client_id is invalid or inactive');
+      }
+
+      return {
+        boundClientId: boundId,
+        scopeClientIds: [boundId],
+      };
+    }
+
+    if (role === SUPERADMIN_ROLE) {
+      return {
+        boundClientId: null,
+        scopeClientIds: input.clientIds ?? [],
+      };
+    }
+
+    return {
+      boundClientId: null,
+      scopeClientIds: input.clientIds ?? [],
+    };
+  }
+
+  private async replaceUserClientScopes(
+    userId: string,
+    clientIds: string[],
+    grantedByUserId?: string,
+  ): Promise<void> {
+    if (clientIds.length > 0) {
+      const clients = await this.prisma.client.findMany({
+        where: {
+          id: {
+            in: clientIds,
+          },
+          status: EntityStatus.active,
+        },
+        select: {
+          id: true,
+        },
+      });
+      if (clients.length !== clientIds.length) {
+        throw new BadRequestException('one or more client_ids are invalid or inactive');
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.userClientScope.deleteMany({
+        where: { userId },
+      });
+
+      if (clientIds.length > 0) {
+        await tx.userClientScope.createMany({
+          data: clientIds.map((clientId) => ({
+            userId,
+            clientId,
+            grantedByUserId: grantedByUserId ?? null,
+          })),
+        });
+      }
+    });
+  }
+
+  async listAuditLogs(
+    scopeActor: AccessActor,
+    query: ListAuditLogsQueryDto,
+  ): Promise<{
     generated_at: string;
     items: Array<{
       id: string;
       actor_type: string;
       actor_id: string | null;
+      actor_role: string | null;
       actor_email: string | null;
       action: string;
       target_type: string;
       target_id: string | null;
       target_display_name: string | null;
+      client_id: string | null;
+      result: string;
       ip_address: string | null;
       metadata_json: Prisma.JsonValue | null;
       created_at: string;
     }>;
   }> {
     const limit = query.limit ?? 50;
+    const offset = query.offset ?? 0;
+
+    const where: Prisma.AuditLogWhereInput = {};
+
+    if (query.action) {
+      where.action = {
+        startsWith: query.action,
+      };
+    }
+
+    if (query.target_type) {
+      where.targetType = {
+        equals: query.target_type,
+      };
+    }
+
+    if (query.target_id) {
+      where.targetId = {
+        equals: query.target_id,
+      };
+    }
+
+    if (query.result) {
+      where.result = {
+        equals: query.result,
+      };
+    }
+
+    if (query.from || query.to) {
+      where.createdAt = {};
+      if (query.from) {
+        where.createdAt.gte = new Date(query.from);
+      }
+      if (query.to) {
+        const toDate = new Date(query.to);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(query.to)) {
+          toDate.setHours(23, 59, 59, 999);
+        }
+        where.createdAt.lte = toDate;
+      }
+    }
+
+    if (query.actor_email?.trim()) {
+      const matchingUsers = await this.prisma.user.findMany({
+        where: {
+          email: {
+            contains: query.actor_email.trim(),
+            mode: 'insensitive',
+          },
+        },
+        select: {
+          id: true,
+        },
+        take: 50,
+      });
+
+      const actorIds = matchingUsers.map((user) => user.id);
+      if (actorIds.length === 0) {
+        return {
+          generated_at: new Date().toISOString(),
+          items: [],
+        };
+      }
+
+      where.actorId = {
+        in: actorIds,
+      };
+    }
 
     const logs = await this.prisma.auditLog.findMany({
-      where: {
-        action: query.action
-          ? {
-              startsWith: query.action,
-            }
-          : undefined,
-        targetType: query.target_type
-          ? {
-              equals: query.target_type,
-            }
-          : undefined,
-        targetId: query.target_id
-          ? {
-              equals: query.target_id,
-            }
-          : undefined,
-      },
+      where,
       orderBy: {
         createdAt: 'desc',
       },
       take: limit,
+      skip: offset,
     });
 
     const actorIds = Array.from(
@@ -314,22 +875,110 @@ export class AdminService {
       return null;
     };
 
+    const items = logs.map((log) => ({
+      id: log.id,
+      actor_type: log.actorType,
+      actor_id: log.actorId,
+      actor_role: log.actorRole,
+      actor_email: log.actorId ? actorEmailById.get(log.actorId) ?? null : null,
+      action: log.action,
+      target_type: log.targetType,
+      target_id: log.targetId,
+      target_display_name: getTargetDisplayName(log.targetType, log.targetId),
+      client_id: log.clientId,
+      result: log.result,
+      ip_address: log.ipAddress,
+      metadata_json: log.metadataJson,
+      created_at: log.createdAt.toISOString(),
+    }));
+
+    const nodeClientById = new Map(
+      (
+        await this.prisma.node.findMany({
+          where: {
+            id: {
+              in: nodeIds,
+            },
+          },
+          select: {
+            id: true,
+            site: {
+              select: {
+                clientId: true,
+              },
+            },
+          },
+        })
+      ).map((node) => [node.id, node.site.clientId]),
+    );
+
+    const filteredItems = await this.filterAuditItemsForScope(
+      scopeActor,
+      items,
+      nodeClientById,
+    );
+
     return {
       generated_at: new Date().toISOString(),
-      items: logs.map((log) => ({
-        id: log.id,
-        actor_type: log.actorType,
-        actor_id: log.actorId,
-        actor_email: log.actorId ? actorEmailById.get(log.actorId) ?? null : null,
-        action: log.action,
-        target_type: log.targetType,
-        target_id: log.targetId,
-        target_display_name: getTargetDisplayName(log.targetType, log.targetId),
-        ip_address: log.ipAddress,
-        metadata_json: log.metadataJson,
-        created_at: log.createdAt.toISOString(),
-      })),
+      items: filteredItems,
     };
+  }
+
+  private async filterAuditItemsForScope<
+    T extends {
+      actor_id: string | null;
+      action: string;
+      target_type: string;
+      target_id: string | null;
+      client_id: string | null;
+      metadata_json: Prisma.JsonValue | null;
+    },
+  >(
+    actor: AccessActor,
+    items: T[],
+    nodeClientById: Map<string, string>,
+  ): Promise<T[]> {
+    const allowedClientIds = await this.accessPolicy.getAllowedClientIds(actor);
+    if (allowedClientIds === null) {
+      return items;
+    }
+
+    const allowedSet = new Set(allowedClientIds);
+
+    return items.filter((item) => {
+      if (item.actor_id === actor.userId && item.action.startsWith('auth.')) {
+        return true;
+      }
+
+      if (item.client_id && allowedSet.has(item.client_id)) {
+        return true;
+      }
+
+      if (item.target_type === 'client' && item.target_id) {
+        return allowedSet.has(item.target_id);
+      }
+
+      if (item.target_type === 'node' && item.target_id) {
+        const clientId = nodeClientById.get(item.target_id);
+        return clientId ? allowedSet.has(clientId) : false;
+      }
+
+      const metadata = item.metadata_json;
+      if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+        const record = metadata as Record<string, unknown>;
+        if (typeof record.client_id === 'string' && allowedSet.has(record.client_id)) {
+          return true;
+        }
+        if (typeof record.node_id === 'string') {
+          const clientId = nodeClientById.get(record.node_id);
+          if (clientId && allowedSet.has(clientId)) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    });
   }
 
   async createUser(dto: CreateUserDto, actorId?: string, actorIp?: string): Promise<{
@@ -337,7 +986,7 @@ export class AdminService {
       id: string;
       email: string;
       display_name: string | null;
-      role: UserRole;
+      role: string;
       status: EntityStatus;
       created_at: string;
     };
@@ -355,15 +1004,27 @@ export class AdminService {
       throw new ConflictException('user email already exists');
     }
 
+    const role = dto.role ?? DEFAULT_USER_ROLE;
+    await this.assertAssignableRole(role);
+    const binding = await this.resolveUserClientBinding(role, {
+      clientId: dto.client_id,
+      clientIds: dto.client_ids,
+    });
+
     const user = await this.prisma.user.create({
       data: {
         email,
         displayName: normalizeOptional(dto.display_name),
         passwordHash: await this.authService.createUserPasswordHash(dto.password),
-        role: dto.role ?? UserRole.readonly,
+        role,
         status: dto.status ?? EntityStatus.active,
+        clientId: binding.boundClientId,
       },
     });
+
+    if (user.role !== SUPERADMIN_ROLE && binding.scopeClientIds.length > 0) {
+      await this.replaceUserClientScopes(user.id, binding.scopeClientIds, actorId);
+    }
 
     await this.writeAuditLog({
       actorId,
@@ -375,6 +1036,8 @@ export class AdminService {
         email: user.email,
         role: user.role,
         status: user.status,
+        client_id: user.clientId,
+        client_ids: binding.scopeClientIds,
       },
     });
 
@@ -400,7 +1063,7 @@ export class AdminService {
       id: string;
       email: string;
       display_name: string | null;
-      role: UserRole;
+      role: string;
       status: EntityStatus;
       updated_at: string;
     };
@@ -415,9 +1078,12 @@ export class AdminService {
     }
 
     const nextRole = dto.role ?? existing.role;
+    if (dto.role) {
+      await this.assertAssignableRole(nextRole);
+    }
     const nextStatus = dto.status ?? existing.status;
     const willRemainActiveSuperadmin =
-      nextRole === UserRole.superadmin && nextStatus === EntityStatus.active;
+      nextRole === SUPERADMIN_ROLE && nextStatus === EntityStatus.active;
 
     if (actorId && actorId === userId && !willRemainActiveSuperadmin) {
       throw new ForbiddenException(
@@ -426,13 +1092,13 @@ export class AdminService {
     }
 
     if (
-      existing.role === UserRole.superadmin &&
+      existing.role === SUPERADMIN_ROLE &&
       existing.status === EntityStatus.active &&
       !willRemainActiveSuperadmin
     ) {
       const activeSuperadminCount = await this.prisma.user.count({
         where: {
-          role: UserRole.superadmin,
+          role: SUPERADMIN_ROLE,
           status: EntityStatus.active,
         },
       });
@@ -457,6 +1123,19 @@ export class AdminService {
       }
     }
 
+    let binding: { boundClientId: string | null; scopeClientIds: string[] } | null = null;
+    if (nextRole === CLIENT_ROLE) {
+      binding = await this.resolveUserClientBinding(nextRole, {
+        clientId: dto.client_id ?? existing.clientId ?? undefined,
+        clientIds: dto.client_ids,
+      });
+    } else if (dto.client_id !== undefined || dto.client_ids !== undefined) {
+      binding = await this.resolveUserClientBinding(nextRole, {
+        clientId: dto.client_id ?? undefined,
+        clientIds: dto.client_ids,
+      });
+    }
+
     const updatedUser = await this.prisma.user.update({
       where: {
         id: userId,
@@ -471,6 +1150,10 @@ export class AdminService {
             : undefined,
         role: dto.role,
         status: dto.status,
+        clientId:
+          nextRole === CLIENT_ROLE
+            ? binding?.boundClientId ?? existing.clientId
+            : null,
       },
     });
 
@@ -486,6 +1169,16 @@ export class AdminService {
       });
     }
 
+    if (updatedUser.role === SUPERADMIN_ROLE) {
+      await this.prisma.userClientScope.deleteMany({
+        where: { userId },
+      });
+    } else if (binding) {
+      await this.replaceUserClientScopes(userId, binding.scopeClientIds, actorId);
+    } else if (dto.client_ids !== undefined) {
+      await this.replaceUserClientScopes(userId, dto.client_ids, actorId);
+    }
+
     await this.writeAuditLog({
       actorId,
       action: 'admin.user.update',
@@ -498,6 +1191,8 @@ export class AdminService {
         role: updatedUser.role,
         status: updatedUser.status,
         password_rotated: dto.password !== undefined,
+        client_id: updatedUser.clientId,
+        client_ids: binding?.scopeClientIds ?? dto.client_ids,
       },
     });
 
@@ -528,10 +1223,10 @@ export class AdminService {
     if (actorId && actorId === userId) {
       throw new ForbiddenException('cannot delete your own user');
     }
-    if (user.role === UserRole.superadmin && user.status === EntityStatus.active) {
+    if (user.role === SUPERADMIN_ROLE && user.status === EntityStatus.active) {
       const activeSuperadminCount = await this.prisma.user.count({
         where: {
-          role: UserRole.superadmin,
+          role: SUPERADMIN_ROLE,
           status: EntityStatus.active,
         },
       });
@@ -716,6 +1411,7 @@ export class AdminService {
         code: client.code,
       },
     });
+    this.invalidateNodesFiltersCache();
 
     return {
       client: {
@@ -728,7 +1424,12 @@ export class AdminService {
     };
   }
 
-  async createSite(dto: CreateSiteDto, actorId?: string, actorIp?: string): Promise<{
+  async createSite(
+    dto: CreateSiteDto,
+    actorId?: string,
+    actorIp?: string,
+    scopeActor?: AccessActor,
+  ): Promise<{
     site: {
       id: string;
       client_id: string;
@@ -749,6 +1450,8 @@ export class AdminService {
     if (!client) {
       throw new NotFoundException('client not found');
     }
+
+    await this.withClientScope(scopeActor, dto.client_id);
 
     const site = await this.prisma.site.create({
       data: {
@@ -773,6 +1476,7 @@ export class AdminService {
         code: site.code,
       },
     });
+    this.invalidateNodesFiltersCache();
 
     return {
       site: {
@@ -791,6 +1495,7 @@ export class AdminService {
     dto: UpdateClientDto,
     actorId?: string,
     actorIp?: string,
+    scopeActor?: AccessActor,
   ): Promise<{
     client: {
       id: string;
@@ -811,6 +1516,8 @@ export class AdminService {
     if (!existing) {
       throw new NotFoundException('client not found');
     }
+
+    await this.withClientScope(scopeActor, clientId);
 
     const client = await this.prisma.client.update({
       where: {
@@ -840,6 +1547,7 @@ export class AdminService {
         status: client.status,
       },
     });
+    this.invalidateNodesFiltersCache();
 
     return {
       client: {
@@ -856,7 +1564,10 @@ export class AdminService {
     clientId: string,
     actorId?: string,
     actorIp?: string,
+    scopeActor?: AccessActor,
   ): Promise<{ ok: true; client_id: string }> {
+    await this.withClientScope(scopeActor, clientId);
+
     const client = await this.prisma.client.findUnique({
       where: { id: clientId },
       select: {
@@ -896,6 +1607,7 @@ export class AdminService {
     await this.prisma.client.delete({
       where: { id: clientId },
     });
+    this.invalidateNodesFiltersCache();
     return { ok: true, client_id: clientId };
   }
 
@@ -904,6 +1616,7 @@ export class AdminService {
     dto: UpdateSiteDto,
     actorId?: string,
     actorIp?: string,
+    scopeActor?: AccessActor,
   ): Promise<{
     site: {
       id: string;
@@ -928,6 +1641,8 @@ export class AdminService {
     if (!existing) {
       throw new NotFoundException('site not found');
     }
+
+    await this.withSiteScope(scopeActor, siteId);
 
     const site = await this.prisma.site.update({
       where: {
@@ -965,6 +1680,7 @@ export class AdminService {
         status: site.status,
       },
     });
+    this.invalidateNodesFiltersCache();
 
     return {
       site: {
@@ -981,7 +1697,12 @@ export class AdminService {
     };
   }
 
-  async createNode(dto: CreateNodeDto, actorId?: string, actorIp?: string): Promise<{
+  async createNode(
+    dto: CreateNodeDto,
+    actorId?: string,
+    actorIp?: string,
+    scopeActor?: AccessActor,
+  ): Promise<{
     node: {
       id: string;
       site_id: string;
@@ -1007,6 +1728,7 @@ export class AdminService {
 
     let siteId: string;
     if (hasSiteId) {
+      await this.withSiteScope(scopeActor, dto.site_id!);
       const site = await this.prisma.site.findUnique({
         where: { id: dto.site_id! },
         select: { id: true },
@@ -1017,6 +1739,7 @@ export class AdminService {
       siteId = site.id;
     } else {
       const clientId = dto.client_id!;
+      await this.withClientScope(scopeActor, clientId);
       const client = await this.prisma.client.findUnique({
         where: { id: clientId },
         select: { id: true, sites: { select: { id: true } } },
@@ -1095,6 +1818,7 @@ export class AdminService {
         site_id: node.siteId,
       },
     });
+    this.invalidateNodesFiltersCache();
 
     return {
       node: {
@@ -1114,7 +1838,12 @@ export class AdminService {
     };
   }
 
-  async rotateNodeSecret(nodeId: string, actorId?: string, actorIp?: string): Promise<{
+  async rotateNodeSecret(
+    nodeId: string,
+    actorId?: string,
+    actorIp?: string,
+    scopeActor?: AccessActor,
+  ): Promise<{
     node_id: string;
     bootstrap: {
       node_secret: string;
@@ -1122,6 +1851,8 @@ export class AdminService {
       rotated_at: string;
     };
   }> {
+    await this.withNodeScope(scopeActor, nodeId);
+
     const node = await this.prisma.node.findUnique({
       where: {
         id: nodeId,
@@ -1189,6 +1920,7 @@ export class AdminService {
     dto: UpdateNodeDto,
     actorId?: string,
     actorIp?: string,
+    scopeActor?: AccessActor,
   ): Promise<{
     node: {
       id: string;
@@ -1202,6 +1934,8 @@ export class AdminService {
       updated_at: string;
     };
   }> {
+    await this.withNodeScope(scopeActor, nodeId);
+
     const node = await this.prisma.node.findUnique({
       where: {
         id: nodeId,
@@ -1272,11 +2006,14 @@ export class AdminService {
     maintenanceMode: boolean,
     actorId?: string,
     actorIp?: string,
+    scopeActor?: AccessActor,
   ): Promise<{
     node_id: string;
     maintenance_mode: boolean;
     updated_at: string;
   }> {
+    await this.withNodeScope(scopeActor, nodeId);
+
     const node = await this.prisma.node.findUnique({
       where: {
         id: nodeId,
@@ -1326,7 +2063,7 @@ export class AdminService {
     };
   }
 
-  async listAgentTokens(nodeId: string): Promise<{
+  async listAgentTokens(nodeId: string, scopeActor?: AccessActor): Promise<{
     items: Array<{
       id: string;
       node_id: string;
@@ -1338,6 +2075,8 @@ export class AdminService {
       revoked_at: string | null;
     }>;
   }> {
+    await this.withNodeScope(scopeActor, nodeId);
+
     const node = await this.prisma.node.findUnique({
       where: {
         id: nodeId,
@@ -1376,6 +2115,7 @@ export class AdminService {
     dto: CreateAgentTokenDto,
     actorId?: string,
     actorIp?: string,
+    scopeActor?: AccessActor,
   ): Promise<{
     node_id: string;
     token: {
@@ -1387,6 +2127,8 @@ export class AdminService {
       created_at: string;
     };
   }> {
+    await this.withNodeScope(scopeActor, nodeId);
+
     const node = await this.prisma.node.findUnique({
       where: {
         id: nodeId,
@@ -1447,12 +2189,15 @@ export class AdminService {
     tokenId: string,
     actorId?: string,
     actorIp?: string,
+    scopeActor?: AccessActor,
   ): Promise<{
     ok: true;
     node_id: string;
     token_id: string;
     revoked_at: string;
   }> {
+    await this.withNodeScope(scopeActor, nodeId);
+
     const token = await this.prisma.agentToken.findFirst({
       where: {
         id: tokenId,
@@ -1507,12 +2252,15 @@ export class AdminService {
     nodeId: string,
     actorId?: string,
     actorIp?: string,
+    scopeActor?: AccessActor,
   ): Promise<{
     ok: true;
     node_id: string;
     node_uid: string;
     deleted_at: string;
   }> {
+    await this.withNodeScope(scopeActor, nodeId);
+
     const node = await this.prisma.node.findUnique({
       where: { id: nodeId },
       select: {
@@ -1544,6 +2292,7 @@ export class AdminService {
     await this.prisma.node.delete({
       where: { id: nodeId },
     });
+    this.invalidateNodesFiltersCache();
 
     return {
       ok: true,
@@ -1557,6 +2306,7 @@ export class AdminService {
     ids: string[],
     actorId?: string,
     actorIp?: string,
+    scopeActor?: AccessActor,
   ): Promise<{
     ok: true;
     deleted_count: number;
@@ -1566,6 +2316,12 @@ export class AdminService {
     const uniqueIds = Array.from(new Set(ids));
     if (uniqueIds.length === 0) {
       throw new ConflictException('ids must contain at least one node id');
+    }
+
+    if (scopeActor) {
+      for (const nodeId of uniqueIds) {
+        await this.withNodeScope(scopeActor, nodeId);
+      }
     }
 
     const nodes = await this.prisma.node.findMany({
@@ -1603,6 +2359,7 @@ export class AdminService {
         where: { id: { in: uniqueIds } },
       });
     });
+    this.invalidateNodesFiltersCache();
 
     return {
       ok: true,
@@ -1617,6 +2374,8 @@ export class AdminService {
     releaseBaseUrlOverride?: string,
     controllerUrlOverride?: string,
     heartbeatModeOverride?: string,
+    configBackupEnabledOverride?: string,
+    scopeActor?: AccessActor,
   ): Promise<{
     node: {
       id: string;
@@ -1649,6 +2408,8 @@ export class AdminService {
       command_block: string;
     };
   }> {
+    await this.withNodeScope(scopeActor, nodeId);
+
     const node = await this.prisma.node.findUnique({
       where: {
         id: nodeId,
@@ -1682,6 +2443,10 @@ export class AdminService {
 
     const bootstrapSecret = this.nodeSecretCrypto.decrypt(credential.secretEncrypted);
     const heartbeatMode = normalizeBootstrapHeartbeatMode(heartbeatModeOverride);
+    const configBackupEnabled = normalizeConfigBackupEnabled(configBackupEnabledOverride);
+    const configBackupInstallFlag = configBackupEnabled
+      ? ` --config-backup-enabled ${configBackupEnabled}`
+      : '';
     const version = appConfig.systemVersion;
     const artifactName = `monitor-pfsense-agent-v${version}.tar.gz`;
     const releaseBaseUrl =
@@ -1702,7 +2467,7 @@ export class AdminService {
           `fetch -o /tmp/monitor-pfsense-agent.sha256 ${shellQuote(checksumUrl!)}`,
           `chmod +x /tmp/install-from-release.sh`,
           `SHA256_VALUE=$(awk 'NR==1 {print $1}' /tmp/monitor-pfsense-agent.sha256)`,
-          `/tmp/install-from-release.sh --release-url ${shellQuote(artifactUrl!)} --sha256 "$SHA256_VALUE" --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)} --heartbeat-mode ${shellQuote(heartbeatMode)}`,
+          `/tmp/install-from-release.sh --release-url ${shellQuote(artifactUrl!)} --sha256 "$SHA256_VALUE" --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)} --heartbeat-mode ${shellQuote(heartbeatMode)}${configBackupInstallFlag}`,
         ].join(' && ')
       : null;
 
@@ -1725,7 +2490,7 @@ export class AdminService {
       const installerUrlPkg = `${base}/packages/pfsense-package/bootstrap/install-from-release.sh`;
       const artifactUrlPkg = `${base}/dist/pfsense-package/monitor-pfsense-package-v${packageRelease.version}.tar.gz`;
       package_command =
-        `fetch -o /tmp/install-from-release.sh ${shellQuote(installerUrlPkg)} && chmod +x /tmp/install-from-release.sh && nohup /tmp/install-from-release.sh --release-url ${shellQuote(artifactUrlPkg)} --sha256 ${shellQuote(packageRelease.sha256)} --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)} --heartbeat-mode ${shellQuote(heartbeatMode)} </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'`;
+        `fetch -o /tmp/install-from-release.sh ${shellQuote(installerUrlPkg)} && chmod +x /tmp/install-from-release.sh && nohup /tmp/install-from-release.sh --release-url ${shellQuote(artifactUrlPkg)} --sha256 ${shellQuote(packageRelease.sha256)} --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)} --heartbeat-mode ${shellQuote(heartbeatMode)}${configBackupInstallFlag} </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'`;
       const uninstallScriptUrl = `${base}/packages/pfsense-package/bootstrap/uninstall.sh`;
       uninstall_command =
         `fetch -o /tmp/uninstall-systemup-monitor.sh ${shellQuote(uninstallScriptUrl)} && chmod +x /tmp/uninstall-systemup-monitor.sh && /tmp/uninstall-systemup-monitor.sh`;
@@ -1788,22 +2553,25 @@ export class AdminService {
 
   private async writeAuditLog(input: {
     actorId?: string;
+    actorRole?: string;
+    clientId?: string;
+    result?: 'success' | 'denied' | 'failure';
     action: string;
     targetType: string;
     targetId?: string;
     ipAddress?: string;
     metadataJson?: Prisma.JsonObject;
   }): Promise<void> {
-    await this.prisma.auditLog.create({
-      data: {
-        actorType: 'user_session',
-        actorId: input.actorId,
-        action: input.action,
-        targetType: input.targetType,
-        targetId: input.targetId,
-        ipAddress: input.ipAddress,
-        metadataJson: input.metadataJson,
-      },
+    await this.auditService.record({
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      clientId: input.clientId,
+      result: input.result,
+      action: input.action,
+      targetType: input.targetType,
+      targetId: input.targetId,
+      ipAddress: input.ipAddress,
+      metadataJson: input.metadataJson,
     });
   }
 }

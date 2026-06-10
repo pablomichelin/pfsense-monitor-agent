@@ -1,153 +1,98 @@
 # 64. Especificacao do modulo de backup pfSense
 
 Data: `2026-06-08`
+Revisao: `2026-06-08` (pos-analise tecnica)
 
 ## Objetivo
 
 Substituir o backup por email do pfSense por um modulo integrado ao Monitor-Pfsense, em que cada firewall envia seu `/conf/config.xml` ao controlador central com autenticacao forte, armazenamento criptografado, retencao e auditoria.
 
-## Estado atual
-
-Hoje nao existe modulo de backup do `config.xml` no software.
-
-Decisao atual:
-
-- o backup sera implementado dentro do Monitor-Pfsense existente
-- o package pfSense continua sendo `SystemUp Monitor`
-- a GUI local ganha uma nova aba `Backup` em `Services > SystemUp Monitor`
-- nao sera criado software, package ou repositorio separado para backup
-
-O que existe:
-
-- package pfSense com agente local
-- envio de heartbeat por HMAC
-- `node_uid` e `node_secret` por firewall
-- painel com cadastro, detalhe do node, auditoria e bootstrap
-- scripts de backup/restore do PostgreSQL do controlador
-
-O fluxo antigo por email:
-
-- script Python no pfSense
-- senha de app Gmail hardcoded
-- anexo `/conf/config.xml`
-- agendamento por crontab
-- alteracao manual por cliente
-
-Problemas do fluxo antigo:
-
-- segredo compartilhado/exposto
-- sem inventario central de backups
-- sem auditoria por firewall
-- sem retencao controlada no produto
-- sem alerta de backup atrasado
-- sem verificacao de integridade no painel
-
 ## Escopo do MVP
 
-Entra no MVP:
+Entra:
 
-- pfSense envia backup para o controlador
-- autenticacao HMAC por node
+- upload assinado por HMAC
 - armazenamento criptografado em repouso
 - metadados no PostgreSQL
-- retencao por firewall
-- listagem de arquivos no detalhe do firewall usando o cadastro atual de nodes
-- download manual auditado para `superadmin`
-- botao "Solicitar backup agora" no painel, entregue ao agente pelo heartbeat
-- alerta quando backup estiver atrasado
+- retencao por firewall (contagem + teto de disco)
+- listagem no detalhe do node
+- download auditado para `superadmin`
+- solicitacao `config_backup_now` via heartbeat
+- status visual calculado por idade do ultimo backup (`36h` = atrasado)
 
-Nao entra no MVP:
+Nao entra:
 
-- restore automatico no pfSense
-- comandos remotos arbitrarios ou shell livre
-- servidor acessando diretamente o pfSense por SSH, VPN, NAT ou porta aberta para buscar arquivo
-- edicao de config pelo painel
-- comparar XML visualmente
-- criptografia ponta-a-ponta feita no pfSense
-- storage S3 ou externo obrigatorio
+- alertas `AlertType` (Fase F)
+- restore automatico
+- `backup-force` no agente
+- criptografia ponta-a-ponta no pfSense
+- pagina global `/backups`
 
 ## Uso do cadastro atual
 
-Nao criar um novo cadastro de clientes ou firewalls para backup.
-
-A relacao correta e:
-
 ```text
-Client
-  Site
-    Node
-      NodeConfigBackup[]
+Client -> Site -> Node -> NodeConfigBackup[]
+                      -> NodeCommand[]
 ```
 
-Cada `Node` ja representa um firewall monitorado e ja possui `node_uid` e credencial HMAC. O backup deve usar essa identidade existente.
+Cada `Node` representa um firewall independente. Em HA/CARP, cada peer e um `Node` separado com backup proprio; nao compartilhar backup entre nodes distintos.
 
-No painel:
-
-- o detalhe do firewall mostra a lista de backups daquele `Node`
-- a pagina de cliente/site pode futuramente agregar saude de backups
-- a pagina global `/backups` pode futuramente filtrar por cliente, site, node e status
-
-## Fluxo alvo
-
-Fluxo automatico/agendado:
+## Fluxo automatico
 
 ```text
-pfSense
-  /conf/config.xml
-  monitor-pfsense-agent.sh backup-config
-      |
-      | HTTPS + HMAC
-      v
-POST /api/v1/ingest/config-backup
-      |
-      | valida node, timestamp, assinatura, tamanho, hash
-      v
-API backups
-      |
-      | criptografa arquivo
-      v
-data/pfsense-config-backups/
-      |
-      | grava metadados
-      v
-PostgreSQL
-      |
-      v
-Painel do firewall mostra ultimo backup e historico curto
+pfSense -> backup-config -> POST /api/v1/ingest/config-backup
+  -> valida HMAC, tamanho, hash
+  -> criptografa -> data/pfsense-config-backups/
+  -> metadados PostgreSQL
+  -> retencao
 ```
 
-Fluxo "Solicitar backup agora":
+## Fluxo "Solicitar backup agora"
 
 ```text
-Usuario no pfs-monitor
-  clica em "Solicitar backup agora"
-      |
-      v
-API cria NodeCommand(config_backup_now, pending)
-      |
-      v
-pfSense envia heartbeat
-      |
-      v
-API responde com comando permitido pendente
-      |
-      v
-agente executa backup-config localmente
-      |
-      v
-pfSense envia config.xml pelo endpoint de backup
-      |
-      v
-API marca comando como succeeded ou failed
+Painel POST /nodes/:id/config-backups/request
+  -> NodeCommand(pending)
+  -> heartbeat responde commands[]
+  -> agente POST /ingest/command-ack (picked_up)
+  -> agente executa backup-config
+  -> agente POST /ingest/config-backup com X-Command-Id
+  -> API marca succeeded (mesmo se duplicate=true)
 ```
 
-Decisao:
+Regra critica de UX:
 
-- o servidor nao "puxa" o arquivo abrindo conexao para o firewall
-- o painel apenas solicita a acao
-- o pfSense continua sendo quem le e envia o proprio `/conf/config.xml`
+- quando `X-Command-Id` estiver presente, o comando **sempre** termina em `succeeded` ou `failed`, nunca fica pendente por deduplicacao
+- se o hash for igual ao ultimo backup, a API retorna `duplicate: true` mas marca o comando como `succeeded` com `result_json.duplicate=true`
+- o operador ve "Backup recebido" com indicacao de que o conteudo nao mudou
 
-## Contrato HTTP do agente
+## Maquina de estados do NodeCommand
+
+```text
+pending -> picked_up -> running -> succeeded
+                               -> failed
+pending -> expired (sem heartbeat dentro da janela)
+pending -> cancelled (usuario superadmin/admin cancela; pos-MVP)
+```
+
+Transicoes e responsaveis:
+
+| De | Para | Quem dispara | Endpoint |
+|----|------|--------------|----------|
+| - | pending | painel | `POST .../config-backups/request` |
+| pending | picked_up | agente | `POST /api/v1/ingest/command-ack` |
+| picked_up | running | agente | `POST /api/v1/ingest/command-ack` (opcional) ou implicito ao iniciar upload |
+| running | succeeded | API | apos `config-backup` OK ou duplicate com `X-Command-Id` |
+| running/picked_up | failed | agente | `POST /api/v1/ingest/command-result` |
+| pending | expired | API (job) | expiracao automatica |
+
+Regras:
+
+- expiracao: `15` minutos no MVP
+- no maximo um comando `pending/picked_up/running` do tipo `config_backup_now` por node
+- `command-ack` e `command-result` sao **obrigatorios** para falhas antes do upload
+- se upload OK mas atualizacao do comando falhar, a API deve reconciliar no proximo heartbeat
+
+## Contrato HTTP - upload de backup
 
 ### Endpoint
 
@@ -158,37 +103,35 @@ Decisao:
 - `X-Node-Uid`
 - `X-Timestamp`
 - `X-Signature`
-- `X-Config-Sha256`
-- `X-Config-Size`
-- `X-Backup-Id`
+- `X-Config-Sha256` — SHA256 do XML **original** (antes de gzip)
+- `X-Config-Size` — tamanho em bytes do XML original
+- `X-Backup-Id` — UUID v4 gerado pelo **agente** por tentativa de upload
 
 ### Headers opcionais
 
+- `X-Command-Id` — UUID do `NodeCommand` quando disparado por solicitacao manual
 - `X-Agent-Version`
 - `X-Pfsense-Version`
-- `X-Config-Compression`
+- `X-Config-Compression` — `gzip` ou vazio
+
+### X-Backup-Id (definicao fechada)
+
+- gerado pelo agente antes de cada `POST`
+- formato: UUID v4 (`cfgb_attempt_<uuid>` internamente; header envia o UUID puro)
+- serve para idempotencia de rede: se a API receber o mesmo `X-Backup-Id` + mesmo hash dentro de `24h`, retorna a mesma resposta de sucesso sem gravar arquivo novo
+- apos sucesso, o servidor persiste `backup_uid` derivado: `cfgb_<receivedAt>_<hash8>` (identidade do artefato armazenado)
+- `X-Backup-Id` e identidade da **tentativa**; `backup_uid` e identidade do **artefato**
 
 ### Content-Type
 
-MVP recomendado:
-
-- `application/xml` quando enviar XML puro no corpo HTTPS
-- `application/gzip` quando enviar XML compactado
-
-Observacao:
-
-- mesmo que o corpo trafegue puro dentro do TLS, ele deve ser criptografado antes de gravar em disco
-- se usar gzip, `X-Config-Sha256` deve ser do XML original, nao do payload compactado
+- `application/xml` — corpo e XML puro
+- `application/gzip` — corpo e XML compactado; `X-Config-Sha256` e `X-Config-Size` referem-se ao XML original
 
 ### Assinatura
-
-Mesma regra do heartbeat:
 
 ```text
 HMAC-SHA256(node_secret, timestamp + "\n" + raw_body)
 ```
-
-O `raw_body` e exatamente o corpo HTTP recebido.
 
 ### Resposta de sucesso
 
@@ -196,16 +139,14 @@ O `raw_body` e exatamente o corpo HTTP recebido.
 {
   "ok": true,
   "server_time": "2026-06-08T20:00:00.000Z",
-  "backup_id": "cfgb_...",
+  "backup_id": "cfgb_20260608T200000Z_a1b2c3d4",
   "stored": true,
   "duplicate": false,
   "sha256": "..."
 }
 ```
 
-### Resposta para duplicado
-
-Se o hash for igual ao ultimo backup valido do mesmo node:
+### Resposta duplicado
 
 ```json
 {
@@ -218,29 +159,82 @@ Se o hash for igual ao ultimo backup valido do mesmo node:
 }
 ```
 
-Decisao:
+Se `X-Command-Id` presente: comando marcado `succeeded` com `result_json: { duplicate: true, sha256 }`.
 
-- registrar tentativa duplicada como auditoria leve ou atualizar `last_attempt_at`
-- nao gravar arquivo duplicado por padrao
+## Contrato HTTP - command-ack
+
+`POST /api/v1/ingest/command-ack`
+
+Headers HMAC iguais ao heartbeat. Corpo:
+
+```json
+{
+  "command_id": "uuid",
+  "status": "picked_up"
+}
+```
+
+Status aceitos: `picked_up`, `running`.
+
+## Contrato HTTP - command-result
+
+`POST /api/v1/ingest/command-result`
+
+Obrigatorio quando o agente nao consegue enviar o arquivo.
+
+```json
+{
+  "command_id": "uuid",
+  "status": "failed",
+  "error_message": "config.xml not found"
+}
+```
+
+`error_message` truncado a `500` caracteres; nunca incluir conteudo do XML.
+
+## Contrato heartbeat (extensao)
+
+Resposta quando houver comando pendente:
+
+```json
+{
+  "ok": true,
+  "server_time": "...",
+  "node_status": "online",
+  "commands": [
+    {
+      "id": "uuid",
+      "type": "config_backup_now",
+      "expires_at": "2026-06-08T20:15:00.000Z"
+    }
+  ]
+}
+```
+
+O agente deve ignorar tipos desconhecidos.
 
 ## Limites
 
-Recomendacao inicial:
+| Rota | Limite | Onde configurar |
+|------|--------|-----------------|
+| heartbeat | 64 KB | API `appConfig.heartbeat.maxPayloadBytes` |
+| config-backup | 5 MB (default) | `CONFIG_BACKUP_MAX_BYTES` + nginx por rota |
 
-- heartbeat continua em `64 KB`
-- backup de config: `5 MB`
-- rejeitar `0 bytes`
-- rejeitar acima do limite
-- rejeitar se `X-Config-Size` nao bater com tamanho real do XML antes de compactar
+Rejeitar: `0 bytes`, acima do limite, `X-Config-Size` divergente do XML original.
 
-Se houver clientes com XML maior:
+Antes do rollout: medir `/conf/config.xml` em homologacao. Se exceder `5 MB`, ajustar `CONFIG_BACKUP_MAX_BYTES` e nginx.
 
-- aumentar limite de backup com decisao operacional
-- nunca aumentar limite de heartbeat por causa de backup
+Variaveis novas sugeridas em `app-config.ts`:
+
+```env
+CONFIG_BACKUP_MAX_BYTES=5242880
+CONFIG_BACKUP_RETENTION_COUNT=30
+CONFIG_BACKUP_RETENTION_MAX_BYTES_PER_NODE=262144000
+BACKUP_ENCRYPTION_KEY_BASE64=
+BACKUP_STORAGE_DIR=/app/data/pfsense-config-backups
+```
 
 ## Modelo de dados
-
-Adicionar ao Prisma:
 
 ```prisma
 enum ConfigBackupStatus {
@@ -248,8 +242,23 @@ enum ConfigBackupStatus {
   duplicate
   rejected
   failed
-
   @@map("config_backup_status")
+}
+
+enum NodeCommandType {
+  config_backup_now
+  @@map("node_command_type")
+}
+
+enum NodeCommandStatus {
+  pending
+  picked_up
+  running
+  succeeded
+  failed
+  expired
+  cancelled
+  @@map("node_command_status")
 }
 
 model NodeConfigBackup {
@@ -257,7 +266,9 @@ model NodeConfigBackup {
   nodeId             String             @map("node_id") @db.Uuid
   commandId          String?            @map("command_id") @db.Uuid
   backupUid          String             @unique @map("backup_uid")
+  attemptId          String?            @map("attempt_id")
   status             ConfigBackupStatus @default(stored)
+  source             String             @default("scheduled") @map("source")
   receivedAt         DateTime           @default(now()) @map("received_at") @db.Timestamptz(6)
   sentAt             DateTime?          @map("sent_at") @db.Timestamptz(6)
   configSha256       String             @map("config_sha256")
@@ -273,41 +284,13 @@ model NodeConfigBackup {
   metadataJson       Json?              @map("metadata_json")
   createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   node               Node               @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  command            NodeCommand?       @relation(fields: [commandId], references: [id], onDelete: SetNull)
 
   @@index([nodeId, receivedAt])
   @@index([nodeId, configSha256])
   @@index([commandId])
+  @@index([attemptId])
   @@map("node_config_backups")
-}
-```
-
-Adicionar relacao em `Node`:
-
-```prisma
-configBackups NodeConfigBackup[]
-```
-
-### Comandos permitidos por node
-
-Adicionar uma tabela para solicitacoes controladas. O nome final deve seguir o padrao real do schema, mas o contrato conceitual e:
-
-```prisma
-enum NodeCommandType {
-  config_backup_now
-
-  @@map("node_command_type")
-}
-
-enum NodeCommandStatus {
-  pending
-  picked_up
-  running
-  succeeded
-  failed
-  expired
-  cancelled
-
-  @@map("node_command_status")
 }
 
 model NodeCommand {
@@ -324,6 +307,7 @@ model NodeCommand {
   errorMessage      String?           @map("error_message")
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   node              Node              @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  configBackups     NodeConfigBackup[]
 
   @@index([nodeId, status])
   @@index([expiresAt])
@@ -331,142 +315,64 @@ model NodeCommand {
 }
 ```
 
-Regras:
-
-- `config_backup_now` e allowlist, nao comando shell livre
-- expirar em `10` ou `15` minutos no MVP
-- nao criar duas solicitacoes `pending/running` iguais para o mesmo node
-- guardar usuario que solicitou
-- auditoria obrigatoria para criado, entregue, concluido, falhou, expirou e cancelado
+Campo `source`: `scheduled` | `manual_request` | `diagnostic` (botao local no pfSense).
 
 ## Armazenamento em disco
 
-Volume local recomendado:
-
 ```text
-data/pfsense-config-backups/
+data/pfsense-config-backups/<node_uid>/<ano>/<mes>/cfgb_<timestamp>_<hash8>.enc
 ```
 
-Estrutura:
+Volume Docker: `./data/pfsense-config-backups:/app/data/pfsense-config-backups`
 
-```text
-data/pfsense-config-backups/
-  node_uid/
-    2026/
-      06/
-        cfgb_20260608T200000Z_<hashcurto>.xml.gz.enc
-```
-
-Regras:
-
-- arquivo sempre criptografado
-- permissao restrita
-- nunca commitar backups
-- nunca salvar XML temporario em caminho persistente sem criptografia
-- temporarios devem ser removidos mesmo em erro
+Temporarios em `/tmp` durante ingest; removidos mesmo em erro.
 
 ## Criptografia em repouso
 
-Variavel nova:
-
-```env
-BACKUP_ENCRYPTION_KEY_BASE64=
-```
-
-Regras:
-
-- chave separada de `NODE_SECRET_ENCRYPTION_KEY_BASE64`
-- AES-256-GCM no MVP
-- IV aleatorio por arquivo
-- auth tag persistida junto com arquivo ou metadados
-- `encryption_version` inicial: `aes-256-gcm:v1`
-
-Formato de arquivo sugerido:
-
-```text
-magic header + json metadata curto + ciphertext
-```
-
-Alternativa simples:
-
-- salvar `iv.authTag.ciphertext` em binario/base64 no arquivo `.enc`
-- guardar metadados completos no banco
+- chave: `BACKUP_ENCRYPTION_KEY_BASE64` (32 bytes em base64)
+- algoritmo: AES-256-GCM, `encryption_version: aes-256-gcm:v1`
+- IV aleatorio por arquivo; auth tag junto ao ciphertext
+- rotacao pos-MVP: manter mapa `encryption_version -> chave`; downloads usam versao do metadado
 
 ## Retencao
 
-Politica inicial:
-
-- manter ultimos `30` backups armazenados por firewall
-- nao apagar o backup mais recente
-- nao apagar backups com status diferente de `stored` sem auditoria
-- rodar retencao apos cada upload aceito
-
-Futuro:
-
-- politica por cliente
-- manter diarios/semanais/mensais
-- exportar para storage externo
+- ultimos `30` backups `stored` por node
+- teto de `250 MB` por node
+- nunca apagar o backup mais recente `stored`
+- rodar apos cada upload aceito
 
 ## Backend
 
-### Modulos novos
-
-Criar:
+### Modulo
 
 ```text
 apps/api/src/backups/
   backups.module.ts
   backups.controller.ts
-  backups.service.ts
+  backups-ingest.service.ts
+  backups-storage.service.ts
+  backups-retention.service.ts
+  backups-download.service.ts
+  backups-command.service.ts
   dto/
 ```
 
-### Refatoracao recomendada
+Separar responsabilidades; nao misturar upload, criptografia, retencao e auditoria no controller.
 
-Extrair autenticacao de node do `IngestService` para:
+### Refatoracao
 
-```text
-apps/api/src/common/node-request-auth.service.ts
-```
-
-Esse service deve:
-
-- ler headers
-- validar timestamp
-- localizar node
-- buscar credential ativa
-- validar HMAC
-- atualizar `lastUsedAt` quando aplicavel
-
-O heartbeat e o backup devem usar o mesmo service.
+Extrair de `IngestService` para `common/node-request-auth.service.ts`.
 
 ### Endpoints humanos
 
-Listagem por node:
+| Metodo | Rota | Papel minimo |
+|--------|------|--------------|
+| GET | `/api/v1/nodes/:id/config-backups` | readonly |
+| GET | `/api/v1/nodes/:id/config-backups/:backupId/download` | superadmin |
+| POST | `/api/v1/nodes/:id/config-backups/request` | admin |
+| GET | `/api/v1/nodes/:id/config-backups/requests/:commandId` | readonly |
 
-`GET /api/v1/nodes/:id/config-backups`
-
-Download:
-
-`GET /api/v1/nodes/:id/config-backups/:backupId/download`
-
-Solicitar backup agora:
-
-`POST /api/v1/nodes/:id/config-backups/request`
-
-Status da solicitacao:
-
-`GET /api/v1/nodes/:id/config-backups/requests/:commandId`
-
-Permissoes iniciais:
-
-- `readonly`, `operator`: nao baixam
-- `admin`: pode ver metadados e solicitar backup agora
-- `superadmin`: pode solicitar e baixar
-
-Se a operacao exigir postura mais restritiva em producao, limitar "Solicitar backup agora" a `superadmin` no primeiro rollout.
-
-Auditoria:
+### Auditoria
 
 - `backup.config.ingest`
 - `backup.config.duplicate`
@@ -479,58 +385,19 @@ Auditoria:
 - `backup.config.retention_delete`
 - `backup.config.failure`
 
-### Contrato de comando pelo heartbeat
+## Agente pfSense (MVP)
 
-O heartbeat pode continuar sendo o canal de controle.
+Comandos:
 
-Resposta com comando pendente:
+- `backup-config` — envia backup
+- `backup-status` — mostra ultimo hash, horario, erro
 
-```json
-{
-  "ok": true,
-  "server_time": "2026-06-08T20:00:00.000Z",
-  "commands": [
-    {
-      "id": "cmd_...",
-      "type": "config_backup_now",
-      "expires_at": "2026-06-08T20:15:00.000Z"
-    }
-  ]
-}
-```
+Fora do MVP: `backup-force` (usar solicitacao manual + deduplicacao tratada no servidor).
 
-O agente deve:
-
-1. ignorar tipos desconhecidos
-2. marcar localmente que recebeu o comando
-3. executar somente a acao permitida `backup-config`
-4. enviar o backup com `X-Command-Id`
-5. informar falha resumida se nao conseguir ler/enviar o arquivo
-
-Endpoint opcional para resultado sem arquivo, por exemplo quando `/conf/config.xml` nao existe:
-
-`POST /api/v1/ingest/command-result`
-
-Esse endpoint tambem deve usar HMAC por node e nao aceitar comando livre.
-
-## Agente pfSense
-
-### Comandos novos
-
-Adicionar ao `monitor-pfsense-agent.sh`:
+### Config
 
 ```sh
-backup-config
-backup-status
-backup-force
-```
-
-### Config runtime
-
-Novas variaveis em `/usr/local/etc/monitor-pfsense-agent.conf`:
-
-```sh
-MONITOR_AGENT_CONFIG_BACKUP_ENABLED="1"
+MONITOR_AGENT_CONFIG_BACKUP_ENABLED="0"
 MONITOR_AGENT_CONFIG_BACKUP_INTERVAL_HOURS="24"
 MONITOR_AGENT_CONFIG_BACKUP_ON_CHANGE="1"
 MONITOR_AGENT_CONFIG_BACKUP_COMPRESS="1"
@@ -539,9 +406,9 @@ MONITOR_AGENT_PFSENSE_CONFIG_XML="/conf/config.xml"
 MONITOR_AGENT_CONFIG_BACKUP_ACCEPT_REMOTE_REQUESTS="1"
 ```
 
-### Estado local
+Padrao `ENABLED="0"` no instalador de producao ate homologacao confirmar.
 
-Arquivos:
+### Estado local
 
 ```text
 /var/db/monitor-pfsense-agent/last-config-backup.sha256
@@ -549,230 +416,72 @@ Arquivos:
 /var/db/monitor-pfsense-agent/last-config-backup-error
 ```
 
-### Comportamento
-
-`backup-config` deve:
-
-1. validar variaveis obrigatorias
-2. validar existencia de `/conf/config.xml`
-3. calcular SHA256 do XML original
-4. se `ON_CHANGE=1` e hash igual ao ultimo enviado, nao reenviar
-5. compactar se configurado
-6. assinar payload
-7. enviar para `/api/v1/ingest/config-backup`
-8. atualizar estado local apenas se API confirmar sucesso
-9. logar somente metadados: tamanho, hash curto, status HTTP, backup_id
-
-Quando executado por solicitacao do painel:
-
-- receber ou ler `command_id`
-- enviar `X-Command-Id`
-- ignorar deduplicacao local se a solicitacao for explicitamente "force", quando essa opcao existir no futuro
-- no MVP, manter deduplicacao por hash e marcar duplicado sem criar novo arquivo
-
 ### Agendamento
 
-Nao usar crontab manual.
+- heartbeat a cada 30s
+- backup no loop quando intervalo venceu ou comando pendente
+- lock: `/var/run/monitor-pfsense-agent-backup.lock`
 
-Usar o loop atual do agente:
+## Package pfSense GUI
 
-- heartbeat continua a cada 30s
-- resposta do heartbeat pode trazer comandos permitidos pendentes
-- a cada ciclo, verificar se backup esta habilitado e se venceu intervalo
-- se houver `config_backup_now`, executar `backup-config`
-- se venceu, executar `backup-config`
-- garantir lock para nao rodar dois backups simultaneos
+Aba `Backup` em `Services > SystemUp Monitor`:
 
-Lock sugerido:
-
-```text
-/var/run/monitor-pfsense-agent-backup.lock
-```
-
-## Package pfSense
-
-### GUI local
-
-Adicionar uma nova aba no package existente:
-
-```text
-Services > SystemUp Monitor > Backup
-```
-
-A ordem desejada das abas:
-
-```text
-Configuracao | Diagnostico | Backup
-```
-
-Adicionar campos na aba `Backup`:
-
-- Enable config backup
-- Backup interval hours
-- Backup only on change
-- Compress backup before upload
-- Accept backup requests from panel
-
-Diagnostico local:
-
-- ultimo backup local
-- ultimo hash curto
-- ultimo erro
-- proxima execucao estimada
-- comando manual `backup-config`
-
-### Instalador
-
-Adicionar flags:
-
-```sh
---config-backup-enabled yes|no
---config-backup-interval-hours 24
---config-backup-on-change yes|no
-```
-
-Padrao recomendado:
-
-- backup habilitado: `yes`
-- intervalo: `24`
-- apenas se mudou: `yes`
-- compressao: `yes`
+`Configuracao | Diagnostico | Backup`
 
 ## Painel web
 
-### Detalhe do firewall
+Bloco em `apps/web/app/nodes/[id]/page.tsx`:
 
-Adicionar bloco compacto:
-
-- ultimo backup
-- idade
-- tamanho
-- status
-- SHA256 curto
-- quantidade armazenada
-- lista de arquivos por firewall
+- status visual (sem alerta `AlertType` no MVP)
+- lista de backups do node
 - botao "Solicitar backup agora"
-- status da ultima solicitacao
-- link para ver auditoria
-- botao download se `superadmin`
+- polling `5s` enquanto comando ativo; tambem reagir a `RealtimeRefresh`/SSE
 
-### Inventario
+Estados no painel:
 
-Nao adicionar coluna no primeiro MVP, para nao poluir.
+- `Solicitar backup agora`
+- `Aguardando firewall`
+- `Executando no pfSense`
+- `Backup recebido`
+- `Recebido sem alteracao` (duplicate com comando manual)
+- `Firewall offline`
+- `Falhou`
+- `Expirou`
 
-Fase posterior:
+## Alertas (Fase F, fora do MVP)
 
-- filtro "backup atrasado"
-- resumo no dashboard
+Tipos futuros: `config_backup_missing`, `config_backup_failed`
+Regra: sem backup valido em `36h`.
 
-Detalhes de frontend, permissoes visuais e deploy integrado estao em:
+No MVP, o painel calcula status visual localmente sem criar `Alert`.
 
-- `docs/65-FRONTEND-E-DEPLOY-BACKUP-PFSENSE-2026-06-08.md`
-- `docs/66-DECISAO-MODULO-BACKUP-INTEGRADO-SYSTEMUP-MONITOR-2026-06-08.md`
-
-## Alertas
-
-Adicionar tipos:
-
-- `config_backup_missing`
-- `config_backup_failed`
-
-Regra inicial:
-
-- backup atrasado se nao houver backup valido em `36h`
-- em maintenance mode, alerta pode ficar em warning ou silenciado conforme decisao futura
-
-## Seguranca
-
-Obrigatorio:
-
-- HMAC por node
-- HTTPS
-- timestamp window
-- limite de tamanho
-- criptografia em repouso
-- RBAC para download
-- auditoria de download
-- nao logar conteudo
-- nao retornar XML em erros
-- nao permitir download sem sessao humana
-
-Recomendado:
-
-- rate limit por node e IP na rota de backup
-- alerta para falhas repetidas de autenticacao
-- chave de backup separada e guardada fora do repositorio
-
-## Validacao e smokes
-
-Criar scripts:
+## Smokes (criar na Fase C)
 
 ```text
 scripts/smoke-config-backup-api.sh
 scripts/smoke-config-backup-retention.sh
 scripts/smoke-config-backup-download.sh
 scripts/smoke-config-backup-request-now.sh
+scripts/verify-config-backup-upload-limit.sh  (ja existe)
 ```
-
-Validar:
-
-- upload com assinatura valida
-- upload com assinatura invalida falha
-- timestamp fora da janela falha
-- payload acima do limite falha
-- arquivo salvo nao contem XML legivel
-- metadados aparecem na API
-- download exige `superadmin`
-- auditoria registra download
-- duplicado nao cria novo arquivo
-- retencao apaga backups antigos
-- solicitar backup agora cria comando pendente
-- agente simulado pega comando pelo heartbeat
-- comando pendente expira corretamente
-- nao e possivel criar comando arbitrario
-
-No package:
-
-- `sh -n` nos scripts
-- `php -l` nos arquivos PHP
-- teste com `MONITOR_AGENT_PFSENSE_CONFIG_XML` apontando para XML temporario
-- release com SHA256
 
 ## Plano de rollout
 
-1. Implementar backend e testar com `curl` local
-2. Implementar painel minimo de metadados
-3. Implementar lista por firewall e download auditado
-4. Implementar comando pendente `config_backup_now`
-5. Implementar agente `backup-config` e leitura de comando pelo heartbeat
-6. Publicar package novo no repositorio principal `pablomichelin/pfsense-monitor-agent`
-7. Instalar em um pfSense de homologacao
-8. Confirmar primeiro backup automatico
-9. Confirmar botao "Solicitar backup agora"
-10. Ativar alerta de atraso
-11. Migrar clientes do email para package
-12. Revogar credenciais antigas de email
+1. Backend + smokes com XML fake
+2. Package em homolog com `--config-backup-enabled yes`
+3. Medir tamanhos reais de config
+4. Painel no detalhe do node
+5. Um cliente piloto em producao
+6. Rollout gradual com `--config-backup-enabled yes`
+7. Fase F alertas
+8. Migrar clientes do email; revogar Gmail
 
 ## Checklist antes de codar
 
-- `git status --short` revisado
-- backup PostgreSQL feito
-- restore PostgreSQL validado
-- origem publica alinhada
-- limite de upload definido
-- chave `BACKUP_ENCRYPTION_KEY_BASE64` criada fora do repositorio
-- decisao de permissao confirmada: download apenas `superadmin`
-- plano de rollback definido
-
-## Checklist de pronto
-
-- migration aplicada
-- upload assinado funcionando
-- arquivo criptografado em disco
-- metadados no painel
-- download auditado
-- retencao funcionando
-- botao "Solicitar backup agora" funcionando por comando pendente
-- alerta de atraso funcionando ou documentado como pendente
-- package pfSense envia backup por uma linha de instalacao
-- documentacao atualizada
+- [ ] Fase B concluida em producao (ISPConfig + smokes + chave)
+- [ ] `git status --short` revisado
+- [ ] backup PostgreSQL feito
+- [ ] restore PostgreSQL validado
+- [ ] `CONFIG_BACKUP_MAX_BYTES` definido apos medicao em homolog
+- [ ] `BACKUP_ENCRYPTION_KEY_BASE64` criada fora do repo
+- [ ] volume `data/pfsense-config-backups` montado no compose

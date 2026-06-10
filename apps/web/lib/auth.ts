@@ -164,6 +164,7 @@ export async function logoutAction(): Promise<void> {
   revalidatePath('/bootstrap');
   revalidatePath('/admin');
   revalidatePath('/sessions');
+  revalidatePath('/conta');
   redirect('/login');
 }
 
@@ -171,15 +172,17 @@ export async function revokeSessionAction(formData: FormData): Promise<void> {
   const sessionId = String(formData.get('session_id') ?? '').trim();
 
   if (!sessionId) {
-    redirect('/sessions?status=error&message=Sessao%20invalida');
+    redirect('/sessions?status=error&message=Sess%C3%A3o%20inv%C3%A1lida');
   }
 
+  let redirectTo: string;
   try {
     await revokeAuthSession(sessionId);
     revalidatePath('/sessions');
-    redirect('/sessions?status=ok&message=Sessao%20revogada');
+    redirectTo = '/sessions?status=ok&message=Sess%C3%A3o%20revogada';
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Falha ao revogar sessao';
-    redirect(`/sessions?status=error&message=${encodeURIComponent(message)}`);
+    const message = error instanceof Error ? error.message : 'Falha ao revogar sessão';
+    redirectTo = `/sessions?status=error&message=${encodeURIComponent(message)}`;
   }
+  redirect(redirectTo);
 }

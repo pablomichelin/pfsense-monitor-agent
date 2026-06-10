@@ -217,22 +217,39 @@ export async function createNodeAction(formData: FormData): Promise<void> {
   }
 }
 
+function parseClientIds(formData: FormData): string[] {
+  return formData
+    .getAll('client_ids')
+    .map((value) => String(value).trim())
+    .filter(Boolean);
+}
+
 export async function createUserAction(formData: FormData): Promise<void> {
   try {
+    const role =
+      (normalizeOptional(formData.get('role')) as
+        | 'superadmin'
+        | 'admin'
+        | 'operator'
+        | 'readonly'
+        | 'client'
+        | undefined) ?? 'readonly';
+    const clientIds = parseClientIds(formData);
+    const clientId = normalizeOptional(formData.get('client_id'));
+
     const response = await createUser({
       email: String(formData.get('email') ?? '').trim(),
       display_name: normalizeOptional(formData.get('display_name')),
       password: String(formData.get('password') ?? ''),
-      role:
-        (normalizeOptional(formData.get('role')) as
-          | 'superadmin'
-          | 'admin'
-          | 'operator'
-          | 'readonly'
-          | undefined) ?? 'readonly',
+      role,
       status:
         (normalizeOptional(formData.get('status')) as 'active' | 'inactive' | undefined) ??
         'active',
+      client_id: role === 'client' ? clientId ?? undefined : undefined,
+      client_ids:
+        role === 'superadmin' || role === 'client'
+          ? undefined
+          : clientIds,
     });
 
     revalidatePath('/admin');
@@ -253,19 +270,26 @@ export async function updateUserAction(formData: FormData): Promise<void> {
   }
 
   try {
+    const role = normalizeOptional(formData.get('role')) as
+      | 'superadmin'
+      | 'admin'
+      | 'operator'
+      | 'readonly'
+      | 'client'
+      | undefined;
+    const clientIds = parseClientIds(formData);
+    const clientId = normalizeOptional(formData.get('client_id'));
+
     const response = await updateUser(userId, {
       email: normalizeOptional(formData.get('email')),
       display_name: normalizeOptional(formData.get('display_name')),
       password: normalizeOptional(formData.get('password')),
-      role: normalizeOptional(formData.get('role')) as
-        | 'superadmin'
-        | 'admin'
-        | 'operator'
-        | 'readonly'
-        | undefined,
+      role,
       status:
         (normalizeOptional(formData.get('status')) as 'active' | 'inactive' | undefined) ??
         undefined,
+      client_id: role === 'client' ? clientId ?? undefined : undefined,
+      client_ids: role === 'superadmin' || role === 'client' ? [] : clientIds,
     });
 
     revalidatePath('/admin');

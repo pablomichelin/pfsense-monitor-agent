@@ -50,3 +50,4 @@ BASE_URL="$BASE_URL" DURATION_SECONDS="$SSE_DURATION_SECONDS" \
 
 echo
 echo "Contrato de origem OK: healthz, login/assets, limite 64k e SSE validados."
+echo "Proximo passo opcional: BASE_URL=\"$BASE_URL\" ./scripts/verify-config-backup-upload-limit.sh"

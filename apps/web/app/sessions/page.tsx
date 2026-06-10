@@ -1,60 +1,30 @@
 import { redirect } from 'next/navigation';
 import { PageHero } from '@/components/page-hero';
+import { Alert, Badge, Button, DataTable, PageSection, dataTableHeadClassName, dataTableRowClassName } from '@/components/ui';
 import { ApiError, getAuthSessions, getSession } from '@/lib/api';
 import { revokeSessionAction } from '@/lib/auth';
 import { formatRelativeAge } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
-function Banner({
-  status,
-  message,
-}: {
-  status?: string;
-  message?: string;
-}) {
-  if (!status || !message) {
-    return null;
-  }
-
-  const tone =
-    status === 'ok'
-      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-      : 'border-rose-500/30 bg-rose-500/10 text-rose-200';
-
-  return <div className={`rounded-2xl border px-4 py-3 text-sm ${tone}`}>{message}</div>;
-}
-
 function sessionState(session: {
   current: boolean;
   revoked_at: string | null;
   expires_at: string;
-}): { label: string; tone: string } {
+}): { label: string; variant: 'info' | 'neutral' | 'warning' | 'success' } {
   if (session.current) {
-    return {
-      label: 'Atual',
-      tone: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200',
-    };
+    return { label: 'Atual', variant: 'info' };
   }
 
   if (session.revoked_at) {
-    return {
-      label: 'Revogada',
-      tone: 'border-slate-700 bg-slate-900/60 text-slate-300',
-    };
+    return { label: 'Revogada', variant: 'neutral' };
   }
 
   if (new Date(session.expires_at).getTime() <= Date.now()) {
-    return {
-      label: 'Expirada',
-      tone: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
-    };
+    return { label: 'Expirada', variant: 'warning' };
   }
 
-  return {
-    label: 'Ativa',
-    tone: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
-  };
+  return { label: 'Ativa', variant: 'success' };
 }
 
 export default async function SessionsPage({
@@ -79,118 +49,92 @@ export default async function SessionsPage({
     throw error;
   }
   const activeCount = sessions.items.filter((item) => !item.revoked_at).length;
-  const revokedCount = sessions.items.filter((item) => item.revoked_at).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHero
-        eyebrow="Acesso humano"
-        title="Sessoes da conta"
-        description={`Revogue navegadores ou terminais antigos sem derrubar a sessao atual de ${session.user.email}.`}
+        eyebrow="Conta"
+        title="Sessões"
+        description={`Sessões ativas de ${session.user.email}. Revogue outras sessões sem encerrar a atual.`}
         stats={[
-          { label: 'Total', value: String(sessions.items.length) },
           { label: 'Ativas', value: String(activeCount), tone: activeCount > 0 ? 'success' : 'default' },
-          { label: 'Revogadas', value: String(revokedCount), tone: revokedCount > 0 ? 'warning' : 'default' },
+          { label: 'Total', value: String(sessions.items.length) },
         ]}
       />
 
-      <Banner status={status} message={message} />
+      {status && message ? (
+        <Alert variant={status === 'ok' ? 'success' : 'error'}>{message}</Alert>
+      ) : null}
 
-      <section className="grid gap-4 sm:grid-cols-3">
-        <div className="glass-panel rounded-3xl p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-slate-500">
-            Total
-          </p>
-          <div className="mt-3 font-display text-4xl text-white">{sessions.items.length}</div>
-        </div>
-        <div className="glass-panel rounded-3xl p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-slate-500">
-            Ativas
-          </p>
-          <div className="mt-3 font-display text-4xl text-white">
-            {activeCount}
-          </div>
-        </div>
-        <div className="glass-panel rounded-3xl p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.28em] text-slate-500">
-            Revogadas
-          </p>
-          <div className="mt-3 font-display text-4xl text-white">
-            {revokedCount}
-          </div>
-        </div>
-      </section>
-
-      <section className="glass-panel rounded-[2rem] p-5">
-        <div className="space-y-4">
-          {sessions.items.map((item) => {
-            const state = sessionState(item);
-
-            return (
-              <div
-                key={item.id}
-                className="rounded-2xl border border-slate-800 bg-panel-soft/50 p-4"
-              >
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full border px-3 py-1 text-xs ${state.tone}`}>
-                        {state.label}
-                      </span>
-                      <span className="font-mono text-xs text-slate-500">{item.id}</span>
-                    </div>
-                    <p className="text-sm text-slate-300">
-                      Ultima atividade: {formatRelativeAge(item.last_seen_at ?? item.created_at)}
-                    </p>
-                    <p className="text-sm text-slate-400">
-                      Criada em {new Date(item.created_at).toLocaleString('pt-BR')}
-                    </p>
-                    <p className="text-sm text-slate-400">
-                      Expira em {new Date(item.expires_at).toLocaleString('pt-BR')}
-                    </p>
-                    <p className="text-sm text-slate-400">
-                      IP: <span className="text-slate-200">{item.ip_address ?? 'nao informado'}</span>
-                    </p>
-                    <p className="text-sm text-slate-400">
-                      Agent:{' '}
-                      <span className="break-all text-slate-200">
-                        {item.user_agent ?? 'nao informado'}
-                      </span>
-                    </p>
-                    {item.revoked_at ? (
-                      <p className="text-sm text-slate-400">
-                        Revogada em {new Date(item.revoked_at).toLocaleString('pt-BR')}
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-3">
+      <PageSection
+        title="Sessões registradas"
+        description="Revogue sessões em outros dispositivos. A sessão atual deve ser encerrada com Sair."
+      >
+        <DataTable
+          empty={sessions.items.length === 0}
+          emptyMessage="Nenhuma sessão registrada."
+        >
+          <thead className={dataTableHeadClassName}>
+            <tr>
+              <th className="px-4 py-4 font-medium">Status</th>
+              <th className="px-4 py-4 font-medium">Última atividade</th>
+              <th className="px-4 py-4 font-medium">Criação</th>
+              <th className="px-4 py-4 font-medium">Expiração</th>
+              <th className="px-4 py-4 font-medium">IP</th>
+              <th className="px-4 py-4 font-medium">Agente</th>
+              <th className="px-4 py-4 text-right font-medium">Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sessions.items.map((item) => {
+              const state = sessionState(item);
+              return (
+                <tr key={item.id} className={dataTableRowClassName}>
+                  <td className="px-4 py-4">
+                    <Badge variant={state.variant}>{state.label}</Badge>
+                  </td>
+                  <td className="px-4 py-4 text-slate-300">
+                    {formatRelativeAge(item.last_seen_at ?? item.created_at)}
+                  </td>
+                  <td className="px-4 py-4 text-slate-400">
+                    {new Date(item.created_at).toLocaleString('pt-BR', {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}
+                  </td>
+                  <td className="px-4 py-4 text-slate-400">
+                    {new Date(item.expires_at).toLocaleString('pt-BR', {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}
+                  </td>
+                  <td className="px-4 py-4 font-mono text-slate-300">{item.ip_address ?? '—'}</td>
+                  <td
+                    className="max-w-[10rem] truncate px-4 py-4 text-slate-400"
+                    title={item.user_agent ?? undefined}
+                  >
+                    {item.user_agent ?? '—'}
+                  </td>
+                  <td className="px-4 py-4 text-right">
                     {item.current ? (
-                      <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">
-                        Use o botao "Sair" para encerrar esta sessao.
-                      </div>
+                      <span className="text-xs text-cyan-400">Use Sair para encerrar</span>
                     ) : item.revoked_at ? (
-                      <div className="rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
-                        Sessao encerrada.
-                      </div>
+                      <span className="text-xs text-slate-500">Encerrada</span>
                     ) : (
-                      <form action={revokeSessionAction}>
+                      <form action={revokeSessionAction} className="inline">
                         <input type="hidden" name="session_id" value={item.id} />
-                        <button
-                          type="submit"
-                          className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200 transition hover:border-rose-400/50 hover:text-rose-100"
-                        >
-                          Revogar sessao
-                        </button>
+                        <Button type="submit" variant="danger-outline" size="sm">
+                          Revogar
+                        </Button>
                       </form>
                     )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </DataTable>
+      </PageSection>
     </div>
   );
 }

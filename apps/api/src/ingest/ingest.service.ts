@@ -1,24 +1,20 @@
 import {
   BadRequestException,
-  ConflictException,
-  ForbiddenException,
   Injectable,
-  InternalServerErrorException,
   Logger,
   PayloadTooLargeException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import {
   AlertSeverity,
   AlertStatus,
   AlertType,
+  NodeCommandType,
   NodeStatus,
-  NodeUidStatus,
   Prisma,
 } from '@prisma/client';
-import { createHmac, timingSafeEqual } from 'crypto';
 import { appConfig } from '../config/app-config';
-import { NodeSecretCryptoService } from '../common/node-secret-crypto.service';
+import { NodeRequestAuthService } from '../common/node-request-auth.service';
+import { BackupsCommandService } from '../backups/backups-command.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { HeartbeatDto } from './dto/heartbeat.dto';
@@ -57,7 +53,8 @@ export class IngestService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly nodeSecretCrypto: NodeSecretCryptoService,
+    private readonly nodeRequestAuth: NodeRequestAuthService,
+    private readonly backupsCommandService: BackupsCommandService,
     private readonly realtimeService: RealtimeService,
   ) {}
 
@@ -65,31 +62,34 @@ export class IngestService {
     ok: true;
     server_time: string;
     node_status: NodeStatus;
+    commands?: Array<{
+      id: string;
+      type: NodeCommandType;
+      expires_at: string;
+    }>;
   }> {
     const receivedAt = new Date();
     this.assertPayloadSize(request.rawBody);
 
-    const { headerNodeUid, node, credential } = await this.authenticateNodeRequest({
-      headerNodeUid: request.headerNodeUid,
-      headerTimestamp: request.headerTimestamp,
-      headerSignature: request.headerSignature,
-      rawBody: request.rawBody,
-      receivedAt,
-    });
+    const { headerNodeUid, node, credential } =
+      await this.nodeRequestAuth.authenticateNodeRequest({
+        headerNodeUid: request.headerNodeUid,
+        headerTimestamp: request.headerTimestamp,
+        headerSignature: request.headerSignature,
+        rawBody: request.rawBody,
+        receivedAt,
+      });
 
     if (request.body.node_uid !== headerNodeUid) {
       throw new BadRequestException('header/body node_uid mismatch');
     }
 
-    const sentAt = this.parseIsoDate(request.body.sent_at, 'sent_at');
+    const sentAt = this.nodeRequestAuth.parseIsoDate(
+      request.body.sent_at,
+      'sent_at',
+    );
 
-    const existingHeartbeat = await this.prisma.heartbeat.findUnique({
-      where: {
-        heartbeatId: request.body.heartbeat_id,
-      },
-    });
-
-    if (existingHeartbeat) {
+    if (node.lastHeartbeatId === request.body.heartbeat_id) {
       await this.prisma.nodeCredential.update({
         where: {
           id: credential.id,
@@ -99,25 +99,59 @@ export class IngestService {
         },
       });
 
+      await this.backupsCommandService.reconcileSucceededCommands(node.id);
+      const commands =
+        await this.backupsCommandService.getPendingCommandsForNode(node.id);
+
       return {
         ok: true,
         server_time: receivedAt.toISOString(),
         node_status: node.status,
+        ...(commands.length > 0 ? { commands } : {}),
       };
     }
 
+    const services = request.body.services ?? [];
+    const gateways = request.body.gateways ?? [];
     const nodeStatus = calculateNodeStatus({
       maintenanceMode: node.maintenanceMode,
-      services: request.body.services,
-      gateways: request.body.gateways,
+      services,
+      gateways,
     });
-    const latencyMs = Math.max(
-      0,
-      receivedAt.getTime() - sentAt.getTime(),
-    );
+    const latencyMs = Math.max(0, receivedAt.getTime() - sentAt.getTime());
     const estimatedBootAt = new Date(
       sentAt.getTime() - request.body.uptime_sec * 1000,
     );
+
+    let managementIp = (request.body.mgmt_ip ?? '').trim() || undefined;
+    let wanIp = (request.body.wan_ip_reported ?? '').trim() || undefined;
+    const ifaces = request.body.interfaces as
+      | Array<{ name?: string; ip?: string }>
+      | undefined;
+    if (ifaces?.length) {
+      if (!managementIp) {
+        const lan = ifaces.find(
+          (i) =>
+            (i?.name ?? '').toLowerCase() === 'lan' &&
+            (i?.ip ?? '').trim() !== '',
+        );
+        if (lan?.ip) managementIp = (lan.ip as string).trim();
+      }
+      if (!wanIp) {
+        const wan = ifaces.find(
+          (i) =>
+            (i?.name ?? '').toLowerCase() === 'wan' &&
+            (i?.ip ?? '').trim() !== '',
+        );
+        if (wan?.ip) wanIp = (wan.ip as string).trim();
+      }
+    }
+
+    const networkInterfaces = Array.isArray(request.body.interfaces)
+      ? (JSON.parse(
+          JSON.stringify(request.body.interfaces),
+        ) as Prisma.InputJsonValue)
+      : Prisma.JsonNull;
 
     await this.prisma.$transaction(async (tx) => {
       await tx.node.update({
@@ -126,12 +160,25 @@ export class IngestService {
         },
         data: {
           hostname: request.body.hostname,
-          managementIp: request.body.mgmt_ip ?? undefined,
-          wanIp: request.body.wan_ip_reported ?? undefined,
+          ...(node.displayName == null && request.body.hostname
+            ? { displayName: request.body.hostname }
+            : {}),
+          ...(managementIp !== undefined ? { managementIp } : {}),
+          ...(wanIp !== undefined ? { wanIp } : {}),
           pfsenseVersion: request.body.pfsense_version,
           agentVersion: request.body.agent_version ?? undefined,
           lastBootAt: estimatedBootAt,
           lastSeenAt: receivedAt,
+          lastHeartbeatId: request.body.heartbeat_id,
+          lastHeartbeatSentAt: sentAt,
+          lastLatencyMs: latencyMs,
+          uptimeSeconds: request.body.uptime_sec,
+          cpuPercent: request.body.cpu_percent ?? null,
+          memoryPercent: request.body.memory_percent ?? null,
+          diskPercent: request.body.disk_percent ?? null,
+          schemaVersion: request.body.schema_version,
+          customerCode: request.body.customer_code,
+          networkInterfacesJson: networkInterfaces,
           status: nodeStatus,
         },
       });
@@ -145,112 +192,96 @@ export class IngestService {
         },
       });
 
-      await tx.heartbeat.create({
-        data: {
-          nodeId: node.id,
-          receivedAt,
-          sentAt,
-          heartbeatId: request.body.heartbeat_id,
-          latencyMs,
-          pfsenseVersion: request.body.pfsense_version,
-          agentVersion: request.body.agent_version ?? null,
-          managementIp: request.body.mgmt_ip ?? null,
-          wanIp: request.body.wan_ip_reported ?? null,
-          uptimeSeconds: request.body.uptime_sec,
-          cpuPercent: request.body.cpu_percent ?? null,
-          memoryPercent: request.body.memory_percent ?? null,
-          diskPercent: request.body.disk_percent ?? null,
-          gatewaySummary: this.buildGatewaySummary(request.body.gateways),
-          schemaVersion: request.body.schema_version,
-          customerCode: request.body.customer_code,
-          payloadJson: JSON.parse(
-            JSON.stringify(request.body),
-          ) as Prisma.InputJsonValue,
-        },
-      });
-
-      const bodyServiceNames = request.body.services.map((s) => s.name);
-      for (const service of request.body.services) {
-        await tx.nodeServiceStatus.upsert({
-          where: {
-            nodeId_serviceName: {
+      if (request.body.services != null) {
+        const bodyServiceNames = request.body.services.map((s) => s.name);
+        for (const service of request.body.services) {
+          await tx.nodeServiceStatus.upsert({
+            where: {
+              nodeId_serviceName: {
+                nodeId: node.id,
+                serviceName: service.name,
+              },
+            },
+            create: {
               nodeId: node.id,
               serviceName: service.name,
+              status: mapServiceStatus(service.status),
+              message: service.message ?? null,
+              observedAt: sentAt,
             },
-          },
-          create: {
-            nodeId: node.id,
-            serviceName: service.name,
-            status: mapServiceStatus(service.status),
-            message: service.message ?? null,
-            observedAt: sentAt,
-          },
-          update: {
-            status: mapServiceStatus(service.status),
-            message: service.message ?? null,
-            observedAt: sentAt,
-          },
-        });
-      }
-      if (bodyServiceNames.length > 0) {
-        await tx.nodeServiceStatus.deleteMany({
-          where: {
-            nodeId: node.id,
-            serviceName: { notIn: bodyServiceNames },
-          },
-        });
-      } else {
-        await tx.nodeServiceStatus.deleteMany({
-          where: { nodeId: node.id },
-        });
+            update: {
+              status: mapServiceStatus(service.status),
+              message: service.message ?? null,
+              observedAt: sentAt,
+            },
+          });
+        }
+        if (bodyServiceNames.length > 0) {
+          await tx.nodeServiceStatus.deleteMany({
+            where: {
+              nodeId: node.id,
+              serviceName: { notIn: bodyServiceNames },
+            },
+          });
+        } else {
+          await tx.nodeServiceStatus.deleteMany({
+            where: { nodeId: node.id },
+          });
+        }
       }
 
-      const bodyGatewayNames = request.body.gateways.map((g) => g.name);
-      for (const gateway of request.body.gateways) {
-        await tx.nodeGatewayStatus.upsert({
-          where: {
-            nodeId_gatewayName: {
+      if (request.body.gateways != null) {
+        const bodyGatewayNames = request.body.gateways.map((g) => g.name);
+        for (const gateway of request.body.gateways) {
+          await tx.nodeGatewayStatus.upsert({
+            where: {
+              nodeId_gatewayName: {
+                nodeId: node.id,
+                gatewayName: gateway.name,
+              },
+            },
+            create: {
               nodeId: node.id,
               gatewayName: gateway.name,
+              status: mapGatewayStatus(gateway.status),
+              lossPercent: gateway.loss_percent ?? null,
+              latencyMs: gateway.latency_ms ?? null,
+              observedAt: sentAt,
             },
-          },
-          create: {
-            nodeId: node.id,
-            gatewayName: gateway.name,
-            status: mapGatewayStatus(gateway.status),
-            lossPercent: gateway.loss_percent ?? null,
-            latencyMs: gateway.latency_ms ?? null,
-            observedAt: sentAt,
-          },
-          update: {
-            status: mapGatewayStatus(gateway.status),
-            lossPercent: gateway.loss_percent ?? null,
-            latencyMs: gateway.latency_ms ?? null,
-            observedAt: sentAt,
-          },
-        });
-      }
-      if (bodyGatewayNames.length > 0) {
-        await tx.nodeGatewayStatus.deleteMany({
-          where: {
-            nodeId: node.id,
-            gatewayName: { notIn: bodyGatewayNames },
-          },
-        });
-      } else {
-        await tx.nodeGatewayStatus.deleteMany({
-          where: { nodeId: node.id },
-        });
+            update: {
+              status: mapGatewayStatus(gateway.status),
+              lossPercent: gateway.loss_percent ?? null,
+              latencyMs: gateway.latency_ms ?? null,
+              observedAt: sentAt,
+            },
+          });
+        }
+        if (bodyGatewayNames.length > 0) {
+          await tx.nodeGatewayStatus.deleteMany({
+            where: {
+              nodeId: node.id,
+              gatewayName: { notIn: bodyGatewayNames },
+            },
+          });
+        } else {
+          await tx.nodeGatewayStatus.deleteMany({
+            where: { nodeId: node.id },
+          });
+        }
       }
 
       await this.syncAlerts(tx, node.id, request.body, receivedAt);
     });
 
-    this.logger.log(
+    const heartbeatLogMessage =
       `heartbeat accepted node_uid=${headerNodeUid} status=${nodeStatus} ip=${
         request.clientIp ?? 'unknown'
-      } cf_ray=${request.cfRay ?? 'n/a'}`,
-    );
+      } cf_ray=${request.cfRay ?? 'n/a'}`;
+    if (nodeStatus === NodeStatus.online) {
+      this.logger.debug(heartbeatLogMessage);
+    } else {
+      this.logger.warn(heartbeatLogMessage);
+    }
 
     this.realtimeService.publishDashboardRefresh({
       source: 'heartbeat_ingested',
@@ -260,10 +291,15 @@ export class IngestService {
       reason: 'heartbeat_ingested',
     });
 
+    await this.backupsCommandService.reconcileSucceededCommands(node.id);
+    const commands =
+      await this.backupsCommandService.getPendingCommandsForNode(node.id);
+
     return {
       ok: true,
       server_time: receivedAt.toISOString(),
       node_status: nodeStatus,
+      ...(commands.length > 0 ? { commands } : {}),
     };
   }
 
@@ -279,18 +315,19 @@ export class IngestService {
     message: 'connection validated';
     server_time: string;
     node_status: NodeStatus;
-    node_uid_status: NodeUidStatus;
+    node_uid_status: string;
   }> {
     const receivedAt = new Date();
     this.assertPayloadSize(request.rawBody);
 
-    const { headerNodeUid, node, credential } = await this.authenticateNodeRequest({
-      headerNodeUid: request.headerNodeUid,
-      headerTimestamp: request.headerTimestamp,
-      headerSignature: request.headerSignature,
-      rawBody: request.rawBody,
-      receivedAt,
-    });
+    const { headerNodeUid, node, credential } =
+      await this.nodeRequestAuth.authenticateNodeRequest({
+        headerNodeUid: request.headerNodeUid,
+        headerTimestamp: request.headerTimestamp,
+        headerSignature: request.headerSignature,
+        rawBody: request.rawBody,
+        receivedAt,
+      });
 
     await this.prisma.nodeCredential.update({
       where: {
@@ -331,191 +368,10 @@ export class IngestService {
     };
   }
 
-  private requireHeader(name: string, value?: string): string {
-    if (!value) {
-      throw new BadRequestException(`${name} header is required`);
-    }
-
-    return value;
-  }
-
-  private parseIsoDate(rawValue: string, fieldName: string): Date {
-    const parsed = new Date(rawValue);
-    if (Number.isNaN(parsed.getTime())) {
-      throw new BadRequestException(`${fieldName} must be a valid ISO-8601 date`);
-    }
-
-    return parsed;
-  }
-
-  private assertTimestampWindow(
-    timestamp: Date,
-    receivedAt: Date,
-  ): void {
-    const differenceSeconds = Math.abs(
-      receivedAt.getTime() - timestamp.getTime(),
-    ) / 1000;
-
-    if (differenceSeconds > appConfig.heartbeat.maxSkewSeconds) {
-      throw new UnauthorizedException('timestamp outside allowed window');
-    }
-  }
-
   private assertPayloadSize(rawBody: Buffer): void {
     if (rawBody.byteLength > appConfig.heartbeat.maxPayloadBytes) {
       throw new PayloadTooLargeException('heartbeat payload exceeds 64 KB');
     }
-  }
-
-  private assertSignature(
-    encryptedSecret: string,
-    timestamp: string,
-    rawBody: Buffer,
-    providedSignature: string,
-  ): void {
-    let secret: string;
-
-    try {
-      secret = this.nodeSecretCrypto.decrypt(encryptedSecret);
-    } catch (error) {
-      throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'unable to decrypt node secret',
-      );
-    }
-
-    const payload = Buffer.concat([
-      Buffer.from(timestamp, 'utf8'),
-      Buffer.from('\n', 'utf8'),
-      rawBody,
-    ]);
-
-    const expectedSignature = createHmac('sha256', secret)
-      .update(payload)
-      .digest('hex');
-    const normalizedProvided = providedSignature
-      .trim()
-      .toLowerCase()
-      .replace(/^sha256=/, '');
-
-    const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
-    const providedBuffer = Buffer.from(normalizedProvided, 'utf8');
-
-    if (
-      expectedBuffer.length !== providedBuffer.length ||
-      !timingSafeEqual(expectedBuffer, providedBuffer)
-    ) {
-      throw new UnauthorizedException('invalid heartbeat signature');
-    }
-  }
-
-  private async authenticateNodeRequest(input: {
-    headerNodeUid?: string;
-    headerTimestamp?: string;
-    headerSignature?: string;
-    rawBody: Buffer;
-    receivedAt: Date;
-  }): Promise<{
-    headerNodeUid: string;
-    node: Awaited<ReturnType<IngestService['findNodeForAuth']>>;
-    credential: NonNullable<
-      Awaited<ReturnType<IngestService['findNodeForAuth']>>['credentials'][number]
-    >;
-  }> {
-    const headerNodeUid = this.requireHeader('X-Node-Uid', input.headerNodeUid);
-    const headerTimestampRaw = this.requireHeader(
-      'X-Timestamp',
-      input.headerTimestamp,
-    );
-    const headerTimestamp = this.parseIsoDate(
-      headerTimestampRaw,
-      'X-Timestamp',
-    );
-    const headerSignature = this.requireHeader(
-      'X-Signature',
-      input.headerSignature,
-    );
-
-    this.assertTimestampWindow(headerTimestamp, input.receivedAt);
-
-    const node = await this.findNodeForAuth(headerNodeUid, input.receivedAt);
-    const credential = node.credentials[0];
-    if (!credential) {
-      throw new ForbiddenException('active node credential not found');
-    }
-
-    this.assertSignature(
-      credential.secretEncrypted,
-      headerTimestampRaw,
-      input.rawBody,
-      headerSignature,
-    );
-
-    return {
-      headerNodeUid,
-      node,
-      credential,
-    };
-  }
-
-  private async findNodeForAuth(nodeUid: string, receivedAt: Date) {
-    const node = await this.prisma.node.findUnique({
-      where: {
-        nodeUid,
-      },
-      include: {
-        credentials: {
-          where: {
-            status: 'active',
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-          take: 1,
-        },
-      },
-    });
-
-    if (!node) {
-      throw new UnauthorizedException('unknown node');
-    }
-
-    if (node.nodeUidStatus === NodeUidStatus.conflict) {
-      await this.ensureNodeUidConflictAlert(node.id, receivedAt);
-      throw new ConflictException('node_uid conflict');
-    }
-
-    return node;
-  }
-
-  private buildGatewaySummary(
-    gateways: HeartbeatDto['gateways'],
-  ): Prisma.JsonObject {
-    const summary = {
-      total: gateways.length,
-      online: 0,
-      degraded: 0,
-      down: 0,
-      unknown: 0,
-    };
-
-    for (const gateway of gateways) {
-      switch (gateway.status) {
-        case 'online':
-          summary.online += 1;
-          break;
-        case 'degraded':
-          summary.degraded += 1;
-          break;
-        case 'down':
-          summary.down += 1;
-          break;
-        default:
-          summary.unknown += 1;
-          break;
-      }
-    }
-
-    return summary;
   }
 
   private async syncAlerts(
@@ -526,7 +382,7 @@ export class IngestService {
   ): Promise<void> {
     const activeAlerts = new Map<string, ActiveAlert>();
 
-    for (const service of body.services) {
+    for (const service of body.services ?? []) {
       if (!isServiceProblem(service)) {
         continue;
       }
@@ -550,7 +406,7 @@ export class IngestService {
       });
     }
 
-    for (const gateway of body.gateways) {
+    for (const gateway of body.gateways ?? []) {
       if (!isGatewayProblem(gateway)) {
         continue;
       }
@@ -666,55 +522,6 @@ export class IngestService {
         },
       });
     }
-  }
-
-  private async ensureNodeUidConflictAlert(
-    nodeId: string,
-    observedAt: Date,
-  ): Promise<void> {
-    const fingerprint = `node_uid_conflict:${nodeId}`;
-    const existing = await this.prisma.alert.findUnique({
-      where: {
-        fingerprint,
-      },
-    });
-
-    if (!existing) {
-      await this.prisma.alert.create({
-        data: {
-          nodeId,
-          fingerprint,
-          type: AlertType.node_uid_conflict,
-          severity: AlertSeverity.critical,
-          title: 'node_uid conflict detected',
-          description:
-            'The server marked this node as conflicting and requires rekey or rebootstrap.',
-          status: AlertStatus.open,
-          openedAt: observedAt,
-          metadataJson: {
-            node_id: nodeId,
-          },
-        },
-      });
-      return;
-    }
-
-    await this.prisma.alert.update({
-      where: {
-        id: existing.id,
-      },
-      data: {
-        severity: AlertSeverity.critical,
-        title: 'node_uid conflict detected',
-        description:
-          'The server marked this node as conflicting and requires rekey or rebootstrap.',
-        status: AlertStatus.open,
-        openedAt:
-          existing.status === AlertStatus.resolved ? observedAt : existing.openedAt,
-        resolvedAt: null,
-        resolutionNote: null,
-      },
-    });
   }
 
   private async writeAuditLog(input: {

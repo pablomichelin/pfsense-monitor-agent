@@ -6,6 +6,71 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
+## Versoes atuais do produto (2026-06-09)
+
+| Componente | Versao | Referencia |
+|------------|--------|------------|
+| API | `0.2.7` | `apps/api/package.json` |
+| Painel web | `1.0.0` | `apps/web/package.json` (rodape do layout) |
+
+Ultima entrega UX: `docs/87-ENTREGA-FRONTEND-FASE8-DESIGN-SYSTEM-PAGES-RESTANTES-2026-06-09.md` — **roadmap plano 24 encerrado**  
+**Encerramento formal UX:** `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`  
+Entrega anterior UX/layout: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`  
+Entrega anterior: `docs/77-ENTREGA-POS-RBAC-UX-LAYOUT-2026-06-09.md`  
+Versionamento obrigatorio: `.cursor/rules/versioning.mdc`
+
+## Roadmap UX front-end — Fases 0–8 (**encerrado**, 2026-06-09)
+
+Todas as fases do plano 24 concluidas (layout → design system global). Painel `1.0.0`, API `0.2.7`.
+
+Ordem de leitura quando a tarefa for UX do painel (manutencao ou consulta):
+
+1. `LEITURA-INICIAL.md`
+2. `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`
+3. `24-plano-fase0-fase1-layout-navegacao-ui-foundation-2026-06-09.md`
+4. Entrega da fase especifica: `docs/80` a `docs/87`
+5. `23-matriz-permissoes-e-escopo-rbac-2026-06-09.md` (menu e rotas respeitam permissoes)
+
+## Trilha UX front-end — Fase 0 + Fase 1 (**concluida**)
+
+Direcao entregue: sidebar colapsavel + header + breadcrumbs + `components/ui/` — Dashboard/Firewalls/detalhe **nao** refatorados nesta etapa.
+
+Documentos:
+
+1. `24-plano-fase0-fase1-layout-navegacao-ui-foundation-2026-06-09.md`
+2. `docs/79-TRILHA-FRONTEND-FASE0-FASE1-LAYOUT-NAVEGACAO-2026-06-09.md`
+3. `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md` — entrega
+4. `23-matriz-permissoes-e-escopo-rbac-2026-06-09.md` (menu respeita permissoes)
+
+## Atualizacao critica em 2026-06-09 — trilha RBAC **ENCERRADA**
+
+Trilha concluida: usuarios, permissoes granulares, escopo por cliente, perfil `client`, UX administrativa e auditoria endurecida.
+
+**Encerramento formal:** `docs/76-ENCERRAMENTO-TRILHA-RBAC-2026-06-09.md`
+
+Ordem de leitura quando a tarefa for RBAC/permissoes (manutencao ou consulta):
+
+1. `LEITURA-INICIAL.md`
+2. `docs/76-ENCERRAMENTO-TRILHA-RBAC-2026-06-09.md`
+3. `22-plano-mestre-rbac-usuarios-permissoes-escopo-2026-06-09.md`
+4. `23-matriz-permissoes-e-escopo-rbac-2026-06-09.md`
+5. `docs/75-CHECKLIST-TESTES-RBAC-ESCOPO-2026-06-09.md`
+6. Fase especifica: `docs/69` a `docs/74`
+
+Estado final (`2026-06-09`):
+
+| Fase | Doc | Versao | Status |
+|------|-----|--------|--------|
+| A | `docs/69` | painel `0.1.21` | encerrada |
+| B | `docs/70` | API/web `0.2.0` | encerrada |
+| C | `docs/71` | API/web `0.2.1` | encerrada |
+| D | `docs/72` | API/web `0.2.2` | encerrada |
+| E | `docs/73` | API/web `0.2.3` | encerrada |
+| F | `docs/74` | API `0.2.4` / painel `0.2.3` | encerrada |
+| Pos-RBAC | `docs/77` | painel `0.2.5` | entregue |
+
+Smokes RBAC: `scripts/smoke-rbac-*.sh` + `scripts/run-smoke-suite.sh`
+
 ## Atualizacao critica em 2026-06-08
 
 Foi criada uma camada canonica para organizar a retomada do projeto e preparar o modulo de backup do `config.xml` dos pfSense.
@@ -17,8 +82,9 @@ Ordem de leitura atualizada para novos chats:
 3. `docs/00-INDICE-OPERACIONAL.md`
 4. `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md`
 5. `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`, quando a tarefa envolver backup
-6. `docs/DIRETRIZES-E-FUNCIONAMENTO.md`
-7. `docs/HISTORICO-E-LINHA-DO-TEMPO.md`, quando for refatorar ou reabrir assunto antigo
+6. `docs/67-CHECKLIST-REVISAO-PLANO-BACKUP-2026-06-08.md`, quando for implementar o modulo de backup
+7. `docs/DIRETRIZES-E-FUNCIONAMENTO.md`
+8. `docs/HISTORICO-E-LINHA-DO-TEMPO.md`, quando for refatorar ou reabrir assunto antigo
 
 Estado observado em `2026-06-08`:
 
@@ -26,9 +92,10 @@ Estado observado em `2026-06-08`:
 - dominio publico `https://pfs-monitor.systemup.inf.br/healthz` responde `200`
 - package pfSense atual publicado pelo fluxo do projeto: `0.2.27`
 - ainda nao existe modulo de backup de `config.xml` implementado
-- ha desalinhamento documental/operacional sobre origem interna: documentos antigos citam `192.168.100.244:8088`, enquanto o ambiente informado e observado usa `192.168.100.221`, com publicacao tambem em `192.168.100.221:3031`
-- limite atual de payload e `64 KB`; isso serve para heartbeat, mas nao para backups reais de `config.xml`
-- antes de codar backup, seguir a Fase B do plano mestre: alinhar publicacao, limites, chave de criptografia e validacao operacional
+- origem interna canonica no repositorio: `http://192.168.100.221:3031` (docs historicos na raiz podem citar `192.168.100.244`)
+- limite heartbeat `64 KB`; rota de backup preparada para `5 MB` no nginx interno e referencia ISPConfig
+- Fase B parcial: repo saneado; falta ISPConfig no host, chave `BACKUP_ENCRYPTION_KEY_BASE64` e medicao de `config.xml` em homolog
+- para implementar backup, ler `docs/67-CHECKLIST-REVISAO-PLANO-BACKUP-2026-06-08.md` e depois `docs/64-...md`
 
 ## Estado atual
 

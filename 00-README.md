@@ -35,6 +35,7 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 - [10-deploy-com-docker-compose.md](./10-deploy-com-docker-compose.md)
 - [11-monitoramento-backup-e-operacao.md](./11-monitoramento-backup-e-operacao.md)
 - [12-roadmap-de-fases.md](./12-roadmap-de-fases.md)
+- [22-plano-mestre-rbac-usuarios-permissoes-escopo-2026-06-09.md](./22-plano-mestre-rbac-usuarios-permissoes-escopo-2026-06-09.md): **plano mestre RBAC** — usuarios, permissoes granulares, escopo por cliente e UX administrativa (2026-06-09).
 - [13-frontend-ui-ux-e-seguranca.md](./13-frontend-ui-ux-e-seguranca.md)
 - [14-encerramento-da-fase-de-planejamento.md](./14-encerramento-da-fase-de-planejamento.md)
 - [15-versionamento-e-branding.md](./15-versionamento-e-branding.md)
@@ -79,6 +80,9 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 - [docs/58-TRILHA-DELECAO-REAL-CLIENTES-2026-03-15.md](./docs/58-TRILHA-DELECAO-REAL-CLIENTES-2026-03-15.md): Deleção real de clientes (DELETE clients/:id; botão na UI; bloqueio se 1+ firewalls) — painel 0.1.16, API 0.1.6.
 - [docs/61-REFATORACAO-SNAPSHOT-OPERACIONAL-2026-03-19.md](./docs/61-REFATORACAO-SNAPSHOT-OPERACIONAL-2026-03-19.md): refatoração para snapshot operacional sem histórico de telemetria; heartbeats deixam de crescer continuamente; Zabbix fica como histórico.
 - [docs/62-MODO-HEARTBEAT-INSTALACAO-PFSENSE-2026-03-19.md](./docs/62-MODO-HEARTBEAT-INSTALACAO-PFSENSE-2026-03-19.md): instalação do package com seleção explícita de heartbeat `normal` ou `light`; `normal` vira padrão.
+- [docs/68-DIAGNOSTICO-RBAC-USUARIOS-PERMISSOES-2026-06-09.md](./docs/68-DIAGNOSTICO-RBAC-USUARIOS-PERMISSOES-2026-06-09.md): diagnóstico baseline RBAC/escopo antes da reestruturação.
+- [docs/69-TRILHA-RBAC-FASE-A-CORRECOES-URGENTES-2026-06-09.md](./docs/69-TRILHA-RBAC-FASE-A-CORRECOES-URGENTES-2026-06-09.md): Fase A — correções urgentes sem migration (trilha aberta).
+- [docs/75-CHECKLIST-TESTES-RBAC-ESCOPO-2026-06-09.md](./docs/75-CHECKLIST-TESTES-RBAC-ESCOPO-2026-06-09.md): checklist de testes por fase RBAC.
 
 ## Arquivos de governanca do projeto
 

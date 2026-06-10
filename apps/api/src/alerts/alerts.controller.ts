@@ -9,9 +9,9 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
+import { getAccessActor } from '../auth/access-actor.util';
+import { RequirePermissions } from '../auth/permissions.decorator';
+import { PermissionsGuard } from '../auth/permissions.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
 import { RawBodyRequest } from '../common/raw-body-request.type';
@@ -19,25 +19,29 @@ import { AlertsService } from './alerts.service';
 import { ListAlertsQueryDto } from './dto/list-alerts-query.dto';
 import { ResolveAlertDto } from './dto/resolve-alert.dto';
 
-@Roles(UserRole.superadmin, UserRole.admin, UserRole.operator, UserRole.readonly)
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(SessionAuthGuard, PermissionsGuard)
 @Controller('api/v1/alerts')
 export class AlertsController {
   constructor(private readonly alertsService: AlertsService) {}
 
   @Get()
-  listAlerts(@Query() query: ListAlertsQueryDto) {
-    return this.alertsService.listAlerts(query);
+  @RequirePermissions('alerts.view')
+  listAlerts(
+    @Query() query: ListAlertsQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.alertsService.listAlerts(getAccessActor(request), query);
   }
 
   @Post(':id/acknowledge')
-  @Roles(UserRole.superadmin, UserRole.admin, UserRole.operator)
+  @RequirePermissions('alerts.acknowledge')
   acknowledgeAlert(
     @Param('id') id: string,
     @Req() request: RawBodyRequest & AuthenticatedRequest,
     @Headers('cf-connecting-ip') cfConnectingIp?: string,
   ) {
     return this.alertsService.acknowledgeAlert(
+      getAccessActor(request),
       id,
       {
         userId: request.auth?.userId,
@@ -48,7 +52,7 @@ export class AlertsController {
   }
 
   @Post(':id/resolve')
-  @Roles(UserRole.superadmin, UserRole.admin, UserRole.operator)
+  @RequirePermissions('alerts.resolve')
   resolveAlert(
     @Param('id') id: string,
     @Body() body: ResolveAlertDto,
@@ -56,6 +60,7 @@ export class AlertsController {
     @Headers('cf-connecting-ip') cfConnectingIp?: string,
   ) {
     return this.alertsService.resolveAlert(
+      getAccessActor(request),
       id,
       body,
       {

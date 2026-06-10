@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
+import { BackupsModule } from '../backups/backups.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { IngestController } from './ingest.controller';
 import { IngestService } from './ingest.service';
-import { NodeSecretCryptoService } from '../common/node-secret-crypto.service';
 
 @Module({
-  imports: [RealtimeModule],
+  imports: [RealtimeModule, BackupsModule],
   controllers: [IngestController],
-  providers: [IngestService, NodeSecretCryptoService],
+  providers: [IngestService],
 })
 export class IngestModule {}

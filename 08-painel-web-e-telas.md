@@ -249,3 +249,7 @@ Decisao desta fase:
 - versao do agente
 - ultimo erro de envio
 - resultado do ultimo heartbeat
+
+## Referência de implementação visual
+
+O sistema visual atual do painel (layout, cards, formulários, badges) está documentado em `docs/SISTEMA-VISUAL-PAINEL.md`. Use-o como referência ao alterar ou estender telas.

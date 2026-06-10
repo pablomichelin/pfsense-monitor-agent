@@ -1,15 +1,38 @@
 import { Injectable } from '@nestjs/common';
 import { AlertStatus } from '@prisma/client';
+import { AccessActor } from '../auth/access-actor.type';
+import { AccessPolicyService } from '../auth/access-policy.service';
 import { appConfig } from '../config/app-config';
-import { isPfSenseVersionHomologated } from '../common/version-matrix.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveEffectiveNodeStatus } from '../nodes/node-status.util';
 
+const SUMMARY_CACHE_TTL_MS = 20000;
+
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  private summaryCache: {
+    data: {
+      generated_at: string;
+      version: string;
+      totals: {
+        nodes: number;
+        online: number;
+        degraded: number;
+        offline: number;
+        maintenance: number;
+        unknown: number;
+        open_alerts: number;
+      };
+    };
+    expiresAt: number;
+  } | null = null;
 
-  async getSummary(): Promise<{
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessPolicy: AccessPolicyService,
+  ) {}
+
+  async getSummary(actor: AccessActor): Promise<{
     generated_at: string;
     version: string;
     totals: {
@@ -20,21 +43,31 @@ export class DashboardService {
       maintenance: number;
       unknown: number;
       open_alerts: number;
-      versions_out_of_matrix: number;
-    };
-    version_matrix: {
-      homologated_pfsense_versions: string[];
     };
   }> {
-    const now = new Date();
-    const nodes = await this.prisma.node.findMany({
-      select: {
-        status: true,
-        maintenanceMode: true,
-        lastSeenAt: true,
-        pfsenseVersion: true,
-      },
+    const now = Date.now();
+    if (this.summaryCache && this.summaryCache.expiresAt > now) {
+      return this.summaryCache.data;
+    }
+
+    const nowDate = new Date();
+    const nodeWhere = await this.accessPolicy.mergeNodeWhere(actor);
+    const alertWhere = await this.accessPolicy.mergeAlertWhere(actor, {
+      status: AlertStatus.open,
     });
+    const [nodes, openAlerts] = await Promise.all([
+      this.prisma.node.findMany({
+        where: nodeWhere,
+        select: {
+          status: true,
+          maintenanceMode: true,
+          lastSeenAt: true,
+        },
+      }),
+      this.prisma.alert.count({
+        where: alertWhere,
+      }),
+    ]);
 
     const counters = {
       nodes: nodes.length,
@@ -43,33 +76,27 @@ export class DashboardService {
       offline: 0,
       maintenance: 0,
       unknown: 0,
-      versions_out_of_matrix: 0,
     };
 
     for (const node of nodes) {
-      const effectiveStatus = deriveEffectiveNodeStatus(node, now);
+      const effectiveStatus = deriveEffectiveNodeStatus(node, nowDate);
       counters[effectiveStatus] += 1;
-      if (!isPfSenseVersionHomologated(node.pfsenseVersion)) {
-        counters.versions_out_of_matrix += 1;
-      }
     }
 
-    const openAlerts = await this.prisma.alert.count({
-      where: {
-        status: AlertStatus.open,
-      },
-    });
-
-    return {
-      generated_at: now.toISOString(),
+    const result = {
+      generated_at: nowDate.toISOString(),
       version: appConfig.systemVersion,
       totals: {
         ...counters,
         open_alerts: openAlerts,
       },
-      version_matrix: {
-        homologated_pfsense_versions: appConfig.versionMatrix.homologatedPfSenseVersions,
-      },
     };
+
+    this.summaryCache = {
+      data: result,
+      expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS,
+    };
+
+    return result;
   }
 }

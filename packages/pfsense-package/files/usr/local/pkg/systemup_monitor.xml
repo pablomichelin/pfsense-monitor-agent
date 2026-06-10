@@ -34,6 +34,10 @@
       <text>Diagnostico</text>
       <url>/status_systemup_monitor.php</url>
     </tab>
+    <tab>
+      <text>Backup</text>
+      <url>/backup_systemup_monitor.php</url>
+    </tab>
   </tabs>
   <custom_php_global_functions>systemup_monitor_apply_defaults();</custom_php_global_functions>
   <custom_php_resync_config_command>systemup_monitor_sync_config();</custom_php_resync_config_command>

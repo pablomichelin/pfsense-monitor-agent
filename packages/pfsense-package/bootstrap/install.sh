@@ -14,11 +14,12 @@ INTERVAL_SECONDS=""
 SERVICES_CSV=""
 HEARTBEAT_MODE="normal"
 ENABLE_PACKAGE="0"
+CONFIG_BACKUP_ENABLED="no"
 
 usage() {
   cat <<EOF
 Usage:
-  $0 [--controller-url URL --node-uid UID --node-secret SECRET --customer-code CODE] [--interval-seconds N] [--services CSV] [--heartbeat-mode normal|light] [--enable]
+  $0 [--controller-url URL --node-uid UID --node-secret SECRET --customer-code CODE] [--interval-seconds N] [--services CSV] [--heartbeat-mode normal|light] [--config-backup-enabled yes|no] [--enable]
 
   Com controller-url + node-uid + node-secret + customer-code o serviço é habilitado e iniciado automaticamente (heartbeats a cada 30s).
 
@@ -37,6 +38,7 @@ while [ "$#" -gt 0 ]; do
     --interval-seconds) INTERVAL_SECONDS="$2"; shift 2 ;;
     --services) SERVICES_CSV="$2"; shift 2 ;;
     --heartbeat-mode) HEARTBEAT_MODE="$2"; shift 2 ;;
+    --config-backup-enabled) CONFIG_BACKUP_ENABLED="$2"; shift 2 ;;
     --enable) ENABLE_PACKAGE="1"; shift 1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
@@ -95,6 +97,14 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
   if [ -n "$HEARTBEAT_MODE" ]; then
     set -- "$@" --heartbeat-mode "$HEARTBEAT_MODE"
   fi
+  case "$(printf '%s' "$CONFIG_BACKUP_ENABLED" | tr '[:upper:]' '[:lower:]')" in
+    yes|true|1|on)
+      set -- "$@" --config-backup-enabled yes
+      ;;
+    no|false|0|off|"")
+      set -- "$@" --config-backup-enabled no
+      ;;
+  esac
   # Com config completa (controller + node_uid + secret + customer), habilita e inicia o serviço em um único passo
   if [ "$ENABLE_PACKAGE" = "1" ] || { [ -n "$CONTROLLER_URL" ] && [ -n "$NODE_UID" ] && [ -n "$NODE_SECRET" ] && [ -n "$CUSTOMER_CODE" ]; }; then
     set -- "$@" --enable

@@ -25,30 +25,30 @@ export function PageHero({
   aside?: React.ReactNode;
 }) {
   return (
-    <section className="glass-panel overflow-hidden rounded-[2rem] px-6 py-6 sm:px-7">
-      <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-        <div className="max-w-3xl">
-          <p className="font-mono text-xs uppercase tracking-[0.32em] text-cyan-300">
+    <section className="glass-panel overflow-hidden rounded-xl p-5 sm:p-6">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between xl:gap-6">
+        <div className="min-w-0 flex-1 space-y-2">
+          <p className="font-mono text-xs uppercase tracking-wider text-cyan-400/90">
             {eyebrow}
           </p>
-          <h2 className="mt-3 font-display text-3xl text-white sm:text-4xl">
+          <h2 className="font-display text-2xl font-semibold text-white sm:text-3xl">
             {title}
           </h2>
-          <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400 sm:text-base">
+          <p className="max-w-2xl text-sm leading-relaxed text-slate-400">
             {description}
           </p>
 
           {stats.length > 0 ? (
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="pt-3 flex flex-wrap gap-3">
               {stats.map((stat) => (
                 <div
                   key={`${stat.label}-${stat.value}`}
-                  className={`rounded-2xl border px-4 py-3 ${toneClass[stat.tone ?? 'default']}`}
+                  className={`rounded-lg border px-4 py-2.5 ${toneClass[stat.tone ?? 'default']}`}
                 >
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em] opacity-70">
+                  <p className="font-mono text-[11px] uppercase tracking-wider opacity-90">
                     {stat.label}
                   </p>
-                  <p className="mt-1 text-sm font-medium">
+                  <p className="mt-0.5 text-sm font-medium">
                     {stat.value}
                   </p>
                 </div>
@@ -57,7 +57,11 @@ export function PageHero({
           ) : null}
         </div>
 
-        {aside ? <div className="xl:min-w-[16rem]">{aside}</div> : null}
+        {aside ? (
+          <div className="shrink-0 xl:min-w-[14rem] xl:pt-0.5">
+            {aside}
+          </div>
+        ) : null}
       </div>
     </section>
   );

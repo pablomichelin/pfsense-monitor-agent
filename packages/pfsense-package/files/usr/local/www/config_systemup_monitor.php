@@ -14,11 +14,16 @@ include("head.inc");
 ?>
 <body>
 <?php include("fbegin.inc"); ?>
+<?php if (!empty($savemsg)): ?>
+<div class="alert alert-info"><?=htmlspecialchars($savemsg)?></div>
+<?php endif; ?>
 <?php if (isset($tab_array) && function_exists('display_top_tabs')): ?>
 <?php foreach ($tab_array as $tab): ?>
 <?php display_top_tabs($tab); ?>
 <?php endforeach; ?>
 <?php endif; ?>
+
+<?php systemup_monitor_render_config_update_action(); ?>
 
 <section class="panel panel-default">
   <div class="panel-heading">

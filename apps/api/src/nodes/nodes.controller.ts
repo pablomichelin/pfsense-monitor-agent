@@ -1,25 +1,38 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
+import { getAccessActor } from '../auth/access-actor.util';
+import { RequirePermissions } from '../auth/permissions.decorator';
+import { PermissionsGuard } from '../auth/permissions.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { AuthenticatedRequest } from '../common/authenticated-request.type';
 import { ListNodesQueryDto } from './dto/list-nodes-query.dto';
 import { NodesService } from './nodes.service';
 
-@UseGuards(SessionAuthGuard)
+@UseGuards(SessionAuthGuard, PermissionsGuard)
 @Controller('api/v1/nodes')
 export class NodesController {
   constructor(private readonly nodesService: NodesService) {}
 
   @Get('filters')
-  getFilters() {
-    return this.nodesService.getFilters();
+  @RequirePermissions('firewalls.view')
+  getFilters(@Req() request: AuthenticatedRequest) {
+    return this.nodesService.getFilters(getAccessActor(request));
   }
 
   @Get()
-  listNodes(@Query() query: ListNodesQueryDto) {
-    return this.nodesService.listNodes(query);
+  @RequirePermissions('firewalls.view')
+  listNodes(
+    @Query() query: ListNodesQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.nodesService.listNodes(getAccessActor(request), query);
   }
 
   @Get(':id')
-  getNodeById(@Param('id') id: string) {
-    return this.nodesService.getNodeById(id);
+  @RequirePermissions('firewalls.view')
+  getNodeById(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.nodesService.getNodeById(getAccessActor(request), id);
   }
 }

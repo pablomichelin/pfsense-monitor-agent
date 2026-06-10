@@ -2,13 +2,21 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AdvancedSection } from '@/components/advanced-section';
 import { CopyButton } from '@/components/copy-button';
+import { InstallationBadge } from '@/components/nodes/installation-badge';
 import { PageHero } from '@/components/page-hero';
+import { Alert, Badge, Button, Card, PageSection } from '@/components/ui';
+import {
+  formInputCompactClassName,
+  formSelectCompactClassName,
+} from '@/lib/form-field-styles';
 import {
   ApiError,
   getNodeBootstrapCommand,
   getNodesFilters,
   getNodesList,
+  getSession,
 } from '@/lib/api';
+import { hasPermission } from '@/lib/authz';
 import { formatDateTime, formatRelativeAge } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -82,29 +90,18 @@ function getBootstrapBucket(node: {
   return 'pending';
 }
 
-function BootstrapBadge({ bucket }: { bucket: BootstrapBucket }) {
+function bucketBadge(bucket: BootstrapBucket) {
   if (bucket === 'active') {
-    return (
-      <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 font-mono text-xs text-emerald-200">
-        agente ativo
-      </span>
-    );
+    return <Badge variant="success">Agente ativo</Badge>;
   }
-
   if (bucket === 'blocked') {
-    return (
-      <span className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-1 font-mono text-xs text-rose-200">
-        bloqueado
-      </span>
-    );
+    return <Badge variant="danger">Bloqueado</Badge>;
   }
-
-  return (
-    <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs text-amber-200">
-      pronto p/ bootstrap
-    </span>
-  );
+  return <Badge variant="warning">Pronto p/ bootstrap</Badge>;
 }
+
+const secondaryLinkClassName =
+  'inline-flex h-10 min-h-10 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white';
 
 function CommandBlock({ value }: { value: string }) {
   return (
@@ -232,6 +229,11 @@ export default async function BootstrapPage({
   let selectedBootstrap = null;
 
   try {
+    const session = await getSession();
+    if (!hasPermission(session.permissions ?? [], 'bootstrap.view')) {
+      redirect('/dashboard');
+    }
+
     [nodes, filterOptions] = await Promise.all([
       getNodesList({
         client_id: clientId,
@@ -289,7 +291,11 @@ export default async function BootstrapPage({
         redirect('/login');
       }
 
-      throw error;
+      if (error instanceof ApiError && error.status === 403) {
+        selectedBootstrap = null;
+      } else {
+        throw error;
+      }
     }
   }
 
@@ -349,9 +355,9 @@ export default async function BootstrapPage({
   return (
     <div className="space-y-6">
       <PageHero
-        eyebrow="Instalacao"
+        eyebrow="Instalação"
         title="Instalar agente"
-        description="Escolha um firewall e copie o comando de instalacao."
+        description="Escolha um firewall e copie o comando de instalação."
         stats={[
           { label: 'Prontos', value: String(pending.length), tone: pending.length > 0 ? 'warning' : 'default' },
           { label: 'Ativos', value: String(active.length), tone: active.length > 0 ? 'success' : 'default' },
@@ -359,12 +365,13 @@ export default async function BootstrapPage({
         ]}
       />
 
-      <section className="glass-panel rounded-xl p-3">
+      <PageSection title="Filtros" description="Refine a lista de firewalls por cliente, local ou bucket.">
+        <Card className="p-3">
         <form className="flex flex-wrap items-center gap-2">
           <select
             name="client_id"
             defaultValue={clientId ?? ''}
-            className="rounded-lg h-9 border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200 outline-none"
+            className={formSelectCompactClassName}
           >
             <option value="">Todos os clientes</option>
             {filterOptions.clients.map((client) => (
@@ -376,7 +383,7 @@ export default async function BootstrapPage({
           <select
             name="site_id"
             defaultValue={siteId ?? ''}
-            className="rounded-lg h-9 border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200 outline-none"
+            className={formSelectCompactClassName}
           >
             <option value="">Todos</option>
             {sites.map((site) => (
@@ -388,7 +395,7 @@ export default async function BootstrapPage({
           <select
             name="bucket"
             defaultValue={bucket ?? ''}
-            className="rounded-lg h-9 border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200 outline-none"
+            className={formSelectCompactClassName}
           >
             <option value="">Todos</option>
             <option value="pending">Prontos</option>
@@ -400,21 +407,22 @@ export default async function BootstrapPage({
             name="search"
             defaultValue={search ?? ''}
             placeholder="Buscar"
-            className="min-w-[10rem] flex-1 rounded-lg h-9 max-w-[16rem] border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+            className={`${formInputCompactClassName} min-w-[10rem] max-w-[16rem] flex-1`}
           />
-          <button type="submit" className="rounded-lg h-9 bg-cyan-500 px-4 text-sm font-medium text-slate-950 transition hover:bg-cyan-300">
+          <Button type="submit" size="sm">
             Filtrar
-          </button>
-          <Link href="/bootstrap" className="rounded-lg h-9 border border-slate-600/80 px-4 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
+          </Button>
+          <Link href="/bootstrap" className={secondaryLinkClassName}>
             Limpar
           </Link>
         </form>
-      </section>
+        </Card>
+      </PageSection>
 
       <section className="grid gap-5 md:grid-cols-2">
-        <div className="glass-panel rounded-xl p-4">
+        <Card className="p-4">
           <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Escolha o firewall</p>
-          <h3 className="mt-1.5 font-display text-xl text-white">Preparar instalacao</h3>
+          <h3 className="mt-1.5 font-display text-xl text-white">Preparar instalação</h3>
 
           <form className="mt-4 space-y-3">
             <select
@@ -455,30 +463,25 @@ export default async function BootstrapPage({
               </div>
             </AdvancedSection>
             <div className="flex flex-col gap-3 lg:flex-row">
-              <button
-                type="submit"
-                className="rounded-xl h-11 bg-cyan-500 px-5 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
-              >
-                Abrir
-              </button>
+              <Button type="submit">Abrir</Button>
               <Link
                 href={buildBootstrapHref({ clientId, siteId, search, bucket, heartbeatMode })}
-                className="rounded-xl h-11 border border-slate-600/80 px-5 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+                className={secondaryLinkClassName}
               >
                 Limpar preflight
               </Link>
             </div>
           </form>
-        </div>
+        </Card>
 
-        <div className="glass-panel rounded-xl p-4">
-          <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Instalacao</p>
+        <Card className="p-4">
+          <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Instalação</p>
           {selectedNode && verifyBootstrapCommand && runBootstrapPreflightCommand ? (
             <div className="mt-4 space-y-4">
               <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
                 <p>Firewall: {selectedNode.display_name ?? selectedNode.hostname}</p>
                 <p>Local: {selectedNode.client.name} — {selectedNode.site.name}</p>
-                <p>Ultimo contato: {formatRelativeAge(selectedNode.last_seen_at)}</p>
+                <p>Último contato: {formatRelativeAge(selectedNode.last_seen_at)}</p>
               </div>
               <div className="space-y-2">
                 <p className="text-sm text-slate-400">Use este comando no pfSense.</p>
@@ -489,28 +492,25 @@ export default async function BootstrapPage({
                 )}
               </div>
               <div className="flex flex-col gap-3 lg:flex-row">
-                <Link
-                  href={`/nodes/${selectedNode.id}`}
-                  className="rounded-xl h-11 border border-slate-600/80 px-5 text-center text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
-                >
+                <Link href={`/nodes/${selectedNode.id}`} className={secondaryLinkClassName}>
                   Abrir firewall
                 </Link>
                 {selectedNodeScopeHref ? (
                   <Link
                     href={selectedNodeScopeHref}
-                    className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-3 text-center text-sm text-cyan-200 transition hover:border-cyan-400/50"
+                    className="inline-flex h-10 min-h-10 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 text-sm font-medium text-cyan-200 transition hover:border-cyan-400/50"
                   >
                     Manter selecionado
                   </Link>
                 ) : null}
               </div>
               <AdvancedSection
-                title="Diagnostico e preflight"
-                description="Comandos de verificacao e material tecnico para homologacao."
+                title="Diagnóstico e preflight"
+                description="Comandos de verificação e material técnico para homologação."
               >
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <p className="text-sm text-slate-400">Verificacao do release.</p>
+                    <p className="text-sm text-slate-400">Verificação do release.</p>
                     <CommandBlock value={verifyBootstrapCommand} />
                   </div>
                   <div className="space-y-2">
@@ -521,16 +521,16 @@ export default async function BootstrapPage({
               </AdvancedSection>
             </div>
           ) : (
-            <div className="mt-4 rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-6 text-sm text-slate-500">
-              Nenhum firewall selecionado para preflight. Escolha um firewall no formulario ao lado.
-            </div>
+            <Alert variant="info" className="mt-4">
+              Nenhum firewall selecionado para preflight. Escolha um firewall no formulário ao lado.
+            </Alert>
           )}
-        </div>
+        </Card>
       </section>
 
       {selectedNode && selectedBootstrap ? (
         <section className="grid gap-5 md:grid-cols-2">
-          <div className="glass-panel rounded-xl p-4">
+          <Card className="p-4">
             <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Resumo</p>
             <h3 className="mt-1.5 font-display text-xl text-white">Firewall selecionado</h3>
 
@@ -630,12 +630,12 @@ export default async function BootstrapPage({
                 ) : null}
               </div>
             ) : (
-              <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-200">
-                Release ainda nao pronta nesta visualizacao. Configure `release_base_url` para
+              <Alert variant="warning" className="mt-4">
+                Release ainda não pronta nesta visualização. Configure `release_base_url` para
                 montar o comando completo antes de ir ao pfSense.
-              </div>
+              </Alert>
             )}
-          </div>
+          </Card>
 
           <div className="space-y-6">
             <AdvancedSection
@@ -657,7 +657,7 @@ export default async function BootstrapPage({
         </section>
       ) : null}
 
-      <section className="glass-panel rounded-xl p-4">
+      <Card className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Escopo atual</p>
@@ -665,7 +665,7 @@ export default async function BootstrapPage({
             <p className="mt-2 text-sm text-slate-400">
               {hasActiveFilters
                 ? 'A lista abaixo respeita os filtros aplicados nesta tela.'
-                : 'Nenhum filtro aplicado. A tela mostra todos os firewalls retornados pelo inventario.'}
+                : 'Nenhum filtro aplicado. A tela mostra todos os firewalls retornados pelo inventário.'}
             </p>
           </div>
 
@@ -735,25 +735,21 @@ export default async function BootstrapPage({
             </Link>
           </div>
         </div>
-      </section>
+      </Card>
 
       <section className="grid gap-5 md:grid-cols-2">
-          <div className="glass-panel rounded-xl p-4">
+          <Card className="p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Fila de bootstrap</p>
                 <h3 className="mt-1 font-display text-lg text-white">Firewalls prontos para instalar</h3>
               </div>
-            <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs text-amber-200">
-              {pending.length} pendentes
-            </span>
+            <Badge variant="warning">{pending.length} pendentes</Badge>
           </div>
 
           <div className="mt-4 space-y-3">
             {pending.length === 0 ? (
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-6 text-sm text-emerald-200">
-                Nenhum firewall aguardando bootstrap no momento.
-              </div>
+              <Alert variant="success">Nenhum firewall aguardando bootstrap no momento.</Alert>
             ) : (
               pending.map((node) => (
                 <Link
@@ -774,7 +770,7 @@ export default async function BootstrapPage({
                       </p>
                     </div>
                     <div className="text-sm text-slate-400">
-                      <p>Ultimo heartbeat: {formatRelativeAge(node.last_seen_at)}</p>
+                      <p>Último heartbeat: {formatRelativeAge(node.last_seen_at)}</p>
                       <p>{formatDateTime(node.last_seen_at)}</p>
                     </div>
                   </div>
@@ -782,10 +778,10 @@ export default async function BootstrapPage({
               ))
             )}
           </div>
-        </div>
+        </Card>
 
         <div className="space-y-6">
-          <div className="glass-panel rounded-xl p-4">
+          <Card className="p-4">
             <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Agentes ativos</p>
             <div className="mt-4 space-y-3">
               {active.slice(0, 6).map((node) => (
@@ -803,19 +799,20 @@ export default async function BootstrapPage({
                         Agente {node.agent_version ?? '-'}
                       </p>
                     </div>
-                    <BootstrapBadge bucket="active" />
+                    <InstallationBadge
+                      nodeUidStatus={node.node_uid_status}
+                      agentVersion={node.agent_version}
+                    />
                   </div>
                 </Link>
               ))}
               {active.length === 0 ? (
-                <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-500">
-                  Nenhum agente ativo ainda.
-                </div>
+                <Alert variant="info">Nenhum agente ativo ainda.</Alert>
               ) : null}
             </div>
-          </div>
+          </Card>
 
-          <div className="glass-panel rounded-xl p-4">
+          <Card className="p-4">
             <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Bloqueios</p>
             <div className="mt-4 space-y-3">
               {blocked.slice(0, 6).map((node) => (
@@ -833,17 +830,15 @@ export default async function BootstrapPage({
                         node_uid_status {node.node_uid_status}
                       </p>
                     </div>
-                    <BootstrapBadge bucket="blocked" />
+                    {bucketBadge('blocked')}
                   </div>
                 </Link>
               ))}
               {blocked.length === 0 ? (
-                <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-500">
-                  Nenhum bloqueio de bootstrap no momento.
-                </div>
+                <Alert variant="info">Nenhum bloqueio de bootstrap no momento.</Alert>
               ) : null}
             </div>
-          </div>
+          </Card>
         </div>
       </section>
     </div>

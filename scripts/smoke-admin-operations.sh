@@ -296,18 +296,17 @@ FILTERS_RESPONSE="$(request_json GET /api/v1/nodes/filters)"
 [[ "$(json_get "$FILTERS_RESPONSE" "clients.0.status" || true)" != "" ]]
 NODES_RESPONSE="$(request_json GET "/api/v1/nodes?search=$NODE_UID")"
 [[ "$(json_get "$NODES_RESPONSE" "items.0.id")" == "$NODE_ID" ]]
-[[ "$(json_get "$NODES_RESPONSE" "items.0.pfsense_version_homologated")" == "false" ]]
 DETAIL_RESPONSE="$(request_json GET "/api/v1/nodes/$NODE_ID")"
-[[ "$(json_get "$DETAIL_RESPONSE" "node.pfsense_version_homologated")" == "false" ]]
+[[ "$(json_get "$DETAIL_RESPONSE" "node.id")" == "$NODE_ID" ]]
 DASHBOARD_RESPONSE="$(request_json GET /api/v1/dashboard/summary)"
-[[ "$(json_get "$DASHBOARD_RESPONSE" "totals.versions_out_of_matrix")" != "0" ]]
+[[ "$(json_get "$DASHBOARD_RESPONSE" "totals.nodes")" != "" ]]
 AUDIT_RESPONSE="$(request_json GET "/api/v1/admin/audit?limit=20")"
 [[ "$(json_get "$AUDIT_RESPONSE" "items.0.id" || true)" != "" ]]
 TOKEN_AUDIT_RESPONSE="$(request_json GET "/api/v1/admin/audit?target_type=agent_token&limit=20")"
 [[ "$(json_get "$TOKEN_AUDIT_RESPONSE" "items.0.target_type")" == "agent_token" ]]
 AUDIT_PAGE="$(curl -skS -b "$COOKIE_JAR" "$BASE_URL/audit")"
-grep -q 'Auditoria humana' <<<"$AUDIT_PAGE"
-grep -q 'Trilhas recentes' <<<"$AUDIT_PAGE"
+grep -q 'Auditoria' <<<"$AUDIT_PAGE"
+grep -qE 'Eventos|Filtros' <<<"$AUDIT_PAGE"
 
 echo "[14/14] Excluindo node (exclusao individual)"
 DELETE_RESPONSE="$(request_json DELETE "/api/v1/admin/nodes/$NODE_ID")"

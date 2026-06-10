@@ -24,6 +24,7 @@ AGENT_BIN="$AGENT_HOME/monitor-pfsense-agent.sh"
 
 while :; do
   "$AGENT_BIN" heartbeat >>"$LOG_FILE" 2>&1 || true
+  "$AGENT_BIN" backup-scheduled >>"$LOG_FILE" 2>&1 || true
   # sleep pode retornar nao-zero se interrompido por sinal; || true evita sair do loop
   sleep "$INTERVAL_SECONDS" || true
 done

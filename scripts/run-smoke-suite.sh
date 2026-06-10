@@ -14,6 +14,12 @@ DEFAULT_SUITE=(
   "smoke-bootstrap-flow.sh"
   "smoke-admin-operations.sh"
   "smoke-rbac-roles.sh"
+  "smoke-rbac-node-detail.sh"
+  "smoke-rbac-client-scope.sh"
+  "smoke-rbac-permissions.sh"
+  "smoke-rbac-client-profile.sh"
+  "smoke-rbac-admin-ux.sh"
+  "smoke-rbac-audit-hardening.sh"
 )
 
 usage() {
@@ -35,6 +41,12 @@ Sem argumentos, roda a suite local padrao:
   - smoke-bootstrap-flow.sh
   - smoke-admin-operations.sh
   - smoke-rbac-roles.sh
+  - smoke-rbac-node-detail.sh
+  - smoke-rbac-client-scope.sh
+  - smoke-rbac-permissions.sh
+  - smoke-rbac-client-profile.sh
+  - smoke-rbac-admin-ux.sh
+  - smoke-rbac-audit-hardening.sh
 EOF
 }
 
