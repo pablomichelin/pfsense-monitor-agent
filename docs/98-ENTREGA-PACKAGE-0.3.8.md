@@ -52,7 +52,7 @@ Release que substitui o stub imediato de `pfsense_upgrade` por fluxo honesto com
 | Arquivo | `dist/pfsense-package/monitor-pfsense-package-v0.3.8.tar.gz` |
 | SHA256 | `ef0cabb5744ec4328d71af754811d80fc98e021e3d29f114010614b2f68e9f78` |
 | Gerado em | 2026-06-23 (`./scripts/release-pfsense-package.sh --no-push`) |
-| Publicado | _(commit após push)_ |
+| Publicado | 2026-06-23 — commit `cc9b781` em `main` |
 
 ## Testes executados (host dev)
 
