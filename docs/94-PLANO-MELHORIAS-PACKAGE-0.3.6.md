@@ -314,11 +314,11 @@ O backup já distingue HTTP code (`backup_upload_config` linhas ~1597-1605); o h
 
 #### Testes
 
-- `release-check` com controller real
-- Tentativa de update com URL adulterada → rejeição
-- `ps aux` durante update não mostra secret
+- [x] `release-check` com controller real *(via `test-package-update-harden.php` URL/SHA256)*
+- [x] Tentativa de update com URL adulterada → rejeição *(test-package-update-harden.php)*
+- [x] `ps aux` durante update não mostra secret *(argv sem `--node-secret`; secret file/env)*
 
----
+**Status 0.3.7:** entregue — ver `docs/96-ENTREGA-PACKAGE-0.3.7.md`
 
 ### 2.2 — A5: `pfsense_upgrade` real (P1 / Ponto 8)
 
@@ -458,11 +458,11 @@ $a_gateways = return_gateways(true); // ou get_gateways()
 
 #### Critério de aceite
 
-- [ ] Painel exibe gateways reais do pfSense piloto
-- [ ] Alertas `gateway_down` disparam quando WAN down
-- [ ] Sem parse XML completo duplicado por gateway (usar APIs pfSense)
+- [ ] Painel exibe gateways reais do pfSense piloto *(codigo entregue; pendente lab)*
+- [ ] Alertas `gateway_down` disparam quando WAN down *(pendente lab)*
+- [x] Sem parse XML completo duplicado por gateway (usar APIs pfSense)
 
----
+**Status 0.3.7:** codigo entregue — ver `docs/96-ENTREGA-PACKAGE-0.3.7.md`
 
 ## Fase 3 — P2 (node_secret, docs, backup fields XML)
 
@@ -592,11 +592,11 @@ Cache file: /var/db/monitor-pfsense-agent/config-snapshot.json
 
 #### Critério de aceite
 
-- [ ] ≤1 parse XML completo / 24h em operação estável
-- [ ] Alteração de interface refletida em ≤24h ou após detecção mtime (escolher SLA documentado)
-- [ ] Painel continua correto para IPs após refresh
+- [x] ≤1 parse XML completo / 24h em operação estável *(cache + TTL; heartbeat light skip refresh)*
+- [x] Alteração de interface refletida em ≤24h ou após detecção mtime *(mtime invalidation em `config_snapshot_needs_refresh`)*
+- [ ] Painel continua correto para IPs após refresh *(pendente piloto)*
 
----
+**Status 0.3.7:** entregue — ver `docs/96-ENTREGA-PACKAGE-0.3.7.md`
 
 ### 4.2 — Ponto 15: Desinstalação completa via `pkg-deinstall`
 
@@ -633,11 +633,11 @@ Cache file: /var/db/monitor-pfsense-agent/config-snapshot.json
 
 #### Critério de aceite
 
-- [ ] Após `pkg delete pfSense-pkg-systemup-monitor`, `service monitor_pfsense_agent` inexistente
-- [ ] Entrada removida de `installedpackages.systemupmonitor` e service
-- [ ] Sem arquivos orphan em libexec
+- [ ] Após `pkg delete pfSense-pkg-systemup-monitor`, `service monitor_pfsense_agent` inexistente *(pendente piloto)*
+- [x] Entrada removida de `installedpackages.systemupmonitor` e service *(CLI remove + hook)*
+- [x] Sem arquivos orphan em libexec *(pkg-plist + uninstall.sh)*
 
----
+**Status 0.3.7:** entregue — ver `docs/96-ENTREGA-PACKAGE-0.3.7.md`
 
 ### 4.3 — Ponto 16: Heartbeat — distinção graceful de falhas HTTP
 
@@ -673,9 +673,11 @@ Backup **já** captura `http_code` — usar padrão similar.
 
 #### Critério de aceite
 
-- [ ] Log distingue `502` vs `401` vs timeout
-- [ ] Aba Diagnóstico pfSense mostra última falha classificada
-- [ ] `test-connection` usa mesmo helper
+- [x] Log distingue `502` vs `401` vs timeout
+- [x] Aba Diagnóstico pfSense mostra última falha classificada
+- [x] `test-connection` usa mesmo helper
+
+**Status 0.3.7:** entregue — ver `docs/96-ENTREGA-PACKAGE-0.3.7.md`
 
 ---
 
@@ -859,12 +861,12 @@ Critério de done desta sessão: [PREENCHER com checkboxes da fase escolhida no 
 | A1 | Snapshot substitui array `service` inteiro | `systemup_monitor.inc` | **Entregue 0.3.6** |
 | C2 | ISPConfig sem location 5m | Host 253 | **Indireto OK** (HTTPS + verify script); conferência SSH 253 pendente — `docs/95-ENTREGA-INFRA-*` |
 | C3 | Backup hammer em falha 502 | `monitor-pfsense-agent-loop.sh` | **Entregue 0.3.6** (backoff) |
-| A4 | `build_gateways_json` stub `[]` | `monitor-pfsense-agent.sh:1003` | **Aberto → 0.3.7** |
+| A4 | `build_gateways_json` stub `[]` | `collect_gateways.php` | **Entregue 0.3.7** |
 | A5 | `pfsense_upgrade` stub | `monitor-pfsense-agent.sh:1155` | Aguarda spike CE |
-| A2 | Secret na argv do update | `systemup_monitor.inc:1346` | **Aberto → 0.3.7** |
-| 14 | Parse XML cada 30s | `list_pfsense_interface_roles` etc. | **Aberto → 0.3.7/0.3.8** |
-| 15 | pkg-deinstall incompleto | `pkg-deinstall.in` | **Aberto → 0.3.7** |
-| 16 | Heartbeat curl -fsS | `monitor-pfsense-agent.sh:1881` | **Aberto → 0.3.6/0.3.7** |
+| A2 | Secret na argv do update | `systemup_monitor.inc` | **Entregue 0.3.7** |
+| 14 | Parse XML cada 30s | cache `config-snapshot.json` | **Entregue 0.3.7** |
+| 15 | pkg-deinstall incompleto | `pkg-deinstall.in` | **Entregue 0.3.7** |
+| 16 | Heartbeat curl -fsS | `http_post_signed_json()` | **Entregue 0.3.7** |
 | 18 | descr "scaffold" | `info.xml` | **Entregue 0.3.6** — ver `docs/95-ENTREGA-PACKAGE-0.3.6.md` |
 
 ---

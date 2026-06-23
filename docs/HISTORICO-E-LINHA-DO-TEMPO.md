@@ -6,6 +6,15 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-06-23 — Package pfSense 0.3.7 (Opção C / P1)
+
+- **Gateways reais:** `collect_gateways.php` + `build_gateways_json()` via gwlib/dpinger; mapeamento para contrato API.
+- **Harden auto-update:** secret via env/arquivo 0600; lock `/var/run/monitor-package-update.lock`; allowlist URL; SHA256 obrigatório; rate limit 24h; CLI `upgrade --force`.
+- **Cache config.xml:** `config-snapshot.json` TTL 86400s; interfaces/IPs leem cache; heartbeat light não força refresh.
+- **Desinstalação:** `systemup_monitor_package_uninstall()` + `pkg-deinstall.in` + paridade `bootstrap/uninstall.sh`.
+- **Heartbeat HTTP:** `http_post_signed_json()`; `last-heartbeat-error.json`; diagnóstico GUI; backoff upstream separado do backup.
+- **Entrega:** `docs/96-ENTREGA-PACKAGE-0.3.7.md`. Pendente: piloto pfSense (gateways no painel, regressão VPN/NAT).
+
 ### 2026-06-23 — Package pfSense 0.3.6 (Opção A / P0)
 
 - **Merge cirúrgico `installedpackages.service`:** export/import usam `monitor_service_entry` (upsert só `monitor_pfsense_agent`); compat com snapshots 0.3.5 que traziam `service_entries` completo.

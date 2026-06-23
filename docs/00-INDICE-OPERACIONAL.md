@@ -207,12 +207,13 @@ Modulo de backup ja implementado no controlador; RBAC reforça escopo e download
 Plano mestre de melhorias pendentes (merge `service`, ISPConfig/502, backoff backup, gateways, upgrade OS, cache XML, desinstalacao):
 
 - [`docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`](95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md) — **entrega Opção B Fase 0** (limite backup ISPConfig/compose, testes HTTPS)
-- [`docs/95-ENTREGA-PACKAGE-0.3.6.md`](95-ENTREGA-PACKAGE-0.3.6.md) — **entrega Opção A P0** (merge service, backoff backup, metadados)
+- [`docs/96-ENTREGA-PACKAGE-0.3.7.md`](96-ENTREGA-PACKAGE-0.3.7.md) — **entrega Opção C P1** (gateways, harden update, cache XML, pkg-deinstall, heartbeat HTTP)
+- [`docs/95-ENTREGA-PACKAGE-0.3.6.md`](95-ENTREGA-PACKAGE-0.3.6.md) — entrega Opção A P0
 - [`docs/94-PLANO-MELHORIAS-PACKAGE-0.3.6.md`](94-PLANO-MELHORIAS-PACKAGE-0.3.6.md) — **plano executavel autossuficiente**
 - Contexto correção parcial 0.3.5: [`docs/92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md`](92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md)
 - Upgrade OS (stub + spike CE): [`docs/91-PLANO-ENTREGA-PFSENSE-OS-UPGRADE.md`](91-PLANO-ENTREGA-PFSENSE-OS-UPGRADE.md)
 
-Package publicado no fluxo atual: `0.3.6`; proxima release alvo: `0.3.7` (P1: gateways, harden auto-update, pkg-deinstall).
+Package publicado no fluxo atual: `0.3.7`; proxima release alvo: `0.3.8+` (P1 `pfsense_upgrade` pos-spike CE).
 
 ## Estrutura de pastas atual
 

@@ -113,11 +113,15 @@ ARTIFACT_URL="${REPO_RAW_BASE}/dist/pfsense-package/monitor-pfsense-package-v${V
 SECRET_QUOTED="'${NODE_SECRET//\'/\'\\\'\'}'"
 
 # Comando roda a instalação em segundo plano para o Command Prompt da GUI retornar na hora (evita carregamento infinito)
+SECRET_FILE="/var/db/monitor-pfsense-agent/.update-node-secret"
+# Secret fora de argv: arquivo 0600 + env consumido pelo install-from-release
+SECRET_SETUP="mkdir -p /var/db/monitor-pfsense-agent && printf %s $SECRET_QUOTED > $SECRET_FILE && chmod 600 $SECRET_FILE"
+
 if [[ -z "$SHA256_VALUE" ]]; then
   echo "# SHA256 não encontrado localmente; preencha após publicar o artefato." >&2
-  CMD="fetch -o /tmp/install-from-release.sh $INSTALLER_URL && chmod +x /tmp/install-from-release.sh && nohup /tmp/install-from-release.sh --release-url $ARTIFACT_URL --sha256 \${SHA256_DO_ARTEFATO} --controller-url $CONTROLLER_URL --node-uid $NODE_UID_RESOLVED --node-secret $SECRET_QUOTED --customer-code $CLIENT_CODE --heartbeat-mode $HEARTBEAT_MODE </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'"
+  CMD="fetch -o /tmp/install-from-release.sh $INSTALLER_URL && chmod +x /tmp/install-from-release.sh && $SECRET_SETUP && nohup env MONITOR_UPDATE_NODE_SECRET=$SECRET_QUOTED /tmp/install-from-release.sh --release-url $ARTIFACT_URL --sha256 \${SHA256_DO_ARTEFATO} --secret-file $SECRET_FILE --controller-url $CONTROLLER_URL --node-uid $NODE_UID_RESOLVED --customer-code $CLIENT_CODE --heartbeat-mode $HEARTBEAT_MODE </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'"
 else
-  CMD="fetch -o /tmp/install-from-release.sh $INSTALLER_URL && chmod +x /tmp/install-from-release.sh && nohup /tmp/install-from-release.sh --release-url $ARTIFACT_URL --sha256 $SHA256_VALUE --controller-url $CONTROLLER_URL --node-uid $NODE_UID_RESOLVED --node-secret $SECRET_QUOTED --customer-code $CLIENT_CODE --heartbeat-mode $HEARTBEAT_MODE </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'"
+  CMD="fetch -o /tmp/install-from-release.sh $INSTALLER_URL && chmod +x /tmp/install-from-release.sh && $SECRET_SETUP && nohup env MONITOR_UPDATE_NODE_SECRET=$SECRET_QUOTED /tmp/install-from-release.sh --release-url $ARTIFACT_URL --sha256 $SHA256_VALUE --secret-file $SECRET_FILE --controller-url $CONTROLLER_URL --node-uid $NODE_UID_RESOLVED --customer-code $CLIENT_CODE --heartbeat-mode $HEARTBEAT_MODE </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'"
 fi
 
 echo "# Comando de instalação/atualização do package (node: $NODE_UID_RESOLVED, versão: $VERSION, heartbeat: $HEARTBEAT_MODE)"

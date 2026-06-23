@@ -12,10 +12,11 @@ Leia este arquivo primeiro.
 |------------|--------|------------|
 | API | `0.3.1` | `apps/api/package.json` |
 | Painel web | `1.1.1` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.3.6` | `packages/pfsense-package/Makefile` |
+| Package pfSense | `0.3.7` | `packages/pfsense-package/Makefile` |
 
 Ultima entrega infra (Fase 0): `docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`  
-Ultima entrega package: `docs/95-ENTREGA-PACKAGE-0.3.6.md`  
+Ultima entrega package: `docs/96-ENTREGA-PACKAGE-0.3.7.md`  
+Entrega anterior package: `docs/95-ENTREGA-PACKAGE-0.3.6.md`  
 Entrega anterior: `docs/92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md`  
 **Encerramento formal UX:** `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`  
 Entrega anterior UX/layout: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`  
@@ -403,7 +404,7 @@ Isso deve bastar para retomar o desenvolvimento sem explicar tudo novamente.
 
 ## Notas especificas para o proximo chat
 
-- **Package 0.3.6 (Opção A P0) entregue em codigo** — ver `docs/95-ENTREGA-PACKAGE-0.3.6.md`. Proximo passo operacional: gerar artefato (`release-pfsense-package.sh`) e deploy piloto pfSense CE 2.8.1+. Trilha P1 (0.3.7): gateways, harden auto-update, pkg-deinstall — ver `docs/94-PLANO-MELHORIAS-PACKAGE-0.3.6.md` Fase 2.
+- **Package 0.3.7 (Opção C P1) entregue em codigo** — ver `docs/96-ENTREGA-PACKAGE-0.3.7.md`. Proximo passo operacional: deploy piloto pfSense CE 2.8.1+ (gateways reais, regressao VPN/NAT). Trilha 0.3.8+: spike `pfsense_upgrade` CE — ver `docs/94-PLANO-MELHORIAS-PACKAGE-0.3.6.md` Fase 2.2.
 - **Microtrilha doc 52 (alinhamento smoke admin com novo /admin) está encerrada.** Smoke administrativo com 14 passos; passo [2/14] valida GET /admin HTTP 200; smoke continua API-first; sem grep em texto da página.
 - **Trilhas docs 50 e 51 (polimento cadastro inicial admin) estão encerradas.** Formulários em `/admin` são sob demanda (cards colapsáveis); um card expandido por vez. Versões atuais: painel 0.1.10, API 0.1.3.
 - **Trilhas docs 48 e 49 (desmembramento interface admin) estão encerradas.** Cadastro em `/admin` enxuto; Usuários em `/admin/usuarios` (superadmin); Clientes em `/admin/clientes` (redirect de `/admin/clientes-sites`).

@@ -34,6 +34,114 @@ pfsense_config_path() {
   printf '%s' "${MONITOR_AGENT_PFSENSE_CONFIG_XML:-/conf/config.xml}"
 }
 
+config_snapshot_path() {
+  printf '%s/config-snapshot.json' "$(backup_state_dir)"
+}
+
+config_snapshot_ttl_seconds() {
+  ttl="${MONITOR_AGENT_CONFIG_SNAPSHOT_TTL_SECONDS:-86400}"
+  case "$ttl" in
+    ''|*[!0-9]*) printf '86400' ;;
+    *) printf '%s' "$ttl" ;;
+  esac
+}
+
+heartbeat_error_path() {
+  printf '%s/last-heartbeat-error.json' "$(backup_state_dir)"
+}
+
+config_snapshot_is_light_mode() {
+  light="${MONITOR_AGENT_LIGHT_HEARTBEAT:-0}"
+  case "$light" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+config_snapshot_needs_refresh() {
+  path="$(config_snapshot_path)"
+  config_path="$(pfsense_config_path)"
+  ttl="$(config_snapshot_ttl_seconds)"
+
+  if [ ! -f "$path" ]; then
+    return 0
+  fi
+
+  command_exists php || return 1
+
+  php -r '
+    $path = $argv[1];
+    $configPath = $argv[2];
+    $ttl = (int) $argv[3];
+    $data = json_decode(file_get_contents($path), true);
+    if (!is_array($data)) {
+      exit(0);
+    }
+    $generated = strtotime($data["generated_at"] ?? "");
+    if ($generated === false || (time() - $generated) >= $ttl) {
+      exit(0);
+    }
+    $cachedMtime = (int) ($data["config_mtime"] ?? 0);
+    $currentMtime = is_file($configPath) ? (int) filemtime($configPath) : 0;
+    if ($currentMtime > 0 && $cachedMtime > 0 && $currentMtime !== $cachedMtime) {
+      exit(0);
+    }
+    exit(1);
+  ' "$path" "$config_path" "$ttl"
+}
+
+refresh_config_snapshot() {
+  helper="$SCRIPT_DIR/collect_config_snapshot.php"
+  path="$(config_snapshot_path)"
+  config_path="$(pfsense_config_path)"
+
+  backup_ensure_state_dir
+  if [ ! -f "$helper" ] || ! command_exists php; then
+    return 1
+  fi
+  if [ ! -f "$config_path" ]; then
+    return 1
+  fi
+
+  PFSENSE_CONFIG_XML="$config_path" \
+    MONITOR_AGENT_CONFIG_SNAPSHOT_TTL_SECONDS="$(config_snapshot_ttl_seconds)" \
+    php -f "$helper" >"$path.tmp" 2>/dev/null || return 1
+  if [ ! -s "$path.tmp" ]; then
+    rm -f "$path.tmp"
+    return 1
+  fi
+  mv "$path.tmp" "$path"
+  return 0
+}
+
+ensure_config_snapshot() {
+  if config_snapshot_is_light_mode && [ -f "$(config_snapshot_path)" ]; then
+    return 0
+  fi
+  if config_snapshot_needs_refresh; then
+    refresh_config_snapshot || true
+  fi
+}
+
+config_snapshot_read_cached_ips() {
+  field="$1"
+  path="$(config_snapshot_path)"
+  [ -f "$path" ] || return 1
+  command_exists php || return 1
+
+  php -r '
+    $data = json_decode(file_get_contents($argv[1]), true);
+    if (!is_array($data)) {
+      exit(1);
+    }
+    $value = trim((string) ($data[$argv[2]] ?? ""));
+    if ($value === "") {
+      exit(1);
+    }
+    echo $value;
+  ' "$path" "$field" 2>/dev/null
+}
+
 add_notice() {
   message="$1"
   if [ -z "${message:-}" ]; then
@@ -216,6 +324,12 @@ detect_mgmt_ips() {
     printf '%s' "$MGMT_IP"
     return
   fi
+  ensure_config_snapshot
+  cached="$(config_snapshot_read_cached_ips mgmt_ips 2>/dev/null || true)"
+  if [ -n "$cached" ]; then
+    printf '%s' "$cached"
+    return
+  fi
   _tmp="/tmp/monitor_mgmt_$$"
   _roles_tmp="/tmp/monitor_mgmt_roles_$$"
   : > "$_tmp"
@@ -250,6 +364,12 @@ detect_mgmt_ips() {
 detect_wan_ips() {
   if [ -n "${WAN_IP_REPORTED:-}" ]; then
     printf '%s' "$WAN_IP_REPORTED"
+    return
+  fi
+  ensure_config_snapshot
+  cached="$(config_snapshot_read_cached_ips wan_ips 2>/dev/null || true)"
+  if [ -n "$cached" ]; then
+    printf '%s' "$cached"
     return
   fi
   _tmp="/tmp/monitor_wan_$$"
@@ -1001,12 +1121,71 @@ build_services_json() {
 }
 
 build_gateways_json() {
-  printf '[]'
+  helper="$SCRIPT_DIR/collect_gateways.php"
+  if [ ! -f "$helper" ] || ! command_exists php; then
+    printf '[]'
+    return
+  fi
+
+  config_path="$(pfsense_config_path)"
+  PFSENSE_CONFIG_XML="$config_path" php -f "$helper" 2>/dev/null || printf '[]'
+}
+
+build_interfaces_from_snapshot() {
+  path="$(config_snapshot_path)"
+  [ -f "$path" ] || return 1
+  command_exists php || return 1
+
+  php -r '
+    $data = json_decode(file_get_contents($argv[1]), true);
+    if (!is_array($data) || empty($data["interfaces"]) || !is_array($data["interfaces"])) {
+      exit(1);
+    }
+    $items = [];
+    foreach ($data["interfaces"] as $iface) {
+      if (!is_array($iface)) {
+        continue;
+      }
+      $name = trim((string) ($iface["name"] ?? ""));
+      $role = trim((string) ($iface["role"] ?? ""));
+      $ip = trim((string) ($iface["ip"] ?? ""));
+      if ($name === "" && $role === "") {
+        continue;
+      }
+      if ($name === "") {
+        $name = $role;
+      }
+      if ($ip === "") {
+        $ip = "n/a";
+      }
+      $entry = ["name" => $name, "ip" => $ip];
+      if ($role !== "") {
+        $entry["role"] = $role;
+      }
+      $items[] = $entry;
+    }
+    if (empty($items)) {
+      exit(1);
+    }
+    echo json_encode($items, JSON_UNESCAPED_SLASHES);
+  ' "$path" 2>/dev/null
 }
 
 # JSON array de interfaces com nome VISUAL (descr do pfSense). Se list_pfsense_interface_roles nao retornar nada, fallback: LAN + WAN a partir de mgmt/wan.
 # Nota: evita pipe para subshell para garantir que o arquivo _tmp seja preenchido no mesmo processo (compatibilidade /bin/sh).
 build_interfaces_json() {
+  ensure_config_snapshot
+  snapshot_json="$(build_interfaces_from_snapshot 2>/dev/null || true)"
+  if [ -n "$snapshot_json" ]; then
+    printf '%s' "$snapshot_json" | php -r '
+      $items = json_decode(stream_get_contents(STDIN), true);
+      if (!is_array($items) || empty($items)) {
+        exit(1);
+      }
+      echo json_encode($items, JSON_UNESCAPED_SLASHES);
+    ' 2>/dev/null && return
+  fi
+
   _tmp="/tmp/monitor_if_$$"
   _roles_tmp="/tmp/monitor_if_roles_$$"
   : > "$_tmp"
@@ -1339,6 +1518,170 @@ build_signed_body_signature() {
   } | hex_hmac "$NODE_SECRET"
 }
 
+# Modos: body (default, arquivo JSON) | timestamp (test-connection, sem body)
+# Saida: HTTP code em stdout; corpo em response_file; stderr em err_file quando informado.
+http_post_signed_json() {
+  endpoint="$1"
+  CURL_CMD="$2"
+  response_file="$3"
+  mode="${4:-body}"
+  body_file="${5:-}"
+  err_file="${6:-}"
+
+  timestamp="$(iso_now)"
+  curl_err="${response_file}.curlerr"
+  http_file="${response_file}.http"
+
+  if [ "$mode" = "timestamp" ]; then
+    signature="$(build_test_connection_signature "$timestamp")"
+    set -- \
+      -sS \
+      -X POST \
+      -H "X-Node-Uid: $NODE_UID" \
+      -H "X-Timestamp: $timestamp" \
+      -H "X-Signature: $signature"
+  else
+    signature="$(build_payload_signature "$timestamp" "$body_file")"
+    set -- \
+      -sS \
+      -X POST \
+      -H "Content-Type: application/json" \
+      -H "X-Node-Uid: $NODE_UID" \
+      -H "X-Timestamp: $timestamp" \
+      -H "X-Signature: $signature" \
+      --data-binary @"$body_file"
+  fi
+
+  if [ -n "$err_file" ]; then
+    $CURL_CMD "$@" -o "$response_file" -w '%{http_code}' \
+      "${CONTROLLER_URL}${endpoint}" >"$http_file" 2>"$curl_err" || true
+    cp "$curl_err" "$err_file" 2>/dev/null || true
+  else
+    $CURL_CMD "$@" -o "$response_file" -w '%{http_code}' \
+      "${CONTROLLER_URL}${endpoint}" >"$http_file" 2>"$curl_err" || true
+  fi
+
+  http_code="$(cat "$http_file" 2>/dev/null || true)"
+  rm -f "$http_file" "$curl_err"
+  printf '%s' "$http_code"
+}
+
+classify_http_error() {
+  classify_upload_error "$1" "$2"
+}
+
+heartbeat_backoff_path() {
+  printf '%s/heartbeat-upload-backoff.json' "$(backup_state_dir)"
+}
+
+heartbeat_error_record() {
+  http_code="${1:-}"
+  curl_error="${2:-}"
+  error_class="$(classify_http_error "$http_code" "$curl_error")"
+
+  if [ "$error_class" = "success" ]; then
+    rm -f "$(heartbeat_error_path)" 2>/dev/null || true
+    return 0
+  fi
+
+  backup_ensure_state_dir
+  command_exists php || return 0
+
+  body_excerpt="$(truncate_text "$curl_error" 200)"
+  php -r '
+    $path = $argv[1];
+    $class = $argv[2];
+    $httpRaw = $argv[3];
+    $excerpt = $argv[4];
+    $http = $httpRaw !== "" ? (int) $httpRaw : null;
+    $payload = [
+      "recorded_at" => gmdate("Y-m-d\TH:i:s\Z"),
+      "error_class" => $class,
+      "http_code" => $http,
+      "body_excerpt" => $excerpt,
+    ];
+    file_put_contents($path, json_encode($payload, JSON_UNESCAPED_SLASHES));
+  ' "$(heartbeat_error_path)" "$error_class" "$http_code" "$body_excerpt"
+
+  case "$error_class" in
+    auth|validation)
+      add_notice "heartbeat auth/validation failure (HTTP ${http_code:-?})"
+      ;;
+  esac
+
+  if [ "$error_class" != "auth" ] && [ "$error_class" != "validation" ]; then
+    heartbeat_backoff_record_failure "$http_code" "$curl_error"
+  fi
+
+  echo "heartbeat-error class=${error_class} http=${http_code:-?}" >&2
+}
+
+heartbeat_backoff_record_failure() {
+  http_code="${1:-}"
+  curl_error="${2:-}"
+  error_class="$(classify_http_error "$http_code" "$curl_error")"
+
+  if [ "$error_class" = "success" ] || [ "$error_class" = "auth" ] || [ "$error_class" = "validation" ]; then
+    return 0
+  fi
+
+  backup_ensure_state_dir
+  command_exists php || return 0
+
+  php -r '
+    $path = $argv[1];
+    $class = $argv[2];
+    $httpRaw = $argv[3];
+    $current = [];
+    if (is_file($path)) {
+      $decoded = json_decode(file_get_contents($path), true);
+      if (is_array($decoded)) {
+        $current = $decoded;
+      }
+    }
+    $bases = ["upstream" => 60, "timeout" => 60, "client" => 300];
+    $caps = ["upstream" => 300, "timeout" => 120, "client" => 600];
+    $failures = (int) ($current["consecutive_failures"] ?? 0) + 1;
+    $base = $bases[$class] ?? 60;
+    $cap = $caps[$class] ?? 300;
+    $delay = min($cap, $base * (2 ** ($failures - 1)));
+    $jitter = 1 + (mt_rand(-100, 100) / 1000.0);
+    $delay = (int) round($delay * $jitter);
+    $next = gmdate("Y-m-d\TH:i:s\Z", time() + $delay);
+    $http = $httpRaw !== "" ? (int) $httpRaw : null;
+    $payload = [
+      "consecutive_failures" => $failures,
+      "next_attempt_at" => $next,
+      "last_http_code" => $http,
+      "last_error_class" => $class,
+    ];
+    file_put_contents($path, json_encode($payload, JSON_UNESCAPED_SLASHES));
+    fwrite(STDERR, sprintf("heartbeat-backoff class=%s http=%s next=%s\n", $class, $httpRaw !== "" ? $httpRaw : "?", $next));
+  ' "$(heartbeat_backoff_path)" "$error_class" "$http_code"
+}
+
+heartbeat_backoff_clear() {
+  rm -f "$(heartbeat_backoff_path)" 2>/dev/null || true
+}
+
+heartbeat_backoff_blocks() {
+  path="$(heartbeat_backoff_path)"
+  [ -f "$path" ] || return 1
+  command_exists php || return 1
+
+  php -r '
+    $data = json_decode(file_get_contents($argv[1]), true);
+    if (!is_array($data) || empty($data["next_attempt_at"])) {
+      exit(1);
+    }
+    $next = strtotime($data["next_attempt_at"]);
+    if ($next === false) {
+      exit(1);
+    }
+    exit(time() < $next ? 0 : 1);
+  ' "$path"
+}
+
 resolve_curl_cmd() {
   if command -v curl >/dev/null 2>&1; then
     printf '%s' "curl"
@@ -1589,17 +1932,16 @@ backup_post_signed_json() {
   endpoint="$1"
   body_file="$2"
   CURL_CMD="$3"
-  timestamp="$(iso_now)"
-  signature="$(build_signed_body_signature "$timestamp" "$body_file")"
 
-  $CURL_CMD -fsS \
-    -X POST \
-    -H "Content-Type: application/json" \
-    -H "X-Node-Uid: $NODE_UID" \
-    -H "X-Timestamp: $timestamp" \
-    -H "X-Signature: $signature" \
-    --data-binary @"$body_file" \
-    "${CONTROLLER_URL}${endpoint}"
+  response_file="$(mktemp)"
+  err_file="$(mktemp)"
+
+  http_code="$(http_post_signed_json "$endpoint" "$CURL_CMD" "$response_file" body "$body_file" "$err_file")"
+  rm -f "$response_file" "$err_file"
+  if [ -z "$http_code" ] || [ "$http_code" -lt 200 ] 2>/dev/null || [ "$http_code" -ge 300 ] 2>/dev/null; then
+    return 1
+  fi
+  return 0
 }
 
 backup_post_command_ack() {
@@ -1983,6 +2325,11 @@ heartbeat() {
 
   finalize_pfsense_upgrade_if_pending
 
+  if heartbeat_backoff_blocks; then
+    echo "heartbeat: backoff active, skipping send" >&2
+    exit 0
+  fi
+
   CURL_CMD=""
   if ! resolve_curl_cmd >/dev/null 2>&1; then
     echo "heartbeat: curl not found (PATH=$PATH)" >&2
@@ -1993,26 +2340,30 @@ heartbeat() {
   timestamp="$(iso_now)"
   payload_file="$(mktemp)"
   response_file="$(mktemp)"
-  trap 'rm -f "$payload_file" "$response_file"' EXIT INT TERM
+  err_file="$(mktemp)"
+  trap 'rm -f "$payload_file" "$response_file" "$err_file"' EXIT INT TERM
   build_payload >"$payload_file" 2>/dev/null
   if [ ! -s "$payload_file" ]; then
     echo "heartbeat: build_payload failed" >&2
     exit 1
   fi
-  signature="$(build_payload_signature "$timestamp" "$payload_file")"
 
-  $CURL_CMD -fsS \
-    -X POST \
-    -H "Content-Type: application/json" \
-    -H "X-Node-Uid: $NODE_UID" \
-    -H "X-Timestamp: $timestamp" \
-    -H "X-Signature: $signature" \
-    --data-binary @"$payload_file" \
-    -o "$response_file" \
-    "${CONTROLLER_URL}/api/v1/ingest/heartbeat"
+  http_code="$(http_post_signed_json "/api/v1/ingest/heartbeat" "$CURL_CMD" "$response_file" body "$payload_file" "$err_file")"
+  curl_error="$(cat "$err_file" 2>/dev/null || true)"
 
-  process_heartbeat_commands "$response_file" "$CURL_CMD"
-  cat "$response_file"
+  if [ -n "$http_code" ] && [ "$http_code" -ge 200 ] 2>/dev/null && [ "$http_code" -lt 300 ] 2>/dev/null; then
+    heartbeat_backoff_clear
+    rm -f "$(heartbeat_error_path)" 2>/dev/null || true
+    process_heartbeat_commands "$response_file" "$CURL_CMD"
+    cat "$response_file"
+    return 0
+  fi
+
+  heartbeat_error_record "$http_code" "$curl_error"
+  if [ -n "$http_code" ] && [ "$http_code" -ge 400 ] 2>/dev/null; then
+    cat "$response_file" 2>/dev/null || true
+  fi
+  exit 1
 }
 
 test_connection() {
@@ -2031,15 +2382,22 @@ test_connection() {
     exit 1
   fi
 
-  timestamp="$(iso_now)"
-  signature="$(build_test_connection_signature "$timestamp")"
+  response_file="$(mktemp)"
+  err_file="$(mktemp)"
+  trap 'rm -f "$response_file" "$err_file"' EXIT INT TERM
 
-  $CURL_CMD -fsS \
-    -X POST \
-    -H "X-Node-Uid: $NODE_UID" \
-    -H "X-Timestamp: $timestamp" \
-    -H "X-Signature: $signature" \
-    "${CONTROLLER_URL}/api/v1/ingest/test-connection"
+  http_code="$(http_post_signed_json "/api/v1/ingest/test-connection" "$CURL_CMD" "$response_file" timestamp "" "$err_file")"
+  curl_error="$(cat "$err_file" 2>/dev/null || true)"
+
+  if [ -n "$http_code" ] && [ "$http_code" -ge 200 ] 2>/dev/null && [ "$http_code" -lt 300 ] 2>/dev/null; then
+    cat "$response_file"
+    return 0
+  fi
+
+  error_class="$(classify_http_error "$http_code" "$curl_error")"
+  echo "test-connection failed class=${error_class} http=${http_code:-?}" >&2
+  cat "$response_file" 2>/dev/null || true
+  exit 1
 }
 
 usage() {

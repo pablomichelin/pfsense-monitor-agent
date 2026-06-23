@@ -41,6 +41,7 @@
   </tabs>
   <custom_php_global_functions>systemup_monitor_apply_defaults();</custom_php_global_functions>
   <custom_php_resync_config_command>systemup_monitor_sync_config();</custom_php_resync_config_command>
+  <custom_php_deinstall_command>systemup_monitor_package_uninstall();</custom_php_deinstall_command>
   <custom_php_after_head_command>systemup_monitor_render_config_section_header();</custom_php_after_head_command>
   <fields>
     <field>

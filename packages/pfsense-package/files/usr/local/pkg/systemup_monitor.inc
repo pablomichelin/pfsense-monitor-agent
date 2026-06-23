@@ -17,7 +17,7 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.3.6");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.3.7");
 }
 if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
     define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
@@ -33,6 +33,21 @@ if (!defined("SYSTEMUP_MONITOR_RELEASE_CACHE_TTL")) {
 }
 if (!defined("SYSTEMUP_MONITOR_UPDATE_LOG_FILE")) {
     define("SYSTEMUP_MONITOR_UPDATE_LOG_FILE", "/tmp/monitor-update.log");
+}
+if (!defined("SYSTEMUP_MONITOR_UPDATE_LOCK_FILE")) {
+    define("SYSTEMUP_MONITOR_UPDATE_LOCK_FILE", "/var/run/monitor-package-update.lock");
+}
+if (!defined("SYSTEMUP_MONITOR_UPDATE_SECRET_FILE")) {
+    define("SYSTEMUP_MONITOR_UPDATE_SECRET_FILE", "/var/db/monitor-pfsense-agent/.update-node-secret");
+}
+if (!defined("SYSTEMUP_MONITOR_UPDATE_RATE_FILE")) {
+    define("SYSTEMUP_MONITOR_UPDATE_RATE_FILE", "/var/db/monitor-pfsense-agent/last-package-update.json");
+}
+if (!defined("SYSTEMUP_MONITOR_UPDATE_RATE_LIMIT_SECONDS")) {
+    define("SYSTEMUP_MONITOR_UPDATE_RATE_LIMIT_SECONDS", 86400);
+}
+if (!defined("SYSTEMUP_MONITOR_UPDATE_LOCK_STALE_SECONDS")) {
+    define("SYSTEMUP_MONITOR_UPDATE_LOCK_STALE_SECONDS", 7200);
 }
 
 /**
@@ -602,6 +617,7 @@ function systemup_monitor_render_agent_config($pkg)
     $lines[] = 'MONITOR_AGENT_CONFIG_BACKUP_STATE_DIR="/var/db/monitor-pfsense-agent"';
     $lines[] = 'MONITOR_AGENT_PFSENSE_CONFIG_XML="/conf/config.xml"';
     $lines[] = 'MONITOR_AGENT_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS="' . systemup_monitor_escape_shell_value((string) SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS) . '"';
+    $lines[] = 'MONITOR_AGENT_CONFIG_SNAPSHOT_TTL_SECONDS="86400"';
 
     return implode("\n", $lines) . "\n";
 }
@@ -625,6 +641,180 @@ function systemup_monitor_remove_runtime_config()
     if (file_exists($paths['config_file'])) {
         @unlink($paths['config_file']);
     }
+}
+
+function systemup_monitor_truncate_log_url($url, $max = 120)
+{
+    $url = trim((string) $url);
+    if (strlen($url) <= $max) {
+        return $url;
+    }
+
+    return substr($url, 0, $max) . '...';
+}
+
+function systemup_monitor_url_allowed_for_controller($url, $controllerUrl)
+{
+    $url = trim((string) $url);
+    $controllerUrl = rtrim(trim((string) $controllerUrl), '/');
+    if ($url === '' || $controllerUrl === '') {
+        return false;
+    }
+
+    $parsedUrl = parse_url($url);
+    if (!is_array($parsedUrl) || empty($parsedUrl['host'])) {
+        return false;
+    }
+
+    if (strpos($url, $controllerUrl . '/') === 0) {
+        return true;
+    }
+
+    $parsedController = parse_url($controllerUrl);
+    $controllerHost = trim((string) ($parsedController['host'] ?? ''));
+    if ($controllerHost !== '' && strcasecmp($parsedUrl['host'], $controllerHost) === 0) {
+        return true;
+    }
+
+    $allowedHosts = array(
+        'raw.githubusercontent.com',
+        'github.com',
+        'objects.githubusercontent.com',
+    );
+    foreach ($allowedHosts as $host) {
+        if (strcasecmp($parsedUrl['host'], $host) === 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function systemup_monitor_validate_release_urls($controllerUrl, array $release)
+{
+    foreach (array('artifact_url', 'installer_url') as $field) {
+        $url = trim((string) ($release[$field] ?? ''));
+        if ($url === '') {
+            return 'Release sem URL: ' . $field;
+        }
+        if (!systemup_monitor_url_allowed_for_controller($url, $controllerUrl)) {
+            return 'URL de release nao permitida (' . $field . '): '
+                . systemup_monitor_truncate_log_url($url);
+        }
+    }
+
+    $sha256 = trim((string) ($release['sha256'] ?? ''));
+    if ($sha256 === '' || !preg_match('/^[a-f0-9]{64}$/i', $sha256)) {
+        return 'Release sem SHA256 valido.';
+    }
+
+    return '';
+}
+
+function systemup_monitor_write_update_secret_file($secret)
+{
+    $path = SYSTEMUP_MONITOR_UPDATE_SECRET_FILE;
+    systemup_monitor_ensure_directory(dirname($path));
+    file_put_contents($path, (string) $secret);
+    @chmod($path, 0600);
+
+    return $path;
+}
+
+function systemup_monitor_remove_update_secret_file()
+{
+    if (is_file(SYSTEMUP_MONITOR_UPDATE_SECRET_FILE)) {
+        @unlink(SYSTEMUP_MONITOR_UPDATE_SECRET_FILE);
+    }
+}
+
+function systemup_monitor_acquire_update_lock()
+{
+    $lockFile = SYSTEMUP_MONITOR_UPDATE_LOCK_FILE;
+    if (is_file($lockFile)) {
+        $raw = @file_get_contents($lockFile);
+        $data = is_string($raw) ? json_decode($raw, true) : null;
+        $startedAt = is_array($data) ? (int) ($data['started_at'] ?? 0) : 0;
+        $age = $startedAt > 0 ? (time() - $startedAt) : PHP_INT_MAX;
+
+        if ($age < SYSTEMUP_MONITOR_UPDATE_LOCK_STALE_SECONDS && systemup_monitor_is_update_running()) {
+            return false;
+        }
+
+        @unlink($lockFile);
+    }
+
+    $payload = json_encode(array(
+        'pid' => getmypid(),
+        'started_at' => time(),
+    ));
+    if (@file_put_contents($lockFile, $payload, LOCK_EX) === false) {
+        return false;
+    }
+
+    return true;
+}
+
+function systemup_monitor_release_update_lock()
+{
+    if (is_file(SYSTEMUP_MONITOR_UPDATE_LOCK_FILE)) {
+        @unlink(SYSTEMUP_MONITOR_UPDATE_LOCK_FILE);
+    }
+}
+
+function systemup_monitor_update_rate_limit_blocks($force = false)
+{
+    if ($force) {
+        return false;
+    }
+
+    $path = SYSTEMUP_MONITOR_UPDATE_RATE_FILE;
+    if (!is_readable($path)) {
+        return false;
+    }
+
+    $data = json_decode((string) file_get_contents($path), true);
+    if (!is_array($data)) {
+        return false;
+    }
+
+    $lastAt = (int) ($data['started_at'] ?? 0);
+    if ($lastAt <= 0) {
+        return false;
+    }
+
+    return (time() - $lastAt) < SYSTEMUP_MONITOR_UPDATE_RATE_LIMIT_SECONDS;
+}
+
+function systemup_monitor_record_update_started()
+{
+    $path = SYSTEMUP_MONITOR_UPDATE_RATE_FILE;
+    systemup_monitor_ensure_directory(dirname($path));
+    file_put_contents($path, json_encode(array(
+        'started_at' => time(),
+    )));
+}
+
+function systemup_monitor_package_uninstall()
+{
+    systemup_monitor_sync_service(false, false, false);
+    systemup_monitor_run_command('/usr/sbin/service monitor_pfsense_agent stop 2>/dev/null || true');
+    systemup_monitor_remove_runtime_config();
+    systemup_monitor_remove_update_secret_file();
+
+    if (file_exists('/usr/sbin/sysrc')) {
+        systemup_monitor_run_command('/usr/sbin/sysrc monitor_pfsense_agent_enable=NO 2>/dev/null || true');
+    }
+
+    foreach (glob('/tmp/monitor-*') ?: array() as $tempFile) {
+        if (is_file($tempFile)) {
+            @unlink($tempFile);
+        }
+    }
+
+    @unlink(SYSTEMUP_MONITOR_UPDATE_LOG_FILE);
+    @unlink(SYSTEMUP_MONITOR_RELEASE_CACHE_FILE);
+    systemup_monitor_release_update_lock();
 }
 
 function systemup_monitor_run_command($command)
@@ -1018,6 +1208,26 @@ function systemup_monitor_run_backup_now()
     return systemup_monitor_run_command('/bin/sh ' . escapeshellarg($paths['agent_bin']) . ' backup-config');
 }
 
+function systemup_monitor_read_heartbeat_error_summary()
+{
+    $path = '/var/db/monitor-pfsense-agent/last-heartbeat-error.json';
+    if (!is_readable($path)) {
+        return null;
+    }
+
+    $data = json_decode((string) file_get_contents($path), true);
+    if (!is_array($data)) {
+        return null;
+    }
+
+    return array(
+        'recorded_at' => trim((string) ($data['recorded_at'] ?? '')),
+        'error_class' => trim((string) ($data['error_class'] ?? '')),
+        'http_code' => isset($data['http_code']) ? (int) $data['http_code'] : null,
+        'body_excerpt' => trim((string) ($data['body_excerpt'] ?? '')),
+    );
+}
+
 function systemup_monitor_runtime_summary()
 {
     $pkg = systemup_monitor_read_config();
@@ -1052,6 +1262,7 @@ function systemup_monitor_runtime_summary()
         'rc_script' => $paths['rc_script'],
         'service_status' => $service_status,
         'service_detail' => $service_detail,
+        'last_heartbeat_error' => systemup_monitor_read_heartbeat_error_summary(),
     );
 }
 
@@ -1407,12 +1618,14 @@ function systemup_monitor_shell_quote($value)
 
 function systemup_monitor_build_package_update_command($pkg, $release)
 {
+    $secretFile = systemup_monitor_write_update_secret_file($pkg['node_secret']);
+
     $args = array(
         '--release-url ' . systemup_monitor_shell_quote($release['artifact_url']),
         '--sha256 ' . systemup_monitor_shell_quote($release['sha256']),
+        '--secret-file ' . systemup_monitor_shell_quote($secretFile),
         '--controller-url ' . systemup_monitor_shell_quote($pkg['controller_url']),
         '--node-uid ' . systemup_monitor_shell_quote($pkg['node_uid']),
-        '--node-secret ' . systemup_monitor_shell_quote($pkg['node_secret']),
         '--customer-code ' . systemup_monitor_shell_quote($pkg['customer_code']),
         '--heartbeat-mode ' . systemup_monitor_shell_quote(
             systemup_monitor_normalize_heartbeat_mode($pkg['heartbeat_mode'] ?? SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE)
@@ -1434,16 +1647,22 @@ function systemup_monitor_build_package_update_command($pkg, $release)
     $installerUrl = $release['installer_url'];
     $installArgs = implode(' ', $args);
     $logFile = SYSTEMUP_MONITOR_UPDATE_LOG_FILE;
-    $innerCommand = 'fetch -o /tmp/install-from-release.sh ' . systemup_monitor_shell_quote($installerUrl)
+    $artifactLog = systemup_monitor_truncate_log_url($release['artifact_url']);
+    $installerLog = systemup_monitor_truncate_log_url($installerUrl);
+
+    $innerCommand = 'echo "[monitor-update] fetch installer ' . $installerLog . '" >> ' . systemup_monitor_shell_quote($logFile)
+        . ' && fetch -o /tmp/install-from-release.sh ' . systemup_monitor_shell_quote($installerUrl)
         . ' && chmod +x /tmp/install-from-release.sh'
-        . ' && /tmp/install-from-release.sh ' . $installArgs;
+        . ' && echo "[monitor-update] install artifact ' . $artifactLog . ' sha256=' . substr($release['sha256'], 0, 12) . '..." >> ' . systemup_monitor_shell_quote($logFile)
+        . ' && MONITOR_UPDATE_NODE_SECRET="$(cat ' . systemup_monitor_shell_quote($secretFile) . ')" /tmp/install-from-release.sh ' . $installArgs
+        . ' && rm -f ' . systemup_monitor_shell_quote($secretFile);
 
     return 'nohup /bin/sh -c ' . systemup_monitor_shell_quote($innerCommand)
         . ' </dev/null >>' . systemup_monitor_shell_quote($logFile) . ' 2>&1'
         . " & echo 'Atualizacao em segundo plano. Log: tail -f " . $logFile . "'";
 }
 
-function systemup_monitor_start_package_update()
+function systemup_monitor_start_package_update($force = false)
 {
     $pkg = systemup_monitor_read_config();
     $missing = array();
@@ -1454,6 +1673,13 @@ function systemup_monitor_start_package_update()
         );
     }
 
+    if (systemup_monitor_update_rate_limit_blocks($force)) {
+        return array(
+            'exit_code' => 1,
+            'output' => 'Limite local: no maximo 1 atualizacao a cada 24h. Use CLI upgrade --force para ignorar.',
+        );
+    }
+
     if (systemup_monitor_is_update_running()) {
         return array(
             'exit_code' => 1,
@@ -1461,8 +1687,16 @@ function systemup_monitor_start_package_update()
         );
     }
 
+    if (!systemup_monitor_acquire_update_lock()) {
+        return array(
+            'exit_code' => 1,
+            'output' => 'Nao foi possivel obter lock de atualizacao (outra execucao ativa?).',
+        );
+    }
+
     $status = systemup_monitor_update_status($pkg);
     if (!$status['check_ok'] || empty($status['release'])) {
+        systemup_monitor_release_update_lock();
         return array(
             'exit_code' => 1,
             'output' => $status['check_error'] !== '' ? $status['check_error'] : 'Falha ao consultar release.',
@@ -1470,14 +1704,31 @@ function systemup_monitor_start_package_update()
     }
 
     if (!$status['update_available']) {
+        systemup_monitor_release_update_lock();
         return array(
             'exit_code' => 0,
             'output' => 'Package ja esta na versao mais recente (' . $status['installed_version'] . ').',
         );
     }
 
+    $urlError = systemup_monitor_validate_release_urls($pkg['controller_url'], $status['release']);
+    if ($urlError !== '') {
+        systemup_monitor_release_update_lock();
+        return array(
+            'exit_code' => 1,
+            'output' => $urlError,
+        );
+    }
+
+    systemup_monitor_record_update_started();
     $command = systemup_monitor_build_package_update_command($pkg, $status['release']);
-    return systemup_monitor_run_command('/bin/sh -c ' . escapeshellarg($command));
+    $result = systemup_monitor_run_command('/bin/sh -c ' . escapeshellarg($command));
+
+    if ((int) $result['exit_code'] !== 0) {
+        systemup_monitor_release_update_lock();
+    }
+
+    return $result;
 }
 
 function systemup_monitor_handle_package_update_post()

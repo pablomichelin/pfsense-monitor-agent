@@ -83,6 +83,30 @@ include("head.inc");
           <th>Service status</th>
           <td><?=htmlspecialchars($runtime['service_status'])?></td>
         </tr>
+        <?php if (!empty($runtime['last_heartbeat_error'])): ?>
+        <tr>
+          <th>Last heartbeat error</th>
+          <td>
+            <?php
+            $hbErr = $runtime['last_heartbeat_error'];
+            $hbParts = array();
+            if (!empty($hbErr['error_class'])) {
+                $hbParts[] = 'class=' . $hbErr['error_class'];
+            }
+            if (!empty($hbErr['http_code'])) {
+                $hbParts[] = 'HTTP ' . (int) $hbErr['http_code'];
+            }
+            if (!empty($hbErr['recorded_at'])) {
+                $hbParts[] = 'at ' . $hbErr['recorded_at'];
+            }
+            echo htmlspecialchars(implode(', ', $hbParts));
+            if (!empty($hbErr['body_excerpt'])) {
+                echo '<br><span class="text-muted">' . htmlspecialchars($hbErr['body_excerpt']) . '</span>';
+            }
+            ?>
+          </td>
+        </tr>
+        <?php endif; ?>
       </tbody>
     </table>
 

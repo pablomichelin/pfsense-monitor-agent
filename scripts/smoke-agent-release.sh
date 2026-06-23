@@ -100,12 +100,16 @@ DOWNLOADED_INSTALLER="$STAGE_DIR/install-from-release.downloaded.sh"
 curl -fsSL "$RELEASE_BASE_URL/install-from-release.sh" -o "$DOWNLOADED_INSTALLER"
 chmod +x "$DOWNLOADED_INSTALLER"
 
-INSTALL_ROOT="$INSTALL_ROOT" "$DOWNLOADED_INSTALLER" \
+SECRET_FILE="$STAGE_DIR/update-secret"
+printf '%s' 'release-smoke-secret' >"$SECRET_FILE"
+chmod 600 "$SECRET_FILE"
+
+INSTALL_ROOT="$INSTALL_ROOT" MONITOR_UPDATE_NODE_SECRET="release-smoke-secret" "$DOWNLOADED_INSTALLER" \
   --release-url "$RELEASE_URL" \
   --sha256 "$EXPECTED_SHA256" \
+  --secret-file "$SECRET_FILE" \
   --controller-url "https://pfs-monitor.systemup.inf.br" \
   --node-uid "release-smoke-node" \
-  --node-secret "release-smoke-secret" \
   --customer-code "REL-SMOKE" \
   --hostname-override "release-smoke-host" \
   --pfsense-version-override "2.8.1" \

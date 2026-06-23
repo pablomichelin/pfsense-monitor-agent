@@ -14,7 +14,7 @@ function systemup_monitor_cli_usage()
 Usage:
   systemup_monitor_cli.php seed [--controller-url URL] [--node-uid UID] [--node-secret SECRET] [--customer-code CODE] [--interval-seconds N] [--services CSV] [--heartbeat-mode normal|light] [--config-backup-enabled yes|no] [--enable]
   systemup_monitor_cli.php sync   Regenera o config do agente com a versão atual do package (AGENT_VERSION).
-  systemup_monitor_cli.php upgrade  Atualiza o package para a versão publicada no controlador.
+  systemup_monitor_cli.php upgrade [--force]  Atualiza o package para a versão publicada no controlador.
   systemup_monitor_cli.php release-check  Testa consulta de release no controlador (diagnóstico).
   systemup_monitor_cli.php upgrade-check [--force]  Verifica atualização pfSense OS (pfSense-upgrade -d -c).
   systemup_monitor_cli.php remove
@@ -102,6 +102,8 @@ function systemup_monitor_cli_remove()
 {
     global $config;
 
+    systemup_monitor_package_uninstall();
+
     $pkg =& systemup_monitor_config_ref();
     $pkg['enabled'] = '';
     systemup_monitor_sync_config(false, false);
@@ -110,6 +112,8 @@ function systemup_monitor_cli_remove()
     unset($config['installedpackages']['systemupmonitor']);
     delete_package_xml('systemup-monitor');
     $snapshot = systemup_monitor_export_package_snapshot();
+    $snapshot['remove_systemupmonitor'] = true;
+    $snapshot['remove_monitor_service'] = true;
     systemup_monitor_persist_package_config('SystemUp Monitor package bootstrap removed', $snapshot);
 
     echo "SystemUp Monitor package config removed.\n";
@@ -127,7 +131,8 @@ try {
             echo "Config do agente regenerado (AGENT_VERSION=" . (defined('SYSTEMUP_MONITOR_AGENT_VERSION') ? SYSTEMUP_MONITOR_AGENT_VERSION : '0.2.0') . ").\n";
             exit(0);
         case 'upgrade':
-            $result = systemup_monitor_start_package_update();
+            $force = in_array('--force', $argv, true);
+            $result = systemup_monitor_start_package_update($force);
             echo $result['output'] . "\n";
             exit((int) $result['exit_code'] === 0 ? 0 : 1);
         case 'release-check':

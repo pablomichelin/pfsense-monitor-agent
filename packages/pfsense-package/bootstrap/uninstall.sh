@@ -15,8 +15,11 @@ rm -f \
   "$INSTALL_ROOT/usr/local/pkg/systemup_monitor.xml" \
   "$INSTALL_ROOT/usr/local/www/config_systemup_monitor.php" \
   "$INSTALL_ROOT/usr/local/www/status_systemup_monitor.php" \
+  "$INSTALL_ROOT/usr/local/www/backup_systemup_monitor.php" \
   "$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/info.xml" \
-  "$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php"
+  "$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php" \
+  "$INSTALL_ROOT/var/run/monitor-package-update.lock" \
+  "$INSTALL_ROOT/tmp/monitor-update.log"
 
 rm -rf \
   "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent" \

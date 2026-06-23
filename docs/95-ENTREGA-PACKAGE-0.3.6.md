@@ -92,7 +92,7 @@ php -l .../systemup_monitor.inc                 → OK
 ## Pendências (operacionais — fora desta sessão)
 
 - [x] Gerar artefato: `./scripts/release-pfsense-package.sh --no-push` (2026-06-23)
-- [ ] Publicar release (commit/push `config/package-release.env` + artefato; redeploy API se necessário)
+- [x] Publicar release — commit `6a4a6ed` em `main` (2026-06-23)
 - [ ] Deploy piloto em pfSense CE 2.8.1+ (VPN/NAT intactos após 5+ min de loop)
 - [ ] Configuration History sem remoção de serviços de terceiros (validação em firewall real)
 - [ ] Fase 0 infra ISPConfig (502/413) — checklist separado, não implementado aqui

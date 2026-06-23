@@ -1,3 +1,7 @@
 #!/bin/sh
 
+if [ -x /usr/local/bin/php ] && [ -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php ]; then
+  /usr/local/bin/php -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php remove 2>/dev/null || true
+fi
+
 /usr/local/bin/php -f /etc/rc.packages %%PORTNAME%% ${2}

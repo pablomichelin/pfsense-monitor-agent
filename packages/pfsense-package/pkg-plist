@@ -2,6 +2,8 @@ etc/rc.d/monitor_pfsense_agent
 libexec/monitor-pfsense-agent/monitor-pfsense-agent-loop.sh
 libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh
 libexec/monitor-pfsense-agent/check_pfsense_update_available.sh
+libexec/monitor-pfsense-agent/collect_gateways.php
+libexec/monitor-pfsense-agent/collect_config_snapshot.php
 pkg/systemup_monitor.inc
 pkg/systemup_monitor.xml
 share/pfSense-pkg-systemup-monitor/info.xml
