@@ -5,6 +5,7 @@ set -eu
 RELEASE_URL=""
 EXPECTED_SHA256=""
 SECRET_FILE=""
+LEGACY_NODE_SECRET=""
 NODE_SECRET=""
 INSTALL_ROOT="${INSTALL_ROOT:-/}"
 TMP_DIR=""
@@ -15,7 +16,7 @@ usage() {
 Usage:
   $0 --release-url URL --sha256 HEX [--secret-file PATH] [install options]
 
-Secret: env MONITOR_UPDATE_NODE_SECRET ou --secret-file (0600). Nao use --node-secret na linha de comando.
+Secret (prioridade): env MONITOR_UPDATE_NODE_SECRET > --secret-file > --node-secret (legado, aviso stderr).
 
 Example:
   $0 \\
@@ -81,6 +82,11 @@ read_node_secret() {
     return 0
   fi
 
+  if [ -n "$LEGACY_NODE_SECRET" ]; then
+    NODE_SECRET="$LEGACY_NODE_SECRET"
+    return 0
+  fi
+
   return 1
 }
 
@@ -90,8 +96,13 @@ while [ "$#" -gt 0 ]; do
     --sha256) EXPECTED_SHA256="$2"; shift 2 ;;
     --secret-file) SECRET_FILE="$2"; shift 2 ;;
     --node-secret)
-      echo "Refusing --node-secret on command line; use MONITOR_UPDATE_NODE_SECRET or --secret-file." >&2
-      exit 1
+      if [ -z "${2:-}" ]; then
+        echo "Missing value for --node-secret." >&2
+        exit 1
+      fi
+      LEGACY_NODE_SECRET="$2"
+      echo "Warning: --node-secret on command line is deprecated; use MONITOR_UPDATE_NODE_SECRET or --secret-file." >&2
+      shift 2
       ;;
     -h|--help) usage; exit 0 ;;
     *)

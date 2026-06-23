@@ -1,7 +1,7 @@
 # Guia de operação — package pfSense SystemUp Monitor
 
 **Package:** `pfSense-pkg-systemup-monitor`  
-**Versão de referência:** `0.3.8+`  
+**Versão de referência:** `0.3.9+`  
 **Runtime:** agente em `/usr/local/libexec/monitor-pfsense-agent/`
 
 ---
@@ -89,6 +89,21 @@ Env runtime: `MONITOR_AGENT_LIGHT_HEARTBEAT=1` em `/usr/local/etc/monitor-pfsens
 - Secret do update via arquivo temporário (não argv).
 - Rate limit: 1 update / 24h (bypass `--force`).
 
+### Troubleshooting — upgrade de 0.3.5 falha com `Refusing --node-secret`
+
+**Sintoma:** `/tmp/monitor-update.log` contém:
+
+```text
+Refusing --node-secret on command line; use MONITOR_UPDATE_NODE_SECRET or --secret-file.
+```
+
+**Causa:** package **0.3.5** (ou anterior) montava update com `--node-secret` na linha de comando; o instalador baixado do controlador/GitHub (0.3.7+) recusava esse argumento — caminho GUI quebrado até hotfix **0.3.9** do `install-from-release.sh` em `main`.
+
+**Resolução:**
+
+1. Após push do hotfix no repositório, **retentar o botão Atualizar** na GUI (o instalador é baixado de novo a cada tentativa).
+2. Se persistir, usar workaround SSH (§ abaixo ou `docs/99-HOTFIX-UPGRADE-0.3.5-NODE-SECRET.md`).
+
 Doc: [`docs/COMANDO-ATUALIZAR-PACKAGE-PFSENSE.md`](../COMANDO-ATUALIZAR-PACKAGE-PFSENSE.md)
 
 ---
@@ -139,4 +154,5 @@ Remove serviço rc.d, libexec, runtime conf e `node_secret` (documentar backup p
 
 - Plano melhorias: `docs/94-PLANO-MELHORIAS-PACKAGE-0.3.6.md`
 - Entrega 0.3.8: `docs/98-ENTREGA-PACKAGE-0.3.8.md`
+- Hotfix upgrade 0.3.5: `docs/99-HOTFIX-UPGRADE-0.3.5-NODE-SECRET.md`
 - CORTEX: [`CORTEX.md`](../../CORTEX.md)

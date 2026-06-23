@@ -2545,6 +2545,14 @@ export class AdminService {
     const configBackupInstallFlag = configBackupEnabled
       ? ` --config-backup-enabled ${configBackupEnabled}`
       : '';
+    const bootstrapUpdateSecretFile = '/var/db/monitor-pfsense-agent/.update-node-secret';
+    const bootstrapSecretSetup = [
+      'mkdir -p /var/db/monitor-pfsense-agent',
+      `printf %s ${shellQuote(bootstrapSecret)} > ${bootstrapUpdateSecretFile}`,
+      `chmod 600 ${bootstrapUpdateSecretFile}`,
+    ].join(' && ');
+    const bootstrapInstallSecretArgs = `--secret-file ${bootstrapUpdateSecretFile}`;
+    const bootstrapInstallEnvPrefix = `env MONITOR_UPDATE_NODE_SECRET=${shellQuote(bootstrapSecret)}`;
     const version = appConfig.systemVersion;
     const artifactName = `monitor-pfsense-agent-v${version}.tar.gz`;
     const releaseBaseUrl =
@@ -2565,7 +2573,7 @@ export class AdminService {
           `fetch -o /tmp/monitor-pfsense-agent.sha256 ${shellQuote(checksumUrl!)}`,
           `chmod +x /tmp/install-from-release.sh`,
           `SHA256_VALUE=$(awk 'NR==1 {print $1}' /tmp/monitor-pfsense-agent.sha256)`,
-          `/tmp/install-from-release.sh --release-url ${shellQuote(artifactUrl!)} --sha256 "$SHA256_VALUE" --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)} --heartbeat-mode ${shellQuote(heartbeatMode)}${configBackupInstallFlag}`,
+          `${bootstrapSecretSetup} && ${bootstrapInstallEnvPrefix} /tmp/install-from-release.sh --release-url ${shellQuote(artifactUrl!)} --sha256 "$SHA256_VALUE" ${bootstrapInstallSecretArgs} --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --customer-code ${shellQuote(node.site.client.code)} --heartbeat-mode ${shellQuote(heartbeatMode)}${configBackupInstallFlag}`,
         ].join(' && ')
       : null;
 
@@ -2577,7 +2585,7 @@ export class AdminService {
     try {
       const packageRelease = this.packageReleaseService.getPackageRelease();
       package_command =
-        `fetch -o /tmp/install-from-release.sh ${shellQuote(packageRelease.installer_url)} && chmod +x /tmp/install-from-release.sh && nohup /tmp/install-from-release.sh --release-url ${shellQuote(packageRelease.artifact_url)} --sha256 ${shellQuote(packageRelease.sha256)} --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)} --heartbeat-mode ${shellQuote(heartbeatMode)}${configBackupInstallFlag} </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'`;
+        `fetch -o /tmp/install-from-release.sh ${shellQuote(packageRelease.installer_url)} && chmod +x /tmp/install-from-release.sh && ${bootstrapSecretSetup} && nohup ${bootstrapInstallEnvPrefix} /tmp/install-from-release.sh --release-url ${shellQuote(packageRelease.artifact_url)} --sha256 ${shellQuote(packageRelease.sha256)} ${bootstrapInstallSecretArgs} --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --customer-code ${shellQuote(node.site.client.code)} --heartbeat-mode ${shellQuote(heartbeatMode)}${configBackupInstallFlag} </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'`;
       const base = (
         packageReleaseFromFile?.repoRawBase ??
         appConfig.packageRelease.repoRawBase
