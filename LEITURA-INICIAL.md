@@ -14,7 +14,8 @@ Leia este arquivo primeiro.
 | Painel web | `1.1.1` | `apps/web/package.json` (rodape do layout) |
 | Package pfSense | `0.3.6` | `packages/pfsense-package/Makefile` |
 
-Ultima entrega: `docs/95-ENTREGA-PACKAGE-0.3.6.md`  
+Ultima entrega infra (Fase 0): `docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`  
+Ultima entrega package: `docs/95-ENTREGA-PACKAGE-0.3.6.md`  
 Entrega anterior: `docs/92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md`  
 **Encerramento formal UX:** `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`  
 Entrega anterior UX/layout: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`  

@@ -206,6 +206,7 @@ Modulo de backup ja implementado no controlador; RBAC reforça escopo e download
 
 Plano mestre de melhorias pendentes (merge `service`, ISPConfig/502, backoff backup, gateways, upgrade OS, cache XML, desinstalacao):
 
+- [`docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`](95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md) — **entrega Opção B Fase 0** (limite backup ISPConfig/compose, testes HTTPS)
 - [`docs/95-ENTREGA-PACKAGE-0.3.6.md`](95-ENTREGA-PACKAGE-0.3.6.md) — **entrega Opção A P0** (merge service, backoff backup, metadados)
 - [`docs/94-PLANO-MELHORIAS-PACKAGE-0.3.6.md`](94-PLANO-MELHORIAS-PACKAGE-0.3.6.md) — **plano executavel autossuficiente**
 - Contexto correção parcial 0.3.5: [`docs/92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md`](92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md)

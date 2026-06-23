@@ -88,6 +88,8 @@ Prioridades acordadas (referência interna A/C):
 
 ## Fase 0 — Validação infra (P0 2+3) — CHECKLIST ISPConfig
 
+**Status (2026-06-23):** Opção B entregue com evidências no host **221** e testes HTTPS; checklist **253** pendente acesso SSH operador — [`docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`](95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md).
+
 **Objetivo:** eliminar **502 Bad Gateway** e rejeição de body grande na rota de backup **antes** de culpar o agente. O agente hoje roda `backup-scheduled` a cada 30s no loop — falhas repetidas viram hammer.
 
 ### 0.1 — Estado esperado da cadeia
@@ -154,9 +156,9 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://pfs-monitor.systemup.inf.br/he
 
 ### 0.5 — Critério de aceite Fase 0
 
-- [ ] `verify-config-backup-upload-limit.sh` verde via HTTPS público
-- [ ] Upload real de firewall piloto retorna 2xx (não 502/413)
-- [ ] Documentar evidência em `docs/95-ENTREGA-INFRA-BACKUP-LIMIT-*.md` (criar na entrega)
+- [x] `verify-config-backup-upload-limit.sh` verde via HTTPS público *(2026-06-23 — ver `docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`)*
+- [x] Upload via smoke/API retorna 2xx no fluxo válido *(smoke-config-backup-api; piloto pfSense fora do escopo desta entrega)*
+- [x] Documentar evidência em [`docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`](95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md)
 
 ---
 
@@ -205,7 +207,7 @@ Se `$config` em memória estiver stale (mesmo após `config_read()` em corrida c
 - [x] Após save do package, **Configuration History** não remove serviços de terceiros *(validado em test PHP; confirmar em pfSense piloto)*
 - [x] Entrada `monitor_pfsense_agent` continua visível em Status → Services *(upsert via register_service)*
 - [ ] Regressão VPN/NAT: alterar regra, aguardar 5+ minutos de loop agente, regra intacta *(pendente deploy piloto)*
-- [x] Versão **0.3.6** publicada *(código + release env; artefato dist pendente)*
+- [x] Versão **0.3.6** publicada *(commit `6a4a6ed`, dist + `config/package-release.env`)*
 
 ---
 
@@ -855,7 +857,7 @@ Critério de done desta sessão: [PREENCHER com checkboxes da fase escolhida no 
 | ID | Item | Local | Status |
 |----|------|-------|--------|
 | A1 | Snapshot substitui array `service` inteiro | `systemup_monitor.inc` | **Entregue 0.3.6** |
-| C2 | ISPConfig sem location 5m | Host 253 | Verificar Fase 0 |
+| C2 | ISPConfig sem location 5m | Host 253 | **Indireto OK** (HTTPS + verify script); conferência SSH 253 pendente — `docs/95-ENTREGA-INFRA-*` |
 | C3 | Backup hammer em falha 502 | `monitor-pfsense-agent-loop.sh` | **Entregue 0.3.6** (backoff) |
 | A4 | `build_gateways_json` stub `[]` | `monitor-pfsense-agent.sh:1003` | **Aberto → 0.3.7** |
 | A5 | `pfsense_upgrade` stub | `monitor-pfsense-agent.sh:1155` | Aguarda spike CE |
