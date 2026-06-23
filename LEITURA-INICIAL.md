@@ -6,14 +6,16 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Versoes atuais do produto (2026-06-09)
+## Versoes atuais do produto (2026-06-14)
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.2.7` | `apps/api/package.json` |
-| Painel web | `1.0.0` | `apps/web/package.json` (rodape do layout) |
+| API | `0.3.1` | `apps/api/package.json` |
+| Painel web | `1.1.1` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.3.5` | `packages/pfsense-package/Makefile` |
 
-Ultima entrega UX: `docs/87-ENTREGA-FRONTEND-FASE8-DESIGN-SYSTEM-PAGES-RESTANTES-2026-06-09.md` — **roadmap plano 24 encerrado**  
+Ultima entrega: `docs/92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md`  
+Entrega anterior: `docs/91-PLANO-ENTREGA-PFSENSE-OS-UPGRADE.md`  
 **Encerramento formal UX:** `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`  
 Entrega anterior UX/layout: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`  
 Entrega anterior: `docs/77-ENTREGA-POS-RBAC-UX-LAYOUT-2026-06-09.md`  
@@ -21,7 +23,7 @@ Versionamento obrigatorio: `.cursor/rules/versioning.mdc`
 
 ## Roadmap UX front-end — Fases 0–8 (**encerrado**, 2026-06-09)
 
-Todas as fases do plano 24 concluidas (layout → design system global). Painel `1.0.0`, API `0.2.7`.
+Todas as fases do plano 24 concluidas (layout → design system global). Painel `1.0.1`, API `0.2.10`.
 
 Ordem de leitura quando a tarefa for UX do painel (manutencao ou consulta):
 
@@ -88,6 +90,8 @@ Ordem de leitura atualizada para novos chats:
 
 Estado observado em `2026-06-08`:
 
+- **externo (site):** `https://pfs-monitor.systemup.inf.br`
+- **interno (LAN):** `http://192.168.100.221:3031` — **interno (localhost):** `http://127.0.0.1:8088` — ver `docs/89-ACESSO-INTERNO-E-EXTERNO.md`
 - stack `docker compose` esta rodando com `api`, `web`, `db` e `nginx` saudaveis
 - dominio publico `https://pfs-monitor.systemup.inf.br/healthz` responde `200`
 - package pfSense atual publicado pelo fluxo do projeto: `0.2.27`

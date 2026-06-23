@@ -57,6 +57,7 @@ Detalhes: `docs/RELEASE-PACKAGE-PFSENSE-AUTOMATICO.md`.
 - `install-from-release.sh` baixa o artefato e chama `bootstrap/install.sh`.
 - O `install.sh` copia os arquivos do package e, quando há parâmetros (controller, node_uid, etc.), roda o PHP **seed** e em seguida o PHP **sync**.
 - O **sync** regera o config do agente (`/usr/local/etc/monitor-pfsense-agent.conf`) com a versão atual do package (`AGENT_VERSION`). Assim, após instalar/atualizar, o próximo heartbeat já envia a versão correta.
+- O **sync periódico (resync)** não grava mais o `config.xml` inteiro — só o arquivo runtime do agente. Persistência no XML usa `systemup_monitor_persist_package_config()` (`config_read` + snapshot só da seção SystemUp Monitor). Ver `docs/92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md`.
 
 ### Se a versão no painel continuar errada após atualizar o package
 

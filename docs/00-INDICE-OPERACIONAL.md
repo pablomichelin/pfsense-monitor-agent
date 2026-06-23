@@ -19,14 +19,25 @@ Leia nesta ordem:
 9. `docs/DIRETRIZES-E-FUNCIONAMENTO.md`
 10. `docs/HISTORICO-E-LINHA-DO-TEMPO.md`, quando for refatorar ou reabrir tema ja mexido
 
+## Acesso interno vs externo
+
+| Contexto | Endereco |
+|----------|----------|
+| **Externo (site publico)** | `https://pfs-monitor.systemup.inf.br` |
+| **Interno (LAN)** | `http://192.168.100.221:3031` |
+| **Interno (localhost no host)** | `http://127.0.0.1:8088` |
+
+Detalhes, fluxo do proxy e exemplos de teste: `docs/89-ACESSO-INTERNO-E-EXTERNO.md`.
+
 ## Estado verdadeiro em 2026-06-08
 
 Observado no servidor conectado:
 
 - stack `docker compose` esta rodando com `api`, `web`, `db` e `nginx` saudaveis
-- dominio publico `https://pfs-monitor.systemup.inf.br/healthz` responde `200`
-- package pfSense publicado no fluxo atual: `0.2.27`
-- `config/package-release.env` aponta para `https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main` e SHA256 do package `0.2.27`
+- dominio publico (externo): `https://pfs-monitor.systemup.inf.br/healthz` responde `200`
+- origem interna (LAN): `http://192.168.100.221:3031`
+- package pfSense publicado no fluxo atual: `0.3.5`
+- `config/package-release.env` aponta para `https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main` e SHA256 do package `0.3.2`
 - agente/package atual envia heartbeat e test-connection por HMAC
 - nao existe ainda modulo de backup de `config.xml` no controlador
 - nao existe ainda endpoint `config-backup`
@@ -34,7 +45,9 @@ Observado no servidor conectado:
 - decisao atual: backup sera modulo integrado ao Monitor-Pfsense e nova aba `Backup` dentro de `Services > SystemUp Monitor`, sem software separado
 - worktree esta com muitas alteracoes nao commitadas e arquivos novos
 - documentacao esta funcional, mas espalhada entre raiz e `docs/`
-- origem interna canonica no repositorio: `http://192.168.100.221:3031` (documentos historicos na raiz podem ainda citar `192.168.100.244`)
+- origem interna canonica no repositorio: `http://192.168.100.221:3031`
+- URL publica canonica: `https://pfs-monitor.systemup.inf.br`
+- diretorio canonico no host: `/Dados/Monitor-Pfsense` (migrado de `/opt/Monitor-Pfsense` em 2026-06-23; host historico `192.168.100.244`)
 - limite heartbeat: `64 KB`; rota de backup preparada para `5 MB` em `infra/nginx/default.conf` e `infra/ispconfig/nginx.monitor-pfsense.conf`
 - volume de backups de pfSense preparado: `data/pfsense-config-backups/` montado na API via `compose.yaml`
 - Fase B parcial: falta aplicar snippet ISPConfig no host, criar chave `BACKUP_ENCRYPTION_KEY_BASE64` e medir `config.xml` em homolog
@@ -118,7 +131,7 @@ Trilhas operacionais em `docs/`:
 - `docs/75-CHECKLIST-TESTES-RBAC-ESCOPO-2026-06-09.md`
 - `docs/76-ENCERRAMENTO-TRILHA-RBAC-2026-06-09.md` — **encerramento formal**
 
-Versoes atuais: API `0.2.7`, painel `1.0.0`. **Roadmap UX plano 24 encerrado** — encerramento formal: `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`; entrega Fase 8: `docs/87-ENTREGA-FRONTEND-FASE8-DESIGN-SYSTEM-PAGES-RESTANTES-2026-06-09.md`. Entrega Fase 7 auditoria filtros: `docs/86-ENTREGA-FRONTEND-FASE7-AUDITORIA-FILTROS-AMIGAVEIS-2026-06-09.md`. Entrega Fase 6 conta separada: `docs/85-ENTREGA-FRONTEND-FASE6-CONTA-SEPARADA-POLIMENTO-PTBR-2026-06-09.md`. Entrega Fase 5 backups frota: `docs/84-ENTREGA-FRONTEND-FASE5-BACKUPS-FROTA-MENU-2026-06-09.md`. Entrega Fase 4 detalhe abas: `docs/83-ENTREGA-FRONTEND-FASE4-DETALHE-FIREWALL-ABAS-2026-06-09.md`. Entrega Fase 3 inventario: `docs/82-ENTREGA-FRONTEND-FASE3-FIREWALLS-INVENTARIO-2026-06-09.md`. Entrega Fase 2 dashboard: `docs/81-ENTREGA-FRONTEND-FASE2-DASHBOARD-ENXUTO-2026-06-09.md`. Entrega Fase 0+1 layout: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`. Entrega pos-RBAC: `docs/77-ENTREGA-POS-RBAC-UX-LAYOUT-2026-06-09.md`. Versionamento: `.cursor/rules/versioning.mdc`. Nao reabrir trilha RBAC sem decisao explicita.
+Versoes atuais: API `0.3.1`, painel `1.1.1`, package pfSense `0.3.5`. **Roadmap UX plano 24 encerrado** — encerramento formal: `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`; entrega Fase 8: `docs/87-ENTREGA-FRONTEND-FASE8-DESIGN-SYSTEM-PAGES-RESTANTES-2026-06-09.md`. Entrega Fase 7 auditoria filtros: `docs/86-ENTREGA-FRONTEND-FASE7-AUDITORIA-FILTROS-AMIGAVEIS-2026-06-09.md`. Entrega Fase 6 conta separada: `docs/85-ENTREGA-FRONTEND-FASE6-CONTA-SEPARADA-POLIMENTO-PTBR-2026-06-09.md`. Entrega Fase 5 backups frota: `docs/84-ENTREGA-FRONTEND-FASE5-BACKUPS-FROTA-MENU-2026-06-09.md`. Entrega Fase 4 detalhe abas: `docs/83-ENTREGA-FRONTEND-FASE4-DETALHE-FIREWALL-ABAS-2026-06-09.md`. Entrega Fase 3 inventario: `docs/82-ENTREGA-FRONTEND-FASE3-FIREWALLS-INVENTARIO-2026-06-09.md`. Entrega Fase 2 dashboard: `docs/81-ENTREGA-FRONTEND-FASE2-DASHBOARD-ENXUTO-2026-06-09.md`. Entrega Fase 0+1 layout: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`. Entrega pos-RBAC: `docs/77-ENTREGA-POS-RBAC-UX-LAYOUT-2026-06-09.md`. Versionamento: `.cursor/rules/versioning.mdc`. Nao reabrir trilha RBAC sem decisao explicita.
 
 #### Roadmap UX front-end — encerramento formal (**plano 24 encerrado**)
 

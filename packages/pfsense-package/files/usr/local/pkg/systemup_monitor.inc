@@ -17,7 +17,19 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.2.34");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.3.5");
+}
+if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
+    define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
+}
+if (!defined("SYSTEMUP_MONITOR_UI_REFRESH_SECONDS")) {
+    define("SYSTEMUP_MONITOR_UI_REFRESH_SECONDS", 10);
+}
+if (!defined("SYSTEMUP_MONITOR_RELEASE_CACHE_FILE")) {
+    define("SYSTEMUP_MONITOR_RELEASE_CACHE_FILE", "/tmp/monitor-package-release-cache.json");
+}
+if (!defined("SYSTEMUP_MONITOR_RELEASE_CACHE_TTL")) {
+    define("SYSTEMUP_MONITOR_RELEASE_CACHE_TTL", 300);
 }
 if (!defined("SYSTEMUP_MONITOR_UPDATE_LOG_FILE")) {
     define("SYSTEMUP_MONITOR_UPDATE_LOG_FILE", "/tmp/monitor-update.log");
@@ -32,6 +44,7 @@ function systemup_monitor_setup_package_tabs($active)
 {
     global $tab_array, $pgtitle, $pglinks, $shortcut_section;
     systemup_monitor_handle_package_update_post();
+    systemup_monitor_apply_flash_message();
     $tab_array = array();
     $tab_array[1][] = array('Configuracao', $active === 'config', '/config_systemup_monitor.php');
     $tab_array[1][] = array('Diagnostico', $active === 'diagnostico', '/status_systemup_monitor.php');
@@ -277,6 +290,43 @@ function systemup_monitor_service_definition()
     );
 }
 
+function systemup_monitor_service_entry_matches($service)
+{
+    if (!is_array($service)) {
+        return false;
+    }
+
+    $definition = systemup_monitor_service_definition();
+
+    return ($service['name'] ?? '') === $definition['name']
+        && ($service['rcfile'] ?? '') === $definition['rcfile']
+        && ($service['description'] ?? '') === $definition['description'];
+}
+
+function systemup_monitor_is_service_registered()
+{
+    global $config;
+
+    if (!is_array($config['installedpackages']['service'] ?? null)) {
+        return false;
+    }
+
+    $service_name = systemup_monitor_service_definition()['name'];
+
+    foreach ($config['installedpackages']['service'] as $service) {
+        if (is_array($service) && ($service['name'] ?? '') === $service_name) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Registra o servico rc.d do agente em $config (somente secao installedpackages.service).
+ *
+ * @return bool true se alterou a entrada do servico
+ */
 function systemup_monitor_register_service()
 {
     global $config;
@@ -286,17 +336,103 @@ function systemup_monitor_register_service()
     }
 
     $service_name = systemup_monitor_service_definition()['name'];
+    $definition = systemup_monitor_service_definition();
 
     foreach ($config['installedpackages']['service'] as $index => $service) {
         if (!is_array($service) || ($service['name'] ?? '') !== $service_name) {
             continue;
         }
 
-        $config['installedpackages']['service'][$index] = systemup_monitor_service_definition();
-        return;
+        if (systemup_monitor_service_entry_matches($service)) {
+            return false;
+        }
+
+        $config['installedpackages']['service'][$index] = $definition;
+
+        return true;
     }
 
-    $config['installedpackages']['service'][] = systemup_monitor_service_definition();
+    $config['installedpackages']['service'][] = $definition;
+
+    return true;
+}
+
+/**
+ * Snapshot apenas das secoes do package no config.xml (nunca do config inteiro).
+ */
+function systemup_monitor_export_package_snapshot()
+{
+    global $config;
+
+    $snapshot = array(
+        'remove_systemupmonitor' => false,
+        'systemupmonitor' => null,
+        'service_entries' => null,
+    );
+
+    if (isset($config['installedpackages']['systemupmonitor'])) {
+        $snapshot['systemupmonitor'] = $config['installedpackages']['systemupmonitor'];
+    } else {
+        $snapshot['remove_systemupmonitor'] = true;
+    }
+
+    if (isset($config['installedpackages']['service']) && is_array($config['installedpackages']['service'])) {
+        $snapshot['service_entries'] = $config['installedpackages']['service'];
+    }
+
+    return $snapshot;
+}
+
+/**
+ * Aplica snapshot do package sobre $config ja recarregado do disco.
+ */
+function systemup_monitor_import_package_snapshot(array $snapshot)
+{
+    global $config;
+
+    if (!is_array($config['installedpackages'])) {
+        $config['installedpackages'] = array();
+    }
+
+    if (!empty($snapshot['remove_systemupmonitor'])) {
+        unset($config['installedpackages']['systemupmonitor']);
+    } elseif ($snapshot['systemupmonitor'] !== null) {
+        $config['installedpackages']['systemupmonitor'] = $snapshot['systemupmonitor'];
+    }
+
+    if ($snapshot['service_entries'] !== null) {
+        $config['installedpackages']['service'] = $snapshot['service_entries'];
+    }
+}
+
+/**
+ * Persiste somente secoes do SystemUp Monitor no config.xml.
+ *
+ * Recarrega o config do disco (config_read) antes de gravar, reaplicando apenas
+ * o snapshot do package. Evita sobrescrever VPN/NAT/regras com $config stale.
+ *
+ * @param string $reason Mensagem do Configuration History
+ * @param array|null $snapshot Snapshot pre-montado (ex.: remove); null = montar agora
+ */
+function systemup_monitor_persist_package_config($reason, $snapshot = null)
+{
+    if ($snapshot === null) {
+        systemup_monitor_apply_defaults();
+        systemup_monitor_register_service();
+        $snapshot = systemup_monitor_export_package_snapshot();
+    }
+
+    if (function_exists('config_read')) {
+        config_read();
+    }
+
+    systemup_monitor_import_package_snapshot($snapshot);
+
+    if (empty($snapshot['remove_systemupmonitor'])) {
+        systemup_monitor_apply_defaults();
+    }
+
+    write_config($reason);
 }
 
 function systemup_monitor_unregister_service()
@@ -396,6 +532,7 @@ function systemup_monitor_render_agent_config($pkg)
     $lines[] = 'MONITOR_AGENT_CONFIG_BACKUP_ACCEPT_REMOTE_REQUESTS="' . (systemup_monitor_normalize_yes_no($pkg['config_backup_accept_remote_requests'] ?? 'on', 'on') === 'on' ? '1' : '0') . '"';
     $lines[] = 'MONITOR_AGENT_CONFIG_BACKUP_STATE_DIR="/var/db/monitor-pfsense-agent"';
     $lines[] = 'MONITOR_AGENT_PFSENSE_CONFIG_XML="/conf/config.xml"';
+    $lines[] = 'MONITOR_AGENT_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS="' . systemup_monitor_escape_shell_value((string) SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS) . '"';
 
     return implode("\n", $lines) . "\n";
 }
@@ -434,7 +571,81 @@ function systemup_monitor_run_command($command)
     );
 }
 
-function systemup_monitor_sync_service($enabled, $config_ready)
+function systemup_monitor_redirect_self(array $query = array())
+{
+    $path = $_SERVER['SCRIPT_NAME'] ?? '';
+    if ($path === '') {
+        return;
+    }
+
+    $location = $path;
+    if (!empty($query)) {
+        $location .= '?' . http_build_query($query);
+    }
+
+    header('Location: ' . $location);
+    exit;
+}
+
+function systemup_monitor_apply_flash_message()
+{
+    global $savemsg;
+
+    if (!empty($savemsg)) {
+        return;
+    }
+
+    $msg = trim((string) ($_GET['msg'] ?? ''));
+    if ($msg === '') {
+        return;
+    }
+
+    switch ($msg) {
+        case 'backup_saved':
+            $savemsg = 'Configuracoes de backup salvas e agente sincronizado.';
+            break;
+        case 'backup_ok':
+            $savemsg = 'Backup enviado ao controlador.';
+            break;
+        case 'backup_fail':
+            $savemsg = 'Falha ao enviar backup agora.';
+            break;
+        case 'update_started':
+            $savemsg = 'Atualizacao iniciada. A pagina atualiza sozinha; log: ' . SYSTEMUP_MONITOR_UPDATE_LOG_FILE;
+            break;
+        case 'update_fail':
+            $detail = trim((string) ($_GET['detail'] ?? ''));
+            $savemsg = $detail !== ''
+                ? $detail
+                : 'Falha ao iniciar atualizacao do package.';
+            break;
+    }
+}
+
+function systemup_monitor_should_auto_refresh_page()
+{
+    if (systemup_monitor_is_update_running()) {
+        return true;
+    }
+
+    return trim((string) ($_GET['msg'] ?? '')) === 'update_started';
+}
+
+function systemup_monitor_render_auto_refresh_script()
+{
+    if (!systemup_monitor_should_auto_refresh_page()) {
+        return;
+    }
+
+    $seconds = (int) SYSTEMUP_MONITOR_UI_REFRESH_SECONDS;
+    if ($seconds < 3) {
+        $seconds = 3;
+    }
+
+    echo '<script>(function(){var s=' . $seconds . '000;setTimeout(function(){window.location.replace(window.location.pathname);},s);})();</script>';
+}
+
+function systemup_monitor_sync_service($enabled, $config_ready, $background = false)
 {
     $paths = systemup_monitor_runtime_paths();
 
@@ -447,18 +658,42 @@ function systemup_monitor_sync_service($enabled, $config_ready)
         systemup_monitor_run_command('/usr/sbin/sysrc monitor_pfsense_agent_enable=' . $enable_value);
     }
 
-    if ($enabled && $config_ready) {
-        systemup_monitor_run_command('/bin/sh -c "/usr/sbin/service monitor_pfsense_agent restart || /usr/sbin/service monitor_pfsense_agent start"');
+    $serviceCommand = $enabled && $config_ready
+        ? '/bin/sh -c "/usr/sbin/service monitor_pfsense_agent restart || /usr/sbin/service monitor_pfsense_agent start"'
+        : '/bin/sh -c "/usr/sbin/service monitor_pfsense_agent stop || true"';
+
+    if ($background) {
+        systemup_monitor_run_command('nohup ' . $serviceCommand . ' >/dev/null 2>&1 &');
         return;
     }
 
-    systemup_monitor_run_command('/bin/sh -c "/usr/sbin/service monitor_pfsense_agent stop || true"');
+    systemup_monitor_run_command($serviceCommand);
 }
 
-function systemup_monitor_sync_config()
+function systemup_monitor_refresh_pfsense_update_check($background = true)
+{
+    $helper = '/usr/local/libexec/monitor-pfsense-agent/check_pfsense_update_available.sh';
+    if (!is_file($helper) || !is_executable($helper)) {
+        return;
+    }
+
+    $state_file = '/var/db/monitor-pfsense-agent/pfsense-update-check.json';
+    if (is_file($state_file)) {
+        @unlink($state_file);
+    }
+
+    $command = escapeshellarg($helper) . ' force-check';
+    if ($background) {
+        systemup_monitor_run_command('nohup ' . $command . ' >/dev/null 2>&1 &');
+        return;
+    }
+
+    systemup_monitor_run_command($command);
+}
+
+function systemup_monitor_sync_config($restartService = true, $backgroundRestart = false)
 {
     systemup_monitor_apply_defaults();
-    systemup_monitor_register_service();
     $pkg = systemup_monitor_read_config();
     systemup_monitor_sync_service_fields($pkg);
     $missing_fields = array();
@@ -470,8 +705,38 @@ function systemup_monitor_sync_config()
         systemup_monitor_remove_runtime_config();
     }
 
-    systemup_monitor_sync_service(systemup_monitor_is_enabled($pkg), $config_ready);
-    write_config('SystemUp Monitor package settings updated');
+    if ($restartService) {
+        systemup_monitor_sync_service(systemup_monitor_is_enabled($pkg), $config_ready, $backgroundRestart);
+    }
+
+    systemup_monitor_refresh_pfsense_update_check(true);
+
+    // Resync periodico: nao gravar config.xml (evita revert por $config stale).
+    // Persistencia explicita via systemup_monitor_persist_package_config() ou save do pfSense.
+    if (!systemup_monitor_is_service_registered()) {
+        systemup_monitor_persist_package_config('SystemUp Monitor service registered');
+    }
+
+    return true;
+}
+
+/**
+ * Persiste ajustes de backup sem reiniciar o servico na requisicao HTTP.
+ * O agente rele o arquivo de runtime a cada ciclo do loop (30s).
+ */
+function systemup_monitor_sync_backup_settings()
+{
+    systemup_monitor_apply_defaults();
+    $pkg = systemup_monitor_read_config();
+    systemup_monitor_sync_service_fields($pkg);
+    $missing_fields = array();
+    $config_ready = systemup_monitor_has_required_runtime_config($pkg, $missing_fields);
+
+    if ($config_ready) {
+        systemup_monitor_write_runtime_config($pkg);
+    }
+
+    systemup_monitor_persist_package_config('SystemUp Monitor backup settings updated');
 
     return true;
 }
@@ -723,9 +988,96 @@ function systemup_monitor_runtime_summary()
 
 function systemup_monitor_installed_version()
 {
+    $paths = systemup_monitor_runtime_paths();
+    if (is_readable($paths['config_file'])) {
+        $content = @file_get_contents($paths['config_file']);
+        if (is_string($content) && preg_match('/^AGENT_VERSION="([^"]+)"/m', $content, $matches)) {
+            $fromConfig = trim((string) $matches[1]);
+            if ($fromConfig !== '') {
+                return $fromConfig;
+            }
+        }
+    }
+
     return defined('SYSTEMUP_MONITOR_AGENT_VERSION')
         ? (string) SYSTEMUP_MONITOR_AGENT_VERSION
         : '0.0.0';
+}
+
+function systemup_monitor_release_cache_key($controllerUrl)
+{
+    return sha1(rtrim(trim((string) $controllerUrl), '/'));
+}
+
+function systemup_monitor_release_cache_read($controllerUrl)
+{
+    $cacheFile = SYSTEMUP_MONITOR_RELEASE_CACHE_FILE;
+    if (!is_readable($cacheFile)) {
+        return null;
+    }
+
+    $decoded = json_decode((string) file_get_contents($cacheFile), true);
+    if (!is_array($decoded)) {
+        return null;
+    }
+
+    $entry = $decoded[systemup_monitor_release_cache_key($controllerUrl)] ?? null;
+    if (!is_array($entry) || !isset($entry['cached_at'], $entry['release']) || !is_array($entry['release'])) {
+        return null;
+    }
+
+    if (time() - (int) $entry['cached_at'] > SYSTEMUP_MONITOR_RELEASE_CACHE_TTL) {
+        return null;
+    }
+
+    return $entry['release'];
+}
+
+function systemup_monitor_release_cache_write($controllerUrl, $release)
+{
+    if (!is_array($release)) {
+        return;
+    }
+
+    $cacheFile = SYSTEMUP_MONITOR_RELEASE_CACHE_FILE;
+    $decoded = array();
+    if (is_readable($cacheFile)) {
+        $existing = json_decode((string) file_get_contents($cacheFile), true);
+        if (is_array($existing)) {
+            $decoded = $existing;
+        }
+    }
+
+    $decoded[systemup_monitor_release_cache_key($controllerUrl)] = array(
+        'cached_at' => time(),
+        'release' => $release,
+    );
+
+    @file_put_contents($cacheFile, json_encode($decoded));
+}
+
+function systemup_monitor_http_get_ca_bundle_paths()
+{
+    return array(
+        '/etc/ssl/cert.pem',
+        '/usr/local/etc/ssl/cert.pem',
+        '/usr/local/share/certs/ca-root-nss.crt',
+        '/etc/ssl/certs/ca-certificates.crt',
+    );
+}
+
+function systemup_monitor_resolve_curl_bin()
+{
+    if (is_executable('/usr/local/bin/curl')) {
+        return '/usr/local/bin/curl';
+    }
+
+    $which = systemup_monitor_run_command('command -v curl');
+    if ((int) $which['exit_code'] === 0 && trim((string) $which['output']) !== '') {
+        return trim((string) $which['output']);
+    }
+
+    return '';
 }
 
 function systemup_monitor_normalize_version($version)
@@ -745,57 +1097,97 @@ function systemup_monitor_version_compare($left, $right)
     );
 }
 
-function systemup_monitor_http_get($url, $timeoutSeconds = 20)
+function systemup_monitor_http_get($url, $timeoutSeconds = 20, &$diagnostic = null)
 {
+    if (!is_array($diagnostic)) {
+        $diagnostic = array();
+    }
+
+    $diagnostic = array(
+        'url' => (string) $url,
+        'method' => '',
+        'http_code' => 0,
+        'error' => '',
+    );
+
     if (!is_string($url) || trim($url) === '') {
+        $diagnostic['error'] = 'URL vazia';
         return null;
     }
 
+    $userAgent = 'SystemUp-Monitor/' . systemup_monitor_installed_version();
+
     if (function_exists('curl_init')) {
+        $diagnostic['method'] = 'php-curl';
         $ch = curl_init($url);
-        curl_setopt_array($ch, array(
+        $options = array(
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_CONNECTTIMEOUT => $timeoutSeconds,
             CURLOPT_TIMEOUT => $timeoutSeconds,
-            CURLOPT_USERAGENT => 'SystemUp-Monitor/' . systemup_monitor_installed_version(),
-        ));
-        $body = curl_exec($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+            CURLOPT_USERAGENT => $userAgent,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        );
 
-        if ($body === false || $httpCode < 200 || $httpCode >= 300) {
-            return null;
+        foreach (systemup_monitor_http_get_ca_bundle_paths() as $caBundlePath) {
+            if (is_readable($caBundlePath)) {
+                $options[CURLOPT_CAINFO] = $caBundlePath;
+                break;
+            }
         }
 
-        return (string) $body;
+        curl_setopt_array($ch, $options);
+        $body = curl_exec($ch);
+        $diagnostic['http_code'] = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        if ($body === false) {
+            $diagnostic['error'] = (string) curl_error($ch);
+        } elseif ($diagnostic['http_code'] < 200 || $diagnostic['http_code'] >= 300) {
+            $diagnostic['error'] = 'HTTP ' . $diagnostic['http_code'];
+        }
+
+        curl_close($ch);
+
+        if ($body !== false && $diagnostic['http_code'] >= 200 && $diagnostic['http_code'] < 300) {
+            return (string) $body;
+        }
     }
 
-    $context = stream_context_create(array(
-        'http' => array(
-            'method' => 'GET',
-            'timeout' => $timeoutSeconds,
-            'header' => "User-Agent: SystemUp-Monitor/" . systemup_monitor_installed_version() . "\r\n",
-        ),
-    ));
-    $body = @file_get_contents($url, false, $context);
+    $curlBin = systemup_monitor_resolve_curl_bin();
+    if ($curlBin === '') {
+        if ($diagnostic['error'] === '') {
+            $diagnostic['error'] = 'curl indisponivel';
+        }
+        return null;
+    }
 
-    return $body === false ? null : (string) $body;
+    $diagnostic['method'] = 'cli-curl';
+    $result = systemup_monitor_run_command(
+        escapeshellarg($curlBin)
+            . ' -fsS --max-time ' . (int) $timeoutSeconds
+            . ' -A ' . escapeshellarg($userAgent)
+            . ' ' . escapeshellarg($url)
+    );
+
+    if ((int) $result['exit_code'] === 0 && trim((string) $result['output']) !== '') {
+        $diagnostic['http_code'] = 200;
+        $diagnostic['error'] = '';
+        return (string) $result['output'];
+    }
+
+    if ($diagnostic['error'] === '') {
+        $diagnostic['error'] = trim((string) $result['output']) !== ''
+            ? trim((string) $result['output'])
+            : 'cli curl falhou';
+    }
+
+    return null;
 }
 
-function systemup_monitor_fetch_remote_release($controllerUrl)
+function systemup_monitor_parse_remote_release_body($body)
 {
-    $base = rtrim(trim((string) $controllerUrl), '/');
-    if ($base === '') {
-        return null;
-    }
-
-    $body = systemup_monitor_http_get($base . '/api/v1/agent/package-release');
-    if ($body === null) {
-        return null;
-    }
-
-    $decoded = json_decode($body, true);
+    $decoded = json_decode((string) $body, true);
     if (!is_array($decoded)) {
         return null;
     }
@@ -816,6 +1208,80 @@ function systemup_monitor_fetch_remote_release($controllerUrl)
         'installer_url' => $installerUrl,
         'generated_at' => trim((string) ($decoded['generated_at'] ?? '')),
     );
+}
+
+function systemup_monitor_fetch_remote_release($controllerUrl)
+{
+    static $requestCache = array();
+
+    $base = rtrim(trim((string) $controllerUrl), '/');
+    if ($base === '') {
+        return null;
+    }
+
+    $cacheKey = systemup_monitor_release_cache_key($base);
+    if (isset($requestCache[$cacheKey])) {
+        return $requestCache[$cacheKey];
+    }
+
+    $url = $base . '/api/v1/agent/package-release';
+    $diagnostic = array();
+    $body = systemup_monitor_http_get($url, 20, $diagnostic);
+    $release = $body !== null ? systemup_monitor_parse_remote_release_body($body) : null;
+
+    if ($release === null) {
+        $release = systemup_monitor_release_cache_read($base);
+    }
+
+    if ($release !== null) {
+        $requestCache[$cacheKey] = $release;
+        if ($body !== null) {
+            systemup_monitor_release_cache_write($base, $release);
+        }
+        return $release;
+    }
+
+    return null;
+}
+
+function systemup_monitor_fetch_remote_release_diagnostic($controllerUrl)
+{
+    $base = rtrim(trim((string) $controllerUrl), '/');
+    if ($base === '') {
+        return 'Controller URL nao configurada.';
+    }
+
+    $url = $base . '/api/v1/agent/package-release';
+    $diagnostic = array();
+    $body = systemup_monitor_http_get($url, 20, $diagnostic);
+    if ($body === null) {
+        $detail = trim((string) ($diagnostic['error'] ?? ''));
+        $method = trim((string) ($diagnostic['method'] ?? ''));
+        $httpCode = (int) ($diagnostic['http_code'] ?? 0);
+
+        $message = 'Nao foi possivel consultar a versao publicada no controlador.';
+        if ($method !== '' || $detail !== '' || $httpCode > 0) {
+            $parts = array();
+            if ($method !== '') {
+                $parts[] = $method;
+            }
+            if ($httpCode > 0) {
+                $parts[] = 'HTTP ' . $httpCode;
+            }
+            if ($detail !== '') {
+                $parts[] = $detail;
+            }
+            $message .= ' (' . implode('; ', $parts) . ')';
+        }
+
+        return $message;
+    }
+
+    if (systemup_monitor_parse_remote_release_body($body) === null) {
+        return 'Resposta invalida do controlador em ' . $url . '.';
+    }
+
+    return '';
 }
 
 function systemup_monitor_update_status($pkg = null)
@@ -844,7 +1310,7 @@ function systemup_monitor_update_status($pkg = null)
 
     $release = systemup_monitor_fetch_remote_release($controllerUrl);
     if ($release === null) {
-        $status['check_error'] = 'Nao foi possivel consultar a versao publicada no controlador.';
+        $status['check_error'] = systemup_monitor_fetch_remote_release_diagnostic($controllerUrl);
         return $status;
     }
 
@@ -899,10 +1365,11 @@ function systemup_monitor_build_package_update_command($pkg, $release)
     $installerUrl = $release['installer_url'];
     $installArgs = implode(' ', $args);
     $logFile = SYSTEMUP_MONITOR_UPDATE_LOG_FILE;
-
-    return 'fetch -o /tmp/install-from-release.sh ' . systemup_monitor_shell_quote($installerUrl)
+    $innerCommand = 'fetch -o /tmp/install-from-release.sh ' . systemup_monitor_shell_quote($installerUrl)
         . ' && chmod +x /tmp/install-from-release.sh'
-        . ' && nohup /tmp/install-from-release.sh ' . $installArgs
+        . ' && /tmp/install-from-release.sh ' . $installArgs;
+
+    return 'nohup /bin/sh -c ' . systemup_monitor_shell_quote($innerCommand)
         . ' </dev/null >>' . systemup_monitor_shell_quote($logFile) . ' 2>&1'
         . " & echo 'Atualizacao em segundo plano. Log: tail -f " . $logFile . "'";
 }
@@ -946,8 +1413,6 @@ function systemup_monitor_start_package_update()
 
 function systemup_monitor_handle_package_update_post()
 {
-    global $savemsg;
-
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         return;
     }
@@ -958,11 +1423,13 @@ function systemup_monitor_handle_package_update_post()
 
     $result = systemup_monitor_start_package_update();
     if ((int) $result['exit_code'] !== 0) {
-        $savemsg = $result['output'];
-        return;
+        systemup_monitor_redirect_self(array(
+            'msg' => 'update_fail',
+            'detail' => substr(trim((string) $result['output']), 0, 240),
+        ));
     }
 
-    $savemsg = 'Atualizacao iniciada. ' . trim((string) $result['output']);
+    systemup_monitor_redirect_self(array('msg' => 'update_started'));
 }
 
 function systemup_monitor_render_config_update_action()
@@ -971,12 +1438,24 @@ function systemup_monitor_render_config_update_action()
 
     if ($status['update_running']) {
         echo '<div style="margin-bottom: 1rem;">';
-        echo '  <span class="text-muted">Atualizacao em andamento. Log: <code>' . htmlspecialchars($status['log_file']) . '</code></span>';
+        echo '  <span class="text-muted">Atualizacao em andamento. Log: <code>' . htmlspecialchars($status['log_file']) . '</code>';
+        echo ' — recarregando a pagina a cada ' . (int) SYSTEMUP_MONITOR_UI_REFRESH_SECONDS . 's.</span>';
         echo '</div>';
         return;
     }
 
-    if (!$status['check_ok'] || !$status['update_available']) {
+    if (!$status['check_ok']) {
+        if ($status['check_error'] !== '') {
+            echo '<div class="alert alert-warning" style="margin-bottom: 1rem;">';
+            echo htmlspecialchars($status['check_error']);
+            echo '<br><span class="text-muted">Alternativa: Diagnostics &gt; Command Prompt &gt; ';
+            echo '<code>php -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php upgrade</code></span>';
+            echo '</div>';
+        }
+        return;
+    }
+
+    if (!$status['update_available']) {
         return;
     }
 

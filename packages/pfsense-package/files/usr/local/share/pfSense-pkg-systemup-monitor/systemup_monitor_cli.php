@@ -15,6 +15,8 @@ Usage:
   systemup_monitor_cli.php seed [--controller-url URL] [--node-uid UID] [--node-secret SECRET] [--customer-code CODE] [--interval-seconds N] [--services CSV] [--heartbeat-mode normal|light] [--config-backup-enabled yes|no] [--enable]
   systemup_monitor_cli.php sync   Regenera o config do agente com a versão atual do package (AGENT_VERSION).
   systemup_monitor_cli.php upgrade  Atualiza o package para a versão publicada no controlador.
+  systemup_monitor_cli.php release-check  Testa consulta de release no controlador (diagnóstico).
+  systemup_monitor_cli.php upgrade-check [--force]  Verifica atualização pfSense OS (pfSense-upgrade -d -c).
   systemup_monitor_cli.php remove
 TXT;
 
@@ -90,7 +92,7 @@ function systemup_monitor_cli_seed($options)
 
     $pkg['enabled'] = $options['enable'] ? 'on' : '';
 
-    write_config('SystemUp Monitor package bootstrap updated');
+    systemup_monitor_persist_package_config('SystemUp Monitor package bootstrap updated');
     systemup_monitor_sync_config();
 
     echo "SystemUp Monitor package config seeded.\n";
@@ -102,12 +104,13 @@ function systemup_monitor_cli_remove()
 
     $pkg =& systemup_monitor_config_ref();
     $pkg['enabled'] = '';
-    systemup_monitor_sync_config();
+    systemup_monitor_sync_config(false, false);
     systemup_monitor_unregister_service();
 
     unset($config['installedpackages']['systemupmonitor']);
     delete_package_xml('systemup-monitor');
-    write_config('SystemUp Monitor package bootstrap removed');
+    $snapshot = systemup_monitor_export_package_snapshot();
+    systemup_monitor_persist_package_config('SystemUp Monitor package bootstrap removed', $snapshot);
 
     echo "SystemUp Monitor package config removed.\n";
 }
@@ -127,6 +130,29 @@ try {
             $result = systemup_monitor_start_package_update();
             echo $result['output'] . "\n";
             exit((int) $result['exit_code'] === 0 ? 0 : 1);
+        case 'release-check':
+            $status = systemup_monitor_update_status();
+            echo "installed=" . $status['installed_version'] . "\n";
+            echo "remote=" . ($status['remote_version'] !== '' ? $status['remote_version'] : '-') . "\n";
+            echo "check_ok=" . ($status['check_ok'] ? 'yes' : 'no') . "\n";
+            echo "update_available=" . ($status['update_available'] ? 'yes' : 'no') . "\n";
+            if ($status['check_error'] !== '') {
+                echo "error=" . $status['check_error'] . "\n";
+            }
+            exit($status['check_ok'] ? 0 : 1);
+        case 'upgrade-check':
+            $helper = '/usr/local/libexec/monitor-pfsense-agent/check_pfsense_update_available.sh';
+            if (!is_file($helper) || !is_executable($helper)) {
+                fwrite(STDERR, "Helper not found: {$helper}\n");
+                exit(1);
+            }
+            $force = in_array('--force', $argv, true);
+            $action = $force ? 'force-check' : 'check';
+            $output = array();
+            $exitCode = 0;
+            exec(escapeshellarg($helper) . ' ' . escapeshellarg($action), $output, $exitCode);
+            echo implode("\n", $output) . "\n";
+            exit($exitCode === 0 ? 0 : 1);
         case 'remove':
             systemup_monitor_cli_remove();
             exit(0);

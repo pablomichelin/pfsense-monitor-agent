@@ -1,0 +1,41 @@
+---
+description: Versionamento obrigatório ao alterar API ou painel web
+alwaysApply: true
+---
+
+# Versionamento obrigatório
+
+Toda entrega que altere `apps/api` ou `apps/web` **deve** atualizar a versão antes de encerrar.
+
+## Onde bumpar
+
+| Componente | Arquivo canônico | Exibição no produto |
+|------------|------------------|---------------------|
+| API | `apps/api/package.json` → `version` | `/healthz`, dashboard summary (`SYSTEM_VERSION` em `.env.api` se alterar contrato global) |
+| Painel web | `apps/web/package.json` → `version` | Rodapé em `apps/web/app/layout.tsx` |
+
+## Regra de semver (prático)
+
+- **patch** (`0.2.4` → `0.2.5`): correção visual, UX, script operacional, docs de entrega — sem mudança de contrato API.
+- **minor** (`0.2.x` → `0.3.0`): novo endpoint, permissão, campo obrigatório, mudança de comportamento da API ou do painel que exija adaptação.
+- API e painel **podem divergir** (ex.: só web mudou → só `apps/web/package.json`).
+
+## Checklist obrigatório ao finalizar
+
+1. Bump em `package.json` do(s) app(s) alterado(s).
+2. Atualizar índices: `docs/00-INDICE-OPERACIONAL.md`, `00_inicio.md`, `LEITURA-INICIAL.md` (bloco "Versões atuais").
+3. Registrar em `docs/HISTORICO-E-LINHA-DO-TEMPO.md` (1–3 bullets: o quê, por quê, versão).
+4. Se entrega fechada: doc `docs/NN-ENTREGA-...md` com versões finais.
+5. Build + `docker compose up -d --build` (regra `build-and-deploy.mdc`).
+
+## Não esquecer
+
+- Não encerrar tarefa com `apps/web` ou `apps/api` modificados e versão antiga no `package.json`.
+- Scripts em `scripts/` sem mudança de API: bump só do painel se houver UI; senão documentar no histórico sem bump de API.
+- Trilhas encerradas (`docs/76`): versão **atual** do produto fica nos índices; docs de fase mantêm versão histórica da fase.
+
+## Versões atuais (referência — atualizar a cada entrega)
+
+- API: `0.3.0`
+- Painel: `1.1.0`
+- Package pfSense: `0.3.5`

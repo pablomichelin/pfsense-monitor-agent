@@ -2,7 +2,83 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-06-09
+**Última atualização:** 2026-06-23
+
+---
+
+### 2026-06-23 — Persistência segura do config.xml (package 0.3.5)
+
+- **Sintoma reportado:** firewalls perdendo VPN/NAT/senhas após horas ou dias, correlacionado à instalação do SystemUp Monitor.
+- **Causa:** `systemup_monitor_sync_config()` chamava `write_config()` no resync, gravando o `$config` **inteiro** — se stale, revertia todo o XML.
+- **Correção:** `systemup_monitor_persist_package_config()` faz `config_read()`, reaplica só snapshot do package e grava; resync periódico não grava XML (só runtime do agente). Entrega: `docs/92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md`.
+- **Erro a não repetir:** nunca `write_config()` no resync sem `config_read()` e sem limitar alterações à seção `installedpackages` do SystemUp Monitor.
+
+### 2026-06-14 — Upgrade remoto pfSense OS (API 0.3.0, painel 1.1.0, package 0.3.0)
+
+- **API 0.3.0:** `NodeCommandsService` genérico; comando `pfsense_upgrade` com `payloadJson`/`runningAt`; ingest `command-result` succeeded/failed; reconciliação tardia pós-expire; lifecycle batch com grace window; módulo `pfsense-upgrade` com gate de backup e RBAC `pfsense.upgrade.run`.
+- **Painel 1.1.0:** seção upgrade na visão geral do firewall; modal com override de backup; polling com comando ativo.
+- **Package 0.3.0:** helper `check_pfsense_update_available.sh`, throttle no config, dispatcher de comandos, CLI `upgrade-check`; execução real stubbed até spike CE.
+- **Entrega:** `docs/91-PLANO-ENTREGA-PFSENSE-OS-UPGRADE.md`.
+
+### 2026-06-14 — Modal upgrade: erro genérico + refresh pré-submit (painel 1.1.1)
+
+- **Sintoma:** ao confirmar upgrade, modal exibia erro genérico do Next.js em produção.
+- **Causa:** server action propagava `ApiError` 409 (`no pfSense update available`) sem captura; status da UI ficou defasado em relação ao banco entre abrir o modal e confirmar.
+- **Correção:** `requestPfsenseUpgradeAction` retorna `{ ok, error }` com mensagens em PT-BR; refresh do status ao abrir modal e antes de enviar.
+
+### 2026-06-14 — Parser prioriza últimas linhas do CLI (package 0.3.4)
+
+- **Sintoma:** agente `0.3.2` re-checou às 01:04 e ainda gravou `available=false` com widget nativo mostrando update.
+- **Causa:** saída real do `pfSense-upgrade -d -c` termina com `26.03.1 version of pfSense is available`, mas o parser caía antes em `repository is up to date` (regex genérico `up to date`).
+- **Correção:** package `0.3.3` reconhece formato CLI `X version of pfSense is available` e só trata como “atualizado” mensagens explícitas (`Your system is up to date`, etc.).
+
+### 2026-06-14 — Correção cache detector upgrade (package 0.3.2)
+
+- **Sintoma:** após instalar package `0.3.1`, painel continuava com `pfSense atualizado` apesar do widget nativo mostrar `Version 26.03.1 is available.`
+- **Causa:** cache local `pfsense-update-check.json` gravado pelo parser `0.3.0` (`available=false`) permanecia válido por 6h (throttle); heartbeat reenviava o falso negativo.
+- **Correção:** package `0.3.2` com `cache_version`, invalidação automática de cache antigo no heartbeat/sync e `force-check` após `sync_config`.
+- **Operação imediata (sem 0.3.2):** no pfSense, `php -f .../systemup_monitor_cli.php upgrade-check --force`.
+
+### 2026-06-14 — Correção detector upgrade pfSense OS (API/package 0.3.1)
+
+- **Sintoma:** pfSense Plus mostrava `Version 26.03.1 is available.`, mas o SystemUp exibia `pfSense atualizado`.
+- **Causa:** helper do agente não reconhecia a frase `Version X is available.` e tratava saída desconhecida/erro como `available=false`.
+- **Correção:** package `0.3.1` reconhece esse formato, grava erro como estado desconhecido (`available=null`) e API/painel exibem `pfsense_update_check_error`.
+- **Operação:** upgrade remoto passa a exigir agente `0.3.1+`.
+
+---
+
+### 2026-06-13 — Correções auditoria servidor (API 0.2.10, painel 1.0.1)
+
+- **Produção:** `AUTH_BOOTSTRAP_LOGIN_ENABLED=false` em `.env.api` (login bootstrap desabilitado após usuários locais).
+- **API 0.2.10:** heartbeat leve preserva status/alertas quando `services`/`gateways` omitidos; idempotência atualiza `lastSeenAt`; race `expireStaleCommands` com `updateMany` condicional; `markCommandSucceeded` reconcilia `expired→succeeded` com warning; SSE dashboard exige `firewalls.view`; paginação audit logs com overscan por escopo; `requestBackupNow` em transação serializável.
+- **Painel 1.0.1:** redirect pós-login respeita `?next=` (path interno válido).
+- **Entrega:** `docs/90-ENTREGA-CORRECOES-AUDITORIA-SERVIDOR-2026-06-13.md`.
+
+---
+
+### 2026-06-14 — Fix save backup travando aba do navegador (package 0.2.38)
+
+- **Sintoma:** ao clicar "Salvar configurações" na aba Backup, a aba ficava girando indefinidamente.
+- **Causa:** `sync_config()` reiniciava o serviço do agente de forma síncrona dentro do POST HTTP.
+- **Correção:** save de backup usa `sync_backup_settings()` (sem restart); POST redirect imediato.
+
+---
+
+### 2026-06-14 — Correção consulta de release na UI de update (package 0.2.36)
+
+- **Sintoma:** botão "Atualizar package" aparecia, mas ao clicar retornava erro de consulta ao controlador em loop.
+- **Causa:** GUI usava PHP/cURL sem CA bundle confiável no FreeBSD; o agente (heartbeat) já usava `curl` do sistema.
+- **Correção 0.2.36:** fallback para `curl` CLI, cache de release, erros detalhados, comando `release-check` no CLI.
+
+---
+
+### 2026-06-13 — Auditoria frota: backup agendado em loop (3 firewalls)
+
+- **Frota afetada (agente 0.2.34):** Maquimalhas, Metalpox, Incubatorio Bom Jesus (~110 dup/h cada); demais 18 nodes com backup OK.
+- **API 0.2.9:** supressao early de duplicata agendada (antes do gunzip), alerta de flood em log, expiracao de comandos picked_up/running.
+- **Scripts:** `test-backup-schedule-logic.sh`, `audit-config-backup-fleet.sh`, `cleanup-scheduled-duplicate-backups.sh`.
+- **Package 0.2.35** artefato gerado; atualizar os 3 pfSense prioritariamente.
 
 ---
 
