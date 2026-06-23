@@ -1,7 +1,7 @@
 # Guia de operação — package pfSense SystemUp Monitor
 
 **Package:** `pfSense-pkg-systemup-monitor`  
-**Versão de referência:** `0.3.9+`  
+**Versão de referência:** `0.3.10+`  
 **Runtime:** agente em `/usr/local/libexec/monitor-pfsense-agent/`
 
 ---
@@ -105,6 +105,14 @@ Refusing --node-secret on command line; use MONITOR_UPDATE_NODE_SECRET or --secr
 2. Se persistir, usar workaround SSH (§ abaixo ou `docs/99-HOTFIX-UPGRADE-0.3.5-NODE-SECRET.md`).
 
 Doc: [`docs/COMANDO-ATUALIZAR-PACKAGE-PFSENSE.md`](../COMANDO-ATUALIZAR-PACKAGE-PFSENSE.md)
+
+### Troubleshooting — tarball OK mas `AGENT_VERSION` permanece 0.3.5
+
+**Sintoma:** log de update mostra download ~48 kB e `Config do agente regenerado (AGENT_VERSION=0.3.5)` após hotfix do instalador.
+
+**Causa:** `install.sh` copiava o tarball, mas o PHP do pfSense (opcache + `install_package_xml`) mantinha `systemup_monitor.inc` stale — corrigido em **0.3.10**.
+
+**Resolução:** retentar update após release **0.3.10** no controlador, ou workaround SSH em `docs/99-HOTFIX-UPGRADE-0.3.5-NODE-SECRET.md` (sync com `opcache.enable_cli=0`).
 
 ---
 

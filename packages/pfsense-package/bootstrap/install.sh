@@ -59,17 +59,44 @@ copy_tree() {
   tar -C "$src_dir" -cf - usr | tar -C "$dst_dir" -xpf -
 }
 
-copy_tree "$PACKAGE_ROOT/files" "$INSTALL_ROOT"
+install_package_files() {
+  copy_tree "$PACKAGE_ROOT/files" "$INSTALL_ROOT"
 
-chmod 0755 \
-  "$INSTALL_ROOT/usr/local/etc/rc.d/monitor_pfsense_agent" \
-  "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent-loop.sh" \
-  "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh" \
-  "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/check_pfsense_update_available.sh" \
-  "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/collect_gateways.php" \
-  "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/collect_config_snapshot.php" \
-  "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/run_pfsense_upgrade.sh" \
-  "$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php"
+  chmod 0755 \
+    "$INSTALL_ROOT/usr/local/etc/rc.d/monitor_pfsense_agent" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent-loop.sh" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/check_pfsense_update_available.sh" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/collect_gateways.php" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/collect_config_snapshot.php" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/run_pfsense_upgrade.sh" \
+    "$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php"
+}
+
+invalidate_package_php_cache() {
+  inc_file="$INSTALL_ROOT/usr/local/pkg/systemup_monitor.inc"
+  cli_file="$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php"
+
+  if [ ! -x /usr/local/bin/php ]; then
+    return 0
+  fi
+
+  MONITOR_PKG_INC="$inc_file" \
+  MONITOR_PKG_CLI="$cli_file" \
+  /usr/local/bin/php -r '
+    $files = array(getenv("MONITOR_PKG_INC"), getenv("MONITOR_PKG_CLI"));
+    foreach ($files as $file) {
+      if (!is_string($file) || $file === "" || !is_file($file)) {
+        continue;
+      }
+      if (function_exists("opcache_invalidate")) {
+        opcache_invalidate($file, true);
+      }
+    }
+  ' < /dev/null 2>/dev/null || true
+}
+
+install_package_files
 
 if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/config.inc ]; then
   /usr/local/bin/php -r '
@@ -116,8 +143,15 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
 
   /usr/local/bin/php -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php "$@" < /dev/null
 
+  # install_package_xml/seed podem recarregar PHP com opcache stale ou hooks pfSense; tarball vence
+  install_package_files
+  MONITOR_PKG_INC="$INSTALL_ROOT/usr/local/pkg/systemup_monitor.inc" \
+  MONITOR_PKG_CLI="$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php" \
+  invalidate_package_php_cache
+
   # Sempre regenerar o config do agente com a versão atual do package (AGENT_VERSION), mesmo em upgrade
-  /usr/local/bin/php -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php sync < /dev/null 2>/dev/null || true
+  /usr/local/bin/php -d opcache.enable_cli=0 \
+    -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php sync < /dev/null 2>/dev/null || true
 
   # Garantir que o serviço está habilitado e rodando (o PHP pode falhar ao iniciar quando o install roda em background)
   if [ -n "$CONTROLLER_URL" ] && [ -n "$NODE_UID" ] && [ -n "$NODE_SECRET" ] && [ -n "$CUSTOMER_CODE" ]; then
