@@ -4,6 +4,7 @@ import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { revokeAuthSession } from './api';
+import { sanitizeInternalPath } from './internal-path';
 
 const apiBaseUrl = process.env.MONITOR_API_BASE_URL?.trim();
 const sessionCookieName =
@@ -102,6 +103,7 @@ async function syncCookiesFromApi(response: Response): Promise<void> {
 export async function loginAction(formData: FormData): Promise<void> {
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
+  const nextPath = sanitizeInternalPath(String(formData.get('next') ?? ''));
   const requestHeaders = await headers();
 
   const response = await fetch(`${requireEnv(apiBaseUrl, 'MONITOR_API_BASE_URL')}/api/v1/auth/login`, {
@@ -124,11 +126,14 @@ export async function loginAction(formData: FormData): Promise<void> {
   });
 
   if (!response.ok) {
-    redirect('/login?error=1');
+    const errorUrl = nextPath
+      ? `/login?error=1&next=${encodeURIComponent(nextPath)}`
+      : '/login?error=1';
+    redirect(errorUrl);
   }
 
   await syncCookiesFromApi(response);
-  redirect('/dashboard');
+  redirect(nextPath ?? '/dashboard');
 }
 
 export async function logoutAction(): Promise<void> {

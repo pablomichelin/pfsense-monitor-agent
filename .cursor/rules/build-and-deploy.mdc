@@ -1,0 +1,20 @@
+---
+description: Ciclo completo build + deploy para deixar o Monitor-Pfsense em funcionamento após alterações
+alwaysApply: true
+---
+
+# Build e deploy obrigatórios
+
+Ao alterar código que afeta a API ou o painel web (apps/api ou apps/web), **sempre** executar o ciclo completo para deixar o sistema em funcionamento:
+
+1. **Build**
+   - Se alterou `apps/api`: `cd apps/api && npm run build`
+   - Se alterou `apps/web`: `cd apps/web && npm run build`
+
+2. **Deploy**
+   - Na raiz do projeto: `docker compose up -d --build`
+   - Isso reconstrói as imagens alteradas e sobe os containers atualizados.
+
+Não encerrar a entrega sem ter rodado os comandos acima. O usuário não deve precisar rodar build ou deploy manualmente; a entrega deve deixar o sistema pronto e em execução.
+
+Antes do build/deploy, aplicar também a regra `versioning.mdc` (bump em `package.json` e índices).

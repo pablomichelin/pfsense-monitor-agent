@@ -73,7 +73,7 @@ Nova página **`/backups`** com visão frota de backups `config.xml`, item **Bac
 
 ```bash
 cd apps/web && npm run build
-cd /opt/Monitor-Pfsense && docker compose up -d --build
+cd /Dados/Monitor-Pfsense && docker compose up -d --build
 ```
 
 ---

@@ -36,7 +36,7 @@ Observado no servidor conectado:
 - stack `docker compose` esta rodando com `api`, `web`, `db` e `nginx` saudaveis
 - dominio publico (externo): `https://pfs-monitor.systemup.inf.br/healthz` responde `200`
 - origem interna (LAN): `http://192.168.100.221:3031`
-- package pfSense publicado no fluxo atual: `0.3.5`
+- package pfSense publicado no fluxo atual: `0.3.6`
 - `config/package-release.env` aponta para `https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main` e SHA256 do package `0.3.2`
 - agente/package atual envia heartbeat e test-connection por HMAC
 - nao existe ainda modulo de backup de `config.xml` no controlador
@@ -131,7 +131,7 @@ Trilhas operacionais em `docs/`:
 - `docs/75-CHECKLIST-TESTES-RBAC-ESCOPO-2026-06-09.md`
 - `docs/76-ENCERRAMENTO-TRILHA-RBAC-2026-06-09.md` — **encerramento formal**
 
-Versoes atuais: API `0.3.1`, painel `1.1.1`, package pfSense `0.3.5`. **Roadmap UX plano 24 encerrado** — encerramento formal: `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`; entrega Fase 8: `docs/87-ENTREGA-FRONTEND-FASE8-DESIGN-SYSTEM-PAGES-RESTANTES-2026-06-09.md`. Entrega Fase 7 auditoria filtros: `docs/86-ENTREGA-FRONTEND-FASE7-AUDITORIA-FILTROS-AMIGAVEIS-2026-06-09.md`. Entrega Fase 6 conta separada: `docs/85-ENTREGA-FRONTEND-FASE6-CONTA-SEPARADA-POLIMENTO-PTBR-2026-06-09.md`. Entrega Fase 5 backups frota: `docs/84-ENTREGA-FRONTEND-FASE5-BACKUPS-FROTA-MENU-2026-06-09.md`. Entrega Fase 4 detalhe abas: `docs/83-ENTREGA-FRONTEND-FASE4-DETALHE-FIREWALL-ABAS-2026-06-09.md`. Entrega Fase 3 inventario: `docs/82-ENTREGA-FRONTEND-FASE3-FIREWALLS-INVENTARIO-2026-06-09.md`. Entrega Fase 2 dashboard: `docs/81-ENTREGA-FRONTEND-FASE2-DASHBOARD-ENXUTO-2026-06-09.md`. Entrega Fase 0+1 layout: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`. Entrega pos-RBAC: `docs/77-ENTREGA-POS-RBAC-UX-LAYOUT-2026-06-09.md`. Versionamento: `.cursor/rules/versioning.mdc`. Nao reabrir trilha RBAC sem decisao explicita.
+Versoes atuais: API `0.3.1`, painel `1.1.1`, package pfSense `0.3.6`. **Roadmap UX plano 24 encerrado** — encerramento formal: `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`; entrega Fase 8: `docs/87-ENTREGA-FRONTEND-FASE8-DESIGN-SYSTEM-PAGES-RESTANTES-2026-06-09.md`. Entrega Fase 7 auditoria filtros: `docs/86-ENTREGA-FRONTEND-FASE7-AUDITORIA-FILTROS-AMIGAVEIS-2026-06-09.md`. Entrega Fase 6 conta separada: `docs/85-ENTREGA-FRONTEND-FASE6-CONTA-SEPARADA-POLIMENTO-PTBR-2026-06-09.md`. Entrega Fase 5 backups frota: `docs/84-ENTREGA-FRONTEND-FASE5-BACKUPS-FROTA-MENU-2026-06-09.md`. Entrega Fase 4 detalhe abas: `docs/83-ENTREGA-FRONTEND-FASE4-DETALHE-FIREWALL-ABAS-2026-06-09.md`. Entrega Fase 3 inventario: `docs/82-ENTREGA-FRONTEND-FASE3-FIREWALLS-INVENTARIO-2026-06-09.md`. Entrega Fase 2 dashboard: `docs/81-ENTREGA-FRONTEND-FASE2-DASHBOARD-ENXUTO-2026-06-09.md`. Entrega Fase 0+1 layout: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`. Entrega pos-RBAC: `docs/77-ENTREGA-POS-RBAC-UX-LAYOUT-2026-06-09.md`. Versionamento: `.cursor/rules/versioning.mdc`. Nao reabrir trilha RBAC sem decisao explicita.
 
 #### Roadmap UX front-end — encerramento formal (**plano 24 encerrado**)
 
@@ -201,6 +201,17 @@ Entrega: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`. Versao pai
 - `docs/67-CHECKLIST-REVISAO-PLANO-BACKUP-2026-06-08.md`
 
 Modulo de backup ja implementado no controlador; RBAC reforça escopo e download auditado.
+
+#### Trilha package pfSense 0.3.6+ (**ativa** — 2026-06-23)
+
+Plano mestre de melhorias pendentes (merge `service`, ISPConfig/502, backoff backup, gateways, upgrade OS, cache XML, desinstalacao):
+
+- [`docs/95-ENTREGA-PACKAGE-0.3.6.md`](95-ENTREGA-PACKAGE-0.3.6.md) — **entrega Opção A P0** (merge service, backoff backup, metadados)
+- [`docs/94-PLANO-MELHORIAS-PACKAGE-0.3.6.md`](94-PLANO-MELHORIAS-PACKAGE-0.3.6.md) — **plano executavel autossuficiente**
+- Contexto correção parcial 0.3.5: [`docs/92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md`](92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md)
+- Upgrade OS (stub + spike CE): [`docs/91-PLANO-ENTREGA-PFSENSE-OS-UPGRADE.md`](91-PLANO-ENTREGA-PFSENSE-OS-UPGRADE.md)
+
+Package publicado no fluxo atual: `0.3.6`; proxima release alvo: `0.3.7` (P1: gateways, harden auto-update, pkg-deinstall).
 
 ## Estrutura de pastas atual
 

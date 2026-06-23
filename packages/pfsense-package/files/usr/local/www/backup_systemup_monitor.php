@@ -3,17 +3,6 @@
 require_once("guiconfig.inc");
 require_once("/usr/local/pkg/systemup_monitor.inc");
 
-systemup_monitor_setup_package_tabs('backup');
-
-$pkg = systemup_monitor_read_config();
-$schedule = systemup_monitor_normalize_backup_schedule($pkg);
-$scheduleModes = systemup_monitor_backup_schedule_modes();
-$dowLabels = systemup_monitor_backup_schedule_dow_labels();
-if (!isset($savemsg)) {
-    $savemsg = '';
-}
-$backup_result = '';
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? 'save';
 
@@ -24,23 +13,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pkgref['config_backup_on_change'] = isset($_POST['config_backup_on_change']) ? 'on' : '';
         $pkgref['config_backup_compress'] = isset($_POST['config_backup_compress']) ? 'on' : '';
         $pkgref['config_backup_accept_remote_requests'] = isset($_POST['config_backup_accept_remote_requests']) ? 'on' : '';
-        write_config('SystemUp Monitor backup settings updated');
-        systemup_monitor_sync_config();
-        $savemsg = 'Configurações de backup salvas e agente sincronizado.';
-        $pkg = systemup_monitor_read_config();
-        $schedule = systemup_monitor_normalize_backup_schedule($pkg);
+        systemup_monitor_sync_backup_settings();
+        systemup_monitor_redirect_self(array('msg' => 'backup_saved'));
     }
 
     if ($action === 'backup_now') {
         $result = systemup_monitor_run_backup_now();
-        $backup_result = $result['output'];
         if ((int) $result['exit_code'] !== 0) {
-            $savemsg = 'Falha ao enviar backup agora.';
-        } else {
-            $savemsg = 'Backup enviado ao controlador.';
+            systemup_monitor_redirect_self(array('msg' => 'backup_fail'));
         }
+        systemup_monitor_redirect_self(array('msg' => 'backup_ok'));
     }
 }
+
+systemup_monitor_setup_package_tabs('backup');
+
+$pkg = systemup_monitor_read_config();
+$schedule = systemup_monitor_normalize_backup_schedule($pkg);
+$scheduleModes = systemup_monitor_backup_schedule_modes();
+$dowLabels = systemup_monitor_backup_schedule_dow_labels();
+if (!isset($savemsg)) {
+    $savemsg = '';
+}
+$backup_result = '';
 
 $backup_summary = systemup_monitor_backup_summary();
 $scheduleTimeParts = systemup_monitor_backup_schedule_time_parts($schedule['time']);

@@ -115,7 +115,7 @@ Ele permite:
 1. Rebuild/deploy da stack:
 
 ```bash
-cd /opt/Monitor-Pfsense
+cd /Dados/Monitor-Pfsense
 docker compose up -d --build
 ```
 
@@ -128,14 +128,14 @@ docker compose exec -T db psql -U monitor_pfsense -d monitor_pfsense -c "SELECT 
 3. Fazer dry-run da limpeza:
 
 ```bash
-cd /opt/Monitor-Pfsense
+cd /Dados/Monitor-Pfsense
 ./scripts/purge-heartbeats.sh --all --dry-run
 ```
 
 4. Executar a limpeza real quando aprovado:
 
 ```bash
-cd /opt/Monitor-Pfsense
+cd /Dados/Monitor-Pfsense
 ./scripts/purge-heartbeats.sh --all --vacuum
 ```
 

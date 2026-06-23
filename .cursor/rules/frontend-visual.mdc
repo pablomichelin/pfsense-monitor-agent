@@ -1,0 +1,23 @@
+---
+description: Padrões visuais do painel Monitor-Pfsense (Tailwind, layout, cards, formulários)
+globs: apps/web/**/*.{tsx,ts,css}
+alwaysApply: false
+---
+
+# Sistema visual do painel
+
+Ao alterar ou criar componentes de UI no painel:
+
+1. **Consulte** `docs/SISTEMA-VISUAL-PAINEL.md` como referência canônica.
+
+2. **Mantenha consistência:**
+   - Cards: `rounded-xl p-6`, não rounded-2xl/3xl
+   - Badges: `rounded-md px-2.5 py-0.5`, não rounded-full
+   - Inputs/botões: `h-11 rounded-lg border-slate-600/80`
+   - Nav: `h-10 rounded-lg`
+   - Labels: `tracking-wider`, não tracking-[0.2em]
+   - Section gap: `space-y-8`
+
+3. **Tema:** dark navy/blue. Cores: panel-*, signal-*, slate, cyan, emerald, amber, rose.
+
+4. **Após mudanças visuais:** `npm run build` (apps/web) e `docker compose build web && docker compose up -d web`.

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { NodeCommandsModule } from '../node-commands/node-commands.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { BackupsCommandService } from './backups-command.service';
 import { BackupsController } from './backups.controller';
@@ -10,7 +11,7 @@ import { BackupsRetentionService } from './backups-retention.service';
 import { BackupsStorageService } from './backups-storage.service';
 
 @Module({
-  imports: [PrismaModule, AuthModule],
+  imports: [PrismaModule, AuthModule, NodeCommandsModule],
   controllers: [BackupsIngestController, BackupsController],
   providers: [
     BackupsStorageService,
@@ -19,6 +20,6 @@ import { BackupsStorageService } from './backups-storage.service';
     BackupsIngestService,
     BackupsDownloadService,
   ],
-  exports: [BackupsCommandService],
+  exports: [BackupsCommandService, NodeCommandsModule],
 })
 export class BackupsModule {}

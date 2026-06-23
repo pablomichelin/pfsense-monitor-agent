@@ -51,5 +51,5 @@ Checklist para refatorar `/audit` com filtros amigáveis PT-BR e extensão míni
 ```bash
 cd apps/api && npm run build
 cd apps/web && npm run build
-cd /opt/Monitor-Pfsense && docker compose up -d --build
+cd /Dados/Monitor-Pfsense && docker compose up -d --build
 ```

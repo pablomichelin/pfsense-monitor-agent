@@ -1,4 +1,11 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  NotFoundException,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import { FastifyReply } from 'fastify';
 import { PackageReleaseRateLimitGuard } from '../common/package-release-rate-limit.guard';
 import { PackageReleaseService } from '../common/package-release.service';
 
@@ -10,5 +17,25 @@ export class AgentReleaseController {
   @UseGuards(PackageReleaseRateLimitGuard)
   getPackageRelease() {
     return this.packageRelease.getPackageRelease();
+  }
+
+  @Get('package-artifact')
+  @UseGuards(PackageReleaseRateLimitGuard)
+  async downloadPackageArtifact(@Res() reply: FastifyReply) {
+    try {
+      const artifact = this.packageRelease.openArtifactStream();
+      return reply
+        .header('content-type', 'application/gzip')
+        .header(
+          'content-disposition',
+          `attachment; filename="${artifact.filename}"`,
+        )
+        .send(artifact.stream);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw error;
+    }
   }
 }

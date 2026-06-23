@@ -200,6 +200,76 @@ export type ConfigBackupCommandStatusResponse = {
   error_message: string | null;
 };
 
+export type PfsenseUpgradeBackupGate = {
+  requires_recent_backup: boolean;
+  require_recent_backup_hours: number;
+  has_recent_backup: boolean;
+  last_backup_at: string | null;
+  can_override_no_recent_backup: boolean;
+};
+
+export type PfsenseUpgradeStatusResponse = {
+  enabled: boolean;
+  hostname: string;
+  pfsense_version: string | null;
+  agent_version: string | null;
+  agent_version_supported: boolean;
+  min_agent_version: string;
+  ha_blocked: boolean;
+  ha_role: string | null;
+  ha_detected_from_agent: boolean | null;
+  update_available: boolean | null;
+  target_version: string | null;
+  update_checked_at: string | null;
+  update_check_error: string | null;
+  last_seen_at: string | null;
+  maintenance_mode: boolean;
+  active_command: {
+    command_id: string;
+    status:
+      | 'pending'
+      | 'picked_up'
+      | 'running'
+      | 'succeeded'
+      | 'failed'
+      | 'expired'
+      | 'cancelled';
+    requested_at: string;
+    picked_up_at: string | null;
+    running_at: string | null;
+    expires_at: string;
+  } | null;
+  last_result: {
+    command_id: string;
+    status:
+      | 'pending'
+      | 'picked_up'
+      | 'running'
+      | 'succeeded'
+      | 'failed'
+      | 'expired'
+      | 'cancelled';
+    completed_at: string | null;
+    result_json: Record<string, unknown> | null;
+    error_message: string | null;
+  } | null;
+  backup_gate: PfsenseUpgradeBackupGate;
+};
+
+export type PfsenseUpgradeRequestResponse = {
+  command_id: string;
+  status:
+    | 'pending'
+    | 'picked_up'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'expired'
+    | 'cancelled';
+  expires_at: string;
+  target_version: string | null;
+};
+
 export type SessionResponse = {
   authenticated: true;
   session: {
@@ -678,6 +748,31 @@ export async function getNodeConfigBackupCommandStatus(
 ): Promise<ConfigBackupCommandStatusResponse> {
   return apiFetch<ConfigBackupCommandStatusResponse>(
     `/api/v1/nodes/${nodeId}/config-backups/requests/${commandId}`,
+  );
+}
+
+export async function getPfsenseUpgradeStatus(
+  nodeId: string,
+): Promise<PfsenseUpgradeStatusResponse> {
+  return apiFetch<PfsenseUpgradeStatusResponse>(
+    `/api/v1/nodes/${nodeId}/pfsense-upgrade/status`,
+  );
+}
+
+export async function requestPfsenseUpgrade(
+  nodeId: string,
+  body: {
+    enable_maintenance_mode?: boolean;
+    acknowledge_no_recent_backup?: boolean;
+  },
+): Promise<PfsenseUpgradeRequestResponse> {
+  return apiFetch<PfsenseUpgradeRequestResponse>(
+    `/api/v1/nodes/${nodeId}/pfsense-upgrade/request`,
+    {
+      method: 'POST',
+      csrfProtected: true,
+      body: JSON.stringify(body),
+    },
   );
 }
 

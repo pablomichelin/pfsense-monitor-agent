@@ -3,6 +3,7 @@ import { PageHero } from '@/components/page-hero';
 import { Alert, Button, Card } from '@/components/ui';
 import { getOptionalSession } from '@/lib/api';
 import { loginAction } from '@/lib/auth';
+import { sanitizeInternalPath } from '@/lib/internal-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,11 +13,15 @@ export default async function LoginPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await getOptionalSession();
+  const params = (await searchParams) ?? {};
+  const nextPath = sanitizeInternalPath(
+    typeof params.next === 'string' ? params.next : undefined,
+  );
+
   if (session) {
-    redirect('/dashboard');
+    redirect(nextPath ?? '/dashboard');
   }
 
-  const params = (await searchParams) ?? {};
   const hasError = params.error === '1';
 
   return (
@@ -42,6 +47,7 @@ export default async function LoginPage({
           ) : null}
 
           <form action={loginAction} className="mt-6 space-y-5">
+            {nextPath ? <input type="hidden" name="next" value={nextPath} /> : null}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-slate-300">
                 Email

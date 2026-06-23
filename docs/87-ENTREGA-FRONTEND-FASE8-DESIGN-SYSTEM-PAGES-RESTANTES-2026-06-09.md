@@ -90,7 +90,7 @@ Validação manual recomendada (UI fina): filtros em Card em `/alerts`; cards co
 
 ```bash
 cd apps/web && npm run build
-cd /opt/Monitor-Pfsense && docker compose up -d --build
+cd /Dados/Monitor-Pfsense && docker compose up -d --build
 ```
 
 ---

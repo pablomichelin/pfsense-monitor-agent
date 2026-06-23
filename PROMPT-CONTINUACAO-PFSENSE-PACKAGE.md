@@ -5,11 +5,11 @@ Use este texto como primeira mensagem de um novo chat:
 ```text
 Leia primeiro os arquivos abaixo e continue exatamente da homologacao real do pacote pfSense, sem reexplicar contexto e sem redesenhar arquitetura:
 
-1. /opt/Monitor-Pfsense/00_inicio.md
-2. /opt/Monitor-Pfsense/LEITURA-INICIAL.md
-3. /opt/Monitor-Pfsense/00-README.md
-4. /opt/Monitor-Pfsense/18-homologacao-pfsense-package-real-2026-03-13.md
-5. /opt/Monitor-Pfsense/CORTEX.md
+1. /Dados/Monitor-Pfsense/00_inicio.md
+2. /Dados/Monitor-Pfsense/LEITURA-INICIAL.md
+3. /Dados/Monitor-Pfsense/00-README.md
+4. /Dados/Monitor-Pfsense/18-homologacao-pfsense-package-real-2026-03-13.md
+5. /Dados/Monitor-Pfsense/CORTEX.md
 
 Considere como fatos ja validados:
 

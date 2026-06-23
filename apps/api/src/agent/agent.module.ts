@@ -6,5 +6,6 @@ import { AgentReleaseController } from './agent-release.controller';
 @Module({
   controllers: [AgentReleaseController],
   providers: [PackageReleaseService, PackageReleaseRateLimitGuard],
+  exports: [PackageReleaseService],
 })
 export class AgentModule {}

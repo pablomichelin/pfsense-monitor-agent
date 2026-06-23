@@ -9,7 +9,7 @@ Sempre que for preciso instalar ou atualizar o package do SystemUp Monitor em um
 No servidor do projeto, o comando completo (com o **secret real** do node) é gerado pela API. Execute:
 
 ```bash
-cd /opt/Monitor-Pfsense
+cd /Dados/Monitor-Pfsense
 ./scripts/generate-install-command.sh [NODE_UID] [normal|light]
 ```
 
@@ -79,7 +79,7 @@ Para firewalls que **já têm o package instalado** (qualquer versão anterior),
 1. Gerar o artefato da nova versão e o SHA256:
 
 ```bash
-cd /opt/Monitor-Pfsense
+cd /Dados/Monitor-Pfsense
 ./scripts/build-pfsense-package-artifact.sh 0.2.1
 cat dist/pfsense-package/monitor-pfsense-package-v0.2.1.tar.gz.sha256
 ```
@@ -139,7 +139,7 @@ fetch -o /tmp/install-from-release.sh https://raw.githubusercontent.com/.../inst
 No servidor do projeto:
 
 ```bash
-cd /opt/Monitor-Pfsense
+cd /Dados/Monitor-Pfsense
 ./scripts/build-pfsense-package-artifact.sh 0.1.7
 cat dist/pfsense-package/monitor-pfsense-package-v0.1.7.tar.gz.sha256
 ```

@@ -31,6 +31,7 @@ export class DashboardController {
   }
 
   @Sse('events')
+  @RequirePermissions('firewalls.view')
   @Header('Cache-Control', 'no-cache, no-transform')
   @Header('X-Accel-Buffering', 'no')
   streamEvents(): Observable<MessageEvent> {

@@ -63,6 +63,7 @@ include("head.inc");
     </div>
   </div>
 </section>
+<?php systemup_monitor_render_auto_refresh_script(); ?>
 <?php include("foot.inc"); ?>
 </body>
 </html>

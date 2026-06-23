@@ -92,7 +92,7 @@ cd apps/web && npm run build
 ## Bloco E — Deploy
 
 ```bash
-cd /opt/Monitor-Pfsense && docker compose up -d --build
+cd /Dados/Monitor-Pfsense && docker compose up -d --build
 ```
 
 ---

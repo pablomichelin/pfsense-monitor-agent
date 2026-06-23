@@ -1,14 +1,16 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { existsSync, readFileSync } from 'fs';
+import {
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { createReadStream, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { appConfig } from '../config/app-config';
 
-export type PackageReleaseInfo = {
+export type PackageReleaseMetadata = {
   version: string;
   sha256: string;
   repoRawBase: string;
-  artifactUrl: string;
-  installerUrl: string;
 };
 
 @Injectable()
@@ -21,31 +23,103 @@ export class PackageReleaseService {
     artifact_url: string;
     installer_url: string;
   } {
-    const release = this.readPackageReleaseFromFile() ?? {
-      version: appConfig.packageRelease.version,
-      sha256: appConfig.packageRelease.sha256,
-      repoRawBase: appConfig.packageRelease.repoRawBase,
-    };
-
-    if (!release.version || !release.sha256 || !release.repoRawBase) {
-      throw new ServiceUnavailableException('package release metadata is not configured');
-    }
-
-    const base = release.repoRawBase.replace(/\/+$/, '');
-    const artifactUrl = `${base}/dist/pfsense-package/monitor-pfsense-package-v${release.version}.tar.gz`;
-    const installerUrl = `${base}/packages/pfsense-package/bootstrap/install-from-release.sh`;
+    const release = this.readPackageReleaseMetadata();
+    const urls = this.buildReleaseUrls(release);
 
     return {
       generated_at: new Date().toISOString(),
       version: release.version,
       sha256: release.sha256,
       repo_raw_base: release.repoRawBase,
-      artifact_url: artifactUrl,
-      installer_url: installerUrl,
+      artifact_url: urls.artifactUrl,
+      installer_url: urls.installerUrl,
     };
   }
 
-  private readPackageReleaseFromFile(): PackageReleaseInfo | null {
+  resolveLocalArtifactPath(version: string): string {
+    const resolvedVersion = version.trim();
+    if (!resolvedVersion) {
+      throw new NotFoundException('package version not configured');
+    }
+
+    const candidates = [
+      join(
+        appConfig.packageRelease.artifactDir,
+        `monitor-pfsense-package-v${resolvedVersion}.tar.gz`,
+      ),
+      join(
+        process.cwd(),
+        'dist',
+        'pfsense-package',
+        `monitor-pfsense-package-v${resolvedVersion}.tar.gz`,
+      ),
+    ];
+
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    throw new NotFoundException('package artifact not found on controller');
+  }
+
+  openArtifactStream(version?: string) {
+    const resolvedVersion =
+      version?.trim() || this.readPackageReleaseMetadata().version;
+    const filePath = this.resolveLocalArtifactPath(resolvedVersion);
+    return {
+      filePath,
+      stream: createReadStream(filePath),
+      filename: filePath.split('/').pop() ?? 'monitor-pfsense-package.tar.gz',
+    };
+  }
+
+  buildReleaseUrls(release: PackageReleaseMetadata): {
+    artifactUrl: string;
+    installerUrl: string;
+  } {
+    const repoBase = release.repoRawBase.replace(/\/+$/, '');
+    const installerUrl = `${repoBase}/packages/pfsense-package/bootstrap/install-from-release.sh`;
+
+    try {
+      this.resolveLocalArtifactPath(release.version);
+      const publicBase = appConfig.packageRelease.publicBaseUrl.replace(
+        /\/+$/,
+        '',
+      );
+      return {
+        artifactUrl: `${publicBase}/api/v1/agent/package-artifact`,
+        installerUrl,
+      };
+    } catch {
+      return {
+        artifactUrl: `${repoBase}/dist/pfsense-package/monitor-pfsense-package-v${release.version}.tar.gz`,
+        installerUrl,
+      };
+    }
+  }
+
+  private readPackageReleaseMetadata(): PackageReleaseMetadata {
+    const fromFile = this.readPackageReleaseFromFile();
+    if (fromFile) {
+      return fromFile;
+    }
+
+    const version = appConfig.packageRelease.version;
+    const sha256 = appConfig.packageRelease.sha256;
+    const repoRawBase = appConfig.packageRelease.repoRawBase;
+
+    if (!version || !sha256 || !repoRawBase) {
+      throw new ServiceUnavailableException(
+        'package release metadata is not configured',
+      );
+    }
+
+    return { version, sha256, repoRawBase };
+  }
+
+  private readPackageReleaseFromFile(): PackageReleaseMetadata | null {
     const paths = [
       '/app/config/package-release.env',
       join(process.cwd(), 'config', 'package-release.env'),
@@ -85,14 +159,7 @@ export class PackageReleaseService {
         const repoRawBase = out.PACKAGE_RELEASE_REPO_RAW_BASE?.trim();
 
         if (version && sha256 && repoRawBase) {
-          const base = repoRawBase.replace(/\/+$/, '');
-          return {
-            version,
-            sha256,
-            repoRawBase,
-            artifactUrl: `${base}/dist/pfsense-package/monitor-pfsense-package-v${version}.tar.gz`,
-            installerUrl: `${base}/packages/pfsense-package/bootstrap/install-from-release.sh`,
-          };
+          return { version, sha256, repoRawBase };
         }
       } catch {
         /* ignore */

@@ -1,11 +1,8 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
   NotFoundException,
-  OnModuleDestroy,
-  OnModuleInit,
 } from '@nestjs/common';
 import {
   ConfigBackupStatus,
@@ -14,63 +11,22 @@ import {
   Prisma,
 } from '@prisma/client';
 import { appConfig } from '../config/app-config';
+import { NodeCommandsService } from '../node-commands/node-commands.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-export interface PendingCommandPayload {
-  id: string;
-  type: NodeCommandType;
-  expires_at: string;
-}
+export type { PendingCommandPayload } from '../node-commands/node-commands.service';
 
 @Injectable()
-export class BackupsCommandService implements OnModuleInit, OnModuleDestroy {
+export class BackupsCommandService {
   private readonly logger = new Logger(BackupsCommandService.name);
-  private timer?: NodeJS.Timeout;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly nodeCommandsService: NodeCommandsService,
+  ) {}
 
-  onModuleInit(): void {
-    void this.expireStaleCommands('startup');
-
-    this.timer = setInterval(() => {
-      void this.expireStaleCommands('interval');
-    }, 60_000);
-    this.timer.unref?.();
-  }
-
-  onModuleDestroy(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-    }
-  }
-
-  async getPendingCommandsForNode(nodeId: string): Promise<PendingCommandPayload[]> {
-    const now = new Date();
-    const commands = await this.prisma.nodeCommand.findMany({
-      where: {
-        nodeId,
-        type: NodeCommandType.config_backup_now,
-        status: {
-          in: [
-            NodeCommandStatus.pending,
-            NodeCommandStatus.picked_up,
-            NodeCommandStatus.running,
-          ],
-        },
-        expiresAt: {
-          gt: now,
-        },
-      },
-      orderBy: {
-        requestedAt: 'asc',
-      },
-    });
-
-    return commands.map((command) => ({
-      id: command.id,
-      type: command.type,
-      expires_at: command.expiresAt.toISOString(),
-    }));
+  getPendingCommandsForNode(nodeId: string) {
+    return this.nodeCommandsService.getPendingCommandsForNode(nodeId);
   }
 
   async requestBackupNow(input: {
@@ -82,54 +38,67 @@ export class BackupsCommandService implements OnModuleInit, OnModuleDestroy {
     status: NodeCommandStatus;
     expires_at: string;
   }> {
-    const node = await this.prisma.node.findUnique({
-      where: {
-        id: input.nodeId,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!node) {
-      throw new NotFoundException('node not found');
-    }
-
-    const activeCommand = await this.prisma.nodeCommand.findFirst({
-      where: {
-        nodeId: input.nodeId,
-        type: NodeCommandType.config_backup_now,
-        status: {
-          in: [
-            NodeCommandStatus.pending,
-            NodeCommandStatus.picked_up,
-            NodeCommandStatus.running,
-          ],
-        },
-      },
-      orderBy: {
-        requestedAt: 'desc',
-      },
-    });
-
-    if (activeCommand) {
-      throw new ConflictException('backup request already pending for this node');
-    }
-
     const now = new Date();
     const expiresAt = new Date(
-      now.getTime() + appConfig.configBackup.commandExpireMinutes * 60_000,
+      now.getTime() +
+        this.nodeCommandsService.getCommandExpireMinutes(
+          NodeCommandType.config_backup_now,
+        ) *
+          60_000,
     );
 
-    const command = await this.prisma.nodeCommand.create({
-      data: {
-        nodeId: input.nodeId,
-        type: NodeCommandType.config_backup_now,
-        status: NodeCommandStatus.pending,
-        requestedByUserId: input.requestedByUserId,
-        expiresAt,
+    const command = await this.prisma.$transaction(
+      async (tx) => {
+        const node = await tx.node.findUnique({
+          where: {
+            id: input.nodeId,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        if (!node) {
+          throw new NotFoundException('node not found');
+        }
+
+        const activeCommand = await tx.nodeCommand.findFirst({
+          where: {
+            nodeId: input.nodeId,
+            type: NodeCommandType.config_backup_now,
+            status: {
+              in: [
+                NodeCommandStatus.pending,
+                NodeCommandStatus.picked_up,
+                NodeCommandStatus.running,
+              ],
+            },
+          },
+          orderBy: {
+            requestedAt: 'desc',
+          },
+        });
+
+        if (activeCommand) {
+          throw new ConflictException(
+            'backup request already pending for this node',
+          );
+        }
+
+        return tx.nodeCommand.create({
+          data: {
+            nodeId: input.nodeId,
+            type: NodeCommandType.config_backup_now,
+            status: NodeCommandStatus.pending,
+            requestedByUserId: input.requestedByUserId,
+            expiresAt,
+          },
+        });
       },
-    });
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
 
     await this.prisma.auditLog.create({
       data: {
@@ -153,83 +122,18 @@ export class BackupsCommandService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async getCommandStatus(nodeId: string, commandId: string) {
-    const command = await this.prisma.nodeCommand.findFirst({
-      where: {
-        id: commandId,
-        nodeId,
-      },
-    });
-
-    if (!command) {
-      throw new NotFoundException('command not found');
-    }
-
-    return {
-      command_id: command.id,
-      node_id: command.nodeId,
-      type: command.type,
-      status: command.status,
-      requested_at: command.requestedAt.toISOString(),
-      picked_up_at: command.pickedUpAt?.toISOString() ?? null,
-      completed_at: command.completedAt?.toISOString() ?? null,
-      expires_at: command.expiresAt.toISOString(),
-      result_json: command.resultJson,
-      error_message: command.errorMessage,
-    };
+  getCommandStatus(nodeId: string, commandId: string) {
+    return this.nodeCommandsService.getCommandStatus(nodeId, commandId);
   }
 
-  async acknowledgeCommand(input: {
+  acknowledgeCommand(input: {
     nodeId: string;
     credentialId: string;
     commandId: string;
     status: 'picked_up' | 'running';
     clientIp?: string;
-  }): Promise<{ ok: true; command_id: string; status: NodeCommandStatus }> {
-    const command = await this.findActiveCommand(input.nodeId, input.commandId);
-
-    const nextStatus =
-      input.status === 'running'
-        ? NodeCommandStatus.running
-        : NodeCommandStatus.picked_up;
-
-    if (
-      command.status === NodeCommandStatus.running &&
-      nextStatus === NodeCommandStatus.picked_up
-    ) {
-      throw new BadRequestException('command cannot move back to picked_up');
-    }
-
-    const updated = await this.prisma.nodeCommand.update({
-      where: {
-        id: command.id,
-      },
-      data: {
-        status: nextStatus,
-        pickedUpAt: command.pickedUpAt ?? new Date(),
-      },
-    });
-
-    await this.prisma.auditLog.create({
-      data: {
-        actorType: 'node_credential',
-        actorId: input.credentialId,
-        action: 'backup.config.request_picked_up',
-        targetType: 'node_command',
-        targetId: command.id,
-        ipAddress: input.clientIp,
-        metadataJson: {
-          node_id: input.nodeId,
-          status: nextStatus,
-        },
-      },
-    });
-
-    return {
-      ok: true,
-      command_id: updated.id,
-      status: updated.status,
-    };
+  }) {
+    return this.nodeCommandsService.acknowledgeCommand(input);
   }
 
   async reportCommandFailure(input: {
@@ -239,44 +143,14 @@ export class BackupsCommandService implements OnModuleInit, OnModuleDestroy {
     errorMessage: string;
     clientIp?: string;
   }): Promise<{ ok: true; command_id: string; status: NodeCommandStatus }> {
-    const command = await this.findActiveCommand(input.nodeId, input.commandId);
-    const truncatedError = input.errorMessage.trim().slice(0, 500);
-    const completedAt = new Date();
-
-    const updated = await this.prisma.nodeCommand.update({
-      where: {
-        id: command.id,
-      },
-      data: {
-        status: NodeCommandStatus.failed,
-        completedAt,
-        errorMessage: truncatedError,
-        resultJson: {
-          error_message: truncatedError,
-        },
-      },
+    return this.nodeCommandsService.reportCommandResult({
+      nodeId: input.nodeId,
+      credentialId: input.credentialId,
+      commandId: input.commandId,
+      status: 'failed',
+      errorMessage: input.errorMessage,
+      clientIp: input.clientIp,
     });
-
-    await this.prisma.auditLog.create({
-      data: {
-        actorType: 'node_credential',
-        actorId: input.credentialId,
-        action: 'backup.config.request_failed',
-        targetType: 'node_command',
-        targetId: command.id,
-        ipAddress: input.clientIp,
-        metadataJson: {
-          node_id: input.nodeId,
-          error_message: truncatedError,
-        },
-      },
-    });
-
-    return {
-      ok: true,
-      command_id: updated.id,
-      status: updated.status,
-    };
   }
 
   async markCommandSucceeded(input: {
@@ -286,23 +160,63 @@ export class BackupsCommandService implements OnModuleInit, OnModuleDestroy {
     sha256: string;
     backupUid?: string;
   }): Promise<void> {
-    const command = await this.prisma.nodeCommand.findFirst({
+    const activeStatuses: NodeCommandStatus[] = [
+      NodeCommandStatus.pending,
+      NodeCommandStatus.picked_up,
+      NodeCommandStatus.running,
+    ];
+
+    let command = await this.prisma.nodeCommand.findFirst({
       where: {
         id: input.commandId,
         nodeId: input.nodeId,
         type: NodeCommandType.config_backup_now,
         status: {
-          in: [
-            NodeCommandStatus.pending,
-            NodeCommandStatus.picked_up,
-            NodeCommandStatus.running,
-          ],
+          in: activeStatuses,
         },
       },
     });
 
     if (!command) {
-      return;
+      command = await this.prisma.nodeCommand.findFirst({
+        where: {
+          id: input.commandId,
+          nodeId: input.nodeId,
+          type: NodeCommandType.config_backup_now,
+          status: NodeCommandStatus.expired,
+        },
+      });
+
+      if (!command) {
+        this.logger.warn(
+          `markCommandSucceeded skipped command_id=${input.commandId} node_id=${input.nodeId}: no active or expired command`,
+        );
+        return;
+      }
+
+      const backupExists = await this.prisma.nodeConfigBackup.findFirst({
+        where: {
+          nodeId: input.nodeId,
+          commandId: input.commandId,
+          status: {
+            in: [ConfigBackupStatus.stored, ConfigBackupStatus.duplicate],
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!backupExists) {
+        this.logger.warn(
+          `markCommandSucceeded skipped expired command_id=${input.commandId} node_id=${input.nodeId}: backup not recorded`,
+        );
+        return;
+      }
+
+      this.logger.warn(
+        `markCommandSucceeded reconciling expired command_id=${input.commandId} node_id=${input.nodeId} after backup stored`,
+      );
     }
 
     const completedAt = new Date();
@@ -379,77 +293,5 @@ export class BackupsCommandService implements OnModuleInit, OnModuleDestroy {
         backupUid: backup.backupUid,
       });
     }
-  }
-
-  private async findActiveCommand(nodeId: string, commandId: string) {
-    const command = await this.prisma.nodeCommand.findFirst({
-      where: {
-        id: commandId,
-        nodeId,
-        type: NodeCommandType.config_backup_now,
-        status: {
-          in: [
-            NodeCommandStatus.pending,
-            NodeCommandStatus.picked_up,
-            NodeCommandStatus.running,
-          ],
-        },
-      },
-    });
-
-    if (!command) {
-      throw new NotFoundException('active command not found');
-    }
-
-    if (command.expiresAt.getTime() <= Date.now()) {
-      throw new BadRequestException('command expired');
-    }
-
-    return command;
-  }
-
-  private async expireStaleCommands(reason: 'startup' | 'interval'): Promise<void> {
-    const now = new Date();
-    const expired = await this.prisma.nodeCommand.findMany({
-      where: {
-        status: NodeCommandStatus.pending,
-        expiresAt: {
-          lte: now,
-        },
-      },
-    });
-
-    if (expired.length === 0) {
-      return;
-    }
-
-    await this.prisma.$transaction(async (tx) => {
-      for (const command of expired) {
-        await tx.nodeCommand.update({
-          where: {
-            id: command.id,
-          },
-          data: {
-            status: NodeCommandStatus.expired,
-            completedAt: now,
-          },
-        });
-
-        await tx.auditLog.create({
-          data: {
-            actorType: 'system',
-            action: 'backup.config.request_expired',
-            targetType: 'node_command',
-            targetId: command.id,
-            metadataJson: {
-              node_id: command.nodeId,
-              reason,
-            },
-          },
-        });
-      }
-    });
-
-    this.logger.log(`expired ${expired.length} backup commands reason=${reason}`);
   }
 }

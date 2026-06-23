@@ -25,6 +25,7 @@ Trilha UX layout (nao altera matriz): `24-plano-fase0-fase1-layout-navegacao-ui-
 | `backups.run` | Solicitar backup `config.xml` |
 | `backups.view` | Listar backups |
 | `backups.download` | Baixar `config.xml` descriptografado |
+| `pfsense.upgrade.run` | Disparar upgrade pfSense OS (por firewall) |
 | `users.view` | Listar usuários e escopos |
 | `users.create` | Criar usuários |
 | `users.update` | Atualizar usuários e escopo |
@@ -50,6 +51,7 @@ Trilha UX layout (nao altera matriz): `24-plano-fase0-fase1-layout-navegacao-ui-
 | backups.view | ✓ | ✓ | ✓ | ✓ | ✓ |
 | backups.run | ✓ | ✓ | — | — | — |
 | backups.download | ✓ | — | — | — | — |
+| pfsense.upgrade.run | ✓ | ✓ | — | — | — |
 | users.* | ✓ | — | — | — | — |
 | audit.view | ✓ | ✓ | — | — | — |
 | bootstrap.view/execute | ✓ | ✓ | — | — | — |

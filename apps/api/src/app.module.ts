@@ -10,6 +10,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { HealthModule } from './health/health.module';
 import { IngestModule } from './ingest/ingest.module';
 import { NodesModule } from './nodes/nodes.module';
+import { PfsenseUpgradeModule } from './pfsense-upgrade/pfsense-upgrade.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -26,6 +27,7 @@ import { PrismaModule } from './prisma/prisma.module';
     DashboardModule,
     NodesModule,
     AdminModule,
+    PfsenseUpgradeModule,
   ],
 })
 export class AppModule {}

@@ -80,7 +80,7 @@ A troca de aba atualiza `?tab=` na URL preservando parâmetros de bootstrap (`he
 
 ```bash
 cd apps/web && npm run build
-cd /opt/Monitor-Pfsense && docker compose up -d --build
+cd /Dados/Monitor-Pfsense && docker compose up -d --build
 ```
 
 ---

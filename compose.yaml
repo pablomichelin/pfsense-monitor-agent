@@ -37,6 +37,7 @@ services:
     volumes:
       # Monta o ficheiro em runtime para o comando de bootstrap refletir sempre a versão atual (após git pull), sem restart
       - ./config/package-release.env:/app/config/package-release.env:ro
+      - ./dist/pfsense-package:/app/dist/pfsense-package:ro
       - ./data/pfsense-config-backups:/app/data/pfsense-config-backups
     restart: unless-stopped
     logging:
@@ -47,7 +48,7 @@ services:
       resources:
         limits:
           cpus: '4'
-          memory: 1G
+          memory: 2G
     healthcheck:
       test:
         - CMD-SHELL
@@ -91,6 +92,13 @@ services:
         max-file: "3"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
+    shm_size: 256m
+    command: >
+      postgres
+      -c shared_buffers=1GB
+      -c work_mem=8MB
+      -c maintenance_work_mem=128MB
+      -c effective_cache_size=4GB
     healthcheck:
       test:
         - CMD-SHELL

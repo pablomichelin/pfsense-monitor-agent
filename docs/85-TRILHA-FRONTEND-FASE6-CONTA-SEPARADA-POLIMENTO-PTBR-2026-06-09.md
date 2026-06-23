@@ -56,5 +56,5 @@ Checklist para criar `/conta`, ajustar `/sessions`, menu Conta e polimento PT-BR
 
 ```bash
 cd apps/web && npm run build
-cd /opt/Monitor-Pfsense && docker compose up -d --build
+cd /Dados/Monitor-Pfsense && docker compose up -d --build
 ```

@@ -15,9 +15,14 @@ import {
 import { appConfig } from '../config/app-config';
 import { NodeRequestAuthService } from '../common/node-request-auth.service';
 import { BackupsCommandService } from '../backups/backups-command.service';
+import { NodeCommandsService } from '../node-commands/node-commands.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
-import { HeartbeatDto } from './dto/heartbeat.dto';
+import {
+  HeartbeatDto,
+  HeartbeatGatewayDto,
+  HeartbeatServiceDto,
+} from './dto/heartbeat.dto';
 import {
   buildGatewayAlert,
   buildServiceAlert,
@@ -55,6 +60,7 @@ export class IngestService {
     private readonly prisma: PrismaService,
     private readonly nodeRequestAuth: NodeRequestAuthService,
     private readonly backupsCommandService: BackupsCommandService,
+    private readonly nodeCommandsService: NodeCommandsService,
     private readonly realtimeService: RealtimeService,
   ) {}
 
@@ -66,6 +72,7 @@ export class IngestService {
       id: string;
       type: NodeCommandType;
       expires_at: string;
+      payload?: Record<string, unknown>;
     }>;
   }> {
     const receivedAt = new Date();
@@ -90,6 +97,15 @@ export class IngestService {
     );
 
     if (node.lastHeartbeatId === request.body.heartbeat_id) {
+      await this.prisma.node.update({
+        where: {
+          id: node.id,
+        },
+        data: {
+          lastSeenAt: receivedAt,
+        },
+      });
+
       await this.prisma.nodeCredential.update({
         where: {
           id: credential.id,
@@ -101,7 +117,7 @@ export class IngestService {
 
       await this.backupsCommandService.reconcileSucceededCommands(node.id);
       const commands =
-        await this.backupsCommandService.getPendingCommandsForNode(node.id);
+        await this.nodeCommandsService.getPendingCommandsForNode(node.id);
 
       return {
         ok: true,
@@ -111,10 +127,17 @@ export class IngestService {
       };
     }
 
+    const servicesProvided = request.body.services != null;
+    const gatewaysProvided = request.body.gateways != null;
     const services = request.body.services ?? [];
     const gateways = request.body.gateways ?? [];
-    const nodeStatus = calculateNodeStatus({
+
+    const nodeStatus = await this.resolveHeartbeatNodeStatus({
+      nodeId: node.id,
       maintenanceMode: node.maintenanceMode,
+      persistedStatus: node.status,
+      servicesProvided,
+      gatewaysProvided,
       services,
       gateways,
     });
@@ -153,6 +176,13 @@ export class IngestService {
         ) as Prisma.InputJsonValue)
       : Prisma.JsonNull;
 
+    const updateCheckProvided =
+      request.body.pfsense_update_checked_at != null ||
+      request.body.pfsense_update_available !== undefined ||
+      request.body.pfsense_update_check_error != null;
+
+    const haDetectedProvided = request.body.ha_detected !== undefined;
+
     await this.prisma.$transaction(async (tx) => {
       await tx.node.update({
         where: {
@@ -180,6 +210,24 @@ export class IngestService {
           customerCode: request.body.customer_code,
           networkInterfacesJson: networkInterfaces,
           status: nodeStatus,
+          ...(updateCheckProvided
+            ? {
+                pfsenseUpdateAvailable: request.body.pfsense_update_available ?? null,
+                pfsenseUpdateTargetVersion:
+                  request.body.pfsense_update_target_version?.trim() || null,
+                pfsenseUpdateCheckedAt: request.body.pfsense_update_checked_at
+                  ? this.nodeRequestAuth.parseIsoDate(
+                      request.body.pfsense_update_checked_at,
+                      'pfsense_update_checked_at',
+                    )
+                  : sentAt,
+                pfsenseUpdateCheckError:
+                  request.body.pfsense_update_check_error?.trim() || null,
+              }
+            : {}),
+          ...(haDetectedProvided
+            ? { haDetectedFromAgent: request.body.ha_detected ?? null }
+            : {}),
         },
       });
 
@@ -270,7 +318,10 @@ export class IngestService {
         }
       }
 
-      await this.syncAlerts(tx, node.id, request.body, receivedAt);
+      await this.syncAlerts(tx, node.id, request.body, receivedAt, {
+        syncServices: servicesProvided,
+        syncGateways: gatewaysProvided,
+      });
     });
 
     const heartbeatLogMessage =
@@ -293,7 +344,7 @@ export class IngestService {
 
     await this.backupsCommandService.reconcileSucceededCommands(node.id);
     const commands =
-      await this.backupsCommandService.getPendingCommandsForNode(node.id);
+      await this.nodeCommandsService.getPendingCommandsForNode(node.id);
 
     return {
       ok: true,
@@ -374,62 +425,125 @@ export class IngestService {
     }
   }
 
+  private async resolveHeartbeatNodeStatus(input: {
+    nodeId: string;
+    maintenanceMode: boolean;
+    persistedStatus: NodeStatus;
+    servicesProvided: boolean;
+    gatewaysProvided: boolean;
+    services: HeartbeatServiceDto[];
+    gateways: HeartbeatGatewayDto[];
+  }): Promise<NodeStatus> {
+    if (!input.servicesProvided && !input.gatewaysProvided) {
+      return input.persistedStatus;
+    }
+
+    let services = input.services;
+    let gateways = input.gateways;
+
+    if (!input.servicesProvided || !input.gatewaysProvided) {
+      const [persistedServices, persistedGateways] = await Promise.all([
+        input.servicesProvided
+          ? Promise.resolve([])
+          : this.prisma.nodeServiceStatus.findMany({
+              where: { nodeId: input.nodeId },
+            }),
+        input.gatewaysProvided
+          ? Promise.resolve([])
+          : this.prisma.nodeGatewayStatus.findMany({
+              where: { nodeId: input.nodeId },
+            }),
+      ]);
+
+      if (!input.servicesProvided) {
+        services = persistedServices.map((service) => ({
+          name: service.serviceName,
+          status: service.status,
+          message: service.message ?? undefined,
+        }));
+      }
+
+      if (!input.gatewaysProvided) {
+        gateways = persistedGateways.map((gateway) => ({
+          name: gateway.gatewayName,
+          status: gateway.status,
+          latency_ms: gateway.latencyMs ?? undefined,
+          loss_percent: gateway.lossPercent ?? undefined,
+        }));
+      }
+    }
+
+    return calculateNodeStatus({
+      maintenanceMode: input.maintenanceMode,
+      services,
+      gateways,
+    });
+  }
+
   private async syncAlerts(
     tx: Prisma.TransactionClient,
     nodeId: string,
     body: HeartbeatDto,
     observedAt: Date,
+    options: {
+      syncServices: boolean;
+      syncGateways: boolean;
+    },
   ): Promise<void> {
     const activeAlerts = new Map<string, ActiveAlert>();
 
-    for (const service of body.services ?? []) {
-      if (!isServiceProblem(service)) {
-        continue;
-      }
+    if (options.syncServices) {
+      for (const service of body.services ?? []) {
+        if (!isServiceProblem(service)) {
+          continue;
+        }
 
-      const details = buildServiceAlert(service);
-      if (!details) {
-        continue;
-      }
+        const details = buildServiceAlert(service);
+        if (!details) {
+          continue;
+        }
 
-      const fingerprint = `service_down:${nodeId}:${service.name}`;
-      activeAlerts.set(fingerprint, {
-        fingerprint,
-        type: AlertType.service_down,
-        severity: details.severity,
-        title: details.title,
-        description: details.description,
-        metadataJson: {
-          service_name: service.name,
-          service_status: service.status,
-        },
-      });
+        const fingerprint = `service_down:${nodeId}:${service.name}`;
+        activeAlerts.set(fingerprint, {
+          fingerprint,
+          type: AlertType.service_down,
+          severity: details.severity,
+          title: details.title,
+          description: details.description,
+          metadataJson: {
+            service_name: service.name,
+            service_status: service.status,
+          },
+        });
+      }
     }
 
-    for (const gateway of body.gateways ?? []) {
-      if (!isGatewayProblem(gateway)) {
-        continue;
-      }
+    if (options.syncGateways) {
+      for (const gateway of body.gateways ?? []) {
+        if (!isGatewayProblem(gateway)) {
+          continue;
+        }
 
-      const details = buildGatewayAlert(gateway);
-      if (!details) {
-        continue;
-      }
+        const details = buildGatewayAlert(gateway);
+        if (!details) {
+          continue;
+        }
 
-      const fingerprint = `gateway_down:${nodeId}:${gateway.name}`;
-      activeAlerts.set(fingerprint, {
-        fingerprint,
-        type: AlertType.gateway_down,
-        severity: details.severity,
-        title: details.title,
-        description: details.description,
-        metadataJson: {
-          gateway_name: gateway.name,
-          gateway_status: gateway.status,
-          latency_ms: gateway.latency_ms ?? null,
-          loss_percent: gateway.loss_percent ?? null,
-        },
-      });
+        const fingerprint = `gateway_down:${nodeId}:${gateway.name}`;
+        activeAlerts.set(fingerprint, {
+          fingerprint,
+          type: AlertType.gateway_down,
+          severity: details.severity,
+          title: details.title,
+          description: details.description,
+          metadataJson: {
+            gateway_name: gateway.name,
+            gateway_status: gateway.status,
+            latency_ms: gateway.latency_ms ?? null,
+            loss_percent: gateway.loss_percent ?? null,
+          },
+        });
+      }
     }
 
     const existingAlerts = await tx.alert.findMany({
@@ -503,6 +617,20 @@ export class IngestService {
         existing.type !== AlertType.heartbeat_missing &&
         existing.type !== AlertType.node_uid_conflict &&
         activeAlerts.has(existing.fingerprint)
+      ) {
+        continue;
+      }
+
+      if (
+        existing.type === AlertType.service_down &&
+        !options.syncServices
+      ) {
+        continue;
+      }
+
+      if (
+        existing.type === AlertType.gateway_down &&
+        !options.syncGateways
       ) {
         continue;
       }

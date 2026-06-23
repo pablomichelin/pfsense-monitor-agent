@@ -12,6 +12,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { appConfig } from '../config/app-config';
+import { NodeCommandsService } from '../node-commands/node-commands.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { deriveEffectiveNodeStatus } from './node-status.util';
@@ -25,6 +26,7 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeService: RealtimeService,
+    private readonly nodeCommandsService: NodeCommandsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -76,11 +78,17 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
+      const activeUpgradeNodeIds =
+        await this.nodeCommandsService.loadActivePfsenseUpgradeNodeIds(now);
+
       for (const node of nodes) {
         const effectiveStatus = deriveEffectiveNodeStatus(node, now);
         const heartbeatAlert = node.alerts[0];
+        const hasActiveUpgrade = activeUpgradeNodeIds.has(node.id);
         const shouldKeepHeartbeatAlertOpen =
-          !node.maintenanceMode && effectiveStatus === NodeStatus.offline;
+          !node.maintenanceMode &&
+          !hasActiveUpgrade &&
+          effectiveStatus === NodeStatus.offline;
         const shouldOpenHeartbeatAlert =
           shouldKeepHeartbeatAlertOpen &&
           (!heartbeatAlert || heartbeatAlert.status === AlertStatus.resolved);

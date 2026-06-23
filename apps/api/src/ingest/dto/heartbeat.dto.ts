@@ -1,6 +1,7 @@
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIP,
   IsISO8601,
   IsIn,
@@ -12,6 +13,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -209,5 +211,34 @@ export class HeartbeatDto {
   @ValidateNested({ each: true })
   @Type(() => HeartbeatInterfaceDto)
   interfaces?: HeartbeatInterfaceDto[];
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsBoolean()
+  pfsense_update_available?: boolean | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  pfsense_update_target_version?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  pfsense_update_checked_at?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  pfsense_update_check_error?: string;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsBoolean()
+  ha_detected?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  ha_detection_detail?: string;
 }
 

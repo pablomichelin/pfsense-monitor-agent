@@ -53,7 +53,7 @@
 1. **Aplicar a migration do índice de auditoria** (se ainda não tiver rodado):  
    O `DATABASE_URL` fica no `.env.api` e é usado pelo container da API. Rode a migration **dentro do container**:
    ```bash
-   cd /opt/Monitor-Pfsense
+   cd /Dados/Monitor-Pfsense
    docker compose run --rm api npx prisma migrate deploy
    ```
    Se a imagem da API foi construída antes de existir a nova migration, reconstrua antes:  
@@ -61,7 +61,7 @@
 
 2. **Rebuild e restart dos serviços** para usar o código novo:
    ```bash
-   cd /opt/Monitor-Pfsense
+   cd /Dados/Monitor-Pfsense
    docker compose up -d --build
    ```
 

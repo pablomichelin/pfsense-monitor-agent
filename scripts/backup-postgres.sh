@@ -25,7 +25,7 @@ Uso:
 
 Exemplos:
   scripts/backup-postgres.sh
-  KEEP_LATEST=14 scripts/backup-postgres.sh /opt/Monitor-Pfsense/backups/postgres
+  KEEP_LATEST=14 scripts/backup-postgres.sh /Dados/Monitor-Pfsense/backups/postgres
 
 Variaveis suportadas:
   KEEP_LATEST  quantidade maxima de dumps .dump mantidos no diretorio. Padrao: 7

@@ -1,6 +1,6 @@
 {
   "name": "@monitor-pfsense/api",
-  "version": "0.2.7",
+  "version": "0.3.1",
   "private": true,
   "description": "API do controlador Monitor-Pfsense",
   "engines": {
@@ -25,12 +25,14 @@
     "class-validator": "^0.14.2",
     "fastify": "^5.6.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "semver": "^7.7.3"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.10",
     "@nestjs/schematics": "^11.0.5",
     "@types/node": "^24.3.0",
+    "@types/semver": "^7.7.0",
     "prisma": "^6.15.0",
     "typescript": "^5.9.2"
   }

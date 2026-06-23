@@ -107,6 +107,7 @@ enum ConfigBackupStatus {
 
 enum NodeCommandType {
   config_backup_now
+  pfsense_upgrade
 
   @@map("node_command_type")
 }
@@ -266,6 +267,11 @@ model Node {
   networkInterfacesJson Json?         @map("network_interfaces_json")
   status          NodeStatus          @default(unknown)
   maintenanceMode Boolean             @default(false) @map("maintenance_mode")
+  pfsenseUpdateAvailable    Boolean?  @map("pfsense_update_available")
+  pfsenseUpdateTargetVersion String?  @map("pfsense_update_target_version")
+  pfsenseUpdateCheckedAt    DateTime? @map("pfsense_update_checked_at") @db.Timestamptz(6)
+  pfsenseUpdateCheckError   String?   @map("pfsense_update_check_error")
+  haDetectedFromAgent       Boolean?  @map("ha_detected_from_agent")
   createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
   site            Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
@@ -430,8 +436,10 @@ model NodeCommand {
   requestedByUserId String?           @map("requested_by_user_id") @db.Uuid
   requestedAt       DateTime          @default(now()) @map("requested_at") @db.Timestamptz(6)
   pickedUpAt        DateTime?         @map("picked_up_at") @db.Timestamptz(6)
+  runningAt         DateTime?         @map("running_at") @db.Timestamptz(6)
   completedAt       DateTime?         @map("completed_at") @db.Timestamptz(6)
   expiresAt         DateTime          @map("expires_at") @db.Timestamptz(6)
+  payloadJson       Json?             @map("payload_json")
   resultJson        Json?             @map("result_json")
   errorMessage      String?           @map("error_message")
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)

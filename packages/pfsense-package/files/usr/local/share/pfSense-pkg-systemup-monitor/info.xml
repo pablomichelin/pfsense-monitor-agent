@@ -1,7 +1,7 @@
 <pfsensepkgs>
   <package>
     <name>systemup-monitor</name>
-    <descr><![CDATA[SystemUp Monitor package scaffold for Monitor-Pfsense agent configuration and diagnostics.]]></descr>
+    <descr><![CDATA[SystemUp Monitor — agente nativo para telemetria e backup config.xml integrado ao controlador Monitor-Pfsense (Systemup).]]></descr>
     <version>%%PKGVERSION%%</version>
     <configurationfile>systemup_monitor.xml</configurationfile>
   </package>

@@ -143,6 +143,12 @@ export const appConfig = Object.freeze({
     repoRawBase:
       process.env.PACKAGE_RELEASE_REPO_RAW_BASE?.trim() ||
       'https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main',
+    publicBaseUrl:
+      process.env.PACKAGE_RELEASE_PUBLIC_BASE_URL?.trim() ||
+      'https://pfs-monitor.systemup.inf.br',
+    artifactDir:
+      process.env.PACKAGE_RELEASE_ARTIFACT_DIR?.trim() ||
+      '/app/dist/pfsense-package',
   },
   nodeSecretEncryptionKey: parseEncryptionKey(
     requireEnv('NODE_SECRET_ENCRYPTION_KEY_BASE64'),
@@ -186,6 +192,41 @@ export const appConfig = Object.freeze({
   rbac: {
     scopeEnabled: parseBoolean(process.env.RBAC_SCOPE_ENABLED, true),
     permissionsEnabled: parseBoolean(process.env.RBAC_PERMISSIONS_ENABLED, true),
+  },
+  pfsenseUpgrade: {
+    enabled: parseBoolean(process.env.PFSENSE_UPGRADE_ENABLED, false),
+    commandExpireMinutes: parseNumber(
+      process.env.PFSENSE_UPGRADE_COMMAND_EXPIRE_MINUTES,
+      120,
+      'PFSENSE_UPGRADE_COMMAND_EXPIRE_MINUTES',
+    ),
+    offlineGraceMinutes: parseNumber(
+      process.env.PFSENSE_UPGRADE_OFFLINE_GRACE_MINUTES,
+      90,
+      'PFSENSE_UPGRADE_OFFLINE_GRACE_MINUTES',
+    ),
+    lateResultReconcileHours: parseNumber(
+      process.env.PFSENSE_UPGRADE_LATE_RESULT_RECONCILE_HOURS,
+      24,
+      'PFSENSE_UPGRADE_LATE_RESULT_RECONCILE_HOURS',
+    ),
+    maxConcurrentGlobal: parseNumber(
+      process.env.PFSENSE_UPGRADE_MAX_CONCURRENT,
+      0,
+      'PFSENSE_UPGRADE_MAX_CONCURRENT',
+    ),
+    updateCheckIntervalHours: parseNumber(
+      process.env.PFSENSE_UPGRADE_UPDATE_CHECK_INTERVAL_HOURS,
+      6,
+      'PFSENSE_UPGRADE_UPDATE_CHECK_INTERVAL_HOURS',
+    ),
+    minAgentVersion:
+      process.env.PFSENSE_UPGRADE_MIN_AGENT_VERSION?.trim() || '0.3.1',
+    requireRecentBackupHours: parseNumber(
+      process.env.PFSENSE_UPGRADE_REQUIRE_BACKUP_HOURS,
+      24,
+      'PFSENSE_UPGRADE_REQUIRE_BACKUP_HOURS',
+    ),
   },
 });
 

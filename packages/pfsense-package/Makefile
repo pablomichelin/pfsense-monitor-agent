@@ -1,7 +1,7 @@
 # $FreeBSD$
 
 PORTNAME=	pfSense-pkg-systemup-monitor
-PORTVERSION=	0.3.5
+PORTVERSION=	0.3.6
 PORTREVISION=	0
 CATEGORIES=	sysutils
 MASTER_SITES=	# empty
@@ -9,7 +9,7 @@ DISTFILES=	# empty
 EXTRACT_ONLY=	# empty
 
 MAINTAINER=	contato@systemup.inf.br
-COMMENT=	pfSense package for SystemUp Monitor agent configuration and diagnostics
+COMMENT=	SystemUp Monitor native agent for telemetry and config backup
 
 LICENSE=	APACHE20
 

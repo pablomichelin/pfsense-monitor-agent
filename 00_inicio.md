@@ -161,7 +161,7 @@ Na pratica:
 
 Trilha RBAC **encerrada** em `2026-06-09` — ver `docs/76-ENCERRAMENTO-TRILHA-RBAC-2026-06-09.md`.
 
-Roadmap UX front-end (plano 24, fases 0–8) **encerrado** em `2026-06-09` — ver `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`. Versoes finais: painel `1.0.0`, API `0.2.7`.
+Roadmap UX front-end (plano 24, fases 0–8) **encerrado** em `2026-06-09` — ver `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`. Versoes finais: painel `1.1.0`, API `0.3.1`, package pfSense `0.3.3`.
 
 Proximas trilhas independentes (escolher uma por vez):
 

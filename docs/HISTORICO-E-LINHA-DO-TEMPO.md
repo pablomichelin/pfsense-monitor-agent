@@ -6,6 +6,13 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-06-23 — Package pfSense 0.3.6 (Opção A / P0)
+
+- **Merge cirúrgico `installedpackages.service`:** export/import usam `monitor_service_entry` (upsert só `monitor_pfsense_agent`); compat com snapshots 0.3.5 que traziam `service_entries` completo.
+- **Backoff backup:** estado em `backup-upload-backoff.json`; classificação HTTP (502 → 5 min); `backup_should_run_scheduled` respeita `next_attempt_at`; `config_backup_now` bypass via `command_id`.
+- **Metadados:** `info.xml` e `pkg-descr` sem "scaffold".
+- **Entrega:** `docs/95-ENTREGA-PACKAGE-0.3.6.md`. Pendente: deploy piloto pfSense + `release-pfsense-package.sh`.
+
 ### 2026-06-23 — Persistência segura do config.xml (package 0.3.5)
 
 - **Sintoma reportado:** firewalls perdendo VPN/NAT/senhas após horas ou dias, correlacionado à instalação do SystemUp Monitor.

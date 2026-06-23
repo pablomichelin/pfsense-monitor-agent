@@ -87,7 +87,7 @@ Inventário `/nodes` refatorado com design system: colunas **Backup** e **Alerta
 ```bash
 cd apps/api && npm run build
 cd apps/web && npm run build
-cd /opt/Monitor-Pfsense && docker compose up -d --build
+cd /Dados/Monitor-Pfsense && docker compose up -d --build
 ```
 
 ---

@@ -17,7 +17,7 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.3.5");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.3.6");
 }
 if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
     define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
@@ -358,6 +358,73 @@ function systemup_monitor_register_service()
 }
 
 /**
+ * Localiza apenas a entrada rc.d deste package em installedpackages.service.
+ *
+ * @return array|null
+ */
+function systemup_monitor_find_monitor_service_entry()
+{
+    global $config;
+
+    if (!is_array($config['installedpackages']['service'] ?? null)) {
+        return null;
+    }
+
+    $service_name = systemup_monitor_service_definition()['name'];
+
+    foreach ($config['installedpackages']['service'] as $service) {
+        if (is_array($service) && ($service['name'] ?? '') === $service_name) {
+            return $service;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Mescla somente a entrada monitor_pfsense_agent (nunca substitui o array inteiro).
+ */
+function systemup_monitor_import_monitor_service_from_snapshot(array $snapshot)
+{
+    if (!empty($snapshot['remove_monitor_service'])) {
+        systemup_monitor_unregister_service();
+
+        return;
+    }
+
+    // Compatibilidade: snapshots 0.3.5 exportavam service_entries completo — extrair so nossa entrada.
+    if (isset($snapshot['service_entries']) && !array_key_exists('monitor_service_entry', $snapshot)) {
+        $service_name = systemup_monitor_service_definition()['name'];
+        $has_monitor_entry = false;
+
+        if (is_array($snapshot['service_entries'])) {
+            foreach ($snapshot['service_entries'] as $service) {
+                if (is_array($service) && ($service['name'] ?? '') === $service_name) {
+                    $has_monitor_entry = true;
+                    break;
+                }
+            }
+        }
+
+        if ($has_monitor_entry) {
+            systemup_monitor_register_service();
+        }
+
+        return;
+    }
+
+    if (!array_key_exists('monitor_service_entry', $snapshot)) {
+        return;
+    }
+
+    if ($snapshot['monitor_service_entry'] !== null) {
+        systemup_monitor_register_service();
+    } else {
+        systemup_monitor_unregister_service();
+    }
+}
+
+/**
  * Snapshot apenas das secoes do package no config.xml (nunca do config inteiro).
  */
 function systemup_monitor_export_package_snapshot()
@@ -367,7 +434,8 @@ function systemup_monitor_export_package_snapshot()
     $snapshot = array(
         'remove_systemupmonitor' => false,
         'systemupmonitor' => null,
-        'service_entries' => null,
+        'monitor_service_entry' => null,
+        'remove_monitor_service' => false,
     );
 
     if (isset($config['installedpackages']['systemupmonitor'])) {
@@ -376,8 +444,11 @@ function systemup_monitor_export_package_snapshot()
         $snapshot['remove_systemupmonitor'] = true;
     }
 
-    if (isset($config['installedpackages']['service']) && is_array($config['installedpackages']['service'])) {
-        $snapshot['service_entries'] = $config['installedpackages']['service'];
+    $entry = systemup_monitor_find_monitor_service_entry();
+    if ($entry !== null) {
+        $snapshot['monitor_service_entry'] = $entry;
+    } else {
+        $snapshot['remove_monitor_service'] = true;
     }
 
     return $snapshot;
@@ -396,13 +467,11 @@ function systemup_monitor_import_package_snapshot(array $snapshot)
 
     if (!empty($snapshot['remove_systemupmonitor'])) {
         unset($config['installedpackages']['systemupmonitor']);
-    } elseif ($snapshot['systemupmonitor'] !== null) {
+    } elseif (($snapshot['systemupmonitor'] ?? null) !== null) {
         $config['installedpackages']['systemupmonitor'] = $snapshot['systemupmonitor'];
     }
 
-    if ($snapshot['service_entries'] !== null) {
-        $config['installedpackages']['service'] = $snapshot['service_entries'];
-    }
+    systemup_monitor_import_monitor_service_from_snapshot($snapshot);
 }
 
 /**

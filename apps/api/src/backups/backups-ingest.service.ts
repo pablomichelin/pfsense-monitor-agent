@@ -16,9 +16,21 @@ import { BackupsStorageService } from './backups-storage.service';
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+type ScheduledDuplicateFloodBucket = {
+  count: number;
+  windowStart: number;
+  warned: boolean;
+};
+
 @Injectable()
 export class BackupsIngestService {
   private readonly logger = new Logger(BackupsIngestService.name);
+  private readonly scheduledDuplicateFlood = new Map<
+    string,
+    ScheduledDuplicateFloodBucket
+  >();
+  private readonly scheduledDuplicateFloodWindowMs = 60 * 60 * 1000;
+  private readonly scheduledDuplicateFloodWarnThreshold = 30;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -73,6 +85,34 @@ export class BackupsIngestService {
     const attemptId = this.requireHeader('X-Backup-Id', request.headerBackupId);
     if (!UUID_V4_REGEX.test(attemptId)) {
       throw new BadRequestException('X-Backup-Id must be a UUID v4');
+    }
+
+    if (!request.headerCommandId) {
+      const latestStoredEarly = await this.prisma.nodeConfigBackup.findFirst({
+        where: {
+          nodeId: node.id,
+          status: ConfigBackupStatus.stored,
+        },
+        orderBy: {
+          receivedAt: 'desc',
+        },
+      });
+
+      if (
+        latestStoredEarly !== null &&
+        latestStoredEarly.configSha256 === configSha256
+      ) {
+        return this.suppressScheduledDuplicate({
+          nodeId: node.id,
+          headerNodeUid,
+          credentialId: credential.id,
+          configSha256,
+          backupUid: latestStoredEarly.backupUid,
+          receivedAt,
+          clientIp: request.clientIp,
+          agentVersion: request.headerAgentVersion,
+        });
+      }
     }
 
     const compression = request.headerConfigCompression?.trim().toLowerCase();
@@ -166,6 +206,19 @@ export class BackupsIngestService {
     const storedBackupUid = this.buildBackupUid(receivedAt, configSha256);
 
     if (isDuplicate) {
+      if (!request.headerCommandId) {
+        return this.suppressScheduledDuplicate({
+          nodeId: node.id,
+          headerNodeUid,
+          credentialId: credential.id,
+          configSha256,
+          backupUid: latestStored?.backupUid ?? '',
+          receivedAt,
+          clientIp: request.clientIp,
+          agentVersion: request.headerAgentVersion,
+        });
+      }
+
       const duplicateBackupUid = `cfgbdup_${attemptId.replace(/-/g, '')}`;
       const duplicateRecord = await this.prisma.nodeConfigBackup.create({
         data: {
@@ -333,6 +386,78 @@ export class BackupsIngestService {
       duplicate: false,
       sha256: configSha256,
     };
+  }
+
+  private async suppressScheduledDuplicate(input: {
+    nodeId: string;
+    headerNodeUid: string;
+    credentialId: string;
+    configSha256: string;
+    backupUid: string;
+    receivedAt: Date;
+    clientIp?: string;
+    agentVersion?: string;
+  }): Promise<{
+    ok: true;
+    server_time: string;
+    backup_id: string;
+    stored: boolean;
+    duplicate: boolean;
+    sha256: string;
+  }> {
+    await this.prisma.nodeCredential.update({
+      where: { id: input.credentialId },
+      data: { lastUsedAt: input.receivedAt },
+    });
+
+    this.trackScheduledDuplicateFlood(input.nodeId, input.headerNodeUid, {
+      agentVersion: input.agentVersion,
+      sha256: input.configSha256,
+    });
+
+    return {
+      ok: true,
+      server_time: input.receivedAt.toISOString(),
+      backup_id: input.backupUid,
+      stored: false,
+      duplicate: true,
+      sha256: input.configSha256,
+    };
+  }
+
+  private trackScheduledDuplicateFlood(
+    nodeId: string,
+    headerNodeUid: string,
+    context: { agentVersion?: string; sha256: string },
+  ): void {
+    const now = Date.now();
+    const bucket = this.scheduledDuplicateFlood.get(nodeId);
+
+    if (
+      !bucket ||
+      now - bucket.windowStart >= this.scheduledDuplicateFloodWindowMs
+    ) {
+      this.scheduledDuplicateFlood.set(nodeId, {
+        count: 1,
+        windowStart: now,
+        warned: false,
+      });
+      return;
+    }
+
+    bucket.count += 1;
+
+    if (
+      !bucket.warned &&
+      bucket.count >= this.scheduledDuplicateFloodWarnThreshold
+    ) {
+      bucket.warned = true;
+      this.logger.warn(
+        `config backup scheduled duplicate flood node_uid=${headerNodeUid} count=${bucket.count}/h ` +
+          `agent=${context.agentVersion ?? 'unknown'} sha256=${context.sha256.slice(0, 8)} ` +
+          `(agente desatualizado ou bug de agendamento; atualizar package >= 0.2.35)`,
+      );
+    }
   }
 
   private buildBackupUid(receivedAt: Date, configSha256: string): string {

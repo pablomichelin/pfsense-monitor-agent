@@ -1,0 +1,14 @@
+# Versão do package pfSense
+
+Ao alterar **qualquer arquivo** do agente/package pfSense (em `packages/pfsense-package/`), **sempre** incrementar a versão no Makefile na **mesma alteração**:
+
+- Arquivo: `packages/pfsense-package/Makefile`
+  - Linha: `PORTVERSION=	X.Y.Z` → incrementar o patch (ex.: `0.2.5` → `0.2.6`)
+- Arquivo: `packages/pfsense-package/files/usr/local/pkg/systemup_monitor.inc`
+  - Constante: `SYSTEMUP_MONITOR_AGENT_VERSION` → usar o **mesmo** valor do PORTVERSION (ex.: `"0.2.6"`), para que o agente reporte a versão correta no heartbeat e cada node mostre sua versão instalada.
+
+Assim, quando o usuário rodar `./scripts/release-pfsense-package.sh`, o release será da versão nova que reflete a modificação. O script **não** altera a versão sozinho; ele só lê o que está no Makefile.
+
+A versão do agente aparece na tela **Diagnóstico** do package (Services → SystemUp Monitor) e é a mesma enviada no heartbeat ao servidor. O script de install chama `sync` após o seed para regerar o config com a versão atual.
+
+Resumo: **modificação no package = subir PORTVERSION no Makefile e SYSTEMUP_MONITOR_AGENT_VERSION no .inc na mesma mudança.**

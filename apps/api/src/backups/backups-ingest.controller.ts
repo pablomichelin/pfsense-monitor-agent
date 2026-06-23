@@ -7,6 +7,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { BackupsCommandService } from './backups-command.service';
+import { NodeCommandsService } from '../node-commands/node-commands.service';
 import { BackupsIngestService } from './backups-ingest.service';
 import { CommandAckDto } from './dto/command-ack.dto';
 import { CommandResultDto } from './dto/command-result.dto';
@@ -36,6 +37,7 @@ export class BackupsIngestController {
   constructor(
     private readonly ingestService: BackupsIngestService,
     private readonly commandService: BackupsCommandService,
+    private readonly nodeCommandsService: NodeCommandsService,
     private readonly nodeRequestAuth: NodeRequestAuthService,
   ) {}
 
@@ -89,7 +91,7 @@ export class BackupsIngestController {
       receivedAt,
     });
 
-    return this.commandService.acknowledgeCommand({
+    return this.nodeCommandsService.acknowledgeCommand({
       nodeId: node.id,
       credentialId: credential.id,
       commandId: body.command_id,
@@ -116,11 +118,13 @@ export class BackupsIngestController {
       receivedAt,
     });
 
-    return this.commandService.reportCommandFailure({
+    return this.nodeCommandsService.reportCommandResult({
       nodeId: node.id,
       credentialId: credential.id,
       commandId: body.command_id,
+      status: body.status,
       errorMessage: body.error_message,
+      resultJson: body.result_json,
       clientIp: readHeader(request.headers['cf-connecting-ip']) ?? request.ip,
     });
   }

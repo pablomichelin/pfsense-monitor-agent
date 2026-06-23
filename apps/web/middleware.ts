@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { evaluateRouteAccess } from '@/lib/route-policy';
+import { sanitizeInternalPath } from '@/lib/internal-path';
 
 const SESSION_COOKIE = 'monitor_pfsense_session';
 const PUBLIC_PATHS = new Set(['/login']);
@@ -60,7 +61,10 @@ export async function middleware(request: NextRequest) {
   if (PUBLIC_PATHS.has(pathname)) {
     const session = await fetchSession(request);
     if (session?.authenticated) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+      const nextPath =
+        sanitizeInternalPath(request.nextUrl.searchParams.get('next')) ??
+        '/dashboard';
+      return NextResponse.redirect(new URL(nextPath, request.url));
     }
     return NextResponse.next();
   }

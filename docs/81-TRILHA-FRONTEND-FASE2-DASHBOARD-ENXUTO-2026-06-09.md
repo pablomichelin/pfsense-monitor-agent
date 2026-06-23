@@ -98,7 +98,7 @@ cd apps/web && npm run build
 
 ```bash
 cd apps/web && npm run build
-cd /opt/Monitor-Pfsense && docker compose up -d --build
+cd /Dados/Monitor-Pfsense && docker compose up -d --build
 ```
 
 - [ ] Rodapé exibe `v0.3.0`

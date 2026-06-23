@@ -56,5 +56,5 @@ Adotar design system e `DataTable` nas páginas restantes; **encerrar roadmap UX
 
 ```bash
 cd apps/web && npm run build
-cd /opt/Monitor-Pfsense && docker compose up -d --build
+cd /Dados/Monitor-Pfsense && docker compose up -d --build
 ```

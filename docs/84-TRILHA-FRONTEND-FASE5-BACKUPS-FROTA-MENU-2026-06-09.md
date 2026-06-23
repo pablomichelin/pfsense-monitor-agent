@@ -48,7 +48,7 @@ Checklist para criar **somente** `/backups`, item de menu e proteção de rota �
 
 ```bash
 cd apps/web && npm run build
-cd /opt/Monitor-Pfsense && docker compose up -d --build
+cd /Dados/Monitor-Pfsense && docker compose up -d --build
 ```
 
 ---

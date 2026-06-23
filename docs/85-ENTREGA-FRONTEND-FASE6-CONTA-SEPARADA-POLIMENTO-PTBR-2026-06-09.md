@@ -73,7 +73,7 @@ Nova rota **`/conta`** com perfil do usuário (e-mail, perfil, sessão atual). *
 
 ```bash
 cd apps/web && npm run build
-cd /opt/Monitor-Pfsense && docker compose up -d --build
+cd /Dados/Monitor-Pfsense && docker compose up -d --build
 ```
 
 ---

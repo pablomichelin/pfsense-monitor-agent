@@ -1,7 +1,8 @@
 import { setNodeMaintenanceAction } from '@/lib/admin';
-import type { NodeDetailsResponse } from '@/lib/api';
+import type { NodeDetailsResponse, PfsenseUpgradeStatusResponse } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { parseIps, isPublicIp } from '@/lib/node-detail-helpers';
+import { NodePfsenseUpgradeSection } from '@/components/node-pfsense-upgrade-section';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -12,9 +13,13 @@ type Node = NodeDetailsResponse['node'];
 export function NodeDetailOverviewTab({
   node,
   canManageNode,
+  canRunUpgrade,
+  upgradeStatus,
 }: {
   node: Node;
   canManageNode: boolean;
+  canRunUpgrade: boolean;
+  upgradeStatus: PfsenseUpgradeStatusResponse;
 }) {
   type Iface = { name?: string; ip?: string; role?: string };
   const ifaces = (node.network_interfaces ?? []) as Iface[];
@@ -208,6 +213,13 @@ export function NodeDetailOverviewTab({
             Maintenance mode disponível apenas para operadores com permissão de edição.
           </Alert>
         )}
+
+        <NodePfsenseUpgradeSection
+          nodeId={node.id}
+          nodeEffectiveStatus={node.effective_status}
+          canRunUpgrade={canRunUpgrade}
+          initialStatus={upgradeStatus}
+        />
       </Card>
     </PageSection>
   );

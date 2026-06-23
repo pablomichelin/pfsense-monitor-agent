@@ -1055,7 +1055,178 @@ build_interfaces_json() {
   printf ']'
 }
 
+append_pfsense_update_json_fields() {
+  state_file="$(backup_state_dir)/pfsense-update-check.json"
+  if [ ! -f "$state_file" ]; then
+    printf ',\n  "ha_detected": false'
+    return
+  fi
+
+  php -r '
+    $data = json_decode(file_get_contents($argv[1]), true);
+    if (!is_array($data)) {
+      echo ",\n  \"ha_detected\": false";
+      exit(0);
+    }
+    $available = $data["available"] ?? null;
+    if ($available === true) {
+      $availableJson = "true";
+    } elseif ($available === false) {
+      $availableJson = "false";
+    } else {
+      $availableJson = "null";
+    }
+    $target = trim((string) ($data["target_version"] ?? ""));
+    $checked = trim((string) ($data["checked_at"] ?? ""));
+    $error = trim((string) ($data["check_error"] ?? ""));
+    $ha = !empty($data["ha_detected"]);
+    echo ",\n  \"pfsense_update_available\": " . $availableJson;
+    if ($target !== "") {
+      echo ",\n  \"pfsense_update_target_version\": \"" . addslashes($target) . "\"";
+    }
+    if ($checked !== "") {
+      echo ",\n  \"pfsense_update_checked_at\": \"" . addslashes($checked) . "\"";
+    }
+    if ($error !== "") {
+      echo ",\n  \"pfsense_update_check_error\": \"" . addslashes($error) . "\"";
+    }
+    echo ",\n  \"ha_detected\": " . ($ha ? "true" : "false");
+  ' "$state_file" 2>/dev/null || printf ',\n  "ha_detected": false'
+}
+
+run_pfsense_update_check() {
+  helper="$SCRIPT_DIR/check_pfsense_update_available.sh"
+  if [ ! -x "$helper" ]; then
+    return
+  fi
+
+  state_file="$(backup_state_dir)/pfsense-update-check.json"
+  if [ -f "$state_file" ]; then
+    cache_ok="$(php -r '
+      $data = json_decode(@file_get_contents($argv[1]), true);
+      if (!is_array($data)) {
+        echo "0";
+        exit(0);
+      }
+      echo ((int) ($data["cache_version"] ?? 0) >= 4) ? "1" : "0";
+    ' "$state_file" 2>/dev/null || printf '0')"
+    if [ "$cache_ok" != "1" ]; then
+      "$helper" force-check >/dev/null 2>&1 || true
+      return
+    fi
+  fi
+
+  "$helper" check >/dev/null 2>&1 || true
+}
+
+pfsense_upgrade_state_file() {
+  printf '%s' "$(backup_state_dir)/pfsense-upgrade-pending.json"
+}
+
+pfsense_upgrade_lock_dir() {
+  printf '%s' "/var/run/monitor-pfsense-agent-upgrade.lock"
+}
+
+agent_post_command_ack() {
+  backup_post_command_ack "$@"
+}
+
+agent_post_command_result_failed() {
+  backup_post_command_failed "$@"
+}
+
+agent_post_command_result_succeeded() {
+  command_id="$1"
+  result_json="$2"
+  CURL_CMD="$3"
+  body_file="$(mktemp)"
+  trap 'rm -f "$body_file"' EXIT INT TERM
+  if [ -n "$result_json" ]; then
+    printf '{"command_id":"%s","status":"succeeded","result_json":%s}\n' \
+      "$(json_escape "$command_id")" \
+      "$result_json" >"$body_file"
+  else
+    printf '{"command_id":"%s","status":"succeeded"}\n' \
+      "$(json_escape "$command_id")" >"$body_file"
+  fi
+  backup_post_signed_json "/api/v1/ingest/command-result" "$body_file" "$CURL_CMD"
+}
+
+dispatch_pfsense_upgrade() {
+  command_id="$1"
+  target_version="$2"
+  CURL_CMD="$3"
+
+  lock_dir="$(pfsense_upgrade_lock_dir)"
+  if ! mkdir "$lock_dir" 2>/dev/null; then
+    agent_post_command_result_failed "$command_id" "another upgrade is running" "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  agent_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
+  agent_post_command_ack "$command_id" "running" "$CURL_CMD" >/dev/null 2>&1 || true
+
+  backup_ensure_state_dir
+  state_file="$(pfsense_upgrade_state_file)"
+  printf '{"command_id":"%s","target_version":"%s","started_at":"%s","status":"pending_execution"}\n' \
+    "$(json_escape "$command_id")" \
+    "$(json_escape "$target_version")" \
+    "$(json_escape "$(iso_now)")" >"$state_file"
+
+  # Fase 4.4: execução real depende do spike CE (flags pfSense-upgrade).
+  agent_post_command_result_failed \
+    "$command_id" \
+    "pfSense OS upgrade execution pending CE lab spike validation" \
+    "$CURL_CMD" >/dev/null 2>&1 || true
+
+  rm -f "$state_file"
+  rmdir "$lock_dir" 2>/dev/null || true
+  return 0
+}
+
+finalize_pfsense_upgrade_if_pending() {
+  CURL_CMD=""
+  if ! resolve_curl_cmd >/dev/null 2>&1; then
+    return 0
+  fi
+  CURL_CMD="$(resolve_curl_cmd)"
+
+  state_file="$(pfsense_upgrade_state_file)"
+  if [ ! -f "$state_file" ]; then
+    return 0
+  fi
+
+  parsed="$(php -r '
+    $data = json_decode(file_get_contents($argv[1]), true);
+    if (!is_array($data)) {
+      exit(1);
+    }
+    $commandId = trim((string) ($data["command_id"] ?? ""));
+    if ($commandId === "") {
+      exit(1);
+    }
+    echo $commandId;
+  ' "$state_file" 2>/dev/null)" || return 0
+
+  [ -n "$parsed" ] || return 0
+
+  log_file="/conf/upgrade_log.latest.txt"
+  if [ -f "$log_file" ]; then
+    excerpt="$(tail -n 20 "$log_file" | tr '\n' ' ')"
+    previous_version="$(detect_pfsense_version 2>/dev/null || true)"
+    agent_post_command_result_succeeded "$parsed" \
+      "{\"previous_version\":\"$(json_escape "$previous_version")\",\"new_version\":\"$(json_escape "$previous_version")\",\"log_excerpt\":\"$(json_escape "$excerpt")\"}" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+  else
+    agent_post_command_result_failed "$parsed" "upgrade finished without upgrade log" "$CURL_CMD" >/dev/null 2>&1 || true
+  fi
+
+  rm -f "$state_file"
+}
+
 build_payload() {
+  run_pfsense_update_check
+  update_fields="$(append_pfsense_update_json_fields 2>/dev/null || printf ',\n  "ha_detected": false')"
   mgmt_ip="$(detect_mgmt_ip 2>/dev/null || true)"
   wan_ip="$(detect_wan_ip 2>/dev/null || true)"
   interfaces_json="$(build_interfaces_json 2>/dev/null)" || interfaces_json="[]"
@@ -1116,7 +1287,7 @@ build_payload() {
   "gateways": $gateways_json,
   "services": $services_json,
   "interfaces": ${interfaces_json:-[]},
-  "notices": $notices_json
+  "notices": $notices_json$update_fields
 }
 EOF
   else
@@ -1137,7 +1308,7 @@ EOF
   "memory_percent": $(json_nullable_number "$memory_percent"),
   "disk_percent": $(json_nullable_number "$disk_percent"),
   "interfaces": ${interfaces_json:-[]},
-  "notices": $notices_json
+  "notices": $notices_json$update_fields
 }
 EOF
   fi
@@ -1297,6 +1468,123 @@ backup_config_xml_path() {
   printf '%s' "${MONITOR_AGENT_PFSENSE_CONFIG_XML:-/conf/config.xml}"
 }
 
+backup_backoff_path() {
+  printf '%s/backup-upload-backoff.json' "$(backup_state_dir)"
+}
+
+classify_upload_error() {
+  http_code="${1:-}"
+  curl_error="${2:-}"
+
+  case "$http_code" in
+    502|503|504)
+      printf 'upstream'
+      return 0
+      ;;
+    408)
+      printf 'timeout'
+      return 0
+      ;;
+    401|403)
+      printf 'auth'
+      return 0
+      ;;
+    400|413|422)
+      printf 'client'
+      return 0
+      ;;
+  esac
+
+  if [ -n "$http_code" ] && [ "$http_code" -ge 200 ] 2>/dev/null && [ "$http_code" -lt 300 ] 2>/dev/null; then
+    printf 'success'
+    return 0
+  fi
+
+  if printf '%s' "$curl_error" | grep -qiE 'timed out|timeout|Operation timed out'; then
+    printf 'timeout'
+    return 0
+  fi
+
+  if printf '%s' "$curl_error" | grep -qiE 'connection reset|connection refused|could not resolve|recv failure|Failed to connect'; then
+    printf 'upstream'
+    return 0
+  fi
+
+  if [ -z "$http_code" ] || [ "$http_code" = "0" ]; then
+    printf 'upstream'
+    return 0
+  fi
+
+  printf 'upstream'
+}
+
+backup_backoff_record_failure() {
+  http_code="${1:-}"
+  curl_error="${2:-}"
+  error_class="$(classify_upload_error "$http_code" "$curl_error")"
+
+  if [ "$error_class" = "success" ]; then
+    return 0
+  fi
+
+  backup_ensure_state_dir
+  command_exists php || return 0
+
+  php -r '
+    $path = $argv[1];
+    $class = $argv[2];
+    $httpRaw = $argv[3];
+    $current = [];
+    if (is_file($path)) {
+      $decoded = json_decode(file_get_contents($path), true);
+      if (is_array($decoded)) {
+        $current = $decoded;
+      }
+    }
+    $bases = ["upstream" => 300, "timeout" => 120, "auth" => 1800, "client" => 3600];
+    $caps = ["upstream" => 21600, "timeout" => 7200, "auth" => 86400, "client" => 86400];
+    $failures = (int) ($current["consecutive_failures"] ?? 0) + 1;
+    $base = $bases[$class] ?? 300;
+    $cap = $caps[$class] ?? 21600;
+    $delay = min($cap, $base * (2 ** ($failures - 1)));
+    $jitter = 1 + (mt_rand(-100, 100) / 1000.0);
+    $delay = (int) round($delay * $jitter);
+    $next = gmdate("Y-m-d\TH:i:s\Z", time() + $delay);
+    $http = $httpRaw !== "" ? (int) $httpRaw : null;
+    $payload = [
+      "consecutive_failures" => $failures,
+      "next_attempt_at" => $next,
+      "last_http_code" => $http,
+      "last_error_class" => $class,
+    ];
+    file_put_contents($path, json_encode($payload, JSON_UNESCAPED_SLASHES));
+    fwrite(STDERR, sprintf("backup-backoff class=%s http=%s next=%s\n", $class, $httpRaw !== "" ? $httpRaw : "?", $next));
+  ' "$(backup_backoff_path)" "$error_class" "$http_code"
+}
+
+backup_backoff_clear() {
+  rm -f "$(backup_backoff_path)" 2>/dev/null || true
+}
+
+# Retorna 0 se backoff ativo (nao executar agendado), 1 se pode tentar.
+backup_backoff_blocks_scheduled() {
+  path="$(backup_backoff_path)"
+  [ -f "$path" ] || return 1
+  command_exists php || return 1
+
+  php -r '
+    $data = json_decode(file_get_contents($argv[1]), true);
+    if (!is_array($data) || empty($data["next_attempt_at"])) {
+      exit(1);
+    }
+    $next = strtotime($data["next_attempt_at"]);
+    if ($next === false) {
+      exit(1);
+    }
+    exit(time() < $next ? 0 : 1);
+  ' "$path"
+}
+
 backup_post_signed_json() {
   endpoint="$1"
   body_file="$2"
@@ -1414,6 +1702,7 @@ backup_upload_config() {
     "${CONTROLLER_URL}/api/v1/ingest/config-backup" >"${response_file}.http" 2>"${response_file}.err"; then
     upload_error="upload failed: $(truncate_text "$(cat "${response_file}.err" 2>/dev/null)" 200)"
     backup_write_state error "$upload_error"
+    backup_backoff_record_failure "" "$(cat "${response_file}.err" 2>/dev/null)"
     if [ -n "$command_id" ]; then
       backup_post_command_failed "$command_id" "$upload_error" "$CURL_CMD" >/dev/null 2>&1 || true
     fi
@@ -1432,6 +1721,7 @@ backup_upload_config() {
       upload_error="upload failed (HTTP ${http_code:-?})"
     fi
     backup_write_state error "$upload_error"
+    backup_backoff_record_failure "$http_code" "$(cat "${response_file}.err" 2>/dev/null)"
     if [ -n "$command_id" ]; then
       backup_post_command_failed "$command_id" "$upload_error" "$CURL_CMD" >/dev/null 2>&1 || true
     fi
@@ -1446,6 +1736,7 @@ backup_upload_config() {
   backup_write_state sha256 "$config_sha256"
   backup_write_state at "$(iso_now)"
   backup_write_state error ""
+  backup_backoff_clear
   backup_release_lock
   cat "$response_file"
   rm -f "$upload_file" "$response_file"
@@ -1457,6 +1748,15 @@ backup_config_now() {
   require_var CONTROLLER_URL
   require_var NODE_UID
   require_var NODE_SECRET
+
+  if [ -z "$command_id" ]; then
+    case "${MONITOR_AGENT_CONFIG_BACKUP_ON_CHANGE:-1}" in
+      0|false|no|off) ;;
+      *)
+        backup_content_changed || return 0
+        ;;
+    esac
+  fi
 
   CURL_CMD=""
   if ! resolve_curl_cmd >/dev/null 2>&1; then
@@ -1514,6 +1814,10 @@ backup_schedule_due() {
     $lastRaw = trim($argv[1]);
     $lastAt = $lastRaw !== "" ? strtotime($lastRaw) : false;
     $now = time();
+    if ($lastRaw !== "" && $lastAt === false) {
+      // Timestamp local ilegivel: nao tratar como "nunca fez backup" (evita loop).
+      exit(1);
+    }
     if ($lastAt === false) {
       exit(0);
     }
@@ -1594,11 +1898,20 @@ backup_content_changed() {
 }
 
 backup_should_run_scheduled() {
-  backup_is_enabled || return 1
+  # Convencao com backup_scheduled (if ! ...): 0 = nao executar, 1 = executar.
+  backup_is_enabled || return 0
+  if backup_backoff_blocks_scheduled; then
+    return 0
+  fi
   backup_schedule_due || return 0
   case "${MONITOR_AGENT_CONFIG_BACKUP_ON_CHANGE:-1}" in
     0|false|no|off) return 1 ;;
-    *) backup_content_changed ;;
+    *)
+      if backup_content_changed; then
+        return 1
+      fi
+      return 0
+      ;;
   esac
 }
 
@@ -1613,35 +1926,49 @@ process_heartbeat_commands() {
   response_file="$1"
   CURL_CMD="$2"
 
-  backup_is_enabled || return 0
-  backup_accepts_remote_requests || return 0
   command_exists php || return 0
   [ -f "$response_file" ] || return 0
 
-  commands="$(php -r '
+  dispatch_file="$(mktemp)"
+  trap 'rm -f "$dispatch_file"' EXIT INT TERM
+
+  php -r '
     $payload = json_decode(file_get_contents($argv[1]), true);
     if (!is_array($payload["commands"] ?? null)) {
       exit(0);
     }
     foreach ($payload["commands"] as $command) {
-      if (($command["type"] ?? "") !== "config_backup_now") {
+      $type = trim((string) ($command["type"] ?? ""));
+      $id = trim((string) ($command["id"] ?? ""));
+      if ($id === "" || $type === "") {
         continue;
       }
-      $id = trim((string) ($command["id"] ?? ""));
-      if ($id !== "") {
-        echo $id . "\n";
+      $payload = $command["payload"] ?? null;
+      $target = "";
+      if (is_array($payload)) {
+        $target = trim((string) ($payload["target_version"] ?? ""));
       }
+      echo $type . "\t" . $id . "\t" . $target . "\n";
     }
-  ' "$response_file" 2>/dev/null)" || return 0
+  ' "$response_file" >"$dispatch_file" 2>/dev/null || return 0
 
-  if [ -z "${commands:-}" ]; then
+  if [ ! -s "$dispatch_file" ]; then
     return 0
   fi
 
-  printf '%s\n' "$commands" | while IFS= read -r command_id; do
+  while IFS="$(printf '\t')" read -r command_type command_id target_version; do
     [ -z "$command_id" ] && continue
-    backup_config_now "$command_id" >>/dev/null 2>&1 || true
-  done
+    case "$command_type" in
+      config_backup_now)
+        if backup_is_enabled && backup_accepts_remote_requests; then
+          backup_config_now "$command_id" >>/dev/null 2>&1 || true
+        fi
+        ;;
+      pfsense_upgrade)
+        dispatch_pfsense_upgrade "$command_id" "$target_version" "$CURL_CMD" >>/dev/null 2>&1 || true
+        ;;
+    esac
+  done <"$dispatch_file"
 }
 
 print_config() {
@@ -1653,6 +1980,8 @@ heartbeat() {
   require_var NODE_UID
   require_var NODE_SECRET
   require_var CUSTOMER_CODE
+
+  finalize_pfsense_upgrade_if_pending
 
   CURL_CMD=""
   if ! resolve_curl_cmd >/dev/null 2>&1; then

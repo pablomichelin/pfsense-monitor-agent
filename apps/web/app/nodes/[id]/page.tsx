@@ -18,6 +18,7 @@ import {
   getNodeBootstrapCommand,
   getNodeConfigBackups,
   getNodeDetails,
+  getPfsenseUpgradeStatus,
   getSession,
 } from '@/lib/api';
 import { isClientRole } from '@/lib/client-profile';
@@ -100,7 +101,10 @@ export default async function NodeDetailsPage({
     const canManageNode = hasPermission(permissions, 'firewalls.update');
     const canRequestBackup = hasPermission(permissions, 'backups.run');
     const canDownloadBackup = hasPermission(permissions, 'backups.download');
+    const canRunUpgrade = hasPermission(permissions, 'pfsense.upgrade.run');
     const canViewBootstrap = hasPermission(permissions, 'bootstrap.view');
+
+    const upgradeStatus = await getPfsenseUpgradeStatus(id);
 
     let bootstrap = null;
     if (canViewBootstrap) {
@@ -210,7 +214,14 @@ export default async function NodeDetailsPage({
           <NodeDetailTabs
             tabs={tabs}
             initialTab={initialTab}
-            overview={<NodeDetailOverviewTab node={node} canManageNode={canManageNode} />}
+            overview={
+              <NodeDetailOverviewTab
+                node={node}
+                canManageNode={canManageNode}
+                canRunUpgrade={canRunUpgrade}
+                upgradeStatus={upgradeStatus}
+              />
+            }
             metrics={<NodeDetailMetricsTab node={node} />}
             alerts={<NodeDetailAlertsTab node={node} />}
             backup={

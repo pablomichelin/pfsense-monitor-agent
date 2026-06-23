@@ -1,6 +1,17 @@
-SystemUp Monitor native pfSense package.
+SystemUp Monitor — pacote nativo pfSense para integração com o controlador
+Monitor-Pfsense (Systemup).
 
-Installs the local agent runtime, exposes package configuration under
-Services, writes the agent configuration file, and manages the rc.d
-service used to send authenticated heartbeats to the Monitor-Pfsense
-controller.
+Funcionalidades:
+- Agente leve com heartbeat HTTPS autenticado (HMAC) a cada 30s
+- Telemetria de serviços, interfaces e estado operacional do firewall
+- Backup agendado de config.xml (push criptografado para o controlador)
+- Comandos remotos: backup imediato e diagnóstico via painel web
+- GUI em Services → SystemUp Monitor (configuração, status, diagnóstico)
+
+Requisitos: pfSense CE 2.8.1 ou superior; credenciais node_uid/node_secret
+emitidas pelo controlador.
+
+Documentação operacional: https://pfs-monitor.systemup.inf.br (acesso autenticado)
+e repositório Monitor-Pfsense em /Dados/Monitor-Pfsense/docs/.
+
+Desenvolvido por Systemup — contato@systemup.inf.br

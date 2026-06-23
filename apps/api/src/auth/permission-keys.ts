@@ -10,6 +10,7 @@ export const PERMISSION_KEYS = [
   'backups.run',
   'backups.view',
   'backups.download',
+  'pfsense.upgrade.run',
   'users.view',
   'users.create',
   'users.update',

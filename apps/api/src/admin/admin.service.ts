@@ -20,6 +20,7 @@ import { appConfig } from '../config/app-config';
 import { AccessActor } from '../auth/access-actor.type';
 import { AccessPolicyService } from '../auth/access-policy.service';
 import { NodeSecretCryptoService } from '../common/node-secret-crypto.service';
+import { PackageReleaseService } from '../common/package-release.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthService } from '../auth/auth.service';
 import { PermissionsService } from '../auth/permissions.service';
@@ -135,6 +136,7 @@ export class AdminService {
     private readonly nodesService: NodesService,
     private readonly auditService: AuditService,
     private readonly permissionsService: PermissionsService,
+    private readonly packageReleaseService: PackageReleaseService,
   ) {}
 
   private invalidateNodesFiltersCache(): void {
@@ -804,14 +806,141 @@ export class AdminService {
       };
     }
 
-    const logs = await this.prisma.auditLog.findMany({
-      where,
-      orderBy: {
-        createdAt: 'desc',
+    const allowedClientIds = await this.accessPolicy.getAllowedClientIds(scopeActor);
+    const requiresScopeFilter = allowedClientIds !== null;
+
+    if (!requiresScopeFilter) {
+      const logs = await this.prisma.auditLog.findMany({
+        where,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: limit,
+        skip: offset,
+      });
+
+      return {
+        generated_at: new Date().toISOString(),
+        items: await this.buildAuditLogItems(logs),
+      };
+    }
+
+    const batchSize = Math.max(limit * 4, 50);
+    const scopedItems: Awaited<ReturnType<AdminService['buildAuditLogItems']>> = [];
+    let dbSkip = 0;
+    let skipped = 0;
+
+    while (scopedItems.length < limit) {
+      const logs = await this.prisma.auditLog.findMany({
+        where,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: batchSize,
+        skip: dbSkip,
+      });
+
+      if (logs.length === 0) {
+        break;
+      }
+
+      dbSkip += logs.length;
+      const items = await this.buildAuditLogItems(logs);
+      const nodeClientById = await this.buildNodeClientMap(
+        items
+          .filter((item) => item.target_type === 'node' && item.target_id)
+          .map((item) => item.target_id as string),
+      );
+      const filteredItems = await this.filterAuditItemsForScope(
+        scopeActor,
+        items,
+        nodeClientById,
+      );
+
+      for (const item of filteredItems) {
+        if (skipped < offset) {
+          skipped += 1;
+          continue;
+        }
+
+        scopedItems.push(item);
+        if (scopedItems.length >= limit) {
+          break;
+        }
+      }
+
+      if (logs.length < batchSize) {
+        break;
+      }
+    }
+
+    return {
+      generated_at: new Date().toISOString(),
+      items: scopedItems,
+    };
+  }
+
+  private async buildNodeClientMap(nodeIds: string[]): Promise<Map<string, string>> {
+    if (nodeIds.length === 0) {
+      return new Map();
+    }
+
+    const uniqueNodeIds = Array.from(new Set(nodeIds));
+    const nodes = await this.prisma.node.findMany({
+      where: {
+        id: {
+          in: uniqueNodeIds,
+        },
       },
-      take: limit,
-      skip: offset,
+      select: {
+        id: true,
+        site: {
+          select: {
+            clientId: true,
+          },
+        },
+      },
     });
+
+    return new Map(nodes.map((node) => [node.id, node.site.clientId]));
+  }
+
+  private async buildAuditLogItems(
+    logs: Array<{
+      id: string;
+      actorType: string;
+      actorId: string | null;
+      actorRole: string | null;
+      action: string;
+      targetType: string;
+      targetId: string | null;
+      clientId: string | null;
+      result: string;
+      ipAddress: string | null;
+      metadataJson: Prisma.JsonValue | null;
+      createdAt: Date;
+    }>,
+  ): Promise<
+    Array<{
+      id: string;
+      actor_type: string;
+      actor_id: string | null;
+      actor_role: string | null;
+      actor_email: string | null;
+      action: string;
+      target_type: string;
+      target_id: string | null;
+      target_display_name: string | null;
+      client_id: string | null;
+      result: string;
+      ip_address: string | null;
+      metadata_json: Prisma.JsonValue | null;
+      created_at: string;
+    }>
+  > {
+    if (logs.length === 0) {
+      return [];
+    }
 
     const actorIds = Array.from(
       new Set(logs.map((log) => log.actorId).filter((value): value is string => Boolean(value))),
@@ -875,7 +1004,7 @@ export class AdminService {
       return null;
     };
 
-    const items = logs.map((log) => ({
+    return logs.map((log) => ({
       id: log.id,
       actor_type: log.actorType,
       actor_id: log.actorId,
@@ -891,37 +1020,6 @@ export class AdminService {
       metadata_json: log.metadataJson,
       created_at: log.createdAt.toISOString(),
     }));
-
-    const nodeClientById = new Map(
-      (
-        await this.prisma.node.findMany({
-          where: {
-            id: {
-              in: nodeIds,
-            },
-          },
-          select: {
-            id: true,
-            site: {
-              select: {
-                clientId: true,
-              },
-            },
-          },
-        })
-      ).map((node) => [node.id, node.site.clientId]),
-    );
-
-    const filteredItems = await this.filterAuditItemsForScope(
-      scopeActor,
-      items,
-      nodeClientById,
-    );
-
-    return {
-      generated_at: new Date().toISOString(),
-      items: filteredItems,
-    };
   }
 
   private async filterAuditItemsForScope<
@@ -2473,27 +2571,23 @@ export class AdminService {
 
     // Preferência: ficheiro em runtime (sempre atualizado após git pull); fallback: env (appConfig)
     const packageReleaseFromFile = readPackageReleaseFromFile();
-    const packageRelease = packageReleaseFromFile ?? {
-      version: appConfig.packageRelease.version,
-      sha256: appConfig.packageRelease.sha256,
-      repoRawBase: appConfig.packageRelease.repoRawBase,
-    };
 
     let package_command: string | null = null;
     let uninstall_command: string | null = null;
-    if (
-      packageRelease.version &&
-      packageRelease.sha256 &&
-      packageRelease.repoRawBase
-    ) {
-      const base = packageRelease.repoRawBase.replace(/\/+$/, '');
-      const installerUrlPkg = `${base}/packages/pfsense-package/bootstrap/install-from-release.sh`;
-      const artifactUrlPkg = `${base}/dist/pfsense-package/monitor-pfsense-package-v${packageRelease.version}.tar.gz`;
+    try {
+      const packageRelease = this.packageReleaseService.getPackageRelease();
       package_command =
-        `fetch -o /tmp/install-from-release.sh ${shellQuote(installerUrlPkg)} && chmod +x /tmp/install-from-release.sh && nohup /tmp/install-from-release.sh --release-url ${shellQuote(artifactUrlPkg)} --sha256 ${shellQuote(packageRelease.sha256)} --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)} --heartbeat-mode ${shellQuote(heartbeatMode)}${configBackupInstallFlag} </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'`;
+        `fetch -o /tmp/install-from-release.sh ${shellQuote(packageRelease.installer_url)} && chmod +x /tmp/install-from-release.sh && nohup /tmp/install-from-release.sh --release-url ${shellQuote(packageRelease.artifact_url)} --sha256 ${shellQuote(packageRelease.sha256)} --controller-url ${shellQuote(controllerUrl)} --node-uid ${shellQuote(node.nodeUid)} --node-secret ${shellQuote(bootstrapSecret)} --customer-code ${shellQuote(node.site.client.code)} --heartbeat-mode ${shellQuote(heartbeatMode)}${configBackupInstallFlag} </dev/null >>/tmp/monitor-install.log 2>&1 & echo 'Instalação em segundo plano. Log: tail -f /tmp/monitor-install.log'`;
+      const base = (
+        packageReleaseFromFile?.repoRawBase ??
+        appConfig.packageRelease.repoRawBase
+      ).replace(/\/+$/, '');
       const uninstallScriptUrl = `${base}/packages/pfsense-package/bootstrap/uninstall.sh`;
       uninstall_command =
         `fetch -o /tmp/uninstall-systemup-monitor.sh ${shellQuote(uninstallScriptUrl)} && chmod +x /tmp/uninstall-systemup-monitor.sh && /tmp/uninstall-systemup-monitor.sh`;
+    } catch {
+      package_command = null;
+      uninstall_command = null;
     }
 
     const postInstallSteps = [

@@ -1,6 +1,6 @@
 {
   "name": "@monitor-pfsense/web",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Painel web do controlador Monitor-Pfsense",
   "engines": {
@@ -16,12 +16,14 @@
   "dependencies": {
     "next": "^15.5.3",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "semver": "^7.7.3"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
+    "@types/semver": "^7.7.0",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",

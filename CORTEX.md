@@ -34,6 +34,7 @@ O agente coleta estado local e envia heartbeat por HTTPS.
 - o pacote do pfSense deve usar o framework oficial de packages
 - este host tambem e um servidor Zabbix e o Zabbix tem prioridade operacional
 - o dominio publico do MVP e `https://pfs-monitor.systemup.inf.br`
+- acesso **interno** (LAN/host) usa IP `http://192.168.100.221:3031` ou localhost `http://127.0.0.1:8088`; acesso **externo** usa sempre o dominio HTTPS publico (ver `docs/89-ACESSO-INTERNO-E-EXTERNO.md`)
 - o heartbeat do agente no MVP e de `30s`
 - o projeto usa um unico dominio no MVP para painel e ingestao
 - a autenticacao humana inicial do MVP fica centralizada no `NestJS`
@@ -121,9 +122,10 @@ Se houver qualquer conflito entre o projeto e o Zabbix do host:
 - logs estruturados obrigatorios
 - banco com migracoes versionadas
 - deploy repetivel por Compose no inicio
+- diretorio canonico do projeto no host: `/Dados/Monitor-Pfsense` (symlink legado em `/opt/Monitor-Pfsense`)
 - coexistencia obrigatoria com servicos ja ativos no host
 - origem interna deve ser unica, validada e documentada antes de liberar novas rotas sensiveis
-- origem interna canonica no repositorio: `http://192.168.100.221:3031`; docs historicos podem citar `192.168.100.244`; aplicar snippet ISPConfig no host antes da Fase C
+- origem interna canonica no repositorio: `http://192.168.100.221:3031` (LAN); URL publica canonica: `https://pfs-monitor.systemup.inf.br`; host historico `192.168.100.244` (migrado em 2026-06-23); aplicar snippet ISPConfig no host antes da Fase C
 - rota de backup preparada com limite `5 MB` em nginx interno e referencia ISPConfig; heartbeat permanece em `64 KB`
 - publicacao externa via `ISPConfig` em `192.168.100.253`
 - endpoint de ingestao do heartbeat: `POST /api/v1/ingest/heartbeat`
@@ -178,7 +180,8 @@ Ao encerrar uma nova iteracao:
 - deploy: `Docker Compose`
 - realtime: `SSE` no MVP
 - agente GUI: `PHP` com framework de package do pfSense
-- dominio: `https://pfs-monitor.systemup.inf.br`
+- dominio publico (externo): `https://pfs-monitor.systemup.inf.br`
+- origem interna (LAN): `http://192.168.100.221:3031`; localhost: `http://127.0.0.1:8088`
 - heartbeat: `30s`
 - sessao humana: server-side com cookie seguro
 - autenticacao humana: centralizada no `NestJS`
