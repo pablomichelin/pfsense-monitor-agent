@@ -1,4 +1,8 @@
 <?php
+/**
+ * Backup de config.xml — thin wrapper sobre fields XML + systemup_monitor_sync_backup_settings().
+ * Campos persistentes definidos em systemup_monitor.xml; esta pagina oferece UX dedicada.
+ */
 
 require_once("guiconfig.inc");
 require_once("/usr/local/pkg/systemup_monitor.inc");

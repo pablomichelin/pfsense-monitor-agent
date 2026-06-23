@@ -68,6 +68,7 @@ chmod 0755 \
   "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/check_pfsense_update_available.sh" \
   "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/collect_gateways.php" \
   "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/collect_config_snapshot.php" \
+  "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/run_pfsense_upgrade.sh" \
   "$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php"
 
 if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/config.inc ]; then

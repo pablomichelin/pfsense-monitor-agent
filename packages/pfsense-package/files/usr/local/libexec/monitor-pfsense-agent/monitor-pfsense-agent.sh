@@ -1331,10 +1331,70 @@ agent_post_command_result_succeeded() {
   backup_post_signed_json "/api/v1/ingest/command-result" "$body_file" "$CURL_CMD"
 }
 
+pfsense_upgrade_ha_detected() {
+  state_file="$(backup_state_dir)/pfsense-update-check.json"
+  if [ ! -f "$state_file" ]; then
+    return 1
+  fi
+
+  ha="$(php -r '
+    $data = json_decode(@file_get_contents($argv[1]), true);
+    if (!is_array($data)) {
+      exit(1);
+    }
+    echo !empty($data["ha_detected"]) ? "1" : "0";
+  ' "$state_file" 2>/dev/null || printf '0')"
+
+  [ "$ha" = "1" ]
+}
+
+pfsense_upgrade_cached_target_version() {
+  state_file="$(backup_state_dir)/pfsense-update-check.json"
+  if [ ! -f "$state_file" ]; then
+    return 0
+  fi
+
+  php -r '
+    $data = json_decode(@file_get_contents($argv[1]), true);
+    if (!is_array($data)) {
+      exit(0);
+    }
+    echo trim((string) ($data["target_version"] ?? ""));
+  ' "$state_file" 2>/dev/null || true
+}
+
 dispatch_pfsense_upgrade() {
   command_id="$1"
   target_version="$2"
   CURL_CMD="$3"
+
+  if pfsense_upgrade_ha_detected; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "HA/CARP detected; pfSense OS upgrade blocked on this node" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  disk_percent="$(detect_disk_percent 2>/dev/null || true)"
+  if [ -n "$disk_percent" ] && [ "$disk_percent" -ge 90 ] 2>/dev/null; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "Insufficient disk space for upgrade (${disk_percent}% used on /)" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if [ -n "$target_version" ]; then
+    cached_target="$(pfsense_upgrade_cached_target_version 2>/dev/null || true)"
+    if [ -n "$cached_target" ] && [ "$cached_target" != "$target_version" ]; then
+      agent_post_command_result_failed \
+        "$command_id" \
+        "target_version mismatch (requested ${target_version}, cache ${cached_target})" \
+        "$CURL_CMD" >/dev/null 2>&1 || true
+      return 1
+    fi
+  fi
 
   lock_dir="$(pfsense_upgrade_lock_dir)"
   if ! mkdir "$lock_dir" 2>/dev/null; then
@@ -1347,19 +1407,32 @@ dispatch_pfsense_upgrade() {
 
   backup_ensure_state_dir
   state_file="$(pfsense_upgrade_state_file)"
-  printf '{"command_id":"%s","target_version":"%s","started_at":"%s","status":"pending_execution"}\n' \
+  printf '{"command_id":"%s","target_version":"%s","started_at":"%s","status":"running","exec_enabled":"%s"}\n' \
     "$(json_escape "$command_id")" \
     "$(json_escape "$target_version")" \
-    "$(json_escape "$(iso_now)")" >"$state_file"
+    "$(json_escape "$(iso_now)")" \
+    "$(json_escape "${MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED:-0}")" >"$state_file"
 
-  # Fase 4.4: execução real depende do spike CE (flags pfSense-upgrade).
-  agent_post_command_result_failed \
-    "$command_id" \
-    "pfSense OS upgrade execution pending CE lab spike validation" \
-    "$CURL_CMD" >/dev/null 2>&1 || true
+  wrapper="$SCRIPT_DIR/run_pfsense_upgrade.sh"
+  if [ ! -f "$wrapper" ]; then
+    agent_post_command_result_failed "$command_id" "run_pfsense_upgrade.sh missing" "$CURL_CMD" >/dev/null 2>&1 || true
+    rm -f "$state_file"
+    rmdir "$lock_dir" 2>/dev/null || true
+    return 1
+  fi
+  chmod +x "$wrapper" 2>/dev/null || true
 
-  rm -f "$state_file"
-  rmdir "$lock_dir" 2>/dev/null || true
+  nohup "$wrapper" "$command_id" "$target_version" "$state_file" >>/var/log/monitor-pfsense-agent-upgrade.log 2>&1 &
+  wrapper_pid=$!
+
+  if ! kill -0 "$wrapper_pid" 2>/dev/null; then
+    agent_post_command_result_failed "$command_id" "failed to spawn upgrade wrapper" "$CURL_CMD" >/dev/null 2>&1 || true
+    rm -f "$state_file"
+    rmdir "$lock_dir" 2>/dev/null || true
+    return 1
+  fi
+
+  # Semi-manual (default): ack running, state retained until reboot finalize — no immediate failed.
   return 0
 }
 
@@ -1389,18 +1462,36 @@ finalize_pfsense_upgrade_if_pending() {
 
   [ -n "$parsed" ] || return 0
 
+  state_meta="$(php -r '
+    $data = json_decode(@file_get_contents($argv[1]), true);
+    if (!is_array($data)) {
+      exit(0);
+    }
+    echo trim((string) ($data["status"] ?? "")) . "\n";
+    echo trim((string) ($data["target_version"] ?? "")) . "\n";
+    echo trim((string) ($data["started_at"] ?? "")) . "\n";
+  ' "$state_file" 2>/dev/null || true)"
+
+  status="$(printf '%s\n' "$state_meta" | sed -n '1p')"
+  state_target_version="$(printf '%s\n' "$state_meta" | sed -n '2p')"
+  started_at="$(printf '%s\n' "$state_meta" | sed -n '3p')"
+
   log_file="/conf/upgrade_log.latest.txt"
   if [ -f "$log_file" ]; then
     excerpt="$(tail -n 20 "$log_file" | tr '\n' ' ')"
-    previous_version="$(detect_pfsense_version 2>/dev/null || true)"
+    new_version="$(detect_pfsense_version 2>/dev/null || true)"
     agent_post_command_result_succeeded "$parsed" \
-      "{\"previous_version\":\"$(json_escape "$previous_version")\",\"new_version\":\"$(json_escape "$previous_version")\",\"log_excerpt\":\"$(json_escape "$excerpt")\"}" \
+      "{\"target_version\":\"$(json_escape "$state_target_version")\",\"new_version\":\"$(json_escape "$new_version")\",\"started_at\":\"$(json_escape "$started_at")\",\"log_excerpt\":\"$(json_escape "$excerpt")\",\"finalize_status\":\"$(json_escape "$status")\"}" \
       "$CURL_CMD" >/dev/null 2>&1 || true
+  elif [ "$status" = "prepared_manual_confirm" ]; then
+    # Still awaiting manual Confirm / reboot — keep state, do not fail yet.
+    return 0
   else
     agent_post_command_result_failed "$parsed" "upgrade finished without upgrade log" "$CURL_CMD" >/dev/null 2>&1 || true
   fi
 
   rm -f "$state_file"
+  rmdir "$(pfsense_upgrade_lock_dir)" 2>/dev/null || true
 }
 
 build_payload() {

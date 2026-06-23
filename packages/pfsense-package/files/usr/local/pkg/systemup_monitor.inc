@@ -17,7 +17,7 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.3.7");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.3.8");
 }
 if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
     define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
@@ -48,6 +48,9 @@ if (!defined("SYSTEMUP_MONITOR_UPDATE_RATE_LIMIT_SECONDS")) {
 }
 if (!defined("SYSTEMUP_MONITOR_UPDATE_LOCK_STALE_SECONDS")) {
     define("SYSTEMUP_MONITOR_UPDATE_LOCK_STALE_SECONDS", 7200);
+}
+if (!defined("SYSTEMUP_MONITOR_NODE_SECRET_FILE")) {
+    define("SYSTEMUP_MONITOR_NODE_SECRET_FILE", "/var/db/monitor-pfsense-agent/node_secret");
 }
 
 /**
@@ -543,14 +546,141 @@ function systemup_monitor_is_enabled($pkg)
     return isset($pkg['enabled']) && $pkg['enabled'] === 'on';
 }
 
+function systemup_monitor_node_secret_file_path()
+{
+    return SYSTEMUP_MONITOR_NODE_SECRET_FILE;
+}
+
+function systemup_monitor_read_node_secret_file()
+{
+    $path = systemup_monitor_node_secret_file_path();
+    if (!is_readable($path)) {
+        return '';
+    }
+
+    return trim((string) file_get_contents($path));
+}
+
+function systemup_monitor_write_node_secret_file($secret)
+{
+    $secret = trim((string) $secret);
+    if ($secret === '') {
+        return false;
+    }
+
+    $path = systemup_monitor_node_secret_file_path();
+    systemup_monitor_ensure_directory(dirname($path));
+    if (file_put_contents($path, $secret . "\n") === false) {
+        return false;
+    }
+    @chmod($path, 0600);
+
+    return true;
+}
+
+function systemup_monitor_remove_node_secret_file()
+{
+    $path = systemup_monitor_node_secret_file_path();
+    if (is_file($path)) {
+        @unlink($path);
+    }
+}
+
+/**
+ * Resolve node secret: arquivo runtime (canonico) ou legado no XML (migracao copy-on-read).
+ */
+function systemup_monitor_resolve_node_secret(array $pkg)
+{
+    $fromFile = systemup_monitor_read_node_secret_file();
+    if ($fromFile !== '') {
+        return $fromFile;
+    }
+
+    return trim((string) ($pkg['node_secret'] ?? ''));
+}
+
+function systemup_monitor_node_secret_is_stored(array $pkg)
+{
+    if (systemup_monitor_read_node_secret_file() !== '') {
+        return true;
+    }
+
+    return systemup_monitor_normalize_yes_no($pkg['secret_stored'] ?? '', '') === 'on';
+}
+
+/**
+ * Migra secret legado do XML para arquivo; limpa XML apos sucesso.
+ *
+ * @return bool true se migrou nesta chamada
+ */
+function systemup_monitor_migrate_node_secret_from_xml(&$pkg, $persist = true)
+{
+    if (systemup_monitor_read_node_secret_file() !== '') {
+        if (trim((string) ($pkg['node_secret'] ?? '')) !== '' || systemup_monitor_normalize_yes_no($pkg['secret_stored'] ?? '', '') !== 'on') {
+            $pkg['node_secret'] = '';
+            $pkg['secret_stored'] = 'on';
+            if ($persist) {
+                systemup_monitor_persist_package_config('SystemUp Monitor node secret migrated to runtime file');
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
+    $legacy = trim((string) ($pkg['node_secret'] ?? ''));
+    if ($legacy === '') {
+        return false;
+    }
+
+    if (!systemup_monitor_write_node_secret_file($legacy)) {
+        return false;
+    }
+
+    $pkg['node_secret'] = '';
+    $pkg['secret_stored'] = 'on';
+
+    if ($persist) {
+        systemup_monitor_persist_package_config('SystemUp Monitor node secret migrated to runtime file');
+    }
+
+    return true;
+}
+
+function systemup_monitor_store_node_secret(&$pkg, $secret, $persist = true)
+{
+    $secret = trim((string) $secret);
+    if ($secret === '') {
+        return false;
+    }
+
+    if (!systemup_monitor_write_node_secret_file($secret)) {
+        return false;
+    }
+
+    $pkg['node_secret'] = '';
+    $pkg['secret_stored'] = 'on';
+
+    if ($persist) {
+        systemup_monitor_persist_package_config('SystemUp Monitor node secret stored in runtime file');
+    }
+
+    return true;
+}
+
 function systemup_monitor_has_required_runtime_config($pkg, &$missing_fields = array())
 {
     $missing_fields = array();
 
-    foreach (array('controller_url', 'node_uid', 'customer_code', 'node_secret') as $field) {
+    foreach (array('controller_url', 'node_uid', 'customer_code') as $field) {
         if (!isset($pkg[$field]) || trim((string) $pkg[$field]) === '') {
             $missing_fields[] = $field;
         }
+    }
+
+    if (systemup_monitor_resolve_node_secret($pkg) === '') {
+        $missing_fields[] = 'node_secret';
     }
 
     return empty($missing_fields);
@@ -580,6 +710,8 @@ function systemup_monitor_touch_log_file($path)
 
 function systemup_monitor_render_agent_config($pkg)
 {
+    systemup_monitor_migrate_node_secret_from_xml($pkg, false);
+    $nodeSecret = systemup_monitor_resolve_node_secret($pkg);
     $selectedServices = implode(',', systemup_monitor_selected_services($pkg));
     $heartbeatMode = systemup_monitor_normalize_heartbeat_mode($pkg['heartbeat_mode'] ?? SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE);
     $lightHeartbeat = $heartbeatMode === 'light' ? '1' : '0';
@@ -590,7 +722,7 @@ function systemup_monitor_render_agent_config($pkg)
     $lines = array(
         'CONTROLLER_URL="' . systemup_monitor_escape_shell_value($pkg['controller_url']) . '"',
         'NODE_UID="' . systemup_monitor_escape_shell_value($pkg['node_uid']) . '"',
-        'NODE_SECRET="' . systemup_monitor_escape_shell_value($pkg['node_secret']) . '"',
+        'NODE_SECRET="' . systemup_monitor_escape_shell_value($nodeSecret) . '"',
         'CUSTOMER_CODE="' . systemup_monitor_escape_shell_value($pkg['customer_code']) . '"',
         'AGENT_VERSION="' . (defined("SYSTEMUP_MONITOR_AGENT_VERSION") ? SYSTEMUP_MONITOR_AGENT_VERSION : "0.2.0") . '"',
         'SCHEMA_VERSION="2026-01"',
@@ -618,12 +750,14 @@ function systemup_monitor_render_agent_config($pkg)
     $lines[] = 'MONITOR_AGENT_PFSENSE_CONFIG_XML="/conf/config.xml"';
     $lines[] = 'MONITOR_AGENT_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS="' . systemup_monitor_escape_shell_value((string) SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS) . '"';
     $lines[] = 'MONITOR_AGENT_CONFIG_SNAPSHOT_TTL_SECONDS="86400"';
+    $lines[] = 'MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['pfsense_upgrade_exec_enabled'] ?? '0')) . '"';
 
     return implode("\n", $lines) . "\n";
 }
 
 function systemup_monitor_write_runtime_config($pkg)
 {
+    systemup_monitor_migrate_node_secret_from_xml($pkg, true);
     $paths = systemup_monitor_runtime_paths();
     $directory = dirname($paths['config_file']);
 
@@ -801,6 +935,7 @@ function systemup_monitor_package_uninstall()
     systemup_monitor_run_command('/usr/sbin/service monitor_pfsense_agent stop 2>/dev/null || true');
     systemup_monitor_remove_runtime_config();
     systemup_monitor_remove_update_secret_file();
+    systemup_monitor_remove_node_secret_file();
 
     if (file_exists('/usr/sbin/sysrc')) {
         systemup_monitor_run_command('/usr/sbin/sysrc monitor_pfsense_agent_enable=NO 2>/dev/null || true');
@@ -953,7 +1088,8 @@ function systemup_monitor_refresh_pfsense_update_check($background = true)
 function systemup_monitor_sync_config($restartService = true, $backgroundRestart = false)
 {
     systemup_monitor_apply_defaults();
-    $pkg = systemup_monitor_read_config();
+    $pkg =& systemup_monitor_config_ref();
+    systemup_monitor_migrate_node_secret_from_xml($pkg, true);
     systemup_monitor_sync_service_fields($pkg);
     $missing_fields = array();
     $config_ready = systemup_monitor_has_required_runtime_config($pkg, $missing_fields);
@@ -986,7 +1122,8 @@ function systemup_monitor_sync_config($restartService = true, $backgroundRestart
 function systemup_monitor_sync_backup_settings()
 {
     systemup_monitor_apply_defaults();
-    $pkg = systemup_monitor_read_config();
+    $pkg =& systemup_monitor_config_ref();
+    systemup_monitor_migrate_node_secret_from_xml($pkg, true);
     systemup_monitor_sync_service_fields($pkg);
     $missing_fields = array();
     $config_ready = systemup_monitor_has_required_runtime_config($pkg, $missing_fields);
@@ -1002,6 +1139,10 @@ function systemup_monitor_sync_backup_settings()
 
 function systemup_monitor_mask_secret($secret)
 {
+    if ($secret === 'configurado') {
+        return 'configurado (arquivo runtime)';
+    }
+
     if (empty($secret)) {
         return 'nao configurado';
     }
@@ -1012,6 +1153,17 @@ function systemup_monitor_mask_secret($secret)
     }
 
     return substr($secret, 0, 3) . str_repeat('*', $length - 6) . substr($secret, -3);
+}
+
+function systemup_monitor_secret_display_label(array $pkg)
+{
+    if (systemup_monitor_node_secret_is_stored($pkg)) {
+        return 'configurado';
+    }
+
+    $secret = trim((string) ($pkg['node_secret'] ?? ''));
+
+    return systemup_monitor_mask_secret($secret);
 }
 
 function systemup_monitor_local_commands()
@@ -1618,7 +1770,7 @@ function systemup_monitor_shell_quote($value)
 
 function systemup_monitor_build_package_update_command($pkg, $release)
 {
-    $secretFile = systemup_monitor_write_update_secret_file($pkg['node_secret']);
+    $secretFile = systemup_monitor_write_update_secret_file(systemup_monitor_resolve_node_secret($pkg));
 
     $args = array(
         '--release-url ' . systemup_monitor_shell_quote($release['artifact_url']),

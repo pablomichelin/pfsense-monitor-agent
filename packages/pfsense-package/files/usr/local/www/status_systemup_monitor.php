@@ -7,7 +7,7 @@ systemup_monitor_setup_package_tabs('diagnostico');
 
 $pkg = systemup_monitor_read_config();
 $commands = systemup_monitor_local_commands();
-$secret_masked = systemup_monitor_mask_secret($pkg['node_secret']);
+$secret_masked = systemup_monitor_secret_display_label($pkg);
 $runtime = systemup_monitor_runtime_summary();
 $selected_services = systemup_monitor_selected_service_labels($pkg);
 include("head.inc");

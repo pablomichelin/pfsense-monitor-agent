@@ -207,13 +207,17 @@ Modulo de backup ja implementado no controlador; RBAC reforça escopo e download
 Plano mestre de melhorias pendentes (merge `service`, ISPConfig/502, backoff backup, gateways, upgrade OS, cache XML, desinstalacao):
 
 - [`docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`](95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md) — **entrega Opção B Fase 0** (limite backup ISPConfig/compose, testes HTTPS)
-- [`docs/96-ENTREGA-PACKAGE-0.3.7.md`](96-ENTREGA-PACKAGE-0.3.7.md) — **entrega Opção C P1** (gateways, harden update, cache XML, pkg-deinstall, heartbeat HTTP)
+- [`docs/98-ENTREGA-PACKAGE-0.3.8.md`](98-ENTREGA-PACKAGE-0.3.8.md) — **entrega Opção D + Fase 3** (`pfsense_upgrade` semi-manual, `node_secret` runtime, guia package)
+- [`docs/97-SPIKE-PFSENSE-UPGRADE-CE.md`](97-SPIKE-PFSENSE-UPGRADE-CE.md) — spike upgrade OS CE (procedimentos lab)
+- [`docs/pfsense-package/00-GUIA-OPERACAO-PACKAGE.md`](pfsense-package/00-GUIA-OPERACAO-PACKAGE.md) — guia operacional unificado do package
+- [`docs/95-RUNBOOK-ISPConfig-253-BACKUP-LIMIT.md`](95-RUNBOOK-ISPConfig-253-BACKUP-LIMIT.md) — runbook operador SSH 253 (pendente acesso)
+- [`docs/96-ENTREGA-PACKAGE-0.3.7.md`](96-ENTREGA-PACKAGE-0.3.7.md) — entrega Opção C P1
 - [`docs/95-ENTREGA-PACKAGE-0.3.6.md`](95-ENTREGA-PACKAGE-0.3.6.md) — entrega Opção A P0
 - [`docs/94-PLANO-MELHORIAS-PACKAGE-0.3.6.md`](94-PLANO-MELHORIAS-PACKAGE-0.3.6.md) — **plano executavel autossuficiente**
 - Contexto correção parcial 0.3.5: [`docs/92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md`](92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md)
 - Upgrade OS (stub + spike CE): [`docs/91-PLANO-ENTREGA-PFSENSE-OS-UPGRADE.md`](91-PLANO-ENTREGA-PFSENSE-OS-UPGRADE.md)
 
-Package publicado no fluxo atual: `0.3.7`; proxima release alvo: `0.3.8+` (P1 `pfsense_upgrade` pos-spike CE).
+Package publicado no fluxo atual: `0.3.8`; pendente lab: flags upgrade CE nao assistido, piloto gateways/VPN.
 
 ## Estrutura de pastas atual
 

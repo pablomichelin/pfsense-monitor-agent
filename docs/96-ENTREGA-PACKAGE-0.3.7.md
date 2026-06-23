@@ -66,6 +66,7 @@ Release P1 que implementa coleta real de gateways via `gwlib`, endurece o fluxo 
 | Arquivo | `dist/pfsense-package/monitor-pfsense-package-v0.3.7.tar.gz` |
 | SHA256 | `5f528e151e9b72ec753b59ac7aa19aa0955df394d98b518334bbc8b2d71b6696` |
 | Gerado em | 2026-06-23 (`./scripts/release-pfsense-package.sh --no-push`) |
+| Publicado | 2026-06-23 — commit `54900b3` em `main` |
 
 ## Testes executados (host dev)
 

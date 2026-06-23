@@ -69,6 +69,7 @@ No fluxo atual do painel, essa escolha é feita diretamente no comando de instal
 
 ## Referência
 
+- **Guia operacional do package:** [`docs/pfsense-package/00-GUIA-OPERACAO-PACKAGE.md`](pfsense-package/00-GUIA-OPERACAO-PACKAGE.md)
 - **Cadastro, comandos e testes (visão completa):** `docs/CADASTRO-E-COMANDOS-PFSENSE.md`
 - Comando e artefatos: `docs/COMANDO-ATUALIZAR-PACKAGE-PFSENSE.md`
 - Modos de heartbeat na instalação: `docs/62-MODO-HEARTBEAT-INSTALACAO-PFSENSE-2026-03-19.md`

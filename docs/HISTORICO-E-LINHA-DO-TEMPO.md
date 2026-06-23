@@ -6,6 +6,13 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-06-23 — Package pfSense 0.3.8 (Opção D + Fase 3 P2)
+
+- **`pfsense_upgrade` semi-manual:** spike `docs/97-SPIKE-PFSENSE-UPGRADE-CE.md`; wrapper `run_pfsense_upgrade.sh`; dispatch com pré-checks HA/disco/target; flag `MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED=0`; state `pfsense-upgrade-pending.json`; sem failed imediato se spawn OK.
+- **`node_secret` runtime:** arquivo `/var/db/monitor-pfsense-agent/node_secret` (0600); migração copy-on-read do XML; GUI "configurado".
+- **Docs/backup XML:** fields `heartbeat_mode` + `config_backup_*`; guia `docs/pfsense-package/00-GUIA-OPERACAO-PACKAGE.md`; runbook ISPConfig 253.
+- **Entrega:** `docs/98-ENTREGA-PACKAGE-0.3.8.md`. Pendente: lab CE flags não assistidas, piloto pfSense end-to-end.
+
 ### 2026-06-23 — Package pfSense 0.3.7 (Opção C / P1)
 
 - **Gateways reais:** `collect_gateways.php` + `build_gateways_json()` via gwlib/dpinger; mapeamento para contrato API.

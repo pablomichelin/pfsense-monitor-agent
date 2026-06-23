@@ -77,7 +77,11 @@ function systemup_monitor_cli_seed($options)
 
     foreach (array('controller_url', 'node_uid', 'node_secret', 'customer_code', 'interval_seconds', 'services_csv') as $field) {
         if (isset($options[$field]) && $options[$field] !== '') {
-            $pkg[$field] = $options[$field];
+            if ($field === 'node_secret') {
+                systemup_monitor_store_node_secret($pkg, $options[$field], false);
+            } else {
+                $pkg[$field] = $options[$field];
+            }
         }
     }
     if (isset($options['heartbeat_mode']) && $options['heartbeat_mode'] !== '') {

@@ -136,11 +136,97 @@
       <cols>60</cols>
     </field>
     <field>
-      <fielddescr>Node secret</fielddescr>
+      <fielddescr>Heartbeat mode</fielddescr>
+      <fieldname>heartbeat_mode</fieldname>
+      <description>normal envia servicos e gateways; light envia apenas telemetria essencial.</description>
+      <type>select</type>
+      <options>
+        <option>
+          <name>Normal</name>
+          <value>normal</value>
+        </option>
+        <option>
+          <name>Light</name>
+          <value>light</value>
+        </option>
+      </options>
+    </field>
+    <field>
+      <fielddescr>Node secret (runtime)</fielddescr>
+      <fieldname>secret_stored</fieldname>
+      <description>Indica que o segredo HMAC esta em /var/db/monitor-pfsense-agent/node_secret (0600). Rotacao via controlador (rekey).</description>
+      <type>checkbox</type>
+    </field>
+    <field>
+      <fielddescr>Node secret (legado)</fielddescr>
       <fieldname>node_secret</fieldname>
-      <description>Segredo do node gerado pelo controlador para autenticacao HMAC. Obrigatorio para o runtime.</description>
+      <description>Campo legado — apos bootstrap o valor fica no arquivo runtime. Deixe vazio quando secret_stored estiver ativo.</description>
       <type>password</type>
       <size>64</size>
+    </field>
+    <field>
+      <fielddescr>Backup automatico</fielddescr>
+      <fieldname>config_backup_enabled</fieldname>
+      <description>Habilita envio agendado de config.xml ao controlador.</description>
+      <type>checkbox</type>
+    </field>
+    <field>
+      <fielddescr>Modo de agendamento backup</fielddescr>
+      <fieldname>config_backup_schedule_mode</fieldname>
+      <description>hours, daily, weekly ou monthly.</description>
+      <type>select</type>
+      <options>
+        <option><name>A cada X horas</name><value>hours</value></option>
+        <option><name>Diariamente</name><value>daily</value></option>
+        <option><name>Semanalmente</name><value>weekly</value></option>
+        <option><name>Mensalmente</name><value>monthly</value></option>
+      </options>
+    </field>
+    <field>
+      <fielddescr>Intervalo backup (horas)</fielddescr>
+      <fieldname>config_backup_interval_hours</fieldname>
+      <description>Usado quando modo hours.</description>
+      <type>input</type>
+      <size>8</size>
+    </field>
+    <field>
+      <fielddescr>Horario backup (HH:MM)</fielddescr>
+      <fieldname>config_backup_schedule_time</fieldname>
+      <description>Horario local para daily/weekly/monthly.</description>
+      <type>input</type>
+      <size>8</size>
+    </field>
+    <field>
+      <fielddescr>Dia da semana backup</fielddescr>
+      <fieldname>config_backup_schedule_dow</fieldname>
+      <description>0=domingo .. 6=sabado (modo weekly).</description>
+      <type>input</type>
+      <size>4</size>
+    </field>
+    <field>
+      <fielddescr>Dia do mes backup</fielddescr>
+      <fieldname>config_backup_schedule_dom</fieldname>
+      <description>1-28 (modo monthly).</description>
+      <type>input</type>
+      <size>4</size>
+    </field>
+    <field>
+      <fielddescr>Backup somente se mudou</fielddescr>
+      <fieldname>config_backup_on_change</fieldname>
+      <description>Pula upload se hash do XML nao mudou.</description>
+      <type>checkbox</type>
+    </field>
+    <field>
+      <fielddescr>Compactar backup (gzip)</fielddescr>
+      <fieldname>config_backup_compress</fieldname>
+      <description>Envia payload compactado.</description>
+      <type>checkbox</type>
+    </field>
+    <field>
+      <fielddescr>Aceitar backup remoto</fielddescr>
+      <fieldname>config_backup_accept_remote_requests</fieldname>
+      <description>Executa config_backup_now recebido no heartbeat.</description>
+      <type>checkbox</type>
     </field>
   </fields>
 </packagegui>

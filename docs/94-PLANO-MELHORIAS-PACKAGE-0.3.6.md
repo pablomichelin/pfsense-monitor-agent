@@ -378,12 +378,16 @@ Executar em **VM pfSense CE 2.8.1** (homologação oficial do projeto):
 - Spike: documento `docs/96-SPIKE-PFSENSE-UPGRADE-CE.md`
 - Código: **0.3.8+** ou **0.3.7** se spike rápido; **não** misturar com 0.3.6 P0
 
-#### Testes
+#### Critério de aceite
 
-- `scripts/smoke-pfsense-upgrade-command.sh`
-- Lab: request upgrade em VM com update disponível; validar transição de estados no painel
+- [x] Spike documentado (`docs/97-SPIKE-PFSENSE-UPGRADE-CE.md`)
+- [x] Wrapper + dispatch com pré-checks e state file
+- [x] Flag `MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED=0` default
+- [x] Fluxo semi-manual (sem failed imediato se spawn OK)
+- [ ] Lab CE: flags não assistidas confirmadas *(pendente lab)*
+- [ ] Upgrade end-to-end com reboot no piloto *(pendente lab)*
 
----
+**Status 0.3.8:** código entregue — ver `docs/98-ENTREGA-PACKAGE-0.3.8.md`, spike `docs/97-SPIKE-PFSENSE-UPGRADE-CE.md`
 
 ### 2.3 — A4: `build_gateways_json()` (P1 / Ponto 7)
 
@@ -499,11 +503,12 @@ $a_gateways = return_gateways(true); // ou get_gateways()
 
 #### Critério de aceite
 
-- [ ] `grep node_secret /conf/config.xml` vazio ou placeholder após migração
-- [ ] Heartbeat continua autenticando
-- [ ] Upgrade package preserva secret file
+- [x] `grep node_secret /conf/config.xml` vazio ou placeholder após migração *(secret_stored=on; node_secret vazio)*
+- [x] Heartbeat continua autenticando *(runtime lê arquivo)*
+- [x] Upgrade package preserva secret file *(arquivo fora do pkg-plist)*
+- [ ] Validar em piloto pfSense pós-migração *(pendente lab)*
 
----
+**Status 0.3.8:** entregue — ver `docs/98-ENTREGA-PACKAGE-0.3.8.md`
 
 ### 3.2 — A6: Documentação coesa + backup fields (P2 / Pontos 9+13)
 
@@ -538,11 +543,11 @@ Segundo práticas pfSense:
 
 #### Critério de aceite
 
-- [ ] Operador configura backup só pela GUI pfSense sem editar PHP
-- [ ] Um documento guia lista todos os campos e defaults
-- [ ] `00-INDICE-OPERACIONAL.md` aponta para guia package
+- [x] Operador configura backup só pela GUI pfSense sem editar PHP
+- [x] Um documento guia lista todos os campos e defaults (`docs/pfsense-package/00-GUIA-OPERACAO-PACKAGE.md`)
+- [x] `00-INDICE-OPERACIONAL.md` aponta para guia package
 
----
+**Status 0.3.8:** entregue — ver `docs/98-ENTREGA-PACKAGE-0.3.8.md`
 
 ## Fase 4 — Melhorias adicionais (14, 15, 16, 18)
 
@@ -859,10 +864,11 @@ Critério de done desta sessão: [PREENCHER com checkboxes da fase escolhida no 
 | ID | Item | Local | Status |
 |----|------|-------|--------|
 | A1 | Snapshot substitui array `service` inteiro | `systemup_monitor.inc` | **Entregue 0.3.6** |
-| C2 | ISPConfig sem location 5m | Host 253 | **Indireto OK** (HTTPS + verify script); conferência SSH 253 pendente — `docs/95-ENTREGA-INFRA-*` |
+| C2 | ISPConfig sem location 5m | Host 253 | **Indireto OK** (HTTPS + verify); conferência SSH 253 — runbook `docs/95-RUNBOOK-ISPConfig-253-BACKUP-LIMIT.md` |
 | C3 | Backup hammer em falha 502 | `monitor-pfsense-agent-loop.sh` | **Entregue 0.3.6** (backoff) |
 | A4 | `build_gateways_json` stub `[]` | `collect_gateways.php` | **Entregue 0.3.7** |
-| A5 | `pfsense_upgrade` stub | `monitor-pfsense-agent.sh:1155` | Aguarda spike CE |
+| A5 | `pfsense_upgrade` stub | `run_pfsense_upgrade.sh` + dispatch | **Entregue 0.3.8** (semi-manual; exec flag off) |
+| A3 | `node_secret` no XML | arquivo runtime 0600 | **Entregue 0.3.8** |
 | A2 | Secret na argv do update | `systemup_monitor.inc` | **Entregue 0.3.7** |
 | 14 | Parse XML cada 30s | cache `config-snapshot.json` | **Entregue 0.3.7** |
 | 15 | pkg-deinstall incompleto | `pkg-deinstall.in` | **Entregue 0.3.7** |
