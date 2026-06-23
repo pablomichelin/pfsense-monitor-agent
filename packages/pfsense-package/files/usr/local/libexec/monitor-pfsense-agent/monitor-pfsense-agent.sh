@@ -2363,7 +2363,6 @@ process_heartbeat_commands() {
   [ -f "$response_file" ] || return 0
 
   dispatch_file="$(mktemp)"
-  trap 'rm -f "$dispatch_file"' EXIT INT TERM
 
   php -r '
     $payload = json_decode(file_get_contents($argv[1]), true);
@@ -2383,9 +2382,13 @@ process_heartbeat_commands() {
       }
       echo $type . "\t" . $id . "\t" . $target . "\n";
     }
-  ' "$response_file" >"$dispatch_file" 2>/dev/null || return 0
+  ' "$response_file" >"$dispatch_file" 2>/dev/null || {
+    rm -f "$dispatch_file"
+    return 0
+  }
 
   if [ ! -s "$dispatch_file" ]; then
+    rm -f "$dispatch_file"
     return 0
   fi
 
@@ -2402,6 +2405,8 @@ process_heartbeat_commands() {
         ;;
     esac
   done <"$dispatch_file"
+
+  rm -f "$dispatch_file"
 }
 
 print_config() {
@@ -2432,10 +2437,15 @@ heartbeat() {
   payload_file="$(mktemp)"
   response_file="$(mktemp)"
   err_file="$(mktemp)"
-  trap 'rm -f "$payload_file" "$response_file" "$err_file"' EXIT INT TERM
+
+  heartbeat_cleanup_temp() {
+    rm -f "$payload_file" "$response_file" "$err_file" 2>/dev/null || true
+  }
+
   build_payload >"$payload_file" 2>/dev/null
   if [ ! -s "$payload_file" ]; then
     echo "heartbeat: build_payload failed" >&2
+    heartbeat_cleanup_temp
     exit 1
   fi
 
@@ -2446,14 +2456,12 @@ heartbeat() {
     heartbeat_backoff_clear
     rm -f "$(heartbeat_error_path)" 2>/dev/null || true
     process_heartbeat_commands "$response_file" "$CURL_CMD"
-    cat "$response_file"
+    heartbeat_cleanup_temp
     return 0
   fi
 
   heartbeat_error_record "$http_code" "$curl_error"
-  if [ -n "$http_code" ] && [ "$http_code" -ge 400 ] 2>/dev/null; then
-    cat "$response_file" 2>/dev/null || true
-  fi
+  heartbeat_cleanup_temp
   exit 1
 }
 
