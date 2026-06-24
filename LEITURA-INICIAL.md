@@ -10,9 +10,12 @@ Leia este arquivo primeiro.
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.3.1` | `apps/api/package.json` |
-| Painel web | `1.1.1` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.3.8` | `packages/pfsense-package/Makefile` |
+| API | `0.4.0` | `apps/api/package.json` |
+| Painel web | `1.2.0` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.4.0` | `packages/pfsense-package/Makefile` |
+
+**Ultima entrega (2026-06-23):** correcoes de auditoria de seguranca (package + agente + controlador + SSE/infra) — `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Cobre A1–A7, B1–B7, C1–C8, D1–D2; gaps adiados E1 (MFA) / E2 (rate-limit) documentados; plano de origem `docs/94`.
+**Proximo passo:** deploy do controlador — `prisma migrate deploy` (migration `node_request_nonce`, C2) + `docker compose up -d --build` para subir a API 0.4.0; publicar release package 0.4.0 e atualizar clientes pfSense.
 
 Ultima entrega infra (Fase 0): `docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`  
 Ultima entrega package: `docs/98-ENTREGA-PACKAGE-0.3.8.md`  

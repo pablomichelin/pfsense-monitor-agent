@@ -12,6 +12,9 @@ data/postgres
 data/pfsense-config-backups/*
 !data/pfsense-config-backups/.gitkeep
 /backups
+# overrides e backups locais do compose (nao versionar)
+compose.override.yaml
+*.bak-*
 apps/api/node_modules
 apps/api/dist
 apps/web/node_modules

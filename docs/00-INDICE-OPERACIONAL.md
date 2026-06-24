@@ -4,6 +4,8 @@ Data de referencia: `2026-06-08`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
+> **Ultima entrega (2026-06-23):** correcoes de auditoria de seguranca — package/API `0.4.0`, painel `1.2.0`. Ver `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md` (A1–A7, B1–B7, C1–C8, D1–D2; gaps E1/E2 documentados). Proximo passo operacional: `prisma migrate deploy` (migration `node_request_nonce`) + `docker compose up -d --build` para subir a API 0.4.0.
+
 ## Ordem de leitura atual
 
 Leia nesta ordem:

@@ -115,12 +115,17 @@ Campos obrigatorios:
 - `hostname`
 - `customer_code`
 - `pfsense_version`
-- `services[]`
-- `gateways[]`
 - `uptime_sec`
+
+> **Atualizacao 2026-06-23 (E3 — doc x codigo):** no heartbeat leve homologado do
+> package pfSense, `services[]` e `gateways[]` sao **OPCIONAIS**. O agente envia o
+> que conseguir coletar; o ingest aceita o payload sem essas listas. Mantidos abaixo
+> apenas como campos recomendados quando disponiveis.
 
 Campos recomendados:
 
+- `services[]`
+- `gateways[]`
 - `site_name`
 - `wan_ip_reported`
 - `mgmt_ip`

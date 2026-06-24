@@ -2,9 +2,18 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-06-23
+**Última atualização:** 2026-06-23 (correções de auditoria de segurança — package/API 0.4.0, painel 1.2.0)
 
 ---
+
+### 2026-06-23 — Correções de auditoria de segurança (package 0.4.0 · API 0.4.0 · painel 1.2.0)
+
+- **Package (A1–A7):** menu `Status` adicionado; CSRF nos POSTs WWW + `package_update` restrito a admin; PHP de www declarados no XML; `$rc = (mwexec…)` no service_definition; `pkg-deinstall.in` guardado por fase + `${PKG_ROOTDIR}`; `%%PKGVERSION%%` no XML + `NO_ARCH`. A7 (rc.d idiomático) documentado como dívida de baixo risco.
+- **Agente/shell (B1–B7):** segredo HMAC sai do `.conf` em texto (passa a `NODE_SECRET_FILE` 0600, com fallback retrocompatível); `detect_cpu_percent` FreeBSD via `sysctl`; fim do word-splitting em `install-from-release.sh`; allowlist de org/repo no auto-update; `uninstall.sh` com limpeza completa; `glob('/tmp/monitor-*')` → lista explícita; `packages/pfsense-agent/` marcado DEPRECATED.
+- **Controlador (C1–C8):** bootstrap login não regrava senha (C1); anti-replay HMAC via `node_request_nonces` (C2, migration nova); CAS+`FOR UPDATE` no ingest (C3); RBAC em `createClient` (C4); `trustProxy` restrito + `CF-Connecting-IP` só de proxy confiável (C5); boot falha sem RBAC em produção (C6); replay de heartbeat não reentrega comandos (C7); `command-ack` condicional por status (C8).
+- **SSE/infra (D1–D2):** stream filtra por `allowedClientIds` (sem vazar `node_id`/`node_uid` cross-escopo); headers de segurança (HSTS/X-Frame-Options/X-Content-Type-Options/CSP) nos dois nginx, preservando SSE/limites.
+- **Adiado:** E1 MFA (gap de go-live; mitigação `AUTH_BOOTSTRAP_LOGIN_ENABLED=false` default + C1); E2 rate-limit in-memory (dívida documentada); E3 doc×código corrigido em `07`/`06`.
+- **Entrega:** `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Próximo passo: `prisma migrate deploy` + `docker compose up -d --build` para subir a API 0.4.0.
 
 ### 2026-06-23 — Package pfSense 0.3.8 (Opção D + Fase 3 P2)
 

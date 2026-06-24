@@ -2,6 +2,8 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
+> **Ultima entrega (2026-06-23):** correcoes de auditoria de seguranca — package/API `0.4.0`, painel `1.2.0`. Detalhes em `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Proximo passo: deploy do controlador (`prisma migrate deploy` + `docker compose up -d --build`) e publicacao da release package 0.4.0.
+
 ## Leitura obrigatoria
 
 Leia estes arquivos primeiro:

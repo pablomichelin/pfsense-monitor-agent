@@ -107,6 +107,12 @@ Campos sugeridos:
 
 ### heartbeats
 
+> **Atualizacao 2026-06-23 (E3 — doc x codigo):** `heartbeats` e tabela **legado**.
+> No modelo atual (ver doc 61) o snapshot operacional vive diretamente no `Node`
+> (`last_heartbeat_id`, `last_heartbeat_sent_at`, `last_seen_at`, `cpu_percent`,
+> `memory_percent`, `disk_percent`, etc.) e o ingest faz CAS por `last_heartbeat_id`
+> sob lock (correcao C3). Anti-replay HMAC usa `node_request_nonces` (correcao C2).
+
 Historico bruto de heartbeat.
 
 Campos sugeridos:
@@ -188,12 +194,19 @@ Campos sugeridos:
 - `id`
 - `actor_type`
 - `actor_id`
+- `actor_role`
+- `client_id`
 - `action`
 - `target_type`
 - `target_id`
+- `result`
 - `ip_address`
 - `metadata_json`
 - `created_at`
+
+> **Atualizacao 2026-06-23 (E3 — doc x codigo):** o schema real de `audit_logs` ja
+> inclui `actor_role`, `client_id` e `result` (acrescentados acima) para suportar o
+> RBAC com escopo por cliente.
 
 ## Relacionamentos
 

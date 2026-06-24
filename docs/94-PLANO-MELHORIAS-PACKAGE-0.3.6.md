@@ -5,6 +5,8 @@
 **Próxima release alvo:** `0.3.6` (P0); possível `0.3.7` para itens P1 que dependem de spike CE  
 **Autor:** plano operacional para continuidade entre chats
 
+> **Encerramento da trilha de auditoria (2026-06-23):** os achados "FAZER AGORA" (A1–A7, B1–B7, C1–C8, D1–D2) foram implementados na entrega `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md` (package/API `0.4.0`, painel `1.2.0`). Gaps adiados: E1 MFA (mitigado com `AUTH_BOOTSTRAP_LOGIN_ENABLED=false` default), E2 rate-limit in-memory (dívida documentada), E3 doc×código (corrigido em `07`/`06`).
+
 ---
 
 ## Objetivo e escopo
