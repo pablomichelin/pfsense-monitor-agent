@@ -153,7 +153,7 @@
     <field>
       <fielddescr>Pacotes adicionais (Fase B)</fielddescr>
       <fieldname>monitored_packages_csv</fieldname>
-      <description>Pacotes do pfSense a monitorar alem dos servicos nativos. Lista separada por virgula; opcionalmente use ":critical" ou ":optional" por pacote (ex: haproxy,suricata,squid:optional). Optional nao degrada o node. Consulte o catalogo em packages/pfsense-package/catalog/.</description>
+      <description>Pacotes do pfSense a monitorar alem dos servicos nativos. Lista separada por virgula; opcionalmente use ":critical" ou ":optional" por pacote (ex: haproxy,suricata,squid:optional). Optional nao degrada o node. Catalogo de referencia instalado em /usr/local/share/pfSense-pkg-systemup-monitor/package-monitor-catalog.json.</description>
       <type>textarea</type>
       <rows>3</rows>
       <cols>60</cols>

@@ -4,46 +4,37 @@
 # REQUIRE: LOGIN
 # KEYWORD: shutdown
 
+# P-RC: serviço rc.d idiomático FreeBSD. Usa o framework rc.subr com
+# command/command_args/procname, deixando start/stop/restart/status a cargo de
+# rc.subr (em vez de comandos custom). O supervisor /usr/sbin/daemon (-r) mantém
+# o loop vivo e grava o próprio pid no pidfile (-P); assim o status confere o
+# processo REAL (daemon) e não o pid do filho — corrigindo o diagnóstico que
+# antes podia reportar "not running" com o agente no ar.
+
 . /etc/rc.subr
 
 name="monitor_pfsense_agent"
 rcvar="monitor_pfsense_agent_enable"
-pidfile="/var/run/${name}.pid"
-command="/usr/sbin/daemon"
-agent_loop="/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent-loop.sh"
-required_files="/usr/local/etc/monitor-pfsense-agent.conf ${agent_loop}"
-start_cmd="${name}_start"
-stop_cmd="${name}_stop"
-status_cmd="${name}_status"
 
 load_rc_config "$name"
 : "${monitor_pfsense_agent_enable:=NO}"
-onecmd="YES"
 
-monitor_pfsense_agent_start()
+pidfile="/var/run/${name}.pid"
+agent_loop="/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent-loop.sh"
+required_files="/usr/local/etc/monitor-pfsense-agent.conf ${agent_loop}"
+
+# O processo monitorado pelo rc.subr é o supervisor daemon (procname), cujo pid
+# é gravado em ${pidfile} via -P. -r reinicia o loop se ele morrer; -f desacopla.
+command="/usr/sbin/daemon"
+command_args="-f -r -P ${pidfile} ${agent_loop}"
+procname="/usr/sbin/daemon"
+
+# Garante PATH com /usr/local/{sbin,bin} (ex.: swanctl) antes de subir o loop.
+start_precmd="monitor_pfsense_agent_prestart"
+monitor_pfsense_agent_prestart()
 {
-	# Garantir PATH com /usr/local/bin e /usr/local/sbin (swanctl) para o loop
 	export PATH="/usr/local/sbin:/usr/local/bin:/usr/bin:/bin${PATH:+:$PATH}"
-	/usr/sbin/daemon -p "${pidfile}" "${agent_loop}"
-}
-
-monitor_pfsense_agent_stop()
-{
-	if [ -f "${pidfile}" ]; then
-		kill "$(cat "${pidfile}")" 2>/dev/null || true
-		rm -f "${pidfile}"
-	fi
-}
-
-monitor_pfsense_agent_status()
-{
-	if check_pidfile "${pidfile}" /usr/sbin/daemon >/dev/null 2>&1; then
-		echo "${name} is running."
-		return 0
-	fi
-
-	echo "${name} is not running."
-	return 1
+	return 0
 }
 
 run_rc_command "$1"

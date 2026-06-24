@@ -16,6 +16,20 @@ if (PHP_SAPI !== 'cli') {
 $configPath = getenv('PFSENSE_CONFIG_XML') ?: '/conf/config.xml';
 
 /**
+ * P-GW: log estruturado em stderr (não quebra a saída JSON em stdout). Quando os
+ * includes/APIs do pfSense não estão disponíveis, registramos o motivo em vez de
+ * falhar em silêncio. Use MONITOR_AGENT_DEBUG=0 para silenciar.
+ */
+function monitor_gw_log(string $reason, array $context = []): void
+{
+    if ((getenv('MONITOR_AGENT_DEBUG') ?: '1') === '0') {
+        return;
+    }
+    $ctx = $context ? ' ' . json_encode($context, JSON_UNESCAPED_SLASHES) : '';
+    fwrite(STDERR, '[collect_gateways] ' . $reason . $ctx . "\n");
+}
+
+/**
  * @return list<array{name: string, status: string, latency_ms?: int, loss_percent?: float}>
  */
 function monitor_map_gateway_status(string $name, array $gwStatus): array
@@ -83,11 +97,13 @@ try {
     set_include_path(get_include_path() . PATH_SEPARATOR . implode(PATH_SEPARATOR, $includePaths));
 
     if (!is_file($configPath)) {
+        monitor_gw_log('config.xml ausente; retornando lista vazia', ['config_path' => $configPath]);
         echo "[]\n";
         exit(0);
     }
 
     if (!is_readable('/etc/inc/config.inc') || !is_readable('/etc/inc/gwlib.inc')) {
+        monitor_gw_log('includes do pfSense indisponiveis (config.inc/gwlib.inc); retornando lista vazia');
         echo "[]\n";
         exit(0);
     }
@@ -96,6 +112,7 @@ try {
     require_once '/etc/inc/gwlib.inc';
 
     if (!function_exists('return_gateways_status') || !function_exists('get_gateways')) {
+        monitor_gw_log('APIs de gateway indisponiveis (return_gateways_status/get_gateways ausentes); retornando lista vazia');
         echo "[]\n";
         exit(0);
     }

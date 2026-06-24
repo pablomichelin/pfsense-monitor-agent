@@ -19,13 +19,14 @@ if ($ttlSeconds < 60) {
 }
 
 if (!is_file($configPath) || !is_readable($configPath)) {
-    fwrite(STDERR, "config.xml not readable: {$configPath}\n");
+    // P-GW: log estruturado em stderr (saida JSON fica em stdout).
+    fwrite(STDERR, "[collect_config_snapshot] config.xml nao legivel: {$configPath}\n");
     exit(1);
 }
 
 $config = @simplexml_load_file($configPath);
 if ($config === false) {
-    fwrite(STDERR, "failed to parse config.xml\n");
+    fwrite(STDERR, "[collect_config_snapshot] falha ao parsear config.xml: {$configPath}\n");
     exit(1);
 }
 

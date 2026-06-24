@@ -9,6 +9,7 @@ pkg/systemup_monitor.inc
 pkg/systemup_monitor.xml
 share/pfSense-pkg-systemup-monitor/info.xml
 share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php
+share/pfSense-pkg-systemup-monitor/package-monitor-catalog.json
 www/backup_systemup_monitor.php
 www/config_systemup_monitor.php
 www/status_systemup_monitor.php

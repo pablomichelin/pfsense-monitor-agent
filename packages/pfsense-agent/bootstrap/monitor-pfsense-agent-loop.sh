@@ -19,5 +19,7 @@ AGENT_BIN="$AGENT_HOME/monitor-pfsense-agent.sh"
 
 while :; do
   "$AGENT_BIN" heartbeat >>"$LOG_FILE" 2>&1 || true
-  sleep "$INTERVAL_SECONDS"
+  # B8: com `set -e`, um sleep interrompido por sinal encerraria o loop. O `|| true`
+  # mantém o loop vivo (legado DEPRECATED; correção trivial preservada).
+  sleep "$INTERVAL_SECONDS" || true
 done

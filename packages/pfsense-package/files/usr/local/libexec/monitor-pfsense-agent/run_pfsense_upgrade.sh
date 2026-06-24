@@ -1,6 +1,15 @@
 #!/bin/sh
 # Wrapper pfSense OS upgrade — desacoplado do heartbeat loop.
 # Spawned by dispatch_pfsense_upgrade; resultado final via finalize_pfsense_upgrade_if_pending (reboot).
+#
+# P-UP — IMPORTANTE (comportamento honesto): este wrapper NUNCA executa o upgrade
+# do SO de forma não-interativa. Ele apenas (1) atualiza repositórios com
+# `pfSense-upgrade -d` e (2) marca o estado como "prepared_manual_confirm" para
+# que o operador confirme manualmente em System → Update na GUI do pfSense.
+# A flag MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED=1 NÃO habilita execução remota:
+# os flags não-interativos do pfSense-upgrade ainda não foram homologados (ver
+# docs/97-SPIKE-PFSENSE-UPGRADE-CE.md). Enquanto o spike CE não fechar, qualquer
+# valor da flag resulta no mesmo fluxo seguro (preparar + confirmação manual).
 
 set -eu
 
@@ -89,7 +98,10 @@ if [ "$EXEC_ENABLED" != "1" ]; then
 fi
 
 # Lab-only path: non-interactive flags NOT validated in spike 97 — do not auto-reboot.
-log_msg "exec enabled but non-interactive upgrade flags not validated in CE lab — see docs/97-SPIKE-PFSENSE-UPGRADE-CE.md"
+# P-UP: a flag está ligada, mas execução não-interativa segue NÃO suportada de
+# forma honesta. Mantemos o mesmo fluxo seguro (preparar + confirmação manual)
+# para não prometer um upgrade remoto que não acontece.
+log_msg "exec enabled but non-interactive upgrade flags not validated in CE lab — falling back to manual confirm (see docs/97-SPIKE-PFSENSE-UPGRADE-CE.md)"
 update_state "prepared_manual_confirm" \
-  "MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED=1 set but unattended flags unconfirmed; confirm manually in GUI."
+  "MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED=1 ainda NAO executa upgrade nao-interativo (flags nao homologados). Repositorios atualizados; confirme manualmente em System -> Update."
 exit 0

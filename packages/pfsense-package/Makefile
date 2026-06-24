@@ -1,7 +1,7 @@
 # $FreeBSD$
 
 PORTNAME=	pfSense-pkg-systemup-monitor
-PORTVERSION=	0.4.0
+PORTVERSION=	0.4.1
 PORTREVISION=	0
 CATEGORIES=	sysutils
 MASTER_SITES=	# empty
@@ -50,6 +50,10 @@ do-install:
 	${INSTALL_DATA} ${FILESDIR}${PREFIX}/share/pfSense-pkg-systemup-monitor/info.xml \
 		${STAGEDIR}${PREFIX}/share/pfSense-pkg-systemup-monitor
 	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php \
+		${STAGEDIR}${PREFIX}/share/pfSense-pkg-systemup-monitor
+	# P-CAT: embarca o catalogo de pacotes monitoraveis no firewall (fonte unica
+	# em catalog/). Operador consulta em /usr/local/share/pfSense-pkg-systemup-monitor/.
+	${INSTALL_DATA} ${.CURDIR}/catalog/package-monitor-catalog.json \
 		${STAGEDIR}${PREFIX}/share/pfSense-pkg-systemup-monitor
 	${INSTALL_DATA} ${FILESDIR}${PREFIX}/www/config_systemup_monitor.php \
 		${STAGEDIR}${PREFIX}/www
