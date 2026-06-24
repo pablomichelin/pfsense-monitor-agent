@@ -10,7 +10,17 @@ import { AppModule } from './app.module';
 import { appConfig } from './config/app-config';
 
 async function bootstrap(): Promise<void> {
+  // C5: trust proxy restrito ao proxy local. Quando TRUST_PROXY=true e ha lista
+  // TRUSTED_PROXY_IPS, o Fastify so deriva request.ip de X-Forwarded-For para
+  // conexoes vindas desses IPs; sem lista, confia no proxy configurado.
+  const trustProxyOption: boolean | string[] = appConfig.trustProxy
+    ? appConfig.trustedProxyIps.length > 0
+      ? appConfig.trustedProxyIps
+      : true
+    : false;
+
   const fastifyAdapter = new FastifyAdapter({
+    trustProxy: trustProxyOption,
     bodyLimit: Math.max(
       appConfig.heartbeat.maxPayloadBytes,
       appConfig.configBackup.maxBytes,

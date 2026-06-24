@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { getAccessActor } from '../auth/access-actor.util';
+import { AccessPolicyService } from '../auth/access-policy.service';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
@@ -22,6 +23,7 @@ export class DashboardController {
   constructor(
     private readonly dashboardService: DashboardService,
     private readonly realtimeService: RealtimeService,
+    private readonly accessPolicy: AccessPolicyService,
   ) {}
 
   @Get('summary')
@@ -34,7 +36,13 @@ export class DashboardController {
   @RequirePermissions('firewalls.view')
   @Header('Cache-Control', 'no-cache, no-transform')
   @Header('X-Accel-Buffering', 'no')
-  streamEvents(): Observable<MessageEvent> {
-    return this.realtimeService.createDashboardStream();
+  async streamEvents(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<Observable<MessageEvent>> {
+    // D1: resolve o escopo do usuario e filtra a stream por allowedClientIds.
+    const allowedClientIds = await this.accessPolicy.getAllowedClientIds(
+      getAccessActor(request),
+    );
+    return this.realtimeService.createDashboardStream(allowedClientIds);
   }
 }

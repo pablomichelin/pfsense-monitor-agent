@@ -283,9 +283,24 @@ model Node {
   alerts          Alert[]
   configBackups   NodeConfigBackup[]
   nodeCommands    NodeCommand[]
+  requestNonces   NodeRequestNonce[]
 
   @@index([siteId, status])
   @@map("nodes")
+}
+
+// C2: anti-replay HMAC — assinaturas ja vistas por node, com TTL = janela de skew.
+model NodeRequestNonce {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nodeId        String   @map("node_id") @db.Uuid
+  signatureHash String   @map("signature_hash")
+  seenAt        DateTime @default(now()) @map("seen_at") @db.Timestamptz(6)
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz(6)
+  node          Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeId, signatureHash])
+  @@index([expiresAt])
+  @@map("node_request_nonces")
 }
 
 model NodeCredential {

@@ -6,6 +6,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { FastifyRequest } from 'fastify';
+import { resolveClientIp } from './client-ip';
 
 type RateBucket = {
   count: number;
@@ -20,10 +21,8 @@ export class PackageReleaseRateLimitGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<FastifyRequest>();
-    const ip =
-      (request.headers['cf-connecting-ip'] as string | undefined)?.trim() ||
-      request.ip ||
-      'unknown';
+    // C5: so confia em CF-Connecting-IP quando o peer e um proxy confiavel.
+    const ip = resolveClientIp(request) || 'unknown';
     const now = Date.now();
     const bucket = this.buckets.get(ip);
 

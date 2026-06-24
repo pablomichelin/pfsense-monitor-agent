@@ -10,14 +10,10 @@ import {
 import { IngestService } from './ingest.service';
 import { HeartbeatDto } from './dto/heartbeat.dto';
 import { RawBodyRequest } from '../common/raw-body-request.type';
+import { readHeaderValue, resolveClientIp } from '../common/client-ip';
 
-const readHeader = (value?: string | string[]): string | undefined => {
-  if (Array.isArray(value)) {
-    return value[0];
-  }
-
-  return value;
-};
+const readHeader = (value?: string | string[]): string | undefined =>
+  readHeaderValue(value);
 
 @Controller('api/v1/ingest')
 export class IngestController {
@@ -55,7 +51,7 @@ export class IngestController {
       headerNodeUid: nodeUid,
       headerTimestamp: timestamp,
       headerSignature: signature,
-      clientIp: readHeader(request.headers['cf-connecting-ip']) ?? request.ip,
+      clientIp: resolveClientIp(request),
       cfRay: readHeader(request.headers['cf-ray']),
     });
   }
@@ -89,7 +85,7 @@ export class IngestController {
       headerNodeUid: nodeUid,
       headerTimestamp: timestamp,
       headerSignature: signature,
-      clientIp: readHeader(request.headers['cf-connecting-ip']) ?? request.ip,
+      clientIp: resolveClientIp(request),
       cfRay: readHeader(request.headers['cf-ray']),
     });
   }

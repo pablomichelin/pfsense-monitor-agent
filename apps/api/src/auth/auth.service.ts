@@ -71,25 +71,37 @@ export class AuthService {
       const passwordMatches = this.safeEqual(input.password, configuredPassword);
 
       if (emailMatches && passwordMatches) {
-        user = await this.prisma.user.upsert({
-          where: {
-            email: expectedEmail,
-          },
-          create: {
-            email: expectedEmail,
-            displayName: appConfig.auth.bootstrapDisplayName,
-            passwordHash: hashPassword(configuredPassword),
-            role: 'superadmin',
-            status: EntityStatus.active,
-          },
-          update: {
-            displayName: appConfig.auth.bootstrapDisplayName,
-            passwordHash: hashPassword(configuredPassword),
-            role: 'superadmin',
-            status: EntityStatus.active,
-          },
-        });
-        authenticated = true;
+        if (!existingUser) {
+          // C1: bootstrap so provisiona o superadmin no PRIMEIRO acesso.
+          user = await this.prisma.user.create({
+            data: {
+              email: expectedEmail,
+              displayName: appConfig.auth.bootstrapDisplayName,
+              passwordHash: hashPassword(configuredPassword),
+              role: 'superadmin',
+              status: EntityStatus.active,
+            },
+          });
+          authenticated = true;
+        } else if (!existingUser.passwordHash) {
+          // C1: usuario provisionado sem senha local ainda — define a senha uma unica vez,
+          // sem rebaixar role/status existentes e sem regravar credencial ja definida.
+          user = await this.prisma.user.update({
+            where: { id: existingUser.id },
+            data: {
+              passwordHash: hashPassword(configuredPassword),
+              status: EntityStatus.active,
+            },
+          });
+          authenticated = true;
+        } else {
+          // C1: usuario ja existe e ja tem passwordHash — bootstrap NUNCA regrava a senha
+          // em login recorrente. Recuperacao deve ser feita via rotacao administrativa.
+          this.logger.warn(
+            `bootstrap login ignorado para usuario ja provisionado email=${normalizedEmail}`,
+          );
+          authenticated = false;
+        }
       }
     }
 

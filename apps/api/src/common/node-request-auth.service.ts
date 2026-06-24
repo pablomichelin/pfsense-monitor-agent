@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { NodeUidStatus } from '@prisma/client';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { appConfig } from '../config/app-config';
 import { NodeSecretCryptoService } from './node-secret-crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -138,11 +138,69 @@ export class NodeRequestAuthService {
       headerNodeUid,
     );
 
+    await this.assertNotReplay(
+      node.id,
+      headerSignature,
+      input.receivedAt,
+      headerNodeUid,
+    );
+
     return {
       headerNodeUid,
       node,
       credential,
     };
+  }
+
+  /**
+   * C2: anti-replay. Registra a assinatura ja vista por node (unique). Uma assinatura
+   * repetida dentro da janela e rejeitada. O TTL = janela de skew, pois fora dela a
+   * verificacao de timestamp ja rejeita. Usa PostgreSQL (sem Redis).
+   */
+  async assertNotReplay(
+    nodeId: string,
+    providedSignature: string,
+    receivedAt: Date,
+    nodeUidForLog?: string,
+  ): Promise<void> {
+    const normalized = providedSignature
+      .trim()
+      .toLowerCase()
+      .replace(/^sha256=/, '');
+    const signatureHash = createHash('sha256').update(normalized).digest('hex');
+
+    // Janela dobrada para cobrir skew em ambos os sentidos.
+    const ttlMs = appConfig.heartbeat.maxSkewSeconds * 2 * 1000;
+    const expiresAt = new Date(receivedAt.getTime() + ttlMs);
+
+    // Limpeza oportunista de nonces expirados (baixa frequencia para nao onerar).
+    if (Math.random() < 0.02) {
+      try {
+        await this.prisma.nodeRequestNonce.deleteMany({
+          where: { expiresAt: { lt: receivedAt } },
+        });
+      } catch {
+        // limpeza best-effort; nao bloqueia o request
+      }
+    }
+
+    try {
+      await this.prisma.nodeRequestNonce.create({
+        data: { nodeId, signatureHash, expiresAt },
+      });
+    } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        (error as { code?: string }).code === 'P2002'
+      ) {
+        this.logger.warn(
+          `node request replay detected node_uid=${nodeUidForLog ?? '?'}`,
+        );
+        throw new UnauthorizedException('replayed node request signature');
+      }
+      throw error;
+    }
   }
 
   async findNodeForAuth(nodeUid: string, receivedAt: Date) {

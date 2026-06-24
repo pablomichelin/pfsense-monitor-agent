@@ -116,14 +116,13 @@ export class IngestService {
       });
 
       await this.backupsCommandService.reconcileSucceededCommands(node.id);
-      const commands =
-        await this.nodeCommandsService.getPendingCommandsForNode(node.id);
 
+      // C7: replay do mesmo heartbeat_id NAO reentrega comandos pendentes
+      // (evita dupla execucao). Comandos seguem na proxima telemetria nova.
       return {
         ok: true,
         server_time: receivedAt.toISOString(),
         node_status: node.status,
-        ...(commands.length > 0 ? { commands } : {}),
       };
     }
 
@@ -183,7 +182,39 @@ export class IngestService {
 
     const haDetectedProvided = request.body.ha_detected !== undefined;
 
+    let staleSkipped = false;
     await this.prisma.$transaction(async (tx) => {
+      // C3: trava a linha do node e aplica CAS por sent_at para impedir que um
+      // heartbeat antigo (fora de ordem) sobrescreva um snapshot mais novo.
+      const lockedRows = await tx.$queryRaw<
+        Array<{
+          last_heartbeat_id: string | null;
+          last_heartbeat_sent_at: Date | null;
+        }>
+      >(Prisma.sql`SELECT last_heartbeat_id, last_heartbeat_sent_at FROM nodes WHERE id = ${node.id}::uuid FOR UPDATE`);
+
+      const lockedHeartbeatId = lockedRows[0]?.last_heartbeat_id ?? null;
+      const lockedSentAt = lockedRows[0]?.last_heartbeat_sent_at ?? null;
+
+      const alreadyApplied = lockedHeartbeatId === request.body.heartbeat_id;
+      const isStale =
+        lockedSentAt !== null && sentAt.getTime() <= lockedSentAt.getTime();
+
+      if (alreadyApplied || isStale) {
+        // Aplicado por outra requisicao concorrente ou telemetria mais antiga:
+        // atualiza apenas presenca/uso da credencial, preserva o snapshot novo.
+        staleSkipped = true;
+        await tx.node.update({
+          where: { id: node.id },
+          data: { lastSeenAt: receivedAt },
+        });
+        await tx.nodeCredential.update({
+          where: { id: credential.id },
+          data: { lastUsedAt: receivedAt },
+        });
+        return;
+      }
+
       await tx.node.update({
         where: {
           id: node.id,
@@ -334,11 +365,27 @@ export class IngestService {
       this.logger.warn(heartbeatLogMessage);
     }
 
+    if (staleSkipped) {
+      // C3/C7: telemetria antiga ou duplicada — nao publica refresh nem entrega comandos.
+      return {
+        ok: true,
+        server_time: receivedAt.toISOString(),
+        node_status: node.status,
+      };
+    }
+
+    // D1: inclui client_id para que a stream SSE filtre por escopo do usuario.
+    const siteForScope = await this.prisma.site.findUnique({
+      where: { id: node.siteId },
+      select: { clientId: true },
+    });
+
     this.realtimeService.publishDashboardRefresh({
       source: 'heartbeat_ingested',
       occurred_at: receivedAt.toISOString(),
       node_id: node.id,
       node_uid: headerNodeUid,
+      client_id: siteForScope?.clientId ?? undefined,
       reason: 'heartbeat_ingested',
     });
 

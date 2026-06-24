@@ -230,4 +230,13 @@ export const appConfig = Object.freeze({
   },
 });
 
+// C6: em producao, RBAC nao pode ser desligado silenciosamente. Falha no boot.
+if (appConfig.nodeEnv === 'production') {
+  if (!appConfig.rbac.scopeEnabled || !appConfig.rbac.permissionsEnabled) {
+    throw new Error(
+      'RBAC obrigatorio em producao: defina RBAC_SCOPE_ENABLED=true e RBAC_PERMISSIONS_ENABLED=true.',
+    );
+  }
+}
+
 export type AppConfig = typeof appConfig;

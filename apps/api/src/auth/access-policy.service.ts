@@ -65,6 +65,19 @@ export class AccessPolicyService {
     return scopes.map((scope) => scope.clientId);
   }
 
+  /**
+   * C4: criar um cliente novo (top-level) exige escopo global de cliente.
+   * superadmin (ou escopo desabilitado) pode; admin/cliente escopados nao,
+   * pois nao ha escopo possivel sobre um cliente ainda inexistente.
+   */
+  async assertCanCreateClient(actor: AccessActor): Promise<void> {
+    if (this.hasGlobalClientScope(actor)) {
+      return;
+    }
+
+    throw new ForbiddenException('creating clients requires global client scope');
+  }
+
   async assertClientAccess(actor: AccessActor, clientId: string): Promise<void> {
     const allowedClientIds = await this.getAllowedClientIds(actor);
     if (allowedClientIds === null) {

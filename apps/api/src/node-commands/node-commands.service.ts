@@ -190,9 +190,20 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
     }
 
     const now = new Date();
-    const updated = await this.prisma.nodeCommand.update({
+    // C8: update condicional por status esperado (CAS) para evitar corrida de ack.
+    const allowedPriorStatuses =
+      nextStatus === NodeCommandStatus.running
+        ? [
+            NodeCommandStatus.pending,
+            NodeCommandStatus.picked_up,
+            NodeCommandStatus.running,
+          ]
+        : [NodeCommandStatus.pending, NodeCommandStatus.picked_up];
+
+    const updateResult = await this.prisma.nodeCommand.updateMany({
       where: {
         id: command.id,
+        status: { in: allowedPriorStatuses },
       },
       data: {
         status: nextStatus,
@@ -202,6 +213,18 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
           : {}),
       },
     });
+
+    if (updateResult.count === 0) {
+      // Corrida: outro ack/resultado mudou o estado. Devolve o estado atual sem regressao.
+      const current = await this.prisma.nodeCommand.findFirst({
+        where: { id: command.id, nodeId: input.nodeId },
+      });
+      return {
+        ok: true,
+        command_id: command.id,
+        status: current?.status ?? command.status,
+      };
+    }
 
     const auditPrefix = AUDIT_PREFIX_BY_TYPE[command.type];
     await this.prisma.auditLog.create({
@@ -222,8 +245,8 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
 
     return {
       ok: true,
-      command_id: updated.id,
-      status: updated.status,
+      command_id: command.id,
+      status: nextStatus,
     };
   }
 

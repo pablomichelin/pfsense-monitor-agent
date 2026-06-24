@@ -1482,7 +1482,12 @@ export class AdminService {
     };
   }
 
-  async createClient(dto: CreateClientDto, actorId?: string, actorIp?: string): Promise<{
+  async createClient(
+    dto: CreateClientDto,
+    actorId?: string,
+    actorIp?: string,
+    scopeActor?: AccessActor,
+  ): Promise<{
     client: {
       id: string;
       name: string;
@@ -1491,6 +1496,11 @@ export class AdminService {
       created_at: string;
     };
   }> {
+    // C4: aplica escopo RBAC (superadmin global; admin/cliente escopados sao barrados).
+    if (scopeActor) {
+      await this.accessPolicy.assertCanCreateClient(scopeActor);
+    }
+
     const client = await this.prisma.client.create({
       data: {
         name: dto.name.trim(),

@@ -198,4 +198,8 @@ echo "[6/6] Validando bloqueio IDOR (403) no cliente B"
 [[ "$(request_with_status "$SCOPED_COOKIE_JAR" POST "/api/v1/admin/clients/$CLIENT_B_ID" "{\"name\":\"Denied\"}")" == "403" ]]
 [[ "$(request_with_status "$SCOPED_COOKIE_JAR" GET "/api/v1/admin/nodes/$NODE_B_ID/bootstrap-command")" == "403" ]]
 
-echo "Smoke RBAC client scope OK: admin restrito ve apenas cliente A e recebe 403 no cliente B."
+# C4: admin escopado NAO pode criar cliente (createClient exige escopo global).
+echo "[C4] Validando bloqueio (403) de POST /admin/clients para admin escopado"
+[[ "$(request_with_status "$SCOPED_COOKIE_JAR" POST "/api/v1/admin/clients" "{\"name\":\"Should Be Denied $SUFFIX\",\"code\":\"deny-$SUFFIX\"}")" == "403" ]]
+
+echo "Smoke RBAC client scope OK: admin restrito ve apenas cliente A, recebe 403 no cliente B e nao cria clientes (C4)."
