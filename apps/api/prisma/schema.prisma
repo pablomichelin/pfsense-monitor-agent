@@ -160,6 +160,10 @@ model User {
   role        String       @default("readonly")
   status      EntityStatus @default(active)
   clientId    String?      @map("client_id") @db.Uuid
+  // C-MFA: segredo TOTP cifrado em repouso (mesmo padrao aes-256-gcm do node_secret).
+  mfaEnabled   Boolean     @default(false) @map("mfa_enabled")
+  mfaSecret    String?     @map("mfa_secret")
+  mfaEnrolledAt DateTime?  @map("mfa_enrolled_at") @db.Timestamptz(6)
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
   sessions    UserSession[]
@@ -167,9 +171,42 @@ model User {
   client      Client?      @relation("ClientProfileUsers", fields: [clientId], references: [id], onDelete: SetNull)
   clientScopes UserClientScope[]
   grantedClientScopes UserClientScope[] @relation("UserClientScopeGrantedBy")
+  mfaRecoveryCodes MfaRecoveryCode[]
+  mfaChallenges    MfaLoginChallenge[]
 
   @@index([clientId])
   @@map("users")
+}
+
+// C-MFA: codigos de recuperacao de MFA (hash sha256, consumo unico).
+model MfaRecoveryCode {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @map("code_hash")
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, codeHash])
+  @@index([userId])
+  @@map("mfa_recovery_codes")
+}
+
+// C-MFA: desafio transitorio de login entre senha validada e TOTP confirmado.
+model MfaLoginChallenge {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  challengeTokenHash String    @unique @map("challenge_token_hash")
+  expiresAt          DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt         DateTime? @map("consumed_at") @db.Timestamptz(6)
+  ipAddress          String?   @map("ip_address")
+  userAgent          String?   @map("user_agent")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("mfa_login_challenges")
 }
 
 model UserClientScope {
@@ -301,6 +338,19 @@ model NodeRequestNonce {
   @@unique([nodeId, signatureHash])
   @@index([expiresAt])
   @@map("node_request_nonces")
+}
+
+// C-RL: rate-limit persistente do endpoint publico de release/artefato.
+// Substitui o contador in-memory: sobrevive a restart e e compartilhado entre
+// instancias (janela fixa por chave de origem). Limite mantido em 60 req/min.
+model PackageReleaseRateLimit {
+  rateKey     String   @id @map("rate_key")
+  windowStart DateTime @map("window_start") @db.Timestamptz(6)
+  count       Int      @default(0)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([windowStart])
+  @@map("package_release_rate_limits")
 }
 
 model NodeCredential {

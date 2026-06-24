@@ -87,10 +87,18 @@ export class NodeRequestAuthService {
       .toLowerCase()
       .replace(/^sha256=/, '');
 
-    const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
-    const providedBuffer = Buffer.from(normalizedProvided, 'utf8');
+    // C-HX: comparacao canonica sobre os bytes decodificados do hex (32 bytes),
+    // nao sobre a representacao textual. Uma assinatura mal formada (hex invalido
+    // ou comprimento diferente) e rejeitada antes do timingSafeEqual, preservando
+    // o comportamento atual de rejeicao.
+    const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+    const isValidHex = /^[0-9a-f]+$/.test(normalizedProvided);
+    const providedBuffer = isValidHex
+      ? Buffer.from(normalizedProvided, 'hex')
+      : Buffer.alloc(0);
 
     if (
+      !isValidHex ||
       expectedBuffer.length !== providedBuffer.length ||
       !timingSafeEqual(expectedBuffer, providedBuffer)
     ) {

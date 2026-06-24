@@ -7,7 +7,10 @@ import {
 import { Reflector } from '@nestjs/core';
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
 import { PermissionKey } from './permission-keys';
-import { PERMISSIONS_METADATA_KEY } from './permissions.decorator';
+import {
+  ALLOW_SESSION_ONLY_METADATA_KEY,
+  PERMISSIONS_METADATA_KEY,
+} from './permissions.decorator';
 import { PermissionsService } from './permissions.service';
 
 @Injectable()
@@ -23,8 +26,22 @@ export class PermissionsGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
+    // C-PG: default-deny. Uma rota protegida pelo PermissionsGuard so passa se
+    // (a) declarar @RequirePermissions com a permissao satisfeita, ou
+    // (b) declarar explicitamente @AllowSessionOnly (rotas de "Minha conta"/logout).
+    // Rotas sem nenhuma das duas marcacoes sao bloqueadas — impede que uma rota
+    // nova adicionada sob este guard fique acessivel so com sessao por esquecimento.
     if (!requiredPermissions || requiredPermissions.length === 0) {
-      return true;
+      const allowSessionOnly = this.reflector.getAllAndOverride<boolean>(
+        ALLOW_SESSION_ONLY_METADATA_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+
+      if (allowSessionOnly) {
+        return true;
+      }
+
+      throw new ForbiddenException('insufficient permission');
     }
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();

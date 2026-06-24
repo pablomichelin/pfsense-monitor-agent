@@ -11,6 +11,7 @@ DEFAULT_SUITE=(
   "smoke-agent-release.sh"
   "smoke-realtime-refresh.sh"
   "smoke-auth-sessions.sh"
+  "smoke-mfa.sh"
   "smoke-bootstrap-flow.sh"
   "smoke-admin-operations.sh"
   "smoke-rbac-roles.sh"
@@ -38,6 +39,7 @@ Sem argumentos, roda a suite local padrao:
   - smoke-realtime-refresh.sh
   - smoke-agent-release.sh
   - smoke-auth-sessions.sh
+  - smoke-mfa.sh
   - smoke-bootstrap-flow.sh
   - smoke-admin-operations.sh
   - smoke-rbac-roles.sh

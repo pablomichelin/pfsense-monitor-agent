@@ -15,6 +15,8 @@ import { RawBodyRequest } from '../common/raw-body-request.type';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { MfaCodeDto, MfaLoginDto } from './dto/mfa.dto';
+import { MfaService } from './mfa.service';
 import { PermissionsService } from './permissions.service';
 import { SessionAuthGuard } from './session-auth.guard';
 import { appConfig } from '../config/app-config';
@@ -49,6 +51,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly permissionsService: PermissionsService,
+    private readonly mfaService: MfaService,
   ) {}
 
   @Post('login')
@@ -66,6 +69,48 @@ export class AuthController {
       userAgent,
     });
 
+    // C-MFA: usuario com MFA ativo recebe um desafio (sem cookie de sessao).
+    if (result.kind === 'mfa_challenge') {
+      return {
+        ok: true,
+        mfa_required: true,
+        mfa_token: result.mfaToken,
+        mfa_expires_at: result.expiresAt.toISOString(),
+        email: result.email,
+      };
+    }
+
+    reply.header('Set-Cookie', [
+      this.authService.buildSessionCookie(result.sessionToken, result.expiresAt),
+      this.authService.buildCsrfCookie(result.csrfToken, result.expiresAt),
+    ]);
+
+    return {
+      ok: true,
+      mfa_required: false,
+      mfa_enrollment_required: result.mfaEnrollmentRequired,
+      expires_at: result.expiresAt.toISOString(),
+      user: result.user,
+      session_cookie_name: appConfig.auth.sessionCookieName,
+      csrf_cookie_name: appConfig.auth.csrfCookieName,
+    };
+  }
+
+  @Post('login/mfa')
+  async loginMfa(
+    @Body() body: MfaLoginDto,
+    @Req() request: RawBodyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+    @Headers('cf-connecting-ip') cfConnectingIp?: string,
+    @Headers('user-agent') userAgent?: string,
+  ) {
+    const result = await this.authService.completeMfaLogin({
+      mfaToken: body.mfa_token,
+      code: body.code,
+      ipAddress: cfConnectingIp ?? request.ip,
+      userAgent,
+    });
+
     reply.header('Set-Cookie', [
       this.authService.buildSessionCookie(result.sessionToken, result.expiresAt),
       this.authService.buildCsrfCookie(result.csrfToken, result.expiresAt),
@@ -78,6 +123,54 @@ export class AuthController {
       session_cookie_name: appConfig.auth.sessionCookieName,
       csrf_cookie_name: appConfig.auth.csrfCookieName,
     };
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Get('mfa/status')
+  getMfaStatus(@Req() request: AuthenticatedRequest) {
+    return this.mfaService.getStatus(request.auth!.userId);
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('mfa/enroll/start')
+  startMfaEnrollment(
+    @Req() request: AuthenticatedRequest,
+    @Headers('cf-connecting-ip') cfConnectingIp?: string,
+  ) {
+    return this.mfaService.startEnrollment({
+      userId: request.auth!.userId,
+      email: request.auth!.email,
+      ipAddress: cfConnectingIp ?? request.ip,
+    });
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('mfa/enroll/verify')
+  verifyMfaEnrollment(
+    @Body() body: MfaCodeDto,
+    @Req() request: AuthenticatedRequest,
+    @Headers('cf-connecting-ip') cfConnectingIp?: string,
+  ) {
+    return this.mfaService.confirmEnrollment({
+      userId: request.auth!.userId,
+      code: body.code,
+      ipAddress: cfConnectingIp ?? request.ip,
+    });
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('mfa/disable')
+  async disableMfa(
+    @Body() body: MfaCodeDto,
+    @Req() request: AuthenticatedRequest,
+    @Headers('cf-connecting-ip') cfConnectingIp?: string,
+  ) {
+    await this.mfaService.disable({
+      userId: request.auth!.userId,
+      code: body.code,
+      ipAddress: cfConnectingIp ?? request.ip,
+    });
+    return { ok: true };
   }
 
   @UseGuards(SessionAuthGuard)

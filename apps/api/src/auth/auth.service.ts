@@ -10,6 +10,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
+import { MfaService } from './mfa.service';
 import { hashPassword, verifyPassword } from './password-hash';
 
 export interface AuthenticatedSession {
@@ -20,6 +21,29 @@ export interface AuthenticatedSession {
   csrfTokenHash: string;
 }
 
+export interface SessionLoginResult {
+  kind: 'session';
+  sessionToken: string;
+  csrfToken: string;
+  expiresAt: Date;
+  user: {
+    id: string;
+    email: string;
+    display_name: string;
+    role: string;
+  };
+  mfaEnrollmentRequired: boolean;
+}
+
+export interface MfaChallengeLoginResult {
+  kind: 'mfa_challenge';
+  mfaToken: string;
+  expiresAt: Date;
+  email: string;
+}
+
+export type LoginResult = SessionLoginResult | MfaChallengeLoginResult;
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -28,6 +52,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly mfaService: MfaService,
   ) {}
 
   async login(input: {
@@ -35,17 +60,7 @@ export class AuthService {
     password: string;
     ipAddress?: string;
     userAgent?: string;
-  }): Promise<{
-    sessionToken: string;
-    csrfToken: string;
-    expiresAt: Date;
-    user: {
-      id: string;
-      email: string;
-      display_name: string;
-      role: string;
-    };
-  }> {
+  }): Promise<LoginResult> {
     const configuredEmail = appConfig.auth.bootstrapEmail;
     const configuredPassword = appConfig.auth.bootstrapPassword;
 
@@ -116,6 +131,33 @@ export class AuthService {
       throw new ForbiddenException('user is inactive');
     }
 
+    // C-MFA: se o usuario tem MFA habilitado, a senha sozinha NAO cria sessao.
+    // Emitimos um desafio transitorio; a sessao so nasce apos o TOTP/recovery.
+    if (user.mfaEnabled) {
+      const challenge = await this.mfaService.createLoginChallenge({
+        userId: user.id,
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      });
+
+      await this.auditService.record({
+        actorId: user.id,
+        actorRole: user.role,
+        action: 'auth.mfa.challenge_issued',
+        targetType: 'user',
+        targetId: user.id,
+        ipAddress: input.ipAddress,
+        metadataJson: { email: user.email },
+      });
+
+      return {
+        kind: 'mfa_challenge',
+        mfaToken: challenge.token,
+        expiresAt: challenge.expiresAt,
+        email: user.email,
+      };
+    }
+
     return this.createSession({
       user: {
         id: user.id,
@@ -125,6 +167,45 @@ export class AuthService {
       },
       ipAddress: input.ipAddress,
       userAgent: input.userAgent,
+      // C-MFA: imposicao "suave" — sinaliza que o enrollment e exigido pelo papel,
+      // sem bloquear a sessao (evita lockout de admin/superadmin ja existentes).
+      mfaEnrollmentRequired: this.mfaService.isEnforcementRequired(
+        user.role,
+        user.mfaEnabled,
+      ),
+    });
+  }
+
+  /**
+   * C-MFA: segunda etapa do login — valida o desafio + fator (TOTP/recovery) e
+   * cria a sessao autenticada.
+   */
+  async completeMfaLogin(input: {
+    mfaToken: string;
+    code: string;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<SessionLoginResult> {
+    const user = await this.mfaService.verifyLoginChallenge({
+      token: input.mfaToken,
+      code: input.code,
+      ipAddress: input.ipAddress,
+    });
+
+    if (user.status !== EntityStatus.active) {
+      throw new ForbiddenException('user is inactive');
+    }
+
+    return this.createSession({
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
+      },
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent,
+      mfaEnrollmentRequired: false,
     });
   }
 
@@ -405,17 +486,8 @@ export class AuthService {
     };
     ipAddress?: string;
     userAgent?: string;
-  }): Promise<{
-    sessionToken: string;
-    csrfToken: string;
-    expiresAt: Date;
-    user: {
-      id: string;
-      email: string;
-      display_name: string;
-      role: string;
-    };
-  }> {
+    mfaEnrollmentRequired?: boolean;
+  }): Promise<SessionLoginResult> {
     const sessionToken = randomBytes(32).toString('base64url');
     const csrfToken = randomBytes(24).toString('base64url');
     const expiresAt = new Date(
@@ -447,6 +519,7 @@ export class AuthService {
     });
 
     return {
+      kind: 'session',
       sessionToken,
       csrfToken,
       expiresAt,
@@ -456,6 +529,7 @@ export class AuthService {
         display_name: input.user.displayName ?? input.user.email,
         role: input.user.role,
       },
+      mfaEnrollmentRequired: input.mfaEnrollmentRequired ?? false,
     };
   }
 

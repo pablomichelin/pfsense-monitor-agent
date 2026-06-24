@@ -122,6 +122,26 @@ export const appConfig = Object.freeze({
       true,
     ),
   },
+  mfa: {
+    // C-MFA: rotulo exibido no app autenticador (otpauth issuer).
+    issuer: process.env.MFA_ISSUER?.trim() || 'Monitor-Pfsense',
+    // Capacidade sempre disponivel; imposicao e opt-in por papel. Vazio = nenhum
+    // papel forcado (default seguro: nao tranca ninguem). A imposicao e "suave":
+    // direciona ao enrollment, sem bloquear a sessao/API (evita lockout).
+    enforcedRoles: parseList(process.env.MFA_ENFORCED_ROLES),
+    challengeTtlMinutes: parseNumber(
+      process.env.MFA_CHALLENGE_TTL_MINUTES,
+      5,
+      'MFA_CHALLENGE_TTL_MINUTES',
+    ),
+    recoveryCodeCount: parseNumber(
+      process.env.MFA_RECOVERY_CODE_COUNT,
+      10,
+      'MFA_RECOVERY_CODE_COUNT',
+    ),
+    // Tolerancia de janelas TOTP (cada janela = 30s) para clock skew leve.
+    totpWindow: parseNumber(process.env.MFA_TOTP_WINDOW, 1, 'MFA_TOTP_WINDOW'),
+  },
   gateway: {
     degradedLatencyMs: parseNumber(
       process.env.GATEWAY_DEGRADED_LATENCY_MS,

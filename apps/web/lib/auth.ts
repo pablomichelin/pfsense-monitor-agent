@@ -11,6 +11,9 @@ const sessionCookieName =
   process.env.MONITOR_AUTH_SESSION_COOKIE_NAME?.trim() || 'monitor_pfsense_session';
 const csrfCookieName =
   process.env.MONITOR_AUTH_CSRF_COOKIE_NAME?.trim() || 'monitor_pfsense_csrf';
+// C-MFA: cookie transitorio (httpOnly) que guarda o token do desafio entre as
+// duas etapas do login. Curta duracao; nunca trafega na URL.
+const mfaChallengeCookieName = 'monitor_pfsense_mfa_challenge';
 
 const requireEnv = (value: string | undefined, key: string): string => {
   if (!value) {
@@ -132,7 +135,70 @@ export async function loginAction(formData: FormData): Promise<void> {
     redirect(errorUrl);
   }
 
+  const payload = (await response.json().catch(() => ({}))) as {
+    mfa_required?: boolean;
+    mfa_token?: string;
+  };
+
+  // C-MFA: se o backend exige TOTP, guarda o token do desafio em cookie httpOnly
+  // e leva o usuario para a segunda etapa (sem sessao ainda).
+  if (payload.mfa_required && payload.mfa_token) {
+    const secure =
+      (requestHeaders.get('x-forwarded-proto') ?? '').toLowerCase() === 'https';
+    const cookieStore = await cookies();
+    cookieStore.set(mfaChallengeCookieName, payload.mfa_token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure,
+      path: '/',
+      maxAge: 300,
+    });
+    const mfaUrl = nextPath
+      ? `/login?mfa=1&next=${encodeURIComponent(nextPath)}`
+      : '/login?mfa=1';
+    redirect(mfaUrl);
+  }
+
   await syncCookiesFromApi(response);
+  redirect(nextPath ?? '/dashboard');
+}
+
+export async function loginMfaAction(formData: FormData): Promise<void> {
+  const code = String(formData.get('code') ?? '').trim();
+  const nextPath = sanitizeInternalPath(String(formData.get('next') ?? ''));
+  const requestHeaders = await headers();
+  const cookieStore = await cookies();
+  const mfaToken = cookieStore.get(mfaChallengeCookieName)?.value;
+
+  if (!mfaToken) {
+    redirect('/login?error=1');
+  }
+
+  const response = await fetch(
+    `${requireEnv(apiBaseUrl, 'MONITOR_API_BASE_URL')}/api/v1/auth/login/mfa`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': requestHeaders.get('user-agent') ?? 'monitor-pfsense-web',
+        ...(requestHeaders.get('cf-connecting-ip')
+          ? { 'CF-Connecting-IP': requestHeaders.get('cf-connecting-ip') as string }
+          : {}),
+      },
+      body: JSON.stringify({ mfa_token: mfaToken, code }),
+      cache: 'no-store',
+    },
+  );
+
+  if (!response.ok) {
+    const errorUrl = nextPath
+      ? `/login?mfa=1&error=1&next=${encodeURIComponent(nextPath)}`
+      : '/login?mfa=1&error=1';
+    redirect(errorUrl);
+  }
+
+  await syncCookiesFromApi(response);
+  cookieStore.delete(mfaChallengeCookieName);
   redirect(nextPath ?? '/dashboard');
 }
 

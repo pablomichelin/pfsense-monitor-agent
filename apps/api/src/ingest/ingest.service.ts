@@ -659,10 +659,23 @@ export class IngestService {
       });
     }
 
+    // C-SA: matriz de resolucao por tipo de alerta no ingest de heartbeat.
+    // - service_down/gateway_down: so podem ser resolvidos quando o respectivo
+    //   conjunto FOI enviado neste heartbeat. Em heartbeat parcial/light (sem
+    //   services/gateways no payload) NAO resolvemos nem abrimos esses alertas —
+    //   o estado anterior e preservado, evitando "recovery" falso.
+    // - heartbeat_missing: a propria chegada do heartbeat e a recuperacao, entao
+    //   pode ser resolvido aqui (independe de services/gateways).
+    // - node_uid_conflict: NUNCA e resolvido pelo ingest. Seu ciclo de vida e
+    //   governado pela autenticacao do node e pelo rekey/rebootstrap; resolver via
+    //   heartbeat mascararia um conflito ainda nao tratado.
     for (const existing of existingAlerts) {
+      if (existing.type === AlertType.node_uid_conflict) {
+        continue;
+      }
+
       if (
         existing.type !== AlertType.heartbeat_missing &&
-        existing.type !== AlertType.node_uid_conflict &&
         activeAlerts.has(existing.fingerprint)
       ) {
         continue;

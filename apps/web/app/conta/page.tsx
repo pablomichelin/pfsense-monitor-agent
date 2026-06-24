@@ -4,6 +4,7 @@ import { PageHero } from '@/components/page-hero';
 import { PageSection } from '@/components/ui/page-section';
 import { ApiError, getSession } from '@/lib/api';
 import { roleLabel } from '@/lib/rbac-labels';
+import { MfaSection } from './mfa-section';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +52,13 @@ export default async function ContaPage() {
             </div>
           </dl>
         </div>
+      </PageSection>
+
+      <PageSection
+        title="Verificação em duas etapas (MFA)"
+        description="Proteja seu acesso com um aplicativo autenticador TOTP e códigos de recuperação."
+      >
+        <MfaSection />
       </PageSection>
 
       <PageSection

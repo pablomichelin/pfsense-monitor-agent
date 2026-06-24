@@ -24,7 +24,7 @@ smoke_client_sql="(
 
 smoke_user_sql="(
   email ~ '@test\\.local\$'
-  OR email ~ '^(scoped-admin|perm-readonly|perm-operator|readonly|operator|client-user|audit-ro|ux-client|dbg-scoped|admin-smoke|operator-nd|readonly-nd|noscope-nd)-[0-9]+@'
+  OR email ~ '^(scoped-admin|perm-readonly|perm-operator|readonly|operator|client-user|audit-ro|ux-client|dbg-scoped|admin-smoke|operator-nd|readonly-nd|noscope-nd|mfa-smoke)-[0-9]+@'
 )"
 
 echo "=== Purge de dados smoke (RBAC, backup, escopo) ==="
