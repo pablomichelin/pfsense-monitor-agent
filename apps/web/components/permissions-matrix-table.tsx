@@ -36,9 +36,9 @@ export function PermissionsMatrixTable({ data }: { data: PermissionsMatrixData }
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-800">
       <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-slate-800 bg-slate-950/50 font-mono text-xs uppercase tracking-[0.2em] text-slate-500">
+        <thead className="border-b border-slate-800 bg-slate-950/50 font-mono text-xs uppercase tracking-wider text-slate-500">
           <tr>
-            <th className="sticky left-0 z-10 bg-slate-950/95 px-4 py-3">Permissao</th>
+            <th className="sticky left-0 z-10 bg-slate-950/95 px-4 py-3">Permissão</th>
             {data.roles.map((role) => (
               <th key={role} className="px-4 py-3 text-center">
                 {roleLabel(role)}
@@ -71,8 +71,8 @@ export function PermissionsMatrixTable({ data }: { data: PermissionsMatrixData }
                       <span
                         className={
                           enabled
-                            ? 'inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-                            : 'inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-600'
+                            ? 'inline-flex h-6 w-6 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                            : 'inline-flex h-6 w-6 items-center justify-center rounded-md border border-slate-700 bg-slate-900 text-slate-600'
                         }
                         aria-label={enabled ? 'Permitido' : 'Negado'}
                       >

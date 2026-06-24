@@ -44,8 +44,6 @@ const TERMINAL_COMMAND_STATUSES = new Set([
   'cancelled',
 ]);
 
-const BACKUP_LATE_HOURS = 36;
-
 const statusStyles: Record<
   BackupVisualStatus,
   { label: string; pill: string; dot: string }
@@ -72,7 +70,7 @@ const statusStyles: Record<
   },
 };
 
-function computeVisualStatus(
+function resolveVisualStatus(
   backups: NodeConfigBackupsResponse,
   commandStatus: ConfigBackupCommandStatusResponse | null,
 ): BackupVisualStatus {
@@ -80,22 +78,7 @@ function computeVisualStatus(
     return 'failed';
   }
 
-  const latestStored = backups.items.find((item) => item.status === 'stored');
-  const referenceAt =
-    latestStored?.received_at ?? backups.summary.latest_received_at;
-
-  if (!referenceAt) {
-    return 'never';
-  }
-
-  const ageHours =
-    (Date.now() - new Date(referenceAt).getTime()) / (1000 * 60 * 60);
-
-  if (ageHours > BACKUP_LATE_HOURS) {
-    return 'late';
-  }
-
-  return 'ok';
+  return backups.visual_status;
 }
 
 function getLatestStoredBackup(
@@ -162,7 +145,7 @@ export function NodeConfigBackupsSection({
   );
 
   const visualStatus = useMemo(
-    () => computeVisualStatus(initialBackups, commandStatus),
+    () => resolveVisualStatus(initialBackups, commandStatus),
     [initialBackups, commandStatus],
   );
 
@@ -256,13 +239,13 @@ export function NodeConfigBackupsSection({
             Backups de configuracao
           </p>
           <p className="mt-2 text-sm text-slate-400">
-            Historico do <code className="text-cyan-200">/conf/config.xml</code>{' '}
+            Histórico do <code className="text-cyan-200">/conf/config.xml</code>{' '}
             enviado pelo package pfSense.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${statusStyle.pill}`}
+            className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm ${statusStyle.pill}`}
           >
             <span
               className={`h-2 w-2 shrink-0 rounded-full ${statusStyle.dot}`}

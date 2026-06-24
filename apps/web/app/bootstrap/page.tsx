@@ -6,8 +6,8 @@ import { InstallationBadge } from '@/components/nodes/installation-badge';
 import { PageHero } from '@/components/page-hero';
 import { Alert, Badge, Button, Card, PageSection } from '@/components/ui';
 import {
-  formInputCompactClassName,
-  formSelectCompactClassName,
+  formInputClassName,
+  formSelectClassName,
 } from '@/lib/form-field-styles';
 import {
   ApiError,
@@ -101,7 +101,7 @@ function bucketBadge(bucket: BootstrapBucket) {
 }
 
 const secondaryLinkClassName =
-  'inline-flex h-10 min-h-10 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white';
+  'inline-flex h-11 min-h-11 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white';
 
 function CommandBlock({ value }: { value: string }) {
   return (
@@ -353,7 +353,7 @@ export default async function BootstrapPage({
     : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHero
         eyebrow="Instalação"
         title="Instalar agente"
@@ -371,7 +371,7 @@ export default async function BootstrapPage({
           <select
             name="client_id"
             defaultValue={clientId ?? ''}
-            className={formSelectCompactClassName}
+            className={formSelectClassName}
           >
             <option value="">Todos os clientes</option>
             {filterOptions.clients.map((client) => (
@@ -383,7 +383,7 @@ export default async function BootstrapPage({
           <select
             name="site_id"
             defaultValue={siteId ?? ''}
-            className={formSelectCompactClassName}
+            className={formSelectClassName}
           >
             <option value="">Todos</option>
             {sites.map((site) => (
@@ -395,7 +395,7 @@ export default async function BootstrapPage({
           <select
             name="bucket"
             defaultValue={bucket ?? ''}
-            className={formSelectCompactClassName}
+            className={formSelectClassName}
           >
             <option value="">Todos</option>
             <option value="pending">Prontos</option>
@@ -407,11 +407,9 @@ export default async function BootstrapPage({
             name="search"
             defaultValue={search ?? ''}
             placeholder="Buscar"
-            className={`${formInputCompactClassName} min-w-[10rem] max-w-[16rem] flex-1`}
+            className={`${formInputClassName} min-w-[10rem] max-w-[16rem] flex-1`}
           />
-          <Button type="submit" size="sm">
-            Filtrar
-          </Button>
+          <Button type="submit">Filtrar</Button>
           <Link href="/bootstrap" className={secondaryLinkClassName}>
             Limpar
           </Link>
@@ -637,7 +635,7 @@ export default async function BootstrapPage({
             )}
           </Card>
 
-          <div className="space-y-6">
+          <div className="space-y-8">
             <AdvancedSection
               title="Detalhes tecnicos da rodada"
               description="Pre-check no pfSense e bloco de evidencia para homologacao."
@@ -780,7 +778,7 @@ export default async function BootstrapPage({
           </div>
         </Card>
 
-        <div className="space-y-6">
+        <div className="space-y-8">
           <Card className="p-4">
             <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Agentes ativos</p>
             <div className="mt-4 space-y-3">

@@ -138,7 +138,7 @@ export function MfaSection() {
       ) : status?.enabled ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-200">
+            <span className="inline-flex items-center rounded-md border border-emerald-500/40 bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-200">
               MFA ativo
             </span>
             <span className="text-sm text-slate-400">

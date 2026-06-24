@@ -211,6 +211,17 @@ export function buildPfSensePrecheckBlock(input: {
   return lines.join('\n');
 }
 
+export function operationalStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    online: 'Online',
+    offline: 'Offline',
+    degraded: 'Degradado',
+    maintenance: 'Manutenção',
+    unknown: 'Desconhecido',
+  };
+  return labels[status] ?? status;
+}
+
 export function toOperationalStatusBadge(status: string): StatusBadgeStatus {
   const map: Record<string, StatusBadgeStatus> = {
     online: 'online',

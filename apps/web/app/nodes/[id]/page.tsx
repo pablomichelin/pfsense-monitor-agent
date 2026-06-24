@@ -29,6 +29,7 @@ import {
   normalizeConfigBackupInstallMode,
   normalizeHeartbeatMode,
   normalizeNodeDetailTab,
+  operationalStatusLabel,
   statusHeroTone,
   toOperationalStatusBadge,
   type NodeDetailTabId,
@@ -172,7 +173,7 @@ export default async function NodeDetailsPage({
           stats={[
             {
               label: 'Status',
-              value: node.effective_status,
+              value: operationalStatusLabel(node.effective_status),
               tone: statusHeroTone(node.effective_status),
             },
             { label: 'Último contato', value: formatRelativeAge(node.last_seen_at) },

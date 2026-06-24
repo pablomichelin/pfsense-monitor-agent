@@ -13,11 +13,9 @@ import {
   getUsersList,
 } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
+import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 
 export const dynamic = 'force-dynamic';
-
-const navLinkClassName =
-  'inline-flex h-9 min-h-9 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white';
 
 export default async function AdminUsuariosPage({
   searchParams,
@@ -81,7 +79,7 @@ export default async function AdminUsuariosPage({
   const totalSessions = Array.from(userSessionsByUserId.values()).reduce((acc, s) => acc + s.length, 0);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       <PageHero
         eyebrow="Administração"
         title="Usuários"
@@ -94,10 +92,10 @@ export default async function AdminUsuariosPage({
 
       <PageSection title="Navegação">
         <div className="flex flex-wrap gap-3">
-          <Link href="/admin" className={navLinkClassName}>
+          <Link href="/admin" className={adminNavLinkClassName}>
             ← Cadastro
           </Link>
-          <Link href="/admin/permissoes" className={navLinkClassName}>
+          <Link href="/admin/permissoes" className={adminNavLinkClassName}>
             Permissões
           </Link>
         </div>

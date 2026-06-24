@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { ConfirmDialog } from '@/components/confirm-dialog';
+import { Button } from '@/components/ui/button';
 import { deleteNodeAction } from '@/lib/admin';
 
 type Props = {
@@ -16,7 +18,7 @@ export function DeleteNodeButton({
   displayName,
   hostname,
 }: Props) {
-  const [showModal, setShowModal] = useState(false);
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const label = displayName ?? hostname;
@@ -32,29 +34,24 @@ export function DeleteNodeButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setShowModal(true)}
-        className="rounded-full border border-rose-500/50 bg-rose-500/10 px-4 py-2 text-sm text-rose-200 transition hover:border-rose-400/60 hover:bg-rose-500/20"
-      >
+      <Button type="button" variant="danger-outline" onClick={() => setOpen(true)}>
         Excluir host
-      </button>
+      </Button>
 
-      {showModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-modal-title"
-        >
-          <div className="mx-4 w-full max-w-md rounded-xl border border-rose-500/30 bg-slate-900 p-6 shadow-xl">
-            <h2
-              id="delete-modal-title"
-              className="font-display text-lg text-rose-200"
-            >
-              Confirmar exclusão
-            </h2>
-            <p className="mt-3 text-sm text-slate-300">
+      <ConfirmDialog
+        open={open}
+        title="Confirmar exclusão"
+        confirmLabel="Excluir"
+        loading={loading}
+        onCancel={() => {
+          if (!loading) {
+            setOpen(false);
+          }
+        }}
+        onConfirm={handleConfirm}
+        description={
+          <>
+            <p>
               Esta ação é <strong className="text-rose-300">irreversível</strong>.
               O host será removido permanentemente do sistema, incluindo
               credenciais, heartbeats e alertas.
@@ -67,27 +64,9 @@ export function DeleteNodeButton({
                 <span className="text-slate-500">node_uid:</span> {nodeUid}
               </p>
             </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowModal(false)}
-                disabled={loading}
-                className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirm}
-                disabled={loading}
-                className="rounded-lg border border-rose-500/60 bg-rose-500/20 px-4 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/30 disabled:opacity-50"
-              >
-                {loading ? 'Excluindo...' : 'Excluir'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </>
+        }
+      />
     </>
   );
 }

@@ -74,9 +74,9 @@ export function AdminUsuariosTabs({
   const [deleting, setDeleting] = useState(false);
 
   const inputClass =
-    'rounded-lg border border-slate-600/80 bg-panel-soft h-9 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500';
+    'rounded-lg border border-slate-600/80 bg-panel-soft h-11 px-4 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500';
   const selectClass =
-    'rounded-lg border border-slate-600/80 bg-panel-soft h-9 px-3 py-2 text-sm text-slate-200 outline-none';
+    'rounded-lg border border-slate-600/80 bg-panel-soft h-11 px-4 py-2 text-sm text-slate-200 outline-none';
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) {
@@ -186,7 +186,7 @@ export function AdminUsuariosTabs({
                   onClick={() => setDeleteTarget(user)}
                   className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-500/20"
                 >
-                  Excluir usuario
+                  Excluir usuário
                 </button>
               )}
             </div>
@@ -255,7 +255,7 @@ export function AdminUsuariosTabs({
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title="Excluir usuario"
+        title="Excluir usuário"
         confirmLabel="Excluir"
         loading={deleting}
         onCancel={() => {
@@ -267,7 +267,7 @@ export function AdminUsuariosTabs({
         description={
           deleteTarget ? (
             <>
-              <p>Esta acao e irreversivel. O usuario perdera acesso imediatamente.</p>
+              <p>Esta ação é irreversível. O usuário perderá acesso imediatamente.</p>
               <div className="mt-4 rounded-lg border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm text-slate-200">
                 <p>{deleteTarget.email}</p>
                 <p className="mt-1 text-xs text-slate-500">

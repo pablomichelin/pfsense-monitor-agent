@@ -54,7 +54,7 @@ export function ClientScopePicker({
   if (clients.length === 0) {
     return (
       <p className="w-full text-xs text-slate-500">
-        Nenhum cliente ativo disponivel para escopo.
+        Nenhum cliente ativo disponível para escopo.
       </p>
     );
   }

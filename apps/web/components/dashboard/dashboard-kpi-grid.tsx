@@ -43,15 +43,15 @@ export function DashboardKpiGrid({
           label="Alertas abertos"
           value={openAlerts}
           indicator={{
-            kind: 'badge',
-            variant: openAlerts > 0 ? 'danger' : 'neutral',
+            kind: 'status',
+            dotClass: openAlerts > 0 ? 'bg-signal-offline' : 'bg-signal-online',
           }}
         />
       ) : null}
       <KpiCard
         label="Versões pfSense"
         value={distinctVersions}
-        indicator={{ kind: 'badge', variant: 'info' }}
+        indicator={{ kind: 'status', dotClass: 'bg-cyan-400/80' }}
       />
     </div>
   );

@@ -13,6 +13,7 @@ import {
 } from '@/lib/audit-labels';
 import { ApiError, getAuditLogs, getSession } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
+import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 
 export const dynamic = 'force-dynamic';
 
@@ -142,7 +143,7 @@ export default async function AuditPage({
         actions={
           <Link
             href="/audit"
-            className="inline-flex h-9 min-h-9 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-xs font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white"
+            className={adminNavLinkClassName}
           >
             Limpar filtros
           </Link>
@@ -278,7 +279,7 @@ export default async function AuditPage({
               {offset > 0 ? (
                 <Link
                   href={`/audit${buildAuditQueryString({ ...filterState, offset: undefined })}`}
-                  className="inline-flex h-10 min-h-10 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white"
+                  className="inline-flex h-11 min-h-11 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white"
                 >
                   Voltar ao início
                 </Link>
@@ -311,7 +312,7 @@ export default async function AuditPage({
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <Link
               href={loadMoreHref}
-              className="inline-flex h-10 min-h-10 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white"
+              className="inline-flex h-11 min-h-11 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white"
             >
               Próxima página
             </Link>

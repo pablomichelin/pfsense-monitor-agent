@@ -243,3 +243,9 @@ Estado consolidado:
 - `SSE` homologado no dominio publico
 - agente leve inicial versionado para a proxima etapa de homologacao em pfSense real
 - pacote nativo do pfSense estruturado como port empacotavel, com runtime local do agente e GUI pronta para build em ambiente compativel
+
+### Atualizacao visual 2026-06-24
+
+- painel web **1.4.1**: melhorias pos-auditoria visual 108 (tokens h-11, PT-BR, badges rounded-md, paginacao admin clientes)
+- doc: `docs/109-MELHORIAS-VISUAIS-POS-AUDITORIA-108-2026-06-24.md`
+- hotfix 106 (modal portal + nav admin) preservado

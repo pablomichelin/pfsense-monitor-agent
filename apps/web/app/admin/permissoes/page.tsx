@@ -5,11 +5,9 @@ import { PermissionsMatrixEditor } from '@/components/permissions-matrix-editor'
 import { Card, PageSection } from '@/components/ui';
 import { ApiError, getPermissionsMatrix, getSession } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
+import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 
 export const dynamic = 'force-dynamic';
-
-const navLinkClassName =
-  'inline-flex h-9 min-h-9 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white';
 
 export default async function AdminPermissoesPage() {
   let session;
@@ -40,7 +38,7 @@ export default async function AdminPermissoesPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       <PageHero
         eyebrow="Administração"
         title="Matriz de permissões"
@@ -56,7 +54,7 @@ export default async function AdminPermissoesPage() {
       />
 
       <PageSection title="Navegação">
-        <Link href="/admin/usuarios" className={navLinkClassName}>
+        <Link href="/admin/usuarios" className={adminNavLinkClassName}>
           ← Usuários
         </Link>
       </PageSection>

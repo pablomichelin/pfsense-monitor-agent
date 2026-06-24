@@ -63,7 +63,7 @@ export function AdminCadastroCards({
     <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 items-stretch">
       <AdminCollapsibleCard
         title="Novo cliente"
-        description="Cria a organizacao raiz para agrupar firewalls."
+        description="Cria a organização raiz para agrupar firewalls."
         section="client"
         isExpanded={expandedSection === 'client'}
         onToggle={() => toggle('client')}
@@ -84,7 +84,7 @@ export function AdminCadastroCards({
             className={inputClass}
           />
           <input type="hidden" name="status" value="active" />
-          <div className={noteClass}>O codigo tecnico do cliente sera gerado automaticamente.</div>
+          <div className={noteClass}>O código técnico do cliente será gerado automaticamente.</div>
           <button type="submit" className={submitClass}>
             Criar cliente
           </button>
@@ -115,12 +115,12 @@ export function AdminCadastroCards({
 
       {canManageUsers ? (
             <AdminCollapsibleCard
-              title="Novo usuario"
+              title="Novo usuário"
               description="Cria acesso humano com papel e senha local (superadmin)."
               section="user"
               isExpanded={expandedSection === 'user'}
               onToggle={() => toggle('user')}
-              actionLabel="Criar usuario"
+              actionLabel="Criar usuário"
             >
               <AdminSectionMessage
                 section="user"
@@ -159,14 +159,14 @@ export function AdminCadastroCards({
                   selectClass={selectClass}
                 />
                 <button type="submit" className={submitClass}>
-                  Criar usuario
+                  Criar usuário
                 </button>
               </form>
             </AdminCollapsibleCard>
       ) : (
         <AdminCollapsibleCard
-          title="Governanca de usuarios"
-          description="Gestao de usuarios reservada ao superadmin."
+          title="Governança de usuários"
+          description="Gestão de usuários reservada ao superadmin."
           section="user"
           isExpanded={false}
           onToggle={() => {}}
@@ -174,7 +174,7 @@ export function AdminCadastroCards({
           collapsible={false}
         >
           <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            Sua sessao pode operar inventario e bootstrap; criar/editar usuarios e em /admin/usuarios (superadmin).
+            Sua sessão pode operar inventário e bootstrap; criar/editar usuários é em /admin/usuarios (superadmin).
           </div>
         </AdminCollapsibleCard>
       )}

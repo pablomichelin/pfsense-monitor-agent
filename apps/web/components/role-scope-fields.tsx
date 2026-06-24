@@ -40,7 +40,7 @@ function ClientSinglePicker({
   if (clients.length === 0) {
     return (
       <p className="w-full text-xs text-slate-500">
-        Nenhum cliente ativo disponivel para vinculo.
+        Nenhum cliente ativo disponível para vínculo.
       </p>
     );
   }
@@ -123,7 +123,7 @@ export function RoleScopeFields({
         <ClientScopePicker clients={clients} selectedIds={defaultClientIds} />
       ) : (
         <p className="w-full text-xs text-slate-500">
-          Superadministrador tem escopo global; nao usa vinculo por cliente.
+          Superadministrador tem escopo global; não usa vínculo por cliente.
         </p>
       )}
     </div>

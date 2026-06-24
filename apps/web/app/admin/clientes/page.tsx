@@ -1,20 +1,16 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { PageHero } from '@/components/page-hero';
+import { AdminClientsList } from '@/components/admin-clients-list';
 import { AdminSectionMessage } from '@/components/admin-section-message';
-import { ClientDeleteButton } from '@/components/client-delete-button';
-import { Alert, Button, Card, PageSection } from '@/components/ui';
-import { deleteClientAction, updateClientAction } from '@/lib/admin';
+import { Alert, Card, PageSection } from '@/components/ui';
 import { ApiError, getNodesFilters, getNodesList, getSession } from '@/lib/api';
+import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 import { hasPermission } from '@/lib/authz';
-import { formInputClassName, formSelectClassName } from '@/lib/form-field-styles';
 
 export const dynamic = 'force-dynamic';
 
 const returnTo = '/admin/clientes';
-
-const navLinkClassName =
-  'inline-flex h-10 min-h-10 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white';
 
 export default async function AdminClientesPage({
   searchParams,
@@ -61,7 +57,7 @@ export default async function AdminClientesPage({
   const inactiveCount = filterOptions.inactive_client_count ?? 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHero
         eyebrow="Administração"
         title="Clientes"
@@ -73,7 +69,7 @@ export default async function AdminClientesPage({
       />
 
       <PageSection title="Navegação">
-        <Link href="/admin" className={navLinkClassName}>
+        <Link href="/admin" className={adminNavLinkClassName}>
           ← Cadastro
         </Link>
       </PageSection>
@@ -99,67 +95,7 @@ export default async function AdminClientesPage({
             {activeClients.length === 0 ? (
               <Alert variant="info">Nenhum cliente ativo. Crie um em Cadastro.</Alert>
             ) : (
-              activeClients.map((client) => (
-                <div
-                  key={client.id}
-                  className="rounded-xl border border-slate-700/80 bg-panel-soft/50 p-4"
-                >
-                  <form action={updateClientAction}>
-                    <input type="hidden" name="returnTo" value={returnTo} />
-                    <input type="hidden" name="client_id" value={client.id} />
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <input
-                        type="text"
-                        name="name"
-                        defaultValue={client.name}
-                        className={`${formInputClassName} w-full`}
-                      />
-                      <input
-                        type="text"
-                        name="code"
-                        defaultValue={client.code}
-                        className={`${formInputClassName} w-full`}
-                      />
-                      <select
-                        name="status"
-                        defaultValue={client.status}
-                        className={`${formSelectClassName} w-full`}
-                      >
-                        <option value="active">active</option>
-                        <option value="inactive">inactive</option>
-                      </select>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs text-slate-500">
-                        {client.node_count} firewall{client.node_count !== 1 ? 's' : ''}
-                        <Link
-                          href={`/nodes?client_id=${client.id}`}
-                          className="ml-2 text-cyan-400 hover:text-cyan-300"
-                        >
-                          Ver no inventário
-                        </Link>
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <Button type="submit" variant="secondary" className="border-cyan-500/30 bg-cyan-500/10 text-cyan-200">
-                          Salvar cliente
-                        </Button>
-                        {client.node_count === 0 ? (
-                          <ClientDeleteButton
-                            clientId={client.id}
-                            clientName={client.name}
-                            returnTo={returnTo}
-                            deleteClientAction={deleteClientAction}
-                          />
-                        ) : (
-                          <span className="text-xs text-slate-500">
-                            Remova os firewalls antes de excluir o cliente.
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </form>
-                </div>
-              ))
+              <AdminClientsList clients={activeClients} returnTo={returnTo} />
             )}
           </div>
           {inactiveCount > 0 && (

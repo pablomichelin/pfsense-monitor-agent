@@ -5,11 +5,9 @@ import { Badge, Card, PageSection } from '@/components/ui';
 import { ApiError, getNodesFilters, getNodesList, getRolesList, getSession } from '@/lib/api';
 import { AdminCadastroCards } from '@/components/admin-cadastro-cards';
 import { hasPermission } from '@/lib/authz';
+import { adminNavLinkClassName, adminShortcutLinkClassName } from '@/lib/admin-nav-styles';
 
 export const dynamic = 'force-dynamic';
-
-const shortcutLinkClassName =
-  'inline-flex h-9 min-h-9 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-xs font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white';
 
 export default async function AdminPage({
   searchParams,
@@ -64,7 +62,7 @@ export default async function AdminPage({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
       <PageHero
         eyebrow="Administração"
         title="Cadastro inicial"
@@ -81,21 +79,21 @@ export default async function AdminPage({
             <Badge variant="neutral" className="font-mono uppercase tracking-wider">
               Atalhos
             </Badge>
-            <Link href="/nodes" className={`${shortcutLinkClassName} border-cyan-500/30 bg-cyan-500/10 text-cyan-200`}>
+            <Link href="/nodes" className={`${adminShortcutLinkClassName} border-cyan-500/30 bg-cyan-500/10 text-cyan-200`}>
               Ver firewalls
             </Link>
-            <Link href="/admin/usuarios" className={shortcutLinkClassName}>
+            <Link href="/admin/usuarios" className={adminShortcutLinkClassName}>
               Usuários
             </Link>
             {canViewPermissions ? (
-              <Link href="/admin/permissoes" className={shortcutLinkClassName}>
+              <Link href="/admin/permissoes" className={adminShortcutLinkClassName}>
                 Permissões
               </Link>
             ) : null}
-            <Link href="/admin/clientes" className={shortcutLinkClassName}>
+            <Link href="/admin/clientes" className={adminShortcutLinkClassName}>
               Clientes
             </Link>
-            <Link href="/audit" className={shortcutLinkClassName}>
+            <Link href="/audit" className={adminShortcutLinkClassName}>
               Auditoria
             </Link>
           </div>

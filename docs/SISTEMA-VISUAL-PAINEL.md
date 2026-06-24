@@ -1,6 +1,6 @@
 # Sistema visual do painel Monitor-Pfsense
 
-**Versão:** 0.1.1 (2026-03-14)  
+**Versão:** 0.1.2 (2026-06-24)  
 **Referência:** Este documento define o padrão visual a ser mantido em novas telas e componentes.
 
 ---
@@ -17,7 +17,7 @@ Definidos em `apps/web/app/globals.css`:
 
 | Token | Valor | Uso |
 |-------|-------|-----|
-| `--app-max-w` | 72rem | Largura máxima da aplicação |
+| `--app-max-w` | 80rem | Largura máxima da aplicação |
 | `--section-gap` | 2rem | Espaço vertical entre seções |
 | `--card-radius` | 1rem | Border radius dos cards |
 | `--card-padding` | 1.5rem | Padding interno dos cards |
@@ -83,6 +83,16 @@ Definidos em `apps/web/app/globals.css`:
 | Tones | `border-*-500/30 bg-*-500/10 text-*-200` (emerald, amber, rose, cyan) |
 
 **Não usar** `rounded-full` em badges; preferir `rounded-md`.
+
+### Exceções permitidas para `rounded-full`
+
+| Uso | Exemplo |
+|-----|---------|
+| Indicador de status (dot) | `.status-dot`, pills com dot interno |
+| Spinner de loading | botões, telas de loading |
+| Elementos circulares funcionais | avatares, ícones circulares (se aplicável) |
+
+Qualquer outro chip/badge de status ou toggle deve usar `rounded-md` ou `rounded-lg`.
 
 ---
 

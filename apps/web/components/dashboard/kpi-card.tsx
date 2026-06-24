@@ -1,10 +1,7 @@
-import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/cn';
 
-type KpiIndicator =
-  | { kind: 'status'; dotClass: string }
-  | { kind: 'badge'; variant: 'neutral' | 'danger' | 'info' };
+export type KpiIndicator = { kind: 'status'; dotClass: string };
 
 export function KpiCard({
   label,
@@ -29,11 +26,7 @@ export function KpiCard({
             className={cn('status-dot shrink-0', indicator.dotClass)}
             aria-hidden
           />
-        ) : (
-          <Badge variant={indicator.variant} className="shrink-0">
-            {label}
-          </Badge>
-        )}
+        ) : null}
       </div>
     </Card>
   );

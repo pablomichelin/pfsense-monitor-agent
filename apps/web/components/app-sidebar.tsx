@@ -166,7 +166,7 @@ export function AppSidebar({
         {groups.map((group) => (
           <div key={group.id} className="space-y-1">
             {!isCollapsed ? (
-              <p className="px-3 font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">
+              <p className="px-3 font-mono text-[10px] uppercase tracking-wider text-slate-500">
                 {group.label}
               </p>
             ) : (

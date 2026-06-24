@@ -7,7 +7,9 @@ import { Alert, Badge, Button, Card, PageSection } from '@/components/ui';
 import { acknowledgeAlertAction, resolveAlertAction } from '@/lib/alerts';
 import { ApiError, getAlertsList, getNodesFilters, getSession } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
+import { cn } from '@/lib/cn';
 import { formInputClassName, formSelectClassName } from '@/lib/form-field-styles';
+import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 import { formatDateTime, formatRelativeAge } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -45,12 +47,19 @@ function SummaryCard({
   value: number;
   variant: 'danger' | 'warning' | 'success';
 }) {
+  const dotClass =
+    variant === 'danger'
+      ? 'bg-signal-offline'
+      : variant === 'warning'
+        ? 'bg-signal-degraded'
+        : 'bg-signal-online';
+
   return (
     <Card className="min-h-28 p-6">
       <p className="font-mono text-xs uppercase tracking-wider text-slate-500">{label}</p>
       <div className="mt-3 flex items-end justify-between gap-3">
         <span className="font-display text-3xl font-semibold text-white">{value}</span>
-        <Badge variant={variant}>{label}</Badge>
+        <span className={cn('status-dot shrink-0', dotClass)} aria-hidden />
       </div>
     </Card>
   );
@@ -93,7 +102,7 @@ function ActionForms({
           type="text"
           name="resolution_note"
           placeholder="Nota de resolução"
-          className="h-9 w-full rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-xs text-slate-100 outline-none placeholder:text-slate-500"
+          className={`${formInputClassName} w-full text-xs`}
         />
         <Button
           type="submit"
@@ -202,7 +211,7 @@ export default async function AlertsPage({
         actions={
           <Link
             href="/alerts"
-            className="inline-flex h-9 min-h-9 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-xs font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white"
+            className={adminNavLinkClassName}
           >
             Limpar filtros
           </Link>

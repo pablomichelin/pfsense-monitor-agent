@@ -85,7 +85,7 @@ export default async function LoginPage({
       <PageHero
         eyebrow="Acesso humano"
         title="Entrar no painel"
-        description="Autenticacao administrativa do controlador."
+        description="Autenticação administrativa do controlador."
       />
 
       <Card className="p-6">

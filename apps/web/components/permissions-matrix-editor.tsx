@@ -145,7 +145,7 @@ export function PermissionsMatrixEditor({
       }));
       setNewCode('');
       setNewLabel('');
-      setFeedback(`Perfil ${label} criado. Recarregue se nao aparecer na lista.`);
+      setFeedback(`Perfil ${label} criado. Recarregue se não aparecer na lista.`);
     } catch (createError) {
       setError(
         createError instanceof Error ? createError.message : 'Falha ao criar perfil.',
@@ -272,9 +272,9 @@ export function PermissionsMatrixEditor({
 
       <div className="overflow-x-auto rounded-xl border border-slate-800">
         <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-slate-800 bg-slate-950/50 font-mono text-xs uppercase tracking-[0.2em] text-slate-500">
+          <thead className="border-b border-slate-800 bg-slate-950/50 font-mono text-xs uppercase tracking-wider text-slate-500">
             <tr>
-              <th className="sticky left-0 z-10 bg-slate-950/95 px-4 py-3">Permissao</th>
+              <th className="sticky left-0 z-10 bg-slate-950/95 px-4 py-3">Permissão</th>
               {data.roles.map((role) => {
                 const isEditing = editingRole === role.code;
                 const editable = isRoleEditable(role.code);
@@ -364,8 +364,8 @@ export function PermissionsMatrixEditor({
                           <span
                             className={
                               enabled
-                                ? 'inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-                                : 'inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-600'
+                                ? 'inline-flex h-6 w-6 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                                : 'inline-flex h-6 w-6 items-center justify-center rounded-md border border-slate-700 bg-slate-900 text-slate-600'
                             }
                             aria-label={enabled ? 'Permitido' : 'Negado'}
                           >
