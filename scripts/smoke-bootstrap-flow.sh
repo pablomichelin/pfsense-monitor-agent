@@ -21,6 +21,11 @@ AUTH_PASSWORD="${AUTH_PASSWORD:-$(read_env_value AUTH_BOOTSTRAP_PASSWORD 2>/dev/
 
 # Modo package: PACKAGE_RELEASE_VERSION configurado
 PACKAGE_VERSION="$(read_env_value PACKAGE_RELEASE_VERSION 2>/dev/null || true)"
+if [[ -z "$PACKAGE_VERSION" ]]; then
+  PACKAGE_VERSION="$(read_env_value PACKAGE_RELEASE_VERSION "$ROOT_DIR/config/package-release.env" 2>/dev/null || true)"
+fi
+# SHA256 do package fica em config/package-release.env (fonte que a API tambem usa).
+PACKAGE_SHA="$(read_env_value PACKAGE_RELEASE_SHA256 "$ROOT_DIR/config/package-release.env" 2>/dev/null || true)"
 MODE_PACKAGE=""
 if [[ -n "$PACKAGE_VERSION" ]]; then
   MODE_PACKAGE=1
@@ -123,15 +128,24 @@ SITE_ID="$(json_get "$SITE_RESPONSE" "site.id")"
 NODE_RESPONSE="$(request_json POST /api/v1/admin/nodes "{\"site_id\":\"$SITE_ID\",\"node_uid\":\"$NODE_UID\",\"hostname\":\"$NODE_UID.local\",\"display_name\":\"Bootstrap Firewall $SUFFIX\",\"management_ip\":\"10.251.0.1\",\"wan_ip\":\"198.51.100.61\",\"pfsense_version\":\"2.8.1\"}")"
 NODE_ID="$(json_get "$NODE_RESPONSE" "node.id")"
 NODE_SECRET_HINT="$(json_get "$NODE_RESPONSE" "bootstrap.secret_hint")"
+NODE_SECRET="$(json_get "$NODE_RESPONSE" "bootstrap.node_secret")"
 
 if [[ -n "$MODE_PACKAGE" ]]; then
   echo "[3/7] (modo package) Validando package_command presente"
   BOOTSTRAP_RESPONSE_NO_OVERRIDE="$(request_json GET "/api/v1/admin/nodes/$NODE_ID/bootstrap-command")"
   PACKAGE_CMD="$(json_get "$BOOTSTRAP_RESPONSE_NO_OVERRIDE" "package_command" 2>/dev/null || true)"
   [[ -n "$PACKAGE_CMD" ]]
-  grep -q "monitor-pfsense-package-v${PACKAGE_VERSION}.tar.gz" <<<"$PACKAGE_CMD"
+  # 0.4.0: o package_command serve o artefato pelo endpoint do controlador
+  # (/api/v1/agent/package-artifact), com pin --sha256 do package e o contrato B1
+  # do segredo (--secret-file apontando para o .update-node-secret 0600).
   grep -q 'install-from-release.sh' <<<"$PACKAGE_CMD"
+  grep -q '/api/v1/agent/package-artifact' <<<"$PACKAGE_CMD"
   grep -q -- '--sha256' <<<"$PACKAGE_CMD"
+  if [[ -n "$PACKAGE_SHA" ]]; then
+    grep -q "$PACKAGE_SHA" <<<"$PACKAGE_CMD"
+  fi
+  grep -q -- '--secret-file' <<<"$PACKAGE_CMD"
+  grep -q '/var/db/monitor-pfsense-agent/.update-node-secret' <<<"$PACKAGE_CMD"
   grep -q -- '--node-uid' <<<"$PACKAGE_CMD"
   grep -q -- '--customer-code' <<<"$PACKAGE_CMD"
 
@@ -169,7 +183,10 @@ if [[ -n "$MODE_PACKAGE" ]]; then
   NODE_PAGE_OVERRIDE="$(curl -skS -b "$COOKIE_JAR" "$BASE_URL/nodes/$NODE_ID")"
   grep -qE 'Comando (principal|one-shot)' <<<"$NODE_PAGE_OVERRIDE"
   grep -q 'install-from-release.sh' <<<"$NODE_PAGE_OVERRIDE"
-  grep -q "monitor-pfsense-package-v${PACKAGE_VERSION}.tar.gz" <<<"$NODE_PAGE_OVERRIDE"
+  # 0.4.0: a tela mostra o comando que baixa o artefato pelo controlador e usa o
+  # contrato B1 do segredo, em vez do nome versionado do tarball.
+  grep -q 'package-artifact' <<<"$NODE_PAGE_OVERRIDE"
+  grep -q -- '--secret-file' <<<"$NODE_PAGE_OVERRIDE"
   grep -q 'Diagnostics' <<<"$NODE_PAGE_OVERRIDE"
 else
   ENCODED_RELEASE_BASE_URL="$(node -p 'encodeURIComponent(process.argv[1])' "$RELEASE_BASE_URL")"
@@ -251,11 +268,61 @@ if [[ -z "$MODE_PACKAGE" ]]; then
   grep -q "$CONTROLLER_URL" <<<"$BOOTSTRAP_PAGE"
 fi
 
-echo "[7/7] Validando bucket ativo apos simular agente instalado"
-UPDATE_NODE_RESPONSE="$(request_json POST "/api/v1/admin/nodes/$NODE_ID" '{"agent_version":"0.1.0"}')"
-[[ "$(json_get "$UPDATE_NODE_RESPONSE" "node.agent_version")" == "0.1.0" ]]
+echo "[7/7] Validando bucket ativo apos heartbeat assinado do agente"
+# 0.4.0: agent_version/pfsense_version sao read-only no admin update (preenchidos
+# apenas pelo heartbeat). Para o node entrar no bucket "agente ativo" simulamos o
+# agente enviando um heartbeat assinado por HMAC — o caminho real de ativacao.
+HEARTBEAT_BODY_FILE="$(mktemp)"
+cat > "$HEARTBEAT_BODY_FILE" <<JSON
+{
+  "schema_version": "2026-01",
+  "heartbeat_id": "hb-bst-$SUFFIX",
+  "sent_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "node_uid": "$NODE_UID",
+  "hostname": "$NODE_UID.local",
+  "customer_code": "$CLIENT_CODE",
+  "mgmt_ip": "10.251.0.1",
+  "wan_ip_reported": "198.51.100.61",
+  "pfsense_version": "2.8.1",
+  "agent_version": "0.1.0",
+  "uptime_sec": 86400,
+  "cpu_percent": 9.0,
+  "memory_percent": 40.0,
+  "disk_percent": 55.0,
+  "services": [
+    { "name": "unbound", "status": "running" }
+  ],
+  "notices": []
+}
+JSON
+
+HEARTBEAT_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+HEARTBEAT_SIGNATURE="$(node -e '
+const fs = require("fs");
+const crypto = require("crypto");
+const timestamp = process.argv[1];
+const bodyPath = process.argv[2];
+const secret = process.argv[3];
+const body = fs.readFileSync(bodyPath);
+const payload = Buffer.concat([Buffer.from(timestamp), Buffer.from("\n"), body]);
+process.stdout.write(crypto.createHmac("sha256", secret).update(payload).digest("hex"));
+' "$HEARTBEAT_TIMESTAMP" "$HEARTBEAT_BODY_FILE" "$NODE_SECRET")"
+
+HEARTBEAT_RESPONSE="$(curl -skS \
+  -H "content-type: application/json" \
+  -H "x-node-uid: $NODE_UID" \
+  -H "x-timestamp: $HEARTBEAT_TIMESTAMP" \
+  -H "x-signature: sha256=$HEARTBEAT_SIGNATURE" \
+  --data-binary "@$HEARTBEAT_BODY_FILE" \
+  "$BASE_URL/api/v1/ingest/heartbeat")"
+rm -f "$HEARTBEAT_BODY_FILE"
+[[ "$(json_get "$HEARTBEAT_RESPONSE" "node_status")" == "online" ]]
+
+UPDATED_NODE="$(request_json GET "/api/v1/nodes/$NODE_ID")"
+[[ "$(json_get "$UPDATED_NODE" "node.agent_version")" == "0.1.0" ]]
+
 BOOTSTRAP_PAGE_ACTIVE="$(curl -skS -b "$COOKIE_JAR" "$BASE_URL/bootstrap?search=$NODE_UID&bucket=active")"
-grep -q 'agente ativo' <<<"$BOOTSTRAP_PAGE_ACTIVE"
+grep -qi 'agente ativo' <<<"$BOOTSTRAP_PAGE_ACTIVE"
 grep -q "$NODE_UID" <<<"$BOOTSTRAP_PAGE_ACTIVE"
 
 echo "Smoke bootstrap OK: fallback, override temporario, detalhe do node e buckets operacionais validados."

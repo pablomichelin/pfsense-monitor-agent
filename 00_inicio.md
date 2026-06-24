@@ -2,7 +2,9 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Ultima entrega (2026-06-23):** correcoes de auditoria de seguranca — package/API `0.4.0`, painel `1.2.0`. Detalhes em `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Proximo passo: deploy do controlador (`prisma migrate deploy` + `docker compose up -d --build`) e publicacao da release package 0.4.0.
+> **Ultima entrega (2026-06-24):** alinhamento dos smokes pos-0.4.0 — `scripts/run-smoke-suite.sh` 100% verde (13/13), refletindo o comportamento correto da 0.4.0 (escopo default-deny C4, segredo B1 em arquivo, package_command via controlador). Sem mudanca de runtime. Detalhes em `docs/102-ALINHAMENTO-SMOKES-POS-0.4.0-2026-06-24.md`.
+>
+> **Entrega anterior (2026-06-23):** correcoes de auditoria de seguranca — package/API `0.4.0`, painel `1.2.0`. Detalhes em `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Proximo passo: deploy do controlador (`prisma migrate deploy` + `docker compose up -d --build`) e publicacao da release package 0.4.0.
 
 ## Leitura obrigatoria
 

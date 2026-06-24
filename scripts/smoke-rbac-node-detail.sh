@@ -27,6 +27,7 @@ fi
 ADMIN_COOKIE_JAR="$(mktemp)"
 OPERATOR_COOKIE_JAR="$(mktemp)"
 READONLY_COOKIE_JAR="$(mktemp)"
+NOSCOPE_COOKIE_JAR="$(mktemp)"
 RESPONSE_BODY_FILE="$(mktemp)"
 SUFFIX="$(date +%s)"
 CLIENT_CODE="RBAC-ND-$SUFFIX"
@@ -34,14 +35,17 @@ SITE_CODE="RBAC-ND-SITE-$SUFFIX"
 NODE_UID="rbac-nd-fw-$SUFFIX"
 OPERATOR_EMAIL="operator-nd-$SUFFIX@systemup.inf.br"
 READONLY_EMAIL="readonly-nd-$SUFFIX@systemup.inf.br"
+NOSCOPE_EMAIL="noscope-nd-$SUFFIX@systemup.inf.br"
 OPERATOR_PASSWORD="OperatorNd!$SUFFIX"
 READONLY_PASSWORD="ReadonlyNd!$SUFFIX"
+NOSCOPE_PASSWORD="NoScopeNd!$SUFFIX"
 
 cleanup() {
   rm -f \
     "$ADMIN_COOKIE_JAR" \
     "$OPERATOR_COOKIE_JAR" \
     "$READONLY_COOKIE_JAR" \
+    "$NOSCOPE_COOKIE_JAR" \
     "$RESPONSE_BODY_FILE"
 }
 
@@ -125,7 +129,7 @@ request_json() {
   fi
 }
 
-echo "[1/6] Login bootstrap admin"
+echo "[1/7] Login bootstrap admin"
 LOGIN_RESPONSE="$(curl -skS \
   -b "$ADMIN_COOKIE_JAR" \
   -c "$ADMIN_COOKIE_JAR" \
@@ -135,7 +139,7 @@ LOGIN_RESPONSE="$(curl -skS \
   --data "{\"email\":\"$AUTH_EMAIL\",\"password\":\"$AUTH_PASSWORD\"}")"
 json_get "$LOGIN_RESPONSE" "ok" >/dev/null
 
-echo "[2/6] Criando firewall minimo"
+echo "[2/7] Criando firewall minimo"
 CLIENT_RESPONSE="$(request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/clients "{\"name\":\"RBAC Node Detail $SUFFIX\",\"code\":\"$CLIENT_CODE\"}")"
 CLIENT_ID="$(json_get "$CLIENT_RESPONSE" "client.id")"
 SITE_RESPONSE="$(request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/sites "{\"client_id\":\"$CLIENT_ID\",\"name\":\"RBAC ND Site $SUFFIX\",\"code\":\"$SITE_CODE\",\"city\":\"Sao Paulo\",\"state\":\"SP\",\"timezone\":\"America/Sao_Paulo\"}")"
@@ -143,9 +147,14 @@ SITE_ID="$(json_get "$SITE_RESPONSE" "site.id")"
 NODE_RESPONSE="$(request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/nodes "{\"site_id\":\"$SITE_ID\",\"node_uid\":\"$NODE_UID\",\"hostname\":\"$NODE_UID.local\",\"display_name\":\"RBAC ND Firewall $SUFFIX\",\"management_ip\":\"10.240.0.2\",\"wan_ip\":\"198.51.100.91\",\"pfsense_version\":\"2.8.1\",\"agent_version\":\"0.1.1\"}")"
 NODE_ID="$(json_get "$NODE_RESPONSE" "node.id")"
 
-echo "[3/6] Criando operator e readonly"
-request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/users "{\"email\":\"$OPERATOR_EMAIL\",\"display_name\":\"RBAC ND Operator\",\"password\":\"$OPERATOR_PASSWORD\",\"role\":\"operator\",\"status\":\"active\"}" >/dev/null
-request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/users "{\"email\":\"$READONLY_EMAIL\",\"display_name\":\"RBAC ND Readonly\",\"password\":\"$READONLY_PASSWORD\",\"role\":\"readonly\",\"status\":\"active\"}" >/dev/null
+# 0.4.0 (item C4): o escopo RBAC passou a ser default-deny. Operator/readonly so
+# leem um node se tiverem escopo (UserClientScope) no cliente dono do node. Por isso
+# operator/readonly nascem ja escopados no cliente do firewall (client_ids), enquanto
+# um terceiro ator sem escopo valida o bloqueio 403 "client out of scope".
+echo "[3/7] Criando operator e readonly com escopo no cliente, e um ator sem escopo"
+request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/users "{\"email\":\"$OPERATOR_EMAIL\",\"display_name\":\"RBAC ND Operator\",\"password\":\"$OPERATOR_PASSWORD\",\"role\":\"operator\",\"status\":\"active\",\"client_ids\":[\"$CLIENT_ID\"]}" >/dev/null
+request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/users "{\"email\":\"$READONLY_EMAIL\",\"display_name\":\"RBAC ND Readonly\",\"password\":\"$READONLY_PASSWORD\",\"role\":\"readonly\",\"status\":\"active\",\"client_ids\":[\"$CLIENT_ID\"]}" >/dev/null
+request_json "$ADMIN_COOKIE_JAR" POST /api/v1/admin/users "{\"email\":\"$NOSCOPE_EMAIL\",\"display_name\":\"RBAC ND NoScope\",\"password\":\"$NOSCOPE_PASSWORD\",\"role\":\"readonly\",\"status\":\"active\"}" >/dev/null
 
 curl -skS \
   -b "$OPERATOR_COOKIE_JAR" \
@@ -163,18 +172,29 @@ curl -skS \
   "$BASE_URL/api/v1/auth/login" \
   --data "{\"email\":\"$READONLY_EMAIL\",\"password\":\"$READONLY_PASSWORD\"}" >/dev/null
 
-echo "[4/6] API node detail para operator e readonly"
+curl -skS \
+  -b "$NOSCOPE_COOKIE_JAR" \
+  -c "$NOSCOPE_COOKIE_JAR" \
+  -H "content-type: application/json" \
+  -X POST \
+  "$BASE_URL/api/v1/auth/login" \
+  --data "{\"email\":\"$NOSCOPE_EMAIL\",\"password\":\"$NOSCOPE_PASSWORD\"}" >/dev/null
+
+echo "[4/7] API node detail para operator e readonly escopados (200)"
 OPERATOR_DETAIL="$(request_json "$OPERATOR_COOKIE_JAR" GET "/api/v1/nodes/$NODE_ID")"
 [[ "$(json_get "$OPERATOR_DETAIL" "node.id")" == "$NODE_ID" ]]
 READONLY_DETAIL="$(request_json "$READONLY_COOKIE_JAR" GET "/api/v1/nodes/$NODE_ID")"
 [[ "$(json_get "$READONLY_DETAIL" "node.id")" == "$NODE_ID" ]]
 
-echo "[5/6] Bootstrap admin bloqueado para operator/readonly"
+echo "[5/7] Default-deny: ator sem escopo recebe 403 no node fora do escopo (C4)"
+[[ "$(request_with_status "$NOSCOPE_COOKIE_JAR" GET "/api/v1/nodes/$NODE_ID")" == "403" ]]
+
+echo "[6/7] Bootstrap admin bloqueado para operator/readonly"
 [[ "$(request_with_status "$OPERATOR_COOKIE_JAR" GET "/api/v1/admin/nodes/$NODE_ID/bootstrap-command")" == "403" ]]
 [[ "$(request_with_status "$READONLY_COOKIE_JAR" GET "/api/v1/admin/nodes/$NODE_ID/bootstrap-command")" == "403" ]]
 [[ "$(request_with_status "$ADMIN_COOKIE_JAR" GET "/api/v1/admin/nodes/$NODE_ID/bootstrap-command")" == "200" ]]
 
-echo "[6/6] Pagina web /nodes/:id para operator e readonly"
+echo "[7/7] Pagina web /nodes/:id para operator e readonly escopados"
 OPERATOR_PAGE_HTTP="$(curl -skS -b "$OPERATOR_COOKIE_JAR" -o "$RESPONSE_BODY_FILE" -w '%{http_code}' "$BASE_URL/nodes/$NODE_ID")"
 [[ "$OPERATOR_PAGE_HTTP" == "200" ]]
 grep -q "RBAC ND Firewall $SUFFIX" "$RESPONSE_BODY_FILE"
@@ -183,4 +203,4 @@ READONLY_PAGE_HTTP="$(curl -skS -b "$READONLY_COOKIE_JAR" -o "$RESPONSE_BODY_FIL
 [[ "$READONLY_PAGE_HTTP" == "200" ]]
 grep -q "RBAC ND Firewall $SUFFIX" "$RESPONSE_BODY_FILE"
 
-echo "Smoke RBAC node detail OK: operator/readonly leem node via API e pagina; bootstrap segue restrito a admin."
+echo "Smoke RBAC node detail OK: operator/readonly escopados leem node via API e pagina; ator sem escopo recebe 403 (default-deny C4); bootstrap segue restrito a admin."

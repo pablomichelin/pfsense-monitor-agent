@@ -75,6 +75,6 @@ done
 
 echo "[5/5] Superadmin acessa pagina de permissoes"
 curl -skS -o "$TMP_BODY" -b "$ADMIN_COOKIE_JAR" "$BASE_URL/admin/permissoes"
-grep -q 'Matriz de permissoes' "$TMP_BODY"
+grep -q 'Matriz de permissões' "$TMP_BODY"
 
 echo "Smoke RBAC admin UX OK: middleware bloqueia rotas administrativas para perfil client e matriz de permissoes acessivel."

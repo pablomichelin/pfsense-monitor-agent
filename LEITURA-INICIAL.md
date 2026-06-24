@@ -14,7 +14,9 @@ Leia este arquivo primeiro.
 | Painel web | `1.2.0` | `apps/web/package.json` (rodape do layout) |
 | Package pfSense | `0.4.0` | `packages/pfsense-package/Makefile` |
 
-**Ultima entrega (2026-06-23):** correcoes de auditoria de seguranca (package + agente + controlador + SSE/infra) — `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Cobre A1–A7, B1–B7, C1–C8, D1–D2; gaps adiados E1 (MFA) / E2 (rate-limit) documentados; plano de origem `docs/94`.
+**Ultima entrega (2026-06-24):** alinhamento dos smokes pos-0.4.0 — `docs/102-ALINHAMENTO-SMOKES-POS-0.4.0-2026-06-24.md`. `scripts/run-smoke-suite.sh` 100% verde (13/13). Sem mudanca de runtime. Ajustes: `smoke-rbac-node-detail` valida default-deny de escopo (C4: com escopo→200, sem escopo→403); `smoke-agent-release` valida o instalador REAL do package (B1: segredo via `MONITOR_UPDATE_NODE_SECRET`/`--secret-file`/`--node-secret` legado, pin `--sha256`); `smoke-bootstrap-flow` valida `package_command` servindo o artefato pelo controlador (`/api/v1/agent/package-artifact`) + ativacao via heartbeat assinado (agent_version e read-only). Purge oficial estendido (ADM/BST/LAB + usuarios nd/admin-smoke).
+
+**Entrega anterior (2026-06-23):** correcoes de auditoria de seguranca (package + agente + controlador + SSE/infra) — `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Cobre A1–A7, B1–B7, C1–C8, D1–D2; gaps adiados E1 (MFA) / E2 (rate-limit) documentados; plano de origem `docs/94`.
 **Proximo passo:** deploy do controlador — `prisma migrate deploy` (migration `node_request_nonce`, C2) + `docker compose up -d --build` para subir a API 0.4.0; publicar release package 0.4.0 e atualizar clientes pfSense.
 
 Ultima entrega infra (Fase 0): `docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`  
