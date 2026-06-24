@@ -1527,9 +1527,40 @@ finalize_pfsense_upgrade_if_pending() {
   rmdir "$(pfsense_upgrade_lock_dir)" 2>/dev/null || true
 }
 
+build_config_backup_json_fields() {
+  if backup_is_enabled; then
+    mode="${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_MODE:-hours}"
+    interval_hours="${MONITOR_AGENT_CONFIG_BACKUP_INTERVAL_HOURS:-24}"
+    schedule_time="${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_TIME:-03:00}"
+    schedule_dow="${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_DOW:-1}"
+    schedule_dom="${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_DOM:-1}"
+    printf ',
+  "config_backup": {
+    "enabled": true,
+    "schedule_mode": "%s",
+    "interval_hours": %s,
+    "schedule_time": "%s",
+    "schedule_dow": %s,
+    "schedule_dom": %s
+  }' \
+      "$(json_escape "$mode")" \
+      "$(json_escape "$interval_hours")" \
+      "$(json_escape "$schedule_time")" \
+      "$(json_escape "$schedule_dow")" \
+      "$(json_escape "$schedule_dom")"
+    return 0
+  fi
+
+  printf ',
+  "config_backup": {
+    "enabled": false
+  }'
+}
+
 build_payload() {
   run_pfsense_update_check
   update_fields="$(append_pfsense_update_json_fields 2>/dev/null || printf ',\n  "ha_detected": false')"
+  config_backup_fields="$(build_config_backup_json_fields 2>/dev/null || true)"
   mgmt_ip="$(detect_mgmt_ip 2>/dev/null || true)"
   wan_ip="$(detect_wan_ip 2>/dev/null || true)"
   interfaces_json="$(build_interfaces_json 2>/dev/null)" || interfaces_json="[]"
@@ -1590,7 +1621,7 @@ build_payload() {
   "gateways": $gateways_json,
   "services": $services_json,
   "interfaces": ${interfaces_json:-[]},
-  "notices": $notices_json$update_fields
+  "notices": $notices_json$update_fields$config_backup_fields
 }
 EOF
   else
@@ -1611,7 +1642,7 @@ EOF
   "memory_percent": $(json_nullable_number "$memory_percent"),
   "disk_percent": $(json_nullable_number "$disk_percent"),
   "interfaces": ${interfaces_json:-[]},
-  "notices": $notices_json$update_fields
+  "notices": $notices_json$update_fields$config_backup_fields
 }
 EOF
   fi
@@ -2162,6 +2193,17 @@ backup_upload_config() {
   fi
   if [ -n "$command_id" ]; then
     set -- "$@" -H "X-Command-Id: $command_id"
+  fi
+  if backup_is_enabled; then
+    set -- "$@" \
+      -H "X-Config-Backup-Enabled: 1" \
+      -H "X-Config-Backup-Schedule-Mode: ${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_MODE:-hours}" \
+      -H "X-Config-Backup-Interval-Hours: ${MONITOR_AGENT_CONFIG_BACKUP_INTERVAL_HOURS:-24}" \
+      -H "X-Config-Backup-Schedule-Time: ${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_TIME:-03:00}" \
+      -H "X-Config-Backup-Schedule-Dow: ${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_DOW:-1}" \
+      -H "X-Config-Backup-Schedule-Dom: ${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_DOM:-1}"
+  else
+    set -- "$@" -H "X-Config-Backup-Enabled: 0"
   fi
 
   if ! $CURL_CMD -sS "$@" --data-binary @"$upload_file" -o "$response_file" -w '%{http_code}' \
