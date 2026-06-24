@@ -2,9 +2,9 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Ultima entrega (2026-06-24):** alinhamento dos smokes pos-0.4.0 — `scripts/run-smoke-suite.sh` 100% verde (13/13), refletindo o comportamento correto da 0.4.0 (escopo default-deny C4, segredo B1 em arquivo, package_command via controlador). Sem mudanca de runtime. Detalhes em `docs/102-ALINHAMENTO-SMOKES-POS-0.4.0-2026-06-24.md`.
+> **Ultima entrega (2026-06-24):** fechamento dos itens restantes da auditoria — API `0.5.0`, painel `1.3.0`, package `0.4.1`. **MFA TOTP completo** (enroll + login 2 etapas + recovery codes; enforcement opt-in via `MFA_ENFORCED_ROLES`, desligado por padrao), **rate-limit persistido em PostgreSQL**, `syncAlerts`/`permissions.guard`/HMAC endurecidos, e package (rc.d idiomatico, logs nos coletores, catalogo embarcado, flag de upgrade honesta). Deploy aplicado (`/healthz` 200 em 0.5.0); `run-smoke-suite.sh` 14/14 verde (inclui `smoke-mfa.sh`). Detalhes em `docs/103-ENTREGA-FECHAMENTO-AUDITORIA-MFA-RATELIMIT-PACKAGE-2026-06-24.md`.
 >
-> **Entrega anterior (2026-06-23):** correcoes de auditoria de seguranca — package/API `0.4.0`, painel `1.2.0`. Detalhes em `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Proximo passo: deploy do controlador (`prisma migrate deploy` + `docker compose up -d --build`) e publicacao da release package 0.4.0.
+> **Entrega anterior (2026-06-24):** alinhamento dos smokes pos-0.4.0 — `docs/102-ALINHAMENTO-SMOKES-POS-0.4.0-2026-06-24.md` (13/13 verde, sem mudanca de runtime).
 
 ## Leitura obrigatoria
 

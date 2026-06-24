@@ -4,7 +4,9 @@ Data de referencia: `2026-06-08`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Ultima entrega (2026-06-23):** correcoes de auditoria de seguranca — package/API `0.4.0`, painel `1.2.0`. Ver `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md` (A1–A7, B1–B7, C1–C8, D1–D2; gaps E1/E2 documentados). Proximo passo operacional: `prisma migrate deploy` (migration `node_request_nonce`) + `docker compose up -d --build` para subir a API 0.4.0.
+> **Ultima entrega (2026-06-24):** fechamento dos itens restantes da auditoria — API `0.5.0`, painel `1.3.0`, package `0.4.1`. MFA TOTP completo (enforcement opt-in, off por padrao), rate-limit persistido em PostgreSQL, `syncAlerts`/`permissions.guard`/HMAC endurecidos e package (rc.d, coletores, catalogo, flag upgrade). Deploy aplicado (`/healthz` 200 em 0.5.0); `run-smoke-suite.sh` 14/14 verde. Ver `docs/103-ENTREGA-FECHAMENTO-AUDITORIA-MFA-RATELIMIT-PACKAGE-2026-06-24.md`. Proximo passo: publicar release package `0.4.1`.
+>
+> **Entrega anterior (2026-06-23):** correcoes de auditoria de seguranca — package/API `0.4.0`, painel `1.2.0`. Ver `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md` (A1–A7, B1–B7, C1–C8, D1–D2; gaps E1/E2 resolvidos na entrega 103).
 
 ## Ordem de leitura atual
 

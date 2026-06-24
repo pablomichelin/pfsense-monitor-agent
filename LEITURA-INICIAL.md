@@ -6,18 +6,20 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Versoes atuais do produto (2026-06-23)
+## Versoes atuais do produto (2026-06-24)
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.4.0` | `apps/api/package.json` |
-| Painel web | `1.2.0` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.4.0` | `packages/pfsense-package/Makefile` |
+| API | `0.5.0` | `apps/api/package.json` |
+| Painel web | `1.3.0` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.4.1` | `packages/pfsense-package/Makefile` |
 
-**Ultima entrega (2026-06-24):** alinhamento dos smokes pos-0.4.0 — `docs/102-ALINHAMENTO-SMOKES-POS-0.4.0-2026-06-24.md`. `scripts/run-smoke-suite.sh` 100% verde (13/13). Sem mudanca de runtime. Ajustes: `smoke-rbac-node-detail` valida default-deny de escopo (C4: com escopo→200, sem escopo→403); `smoke-agent-release` valida o instalador REAL do package (B1: segredo via `MONITOR_UPDATE_NODE_SECRET`/`--secret-file`/`--node-secret` legado, pin `--sha256`); `smoke-bootstrap-flow` valida `package_command` servindo o artefato pelo controlador (`/api/v1/agent/package-artifact`) + ativacao via heartbeat assinado (agent_version e read-only). Purge oficial estendido (ADM/BST/LAB + usuarios nd/admin-smoke).
+**Ultima entrega (2026-06-24):** fechamento dos itens restantes da auditoria — `docs/103-ENTREGA-FECHAMENTO-AUDITORIA-MFA-RATELIMIT-PACKAGE-2026-06-24.md`. Controlador (API 0.5.0 / painel 1.3.0): **MFA TOTP completo** (enroll + login 2 etapas + recovery codes, enforcement opt-in via `MFA_ENFORCED_ROLES`, desligado por padrao), **rate-limit persistido em PostgreSQL** (C-RL), `syncAlerts` endurecido para heartbeat parcial (C-SA), `permissions.guard` default-deny com `@AllowSessionOnly` (C-PG) e assinatura HMAC com decode hex antes do `timingSafeEqual` (C-HX). Package 0.4.1: rc.d idiomatico (P-RC), logs estruturados em stderr nos coletores (P-GW), catalogo embarcado no firewall (P-CAT) e flag de upgrade honesta (P-UP). Deploy aplicado (migrations `package_release_rate_limit` + `mfa_totp`); `/healthz` `200` em `0.5.0`; `scripts/run-smoke-suite.sh` 100% verde (14/14, incluindo `smoke-mfa.sh`). Zabbix intocado.
 
-**Entrega anterior (2026-06-23):** correcoes de auditoria de seguranca (package + agente + controlador + SSE/infra) — `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Cobre A1–A7, B1–B7, C1–C8, D1–D2; gaps adiados E1 (MFA) / E2 (rate-limit) documentados; plano de origem `docs/94`.
-**Proximo passo:** deploy do controlador — `prisma migrate deploy` (migration `node_request_nonce`, C2) + `docker compose up -d --build` para subir a API 0.4.0; publicar release package 0.4.0 e atualizar clientes pfSense.
+**Entrega anterior (2026-06-24):** alinhamento dos smokes pos-0.4.0 — `docs/102-ALINHAMENTO-SMOKES-POS-0.4.0-2026-06-24.md`. `scripts/run-smoke-suite.sh` 100% verde (13/13). Sem mudanca de runtime.
+
+**Entrega anterior (2026-06-23):** correcoes de auditoria de seguranca (package + agente + controlador + SSE/infra) — `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Cobre A1–A7, B1–B7, C1–C8, D1–D2; gaps adiados E1 (MFA) / E2 (rate-limit) **agora resolvidos** na entrega 103.
+**Proximo passo:** publicar a release do package `0.4.1` (artefato + `gh release create`) e atualizar clientes pfSense; opcionalmente ligar `MFA_ENFORCED_ROLES` para perfis administrativos.
 
 Ultima entrega infra (Fase 0): `docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`  
 Ultima entrega package: `docs/98-ENTREGA-PACKAGE-0.3.8.md`  

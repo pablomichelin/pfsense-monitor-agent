@@ -71,12 +71,44 @@ MVP:
 
 - contas locais com autenticacao centralizada no `NestJS`
 - sessao server-side com cookie seguro
-- MFA obrigatorio para perfis administrativos antes de producao
-- MFA pode ficar desligado por `flag` apenas em ambiente de desenvolvimento
+- MFA TOTP **implementado** (capacidade disponivel; imposicao opt-in por flag)
 
 Fase posterior:
 
 - `OIDC` ou outro SSO corporativo
+
+#### MFA TOTP (implementado em API 0.5.0 / painel 1.3.0)
+
+Capacidade completa de MFA por TOTP para usuarios humanos:
+
+- **Enrollment**: em "Minha conta" o usuario gera o `secret` (cifrado em repouso
+  com o mesmo padrao `aes-256-gcm` usado para `node_secret`), le o QR
+  `otpauth://` e confirma com um codigo TOTP valido. Na confirmacao recebe os
+  **codigos de recuperacao** (exibidos uma unica vez; armazenados como hash).
+- **Login em duas etapas**: apos senha valida, se o usuario tem MFA ativo, a API
+  responde com um desafio (`mfa_token` transitorio) e exige um codigo TOTP ou um
+  codigo de recuperacao (consumo unico) para criar a sessao.
+- **Endpoints**: `POST /auth/login/mfa`, `GET /auth/mfa/status`,
+  `POST /auth/mfa/enroll/start`, `POST /auth/mfa/enroll/verify`,
+  `POST /auth/mfa/disable` — todos atras de `SessionAuthGuard` + CSRF (exceto a
+  finalizacao do desafio, que usa o `mfa_token`). O `secret` nunca aparece em log.
+- **Tabelas**: campos `mfa_enabled` / `mfa_secret` / `mfa_enrolled_at` em `users`,
+  alem de `mfa_recovery_codes` (hash) e `mfa_login_challenges` (desafios transitorios).
+
+##### Como ligar o enforcement (opt-in, desligado por padrao)
+
+- Por padrao `MFA_ENFORCED_ROLES` fica **vazio**: a capacidade existe, mas nada e
+  imposto — sessoes atuais e o bootstrap continuam funcionando.
+- Para exigir MFA de perfis especificos, defina no `.env.api` a lista de roles,
+  por exemplo: `MFA_ENFORCED_ROLES=superadmin,admin`.
+- Com enforcement ligado, um usuario sem MFA **nao e trancado**: ele e
+  direcionado ao enrollment ate concluir a configuracao (break-glass: o operador
+  com acesso ao `.env.api` pode esvaziar `MFA_ENFORCED_ROLES` e reiniciar a API
+  para liberar acesso emergencial).
+- Variaveis auxiliares: `MFA_ISSUER` (rotulo do app TOTP), `MFA_CHALLENGE_TTL_MINUTES`,
+  `MFA_RECOVERY_CODE_COUNT`, `MFA_TOTP_WINDOW`.
+- Validacao continua: `scripts/smoke-mfa.sh` (na `run-smoke-suite.sh`) cobre
+  enroll -> login TOTP em 2 etapas -> codigo de recuperacao (consumo unico).
 
 ### Autorizacao
 
@@ -165,6 +197,9 @@ Campos padronizados em `audit_logs` (Fase F RBAC):
 
 - `GET /api/v1/agent/package-release` permanece sem autenticacao para instalacao do package
 - rate limit por IP (60 req/min) reduz abuso de leitura
+- a contagem do rate limit e **persistida em PostgreSQL** (`package_release_rate_limits`)
+  desde a API 0.5.0, sobrevivendo a restart/redeploy e a multiplas instancias
+  (upsert atomico por janela; estrategia *fail-open* se o banco estiver indisponivel)
 
 ## Politica de logs
 
