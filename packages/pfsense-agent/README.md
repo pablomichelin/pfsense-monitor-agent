@@ -1,4 +1,12 @@
-# pfSense Agent Skeleton
+# pfSense Agent Skeleton — DEPRECATED
+
+> **DEPRECATED (2026-06-23).** Este tarball legado NAO deve ser instalado em producao.
+> Ele esta muito atras do agente oficial (gateways fixos `[]`, sem backup/upgrade/backoff,
+> loop que sai em sinal de sleep). A **unica fonte de verdade** do agente e o package
+> nativo em [`packages/pfsense-package/`](../pfsense-package/). Use sempre o fluxo de
+> instalacao/atualizacao documentado em `docs/COMANDO-ATUALIZAR-PACKAGE-PFSENSE.md` e
+> `docs/RELEASE-PACKAGE-PFSENSE-AUTOMATICO.md`. Este diretorio permanece apenas como
+> referencia historica e pode ser removido em uma trilha futura.
 
 Esqueleto inicial do agente leve para a fase anterior ao pacote nativo do pfSense.
 

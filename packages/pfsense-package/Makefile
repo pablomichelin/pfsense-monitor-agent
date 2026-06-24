@@ -1,7 +1,7 @@
 # $FreeBSD$
 
 PORTNAME=	pfSense-pkg-systemup-monitor
-PORTVERSION=	0.3.11
+PORTVERSION=	0.4.0
 PORTREVISION=	0
 CATEGORIES=	sysutils
 MASTER_SITES=	# empty
@@ -15,6 +15,7 @@ LICENSE=	APACHE20
 
 NO_BUILD=	yes
 NO_MTREE=	yes
+NO_ARCH=	yes
 
 SUB_FILES=	pkg-install pkg-deinstall
 SUB_LIST=	PORTNAME=${PORTNAME}

@@ -71,6 +71,11 @@ sha256_file() {
   exit 1
 }
 
+shell_quote() {
+  # Escapa um argumento para reuso seguro com eval (preserva espacos/caracteres).
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
 read_node_secret() {
   if [ -n "${MONITOR_UPDATE_NODE_SECRET:-}" ]; then
     NODE_SECRET="$MONITOR_UPDATE_NODE_SECRET"
@@ -106,12 +111,8 @@ while [ "$#" -gt 0 ]; do
       ;;
     -h|--help) usage; exit 0 ;;
     *)
-      if [ -z "$INSTALL_ARGS" ]; then
-        INSTALL_ARGS="$1"
-      else
-        INSTALL_ARGS="$INSTALL_ARGS
-$1"
-      fi
+      # B3: acumula argumentos ja escapados para preservar valores com espacos.
+      INSTALL_ARGS="$INSTALL_ARGS $(shell_quote "$1")"
       shift 1
       ;;
   esac
@@ -156,8 +157,8 @@ if [ ! -x "$EXTRACT_DIR/pfsense-package/bootstrap/install.sh" ]; then
   chmod +x "$EXTRACT_DIR/pfsense-package/bootstrap/install.sh"
 fi
 
-set -- $INSTALL_ARGS
-INSTALL_ROOT="$INSTALL_ROOT"
+# B3: reidrata os argumentos preservando limites (sem word-splitting cego).
+eval "set -- $INSTALL_ARGS"
 export INSTALL_ROOT
 export MONITOR_UPDATE_NODE_SECRET="$NODE_SECRET"
 

@@ -8,6 +8,10 @@ require_once("guiconfig.inc");
 require_once("/usr/local/pkg/systemup_monitor.inc");
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!systemup_monitor_csrf_validate_post()) {
+        systemup_monitor_redirect_self(array('msg' => 'csrf_fail'));
+    }
+
     $action = $_POST['action'] ?? 'save';
 
     if ($action === 'save') {
@@ -68,6 +72,7 @@ include("head.inc");
       O arquivo é criptografado no servidor; o XML não fica em texto puro no banco.
     </p>
     <form method="post" class="form-horizontal">
+      <?=systemup_monitor_csrf_tags()?>
       <input type="hidden" name="action" value="save" />
       <div class="form-group">
         <label class="col-sm-3 control-label">Habilitar backup automático</label>
@@ -213,6 +218,7 @@ include("head.inc");
       </tbody>
     </table>
     <form method="post" style="margin-top: 1rem;">
+      <?=systemup_monitor_csrf_tags()?>
       <input type="hidden" name="action" value="backup_now" />
       <button type="submit" class="btn btn-success" onclick="return confirm('Enviar backup de configuração agora?');">
         <i class="fa fa-upload"></i> Enviar backup agora

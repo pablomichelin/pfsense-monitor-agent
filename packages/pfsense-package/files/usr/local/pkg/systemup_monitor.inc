@@ -17,7 +17,7 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.3.11");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.4.0");
 }
 if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
     define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
@@ -51,6 +51,10 @@ if (!defined("SYSTEMUP_MONITOR_UPDATE_LOCK_STALE_SECONDS")) {
 }
 if (!defined("SYSTEMUP_MONITOR_NODE_SECRET_FILE")) {
     define("SYSTEMUP_MONITOR_NODE_SECRET_FILE", "/var/db/monitor-pfsense-agent/node_secret");
+}
+/** Allowlist fixa de org/repo do GitHub para download de release (B4 — harden auto-update). */
+if (!defined("SYSTEMUP_MONITOR_RELEASE_GITHUB_REPO_PATH")) {
+    define("SYSTEMUP_MONITOR_RELEASE_GITHUB_REPO_PATH", "/pablomichelin/pfsense-monitor-agent/");
 }
 
 /**
@@ -304,7 +308,7 @@ function systemup_monitor_service_definition()
         'name' => 'monitor_pfsense_agent',
         'description' => 'SystemUp Monitor Agent',
         'rcfile' => 'monitor_pfsense_agent',
-        'custom_php_service_status_command' => 'mwexec("/usr/sbin/service monitor_pfsense_agent onestatus >/dev/null 2>&1") == 0;',
+        'custom_php_service_status_command' => '$rc = (mwexec("/usr/sbin/service monitor_pfsense_agent onestatus >/dev/null 2>&1") == 0);',
     );
 }
 
@@ -722,7 +726,8 @@ function systemup_monitor_render_agent_config($pkg)
     $lines = array(
         'CONTROLLER_URL="' . systemup_monitor_escape_shell_value($pkg['controller_url']) . '"',
         'NODE_UID="' . systemup_monitor_escape_shell_value($pkg['node_uid']) . '"',
-        'NODE_SECRET="' . systemup_monitor_escape_shell_value($nodeSecret) . '"',
+        // B1: o .conf aponta para o arquivo 0600 do segredo; nao grava o segredo em texto.
+        'NODE_SECRET_FILE="' . systemup_monitor_escape_shell_value(systemup_monitor_node_secret_file_path()) . '"',
         'CUSTOMER_CODE="' . systemup_monitor_escape_shell_value($pkg['customer_code']) . '"',
         'AGENT_VERSION="' . (defined("SYSTEMUP_MONITOR_AGENT_VERSION") ? SYSTEMUP_MONITOR_AGENT_VERSION : "0.2.0") . '"',
         'SCHEMA_VERSION="2026-01"',
@@ -731,6 +736,11 @@ function systemup_monitor_render_agent_config($pkg)
         'MONITOR_AGENT_SERVICES="' . systemup_monitor_escape_shell_value($selectedServices) . '"',
         'MONITOR_AGENT_LIGHT_HEARTBEAT="' . $lightHeartbeat . '"',
     );
+    // Fallback de seguranca: se o arquivo de segredo ainda nao existe, manter o
+    // valor no .conf para nao interromper a autenticacao ate a proxima migracao.
+    if (systemup_monitor_read_node_secret_file() === '' && $nodeSecret !== '') {
+        $lines[] = 'NODE_SECRET="' . systemup_monitor_escape_shell_value($nodeSecret) . '"';
+    }
     if ($monitoredPackages !== '') {
         $lines[] = 'MONITOR_AGENT_PACKAGES="' . systemup_monitor_escape_shell_value($monitoredPackages) . '"';
     }
@@ -810,13 +820,16 @@ function systemup_monitor_url_allowed_for_controller($url, $controllerUrl)
         return true;
     }
 
-    $allowedHosts = array(
+    // B4: hosts do GitHub so sao aceitos quando o path pertence ao org/repo oficial.
+    // Integridade adicional garantida pelo pin de SHA256 em validate_release_urls().
+    $repoScopedHosts = array(
         'raw.githubusercontent.com',
         'github.com',
-        'objects.githubusercontent.com',
     );
-    foreach ($allowedHosts as $host) {
-        if (strcasecmp($parsedUrl['host'], $host) === 0) {
+    $path = (string) ($parsedUrl['path'] ?? '');
+    foreach ($repoScopedHosts as $host) {
+        if (strcasecmp($parsedUrl['host'], $host) === 0
+            && stripos($path, SYSTEMUP_MONITOR_RELEASE_GITHUB_REPO_PATH) === 0) {
             return true;
         }
     }
@@ -941,14 +954,20 @@ function systemup_monitor_package_uninstall()
         systemup_monitor_run_command('/usr/sbin/sysrc monitor_pfsense_agent_enable=NO 2>/dev/null || true');
     }
 
-    foreach (glob('/tmp/monitor-*') ?: array() as $tempFile) {
+    // B6: lista explicita de temporarios do package (evita glob agressivo em /tmp).
+    $tempFiles = array(
+        SYSTEMUP_MONITOR_UPDATE_LOG_FILE,
+        SYSTEMUP_MONITOR_RELEASE_CACHE_FILE,
+        '/tmp/install-from-release.sh',
+        '/tmp/monitor-package-release-cache.json',
+        '/tmp/monitor-update.log',
+    );
+    foreach ($tempFiles as $tempFile) {
         if (is_file($tempFile)) {
             @unlink($tempFile);
         }
     }
 
-    @unlink(SYSTEMUP_MONITOR_UPDATE_LOG_FILE);
-    @unlink(SYSTEMUP_MONITOR_RELEASE_CACHE_FILE);
     systemup_monitor_release_update_lock();
 }
 
@@ -963,6 +982,60 @@ function systemup_monitor_run_command($command)
         'exit_code' => $exit_code,
         'output' => implode("\n", $output),
     );
+}
+
+/**
+ * Valida o token CSRF do pfSense (csrf-magic) em requisicoes POST.
+ * Retorna true quando ok ou quando a requisicao nao e POST.
+ */
+function systemup_monitor_csrf_validate_post()
+{
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        return true;
+    }
+
+    if (function_exists('csrf_check')) {
+        return (bool) csrf_check(false);
+    }
+
+    return true;
+}
+
+/**
+ * Tags ocultas de CSRF para incluir nos formularios das paginas WWW do package.
+ */
+function systemup_monitor_csrf_tags()
+{
+    if (function_exists('csrf_get_tags')) {
+        return csrf_get_tags();
+    }
+
+    return '';
+}
+
+/**
+ * Verdadeiro quando o usuario da sessao tem privilegio administrativo.
+ * Fail-closed quando ha sessao mas sem privilegio; fail-open apenas se os
+ * helpers de privilegio do pfSense nao existirem no contexto (pagina ja exige login).
+ */
+function systemup_monitor_current_user_is_admin()
+{
+    if (!function_exists('getUserEntry') || !function_exists('userHasPrivilege')) {
+        return true;
+    }
+
+    $username = $_SESSION['Username'] ?? '';
+    if ($username === '') {
+        return false;
+    }
+
+    $user = getUserEntry($username);
+    if (!is_array($user)) {
+        return false;
+    }
+
+    return userHasPrivilege($user, 'page-all')
+        || userHasPrivilege($user, 'page-services-systemupmonitor');
 }
 
 function systemup_monitor_redirect_self(array $query = array())
@@ -1012,6 +1085,12 @@ function systemup_monitor_apply_flash_message()
             $savemsg = $detail !== ''
                 ? $detail
                 : 'Falha ao iniciar atualizacao do package.';
+            break;
+        case 'csrf_fail':
+            $savemsg = 'Falha de validacao CSRF. Recarregue a pagina e tente novamente.';
+            break;
+        case 'forbidden':
+            $savemsg = 'Acao restrita a administradores.';
             break;
     }
 }
@@ -1893,6 +1972,16 @@ function systemup_monitor_handle_package_update_post()
         return;
     }
 
+    if (!systemup_monitor_csrf_validate_post()) {
+        systemup_monitor_redirect_self(array('msg' => 'csrf_fail'));
+        return;
+    }
+
+    if (!systemup_monitor_current_user_is_admin()) {
+        systemup_monitor_redirect_self(array('msg' => 'forbidden'));
+        return;
+    }
+
     $result = systemup_monitor_start_package_update();
     if ((int) $result['exit_code'] !== 0) {
         systemup_monitor_redirect_self(array(
@@ -1934,6 +2023,7 @@ function systemup_monitor_render_config_update_action()
     $remoteVersion = htmlspecialchars($status['remote_version']);
     echo '<div style="margin-bottom: 1rem; display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem;">';
     echo '  <form method="post" style="margin: 0;">';
+    echo systemup_monitor_csrf_tags();
     echo '    <input type="hidden" name="action" value="package_update" />';
     echo '    <button type="submit" class="btn btn-primary" onclick="return confirm(\'Atualizar o SystemUp Monitor para a versao ' . $remoteVersion . '?\');">';
     echo '      <i class="fa fa-refresh"></i> Atualizar package';

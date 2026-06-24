@@ -17,6 +17,14 @@ fi
 # shellcheck disable=SC1090
 . "$CONFIG_FILE"
 
+# B1: o segredo HMAC vive em arquivo 0600 (NODE_SECRET_FILE), nao em texto no .conf.
+# Retrocompat: se o .conf legado ainda trouxer NODE_SECRET, ele e respeitado.
+NODE_SECRET_FILE="${NODE_SECRET_FILE:-/var/db/monitor-pfsense-agent/node_secret}"
+if [ -z "${NODE_SECRET:-}" ] && [ -r "${NODE_SECRET_FILE}" ]; then
+  NODE_SECRET="$(tr -d '\r\n' <"${NODE_SECRET_FILE}" 2>/dev/null || true)"
+fi
+NODE_SECRET="${NODE_SECRET:-}"
+
 require_var() {
   key="$1"
   eval "value=\${$key-}"
@@ -524,8 +532,33 @@ detect_cpu_percent() {
     return
   fi
 
+  # Primario (FreeBSD/pfSense): delta de kern.cp_time entre duas amostras.
+  # kern.cp_time = user nice sys intr idle (idle = campo 5).
+  if command_exists sysctl; then
+    cpu_sample1="$(sysctl -n kern.cp_time 2>/dev/null || true)"
+    if [ -n "$cpu_sample1" ]; then
+      sleep 1
+      cpu_sample2="$(sysctl -n kern.cp_time 2>/dev/null || true)"
+      if [ -n "$cpu_sample2" ]; then
+        cpu_value="$(printf '%s\n%s\n' "$cpu_sample1" "$cpu_sample2" | awk '
+          NR == 1 { for (i = 1; i <= NF; i++) prev[i] = $i; n = NF }
+          NR == 2 {
+            total = 0; idle = 0
+            for (i = 1; i <= n; i++) { d = $i - prev[i]; total += d; if (i == 5) idle = d }
+            if (total > 0) { printf "%.2f", 100 * (total - idle) / total }
+          }
+        ')"
+        if [ -n "$cpu_value" ]; then
+          printf '%s' "$cpu_value"
+          return
+        fi
+      fi
+    fi
+  fi
+
+  # Fallback: top do FreeBSD usa -d (numero de displays), nao -n.
   if command_exists top; then
-    top -b -n 1 2>/dev/null | awk '
+    top -b -d 1 2>/dev/null | awk '
       /CPU:|CPU states:/ {
         for (i = 1; i <= NF; i++) {
           gsub(/,/, "", $i)

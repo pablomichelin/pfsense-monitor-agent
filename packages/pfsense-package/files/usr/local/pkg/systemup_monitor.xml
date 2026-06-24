@@ -2,14 +2,37 @@
 <packagegui>
   <copyright>SystemUp</copyright>
   <name>SystemUp Monitor</name>
+  <version>%%PKGVERSION%%</version>
   <title>Services: SystemUp Monitor</title>
   <include_file>/usr/local/pkg/systemup_monitor.inc</include_file>
+  <additional_files_needed>
+    <prefix>/usr/local/www/</prefix>
+    <chmod>0644</chmod>
+    <item>/usr/local/www/config_systemup_monitor.php</item>
+  </additional_files_needed>
+  <additional_files_needed>
+    <prefix>/usr/local/www/</prefix>
+    <chmod>0644</chmod>
+    <item>/usr/local/www/status_systemup_monitor.php</item>
+  </additional_files_needed>
+  <additional_files_needed>
+    <prefix>/usr/local/www/</prefix>
+    <chmod>0644</chmod>
+    <item>/usr/local/www/backup_systemup_monitor.php</item>
+  </additional_files_needed>
   <menu>
     <name>SystemUp Monitor</name>
     <section>Services</section>
     <configfile>systemup_monitor.xml</configfile>
     <tooltiptext>Configure o agente leve do Monitor-Pfsense.</tooltiptext>
     <url>/config_systemup_monitor.php</url>
+  </menu>
+  <menu>
+    <name>SystemUp Monitor</name>
+    <section>Status</section>
+    <configfile>systemup_monitor.xml</configfile>
+    <tooltiptext>Diagnostico e status do agente Monitor-Pfsense.</tooltiptext>
+    <url>/status_systemup_monitor.php</url>
   </menu>
   <service>
     <name>monitor_pfsense_agent</name>
