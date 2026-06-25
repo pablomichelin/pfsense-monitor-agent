@@ -1,24 +1,29 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { PageHero } from '@/components/page-hero';
 import { PageSection } from '@/components/ui/page-section';
-import { ApiError, getSession } from '@/lib/api';
+import { Alert } from '@/components/ui';
+import { getSession } from '@/lib/api';
+import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { roleLabel } from '@/lib/rbac-labels';
 import { MfaSection } from './mfa-section';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ContaPage() {
+export default async function ContaPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = (await searchParams) ?? {};
+  const accessDenied = params.access === 'denied';
+  const mfaRequired = params.mfa === 'required';
+
   let session;
 
   try {
     session = await getSession();
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      redirect('/login');
-    }
-
-    throw error;
+    handlePageApiError(error);
   }
 
   const profileLabel = roleLabel(session.user.role);
@@ -34,6 +39,20 @@ export default async function ContaPage() {
           { label: 'Permissões', value: String(session.permissions.length) },
         ]}
       />
+
+      {accessDenied ? (
+        <Alert variant="warning">
+          Você não tem permissão para acessar a página solicitada. Se acredita que isso é um erro,
+          contate o administrador do controlador.
+        </Alert>
+      ) : null}
+
+      {mfaRequired ? (
+        <Alert variant="warning">
+          A verificação em duas etapas (MFA) é obrigatória para o seu perfil. Configure o MFA abaixo
+          antes de continuar usando o painel.
+        </Alert>
+      ) : null}
 
       <PageSection title="Identificação">
         <div className="glass-panel rounded-xl p-5 sm:p-6">

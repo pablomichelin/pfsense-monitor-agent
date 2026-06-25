@@ -3,8 +3,9 @@ import { redirect } from 'next/navigation';
 import { PageHero } from '@/components/page-hero';
 import { PermissionsMatrixEditor } from '@/components/permissions-matrix-editor';
 import { Card, PageSection } from '@/components/ui';
-import { ApiError, getPermissionsMatrix, getSession } from '@/lib/api';
+import { getPermissionsMatrix, getSession } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
+import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 
 export const dynamic = 'force-dynamic';
@@ -16,14 +17,11 @@ export default async function AdminPermissoesPage() {
   try {
     session = await getSession();
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      redirect('/login');
-    }
-    throw error;
+    handlePageApiError(error);
   }
 
   if (!hasPermission(session.permissions ?? [], 'users.view')) {
-    redirect('/dashboard');
+    redirect('/conta?access=denied');
   }
 
   const canManage = hasPermission(session.permissions ?? [], 'roles.manage');
@@ -31,10 +29,7 @@ export default async function AdminPermissoesPage() {
   try {
     matrix = await getPermissionsMatrix();
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      redirect('/login');
-    }
-    throw error;
+    handlePageApiError(error);
   }
 
   return (

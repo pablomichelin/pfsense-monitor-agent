@@ -8,6 +8,7 @@ import {
 import { FastifyReply, FastifyRequest } from 'fastify';
 
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
+import { resolveClientIp } from '../common/client-ip';
 import { AuditService } from './audit.service';
 
 type RequestWithAuth = FastifyRequest & AuthenticatedRequest;
@@ -34,9 +35,7 @@ export class AccessDeniedAuditFilter implements ExceptionFilter {
       await this.auditService.recordAccessDenied({
         actorId: request.auth.userId,
         actorRole: request.auth.role as string,
-        ipAddress:
-          (request.headers['cf-connecting-ip'] as string | undefined) ??
-          request.ip,
+        ipAddress: resolveClientIp(request),
         method: request.method,
         path: request.url,
         reason,

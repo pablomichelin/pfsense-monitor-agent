@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { evaluateRouteAccess } from '@/lib/route-policy';
+import { evaluateRouteAccess, resolveDefaultAuthenticatedPath } from '@/lib/route-policy';
 import { sanitizeInternalPath } from '@/lib/internal-path';
 
 const SESSION_COOKIE = 'monitor_pfsense_session';
@@ -19,6 +19,11 @@ type AuthMeResponse = {
   mfa_enforcement_blocking?: boolean;
 };
 
+type FetchSessionResult =
+  | { kind: 'ok'; session: AuthMeResponse }
+  | { kind: 'unauthenticated' }
+  | { kind: 'network_error' };
+
 function resolveApiBaseUrl(): string {
   const configured = process.env.MONITOR_API_BASE_URL?.trim();
   if (configured) {
@@ -28,10 +33,15 @@ function resolveApiBaseUrl(): string {
   return 'http://127.0.0.1:8088';
 }
 
-async function fetchSession(request: NextRequest): Promise<AuthMeResponse | null> {
+function hasSessionCookie(request: NextRequest): boolean {
+  const cookieHeader = request.headers.get('cookie');
+  return Boolean(cookieHeader?.includes(`${SESSION_COOKIE}=`));
+}
+
+async function fetchSession(request: NextRequest): Promise<FetchSessionResult> {
   const cookieHeader = request.headers.get('cookie');
   if (!cookieHeader?.includes(`${SESSION_COOKIE}=`)) {
-    return null;
+    return { kind: 'unauthenticated' };
   }
 
   try {
@@ -42,13 +52,17 @@ async function fetchSession(request: NextRequest): Promise<AuthMeResponse | null
       cache: 'no-store',
     });
 
-    if (!response.ok) {
-      return null;
+    if (response.status === 401) {
+      return { kind: 'unauthenticated' };
     }
 
-    return (await response.json()) as AuthMeResponse;
+    if (!response.ok) {
+      return { kind: 'network_error' };
+    }
+
+    return { kind: 'ok', session: (await response.json()) as AuthMeResponse };
   } catch {
-    return null;
+    return { kind: 'network_error' };
   }
 }
 
@@ -70,22 +84,39 @@ export async function middleware(request: NextRequest) {
   }
 
   if (PUBLIC_PATHS.has(pathname)) {
-    const session = await fetchSession(request);
-    if (session?.authenticated) {
+    const result = await fetchSession(request);
+    if (result.kind === 'ok' && result.session?.authenticated) {
       const nextPath =
         sanitizeInternalPath(request.nextUrl.searchParams.get('next')) ??
-        '/dashboard';
+        resolveDefaultAuthenticatedPath(
+          result.session.permissions ?? [],
+          { hasGlobalClientScope: result.session.has_global_client_scope ?? false },
+        );
       return NextResponse.redirect(new URL(nextPath, request.url));
     }
     return NextResponse.next();
   }
 
-  const session = await fetchSession(request);
-  if (!session?.authenticated || !session.user?.role) {
+  const result = await fetchSession(request);
+
+  if (result.kind === 'network_error') {
+    if (hasSessionCookie(request)) {
+      return NextResponse.next();
+    }
+
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('next', pathname);
     return NextResponse.redirect(loginUrl);
   }
+
+  if (result.kind !== 'ok' || !result.session?.authenticated || !result.session.user?.role) {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('next', pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  const session = result.session;
+  const userRole = session.user!.role as string;
 
   if (
     session.mfa_enforcement_blocking &&
@@ -98,7 +129,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const access = evaluateRouteAccess(pathname, {
-    role: session.user.role,
+    role: userRole,
     permissions: session.permissions ?? [],
     hasGlobalClientScope: session.has_global_client_scope ?? false,
     mfaEnrollmentRequired: session.mfa_enrollment_required,

@@ -19,7 +19,7 @@ STATE_FILE="${3:-}"
 EXEC_ENABLED="${MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED:-0}"
 LOG_FILE="${MONITOR_AGENT_LOG_FILE:-/var/log/monitor-pfsense-agent.log}"
 UPGRADE_LOG="/var/log/monitor-pfsense-agent-upgrade.log"
-LOCK_DIR="/var/run/monitor-pfsense-agent-upgrade.lock"
+LOCK_FILE="/var/run/monitor-pfsense-agent-upgrade.lock"
 
 json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -59,12 +59,42 @@ update_state() {
 }
 
 cleanup_lock() {
-  rmdir "$LOCK_DIR" 2>/dev/null || true
+  rm -f "$LOCK_FILE" 2>/dev/null || true
+}
+
+acquire_lock() {
+  if [ -f "$LOCK_FILE" ]; then
+    lock_pid=""
+    lock_started=""
+    while IFS='=' read -r key value; do
+      case "$key" in
+        pid) lock_pid="$value" ;;
+        started_at) lock_started="$value" ;;
+      esac
+    done <"$LOCK_FILE" 2>/dev/null || true
+    if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+      log_msg "upgrade lock held by pid=${lock_pid}"
+      return 1
+    fi
+    rm -f "$LOCK_FILE" 2>/dev/null || true
+  fi
+
+  if (set -C; umask 077; printf 'pid=%s\nstarted_at=%s\n' "$$" "$(date +%s)" >"$LOCK_FILE") 2>/dev/null; then
+    umask 022
+    return 0
+  fi
+
+  log_msg "failed to acquire upgrade lock"
+  return 1
 }
 
 if [ -z "$COMMAND_ID" ] || [ -z "$STATE_FILE" ]; then
   log_msg "missing command_id or state_file"
-  cleanup_lock
+  exit 1
+fi
+
+if ! acquire_lock; then
+  update_state "failed" "another upgrade operation is running"
   exit 1
 fi
 

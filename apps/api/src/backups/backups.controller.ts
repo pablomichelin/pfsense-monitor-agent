@@ -12,14 +12,16 @@ import { FastifyReply } from 'fastify';
 
 import { getAccessActor } from '../auth/access-actor.util';
 import { AccessPolicyService } from '../auth/access-policy.service';
+import { MfaEnrollmentGuard } from '../auth/mfa-enrollment.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
+import { resolveClientIp } from '../common/client-ip';
 import { BackupsCommandService } from './backups-command.service';
 import { BackupsDownloadService } from './backups-download.service';
 
-@UseGuards(SessionAuthGuard, PermissionsGuard)
+@UseGuards(SessionAuthGuard, MfaEnrollmentGuard, PermissionsGuard)
 @Controller('api/v1/nodes/:id/config-backups')
 export class BackupsController {
   constructor(
@@ -61,7 +63,7 @@ export class BackupsController {
     return this.commandService.requestBackupNow({
       nodeId,
       requestedByUserId: request.auth!.userId,
-      ipAddress: cfConnectingIp ?? request.ip,
+      ipAddress: resolveClientIp(request),
     });
   }
 
@@ -81,7 +83,7 @@ export class BackupsController {
       backupId,
       userId: request.auth!.userId,
       actorRole: request.auth!.role as string,
-      ipAddress: cfConnectingIp ?? request.ip,
+      ipAddress: resolveClientIp(request),
     });
 
     reply.header('content-type', 'application/xml; charset=utf-8');

@@ -4,7 +4,9 @@ Data de referencia: `2026-06-08`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Ultima entrega (2026-06-24):** correção falhas pós-auditoria (plano 110, 23/23) — package `0.4.3`, API `0.6.1`, painel `1.4.2`. Ver `docs/111-ENTREGA-CORRECAO-FALHAS-AUDITORIA-110-2026-06-24.md`.
+> **Ultima entrega (2026-06-24):** correção pós-varredura read-only (gaps plano 110) — package `0.4.4`, API `0.6.2`, painel `1.4.3`. Ver `docs/112-ENTREGA-CORRECAO-POS-VARREDURA-2026-06-24.md`.
+>
+> **Entrega anterior (2026-06-24):** correção falhas pós-auditoria (plano 110, 23/23) — package `0.4.3`, API `0.6.1`, painel `1.4.2`. Ver `docs/111-ENTREGA-CORRECAO-FALHAS-AUDITORIA-110-2026-06-24.md`.
 >
 > **Entrega anterior (2026-06-24):** link de acesso remoto por firewall — API `0.6.0`, painel `1.4.0`. Campo `remote_access_url`, coluna **Acesso** no inventario. Ver `docs/104-ENTREGA-LINK-ACESSO-REMOTO-FIREWALL-2026-06-24.md`.
 >

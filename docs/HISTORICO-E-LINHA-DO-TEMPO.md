@@ -2,9 +2,17 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-06-24 (entrega plano 110 — package 0.4.3, API 0.6.1, painel 1.4.2)
+**Última atualização:** 2026-06-24 (entrega pós-varredura — package 0.4.4, API 0.6.2, painel 1.4.3)
 
 ---
+
+### 2026-06-24 — Correção pós-varredura read-only (gaps plano 110)
+
+- **Package 0.4.4 (A2-001/002):** lock upgrade OS no wrapper (libera ao fim); `rm -f` no lock file.
+- **API 0.6.2 (C2/C6):** `MfaEnrollmentGuard` em rotas operacionais; `resolveClientIp` centralizado; login MFA alinhado.
+- **Painel 1.4.3 (W2/MW/HOME):** `handlePageApiError` completo; banners `/conta`; middleware fail-open em erro de rede; `/` roteia por permissão.
+- **Smokes:** `smoke-rbac-admin-ux.sh` alinhado; suite 14/14.
+- **Entrega:** `docs/112-ENTREGA-CORRECAO-POS-VARREDURA-2026-06-24.md`.
 
 ### 2026-06-24 — Correção falhas pós-auditoria (plano 110, 23/23)
 

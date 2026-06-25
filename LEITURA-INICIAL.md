@@ -10,11 +10,13 @@ Leia este arquivo primeiro.
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.6.1` | `apps/api/package.json` |
-| Painel web | `1.4.2` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.4.3` | `packages/pfsense-package/Makefile` |
+| API | `0.6.2` | `apps/api/package.json` |
+| Painel web | `1.4.3` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.4.4` | `packages/pfsense-package/Makefile` |
 
-**Ultima entrega (2026-06-24):** correção completa das 23 falhas pós-auditoria (plano 110) — package `0.4.3`, API `0.6.1`, painel `1.4.2`. Ver `docs/111-ENTREGA-CORRECAO-FALHAS-AUDITORIA-110-2026-06-24.md`.
+**Ultima entrega (2026-06-24):** correção pós-varredura read-only (gaps residuais plano 110) — package `0.4.4`, API `0.6.2`, painel `1.4.3`. Ver `docs/112-ENTREGA-CORRECAO-POS-VARREDURA-2026-06-24.md`.
+
+**Entrega anterior (2026-06-24):** correção completa das 23 falhas pós-auditoria (plano 110) — package `0.4.3`, API `0.6.1`, painel `1.4.2`. Ver `docs/111-ENTREGA-CORRECAO-FALHAS-AUDITORIA-110-2026-06-24.md`.
 
 **Entrega anterior (2026-06-24):** hotfix admin check update package — `0.4.2`. Ver `docs/109-HOTFIX-ADMIN-PACKAGE-UPDATE-2026-06-24.md`.
 
@@ -25,7 +27,7 @@ Leia este arquivo primeiro.
 **Entrega anterior (2026-06-24):** alinhamento dos smokes pos-0.4.0 — `docs/102-ALINHAMENTO-SMOKES-POS-0.4.0-2026-06-24.md`. `scripts/run-smoke-suite.sh` 100% verde (13/13). Sem mudanca de runtime.
 
 **Entrega anterior (2026-06-23):** correcoes de auditoria de seguranca (package + agente + controlador + SSE/infra) — `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Cobre A1–A7, B1–B7, C1–C8, D1–D2; gaps adiados E1 (MFA) / E2 (rate-limit) **agora resolvidos** na entrega 103.
-**Proximo passo:** publicar release package `0.4.3` nos firewalls (artefato pronto em `dist/` + `config/package-release.env`); piloto pfSense 2.7+; opcionalmente ligar `MFA_ENFORCED_ROLES` e `MFA_ENFORCEMENT_BLOCKING` após enrollment.
+**Proximo passo:** publicar release package `0.4.4` nos firewalls (artefato pronto em `dist/` + `config/package-release.env`); piloto pfSense 2.7+; opcionalmente ligar `MFA_ENFORCED_ROLES` e `MFA_ENFORCEMENT_BLOCKING` após enrollment.
 
 Ultima entrega infra (Fase 0): `docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`  
 Ultima entrega package: `docs/98-ENTREGA-PACKAGE-0.3.8.md`  
@@ -110,7 +112,8 @@ Estado observado em `2026-06-08`:
 - **interno (LAN):** `http://192.168.100.221:3031` — **interno (localhost):** `http://127.0.0.1:8088` — ver `docs/89-ACESSO-INTERNO-E-EXTERNO.md`
 - stack `docker compose` esta rodando com `api`, `web`, `db` e `nginx` saudaveis
 - dominio publico `https://pfs-monitor.systemup.inf.br/healthz` responde `200`
-- package pfSense atual publicado pelo fluxo do projeto: `0.2.27`
+- package pfSense atual publicado pelo fluxo do projeto: `0.4.4` (ver tabela de versões acima; linha histórica abaixo refere-se ao estado em 2026-06-08)
+- ~~package pfSense legado observado em 2026-06-08: `0.2.27`~~ — superseded pela trilha 0.4.x
 - ainda nao existe modulo de backup de `config.xml` implementado
 - origem interna canonica no repositorio: `http://192.168.100.221:3031` (docs historicos na raiz podem citar `192.168.100.244`)
 - limite heartbeat `64 KB`; rota de backup preparada para `5 MB` no nginx interno e referencia ISPConfig

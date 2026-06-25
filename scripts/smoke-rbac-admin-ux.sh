@@ -67,8 +67,8 @@ curl -skS -c "$CLIENT_COOKIE_JAR" -b "$CLIENT_COOKIE_JAR" -H "content-type: appl
 
 for blocked_path in /admin /admin/usuarios /admin/permissoes /audit /bootstrap /alerts; do
   location="$(request_redirect_location "$CLIENT_COOKIE_JAR" "$blocked_path")"
-  if [[ -z "$location" || "$location" != *"/dashboard"* ]]; then
-    echo "Redirect de $blocked_path nao apontou para /dashboard (location=$location)" >&2
+  if [[ -z "$location" || "$location" != *"/conta"* || "$location" != *"access=denied"* ]]; then
+    echo "Redirect de $blocked_path nao apontou para /conta?access=denied (location=$location)" >&2
     exit 1
   fi
 done

@@ -1,5 +1,10 @@
-import type { FastifyRequest } from 'fastify';
 import { appConfig } from '../config/app-config';
+
+export type ClientIpRequest = {
+  headers: Record<string, string | string[] | undefined>;
+  ip?: string;
+  socket?: { remoteAddress?: string | null };
+};
 
 /**
  * C5: resolucao de IP real do cliente com trust proxy restrito.
@@ -23,7 +28,7 @@ function normalizeIp(ip: string): string {
   return ip.replace(/^::ffff:/i, '');
 }
 
-export function isTrustedProxyPeer(request: FastifyRequest): boolean {
+export function isTrustedProxyPeer(request: ClientIpRequest): boolean {
   if (!appConfig.trustProxy) {
     return false;
   }
@@ -45,7 +50,7 @@ export function isTrustedProxyPeer(request: FastifyRequest): boolean {
   );
 }
 
-export function resolveClientIp(request: FastifyRequest): string {
+export function resolveClientIp(request: ClientIpRequest): string {
   if (isTrustedProxyPeer(request)) {
     const cf = readHeaderValue(request.headers['cf-connecting-ip']);
     if (cf) {
@@ -53,5 +58,5 @@ export function resolveClientIp(request: FastifyRequest): string {
     }
   }
 
-  return request.ip;
+  return request.ip ?? 'unknown';
 }

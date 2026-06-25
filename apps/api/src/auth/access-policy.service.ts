@@ -66,9 +66,8 @@ export class AccessPolicyService {
   }
 
   /**
-   * C4: criar um cliente novo (top-level) exige escopo global de cliente.
-   * superadmin (ou escopo desabilitado) pode; admin/cliente escopados nao,
-   * pois nao ha escopo possivel sobre um cliente ainda inexistente.
+   * PERM-001: `clients.create` autoriza a rota na API, mas criar cliente top-level
+   * exige escopo global (superadmin ou RBAC scope desligado) — ver hasGlobalClientScope.
    */
   async assertCanCreateClient(actor: AccessActor): Promise<void> {
     if (this.hasGlobalClientScope(actor)) {

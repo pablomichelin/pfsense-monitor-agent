@@ -17,6 +17,7 @@ import {
   getSession,
 } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
+import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { formatDateTime, formatRelativeAge } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -231,7 +232,7 @@ export default async function BootstrapPage({
   try {
     const session = await getSession();
     if (!hasPermission(session.permissions ?? [], 'bootstrap.view')) {
-      redirect('/dashboard');
+      redirect('/conta?access=denied');
     }
 
     [nodes, filterOptions] = await Promise.all([
@@ -244,11 +245,7 @@ export default async function BootstrapPage({
       getNodesFilters(),
     ]);
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      redirect('/login');
-    }
-
-    throw error;
+    handlePageApiError(error);
   }
 
   const items = nodes.items.map((node) => ({
@@ -287,14 +284,10 @@ export default async function BootstrapPage({
         heartbeatMode,
       );
     } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        redirect('/login');
-      }
-
       if (error instanceof ApiError && error.status === 403) {
         selectedBootstrap = null;
       } else {
-        throw error;
+        handlePageApiError(error);
       }
     }
   }

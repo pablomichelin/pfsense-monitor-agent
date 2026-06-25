@@ -246,6 +246,5 @@ Estado consolidado:
 
 ### Atualizacao visual 2026-06-24
 
-- painel web **1.4.1**: melhorias pos-auditoria visual 108 (tokens h-11, PT-BR, badges rounded-md, paginacao admin clientes)
-- doc: `docs/109-MELHORIAS-VISUAIS-POS-AUDITORIA-108-2026-06-24.md`
+- painel web **1.4.3** (pós-varredura 112); entrega anterior visual **1.4.1** — `docs/109-MELHORIAS-VISUAIS-POS-AUDITORIA-108-2026-06-24.md`
 - hotfix 106 (modal portal + nav admin) preservado

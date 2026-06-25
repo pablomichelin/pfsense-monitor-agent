@@ -5,8 +5,9 @@ import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 import { Alert, Badge, Button, Card, PageSection } from '@/components/ui';
 import { acknowledgeAlertAction, resolveAlertAction } from '@/lib/alerts';
-import { ApiError, getAlertsList, getNodesFilters, getSession } from '@/lib/api';
+import { getAlertsList, getNodesFilters, getSession } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
+import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { cn } from '@/lib/cn';
 import { formInputClassName, formSelectClassName } from '@/lib/form-field-styles';
 import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
@@ -150,16 +151,12 @@ export default async function AlertsPage({
       getNodesFilters(),
     ]);
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      redirect('/login');
-    }
-
-    throw error;
+    handlePageApiError(error);
   }
 
   const permissions = session.permissions ?? [];
   if (!hasPermission(permissions, 'alerts.view')) {
-    redirect('/dashboard');
+    redirect('/conta?access=denied');
   }
 
   const canAcknowledgeAlerts = hasPermission(permissions, 'alerts.acknowledge');

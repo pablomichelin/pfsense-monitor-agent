@@ -1410,6 +1410,26 @@ agent_release_stale_lock() {
   rm -f "$1" 2>/dev/null || true
 }
 
+agent_upgrade_lock_active() {
+  lock_file="$(pfsense_upgrade_lock_dir)"
+  if [ ! -f "$lock_file" ]; then
+    return 1
+  fi
+
+  read -r lock_pid lock_started <<<"$(agent_read_stale_lock "$lock_file" 2>/dev/null || true)"
+  now="$(date +%s)"
+  lock_age=999999
+  if [ -n "$lock_started" ] && [ "$lock_started" -gt 0 ] 2>/dev/null; then
+    lock_age=$((now - lock_started))
+  fi
+
+  if agent_lock_pid_alive "$lock_pid" && [ "$lock_age" -lt "$AGENT_UPGRADE_LOCK_STALE_SECONDS" ]; then
+    return 0
+  fi
+
+  return 1
+}
+
 agent_cleanup_stale_locks() {
   if [ -f "$(backup_lock_dir)" ]; then
     read -r backup_pid backup_started <<<"$(agent_read_stale_lock "$(backup_lock_dir)" 2>/dev/null || true)"
@@ -1525,8 +1545,7 @@ dispatch_pfsense_upgrade() {
     fi
   fi
 
-  lock_dir="$(pfsense_upgrade_lock_dir)"
-  if ! agent_acquire_stale_lock "$lock_dir" "$AGENT_UPGRADE_LOCK_STALE_SECONDS" "pfsense-upgrade"; then
+  if agent_upgrade_lock_active; then
     agent_post_command_result_failed "$command_id" "another upgrade is running" "$CURL_CMD" >/dev/null 2>&1 || true
     return 1
   fi
@@ -1546,7 +1565,6 @@ dispatch_pfsense_upgrade() {
   if [ ! -f "$wrapper" ]; then
     agent_post_command_result_failed "$command_id" "run_pfsense_upgrade.sh missing" "$CURL_CMD" >/dev/null 2>&1 || true
     rm -f "$state_file"
-    agent_release_stale_lock "$lock_dir"
     return 1
   fi
   chmod +x "$wrapper" 2>/dev/null || true
@@ -1557,7 +1575,7 @@ dispatch_pfsense_upgrade() {
   if ! kill -0 "$wrapper_pid" 2>/dev/null; then
     agent_post_command_result_failed "$command_id" "failed to spawn upgrade wrapper" "$CURL_CMD" >/dev/null 2>&1 || true
     rm -f "$state_file"
-    agent_release_stale_lock "$lock_dir"
+    agent_release_stale_lock "$(pfsense_upgrade_lock_dir)"
     return 1
   fi
 

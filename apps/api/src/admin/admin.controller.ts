@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
+import { resolveClientIp } from '../common/client-ip';
 import { RawBodyRequest } from '../common/raw-body-request.type';
 import { getAccessActor } from '../auth/access-actor.util';
 import { RequirePermissions } from '../auth/permissions.decorator';
@@ -66,7 +67,7 @@ export class AdminController {
     return this.adminService.createRole(
       body,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
     );
   }
 
@@ -80,7 +81,7 @@ export class AdminController {
     return this.adminService.deleteRole(
       code,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
     );
   }
 
@@ -96,7 +97,7 @@ export class AdminController {
       code,
       body,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
     );
   }
 
@@ -118,7 +119,7 @@ export class AdminController {
     return this.adminService.deleteUser(
       id,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
     );
   }
 
@@ -142,7 +143,7 @@ export class AdminController {
     return this.adminService.createUser(
       body,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
     );
   }
 
@@ -159,7 +160,7 @@ export class AdminController {
       id,
       body,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
     );
   }
 
@@ -183,7 +184,7 @@ export class AdminController {
       id,
       body,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
     );
   }
 
@@ -211,7 +212,7 @@ export class AdminController {
     return this.adminService.revokeUserSession(id, sessionId, {
       actorId: request.auth!.userId,
       actorSessionId: request.auth!.sessionId,
-      ipAddress: cfConnectingIp ?? request.ip,
+      ipAddress: resolveClientIp(request),
     });
   }
 
@@ -225,7 +226,7 @@ export class AdminController {
     return this.adminService.createClient(
       body,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }
@@ -242,7 +243,7 @@ export class AdminController {
       id,
       body,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }
@@ -257,7 +258,7 @@ export class AdminController {
     return this.adminService.deleteClient(
       id,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }
@@ -272,7 +273,7 @@ export class AdminController {
     return this.adminService.createSite(
       body,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }
@@ -289,7 +290,7 @@ export class AdminController {
       id,
       body,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }
@@ -304,7 +305,7 @@ export class AdminController {
     return this.adminService.createNode(
       body,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }
@@ -319,7 +320,7 @@ export class AdminController {
     return this.adminService.deleteNodesBatch(
       body.ids,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }
@@ -334,7 +335,7 @@ export class AdminController {
     return this.adminService.rotateNodeSecret(
       id,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }
@@ -351,7 +352,7 @@ export class AdminController {
       id,
       body,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }
@@ -368,7 +369,7 @@ export class AdminController {
       id,
       body.maintenance_mode,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }
@@ -394,7 +395,7 @@ export class AdminController {
       id,
       body,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }
@@ -411,7 +412,7 @@ export class AdminController {
       id,
       tokenId,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }
@@ -446,7 +447,7 @@ export class AdminController {
     return this.adminService.deleteNode(
       id,
       request.auth?.userId,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
       getAccessActor(request),
     );
   }

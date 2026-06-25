@@ -17,7 +17,7 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.4.3");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.4.4");
 }
 if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
     define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
@@ -1047,8 +1047,8 @@ function systemup_monitor_csrf_tags()
 
 /**
  * Verdadeiro quando o usuario da sessao tem privilegio administrativo.
- * Fail-closed quando ha sessao mas sem privilegio; fail-open apenas se os
- * helpers de privilegio do pfSense nao existirem no contexto (pagina ja exige login).
+ * Fail-closed quando helpers de privilegio do pfSense nao existem ou a sessao
+ * nao tem privilegio administrativo real (page-all, uid 0 ou grupo admins).
  */
 function systemup_monitor_current_user_is_admin()
 {

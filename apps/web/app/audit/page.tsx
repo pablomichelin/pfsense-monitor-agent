@@ -11,8 +11,9 @@ import {
   AUDIT_TARGET_TYPE_OPTIONS,
   resolveAuditPeriodBounds,
 } from '@/lib/audit-labels';
-import { ApiError, getAuditLogs, getSession } from '@/lib/api';
+import { getAuditLogs, getSession } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
+import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 
 export const dynamic = 'force-dynamic';
@@ -94,15 +95,11 @@ export default async function AuditPage({
       }),
     ]);
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      redirect('/login');
-    }
-
-    throw error;
+    handlePageApiError(error);
   }
 
   if (!hasPermission(session.permissions ?? [], 'audit.view')) {
-    redirect('/dashboard');
+    redirect('/conta?access=denied');
   }
 
   const filterState = {

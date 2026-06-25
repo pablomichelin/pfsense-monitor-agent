@@ -10,15 +10,17 @@ import {
 } from '@nestjs/common';
 import { getAccessActor } from '../auth/access-actor.util';
 import { AccessPolicyService } from '../auth/access-policy.service';
+import { MfaEnrollmentGuard } from '../auth/mfa-enrollment.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
+import { resolveClientIp } from '../common/client-ip';
 import { PermissionsService } from '../auth/permissions.service';
 import { PfsenseUpgradeRequestDto } from './dto/pfsense-upgrade-request.dto';
 import { PfsenseUpgradeService } from './pfsense-upgrade.service';
 
-@UseGuards(SessionAuthGuard, PermissionsGuard)
+@UseGuards(SessionAuthGuard, MfaEnrollmentGuard, PermissionsGuard)
 @Controller('api/v1/nodes/:id/pfsense-upgrade')
 export class PfsenseUpgradeController {
   constructor(
@@ -49,7 +51,6 @@ export class PfsenseUpgradeController {
     @Param('id') nodeId: string,
     @Body() body: PfsenseUpgradeRequestDto,
     @Req() request: AuthenticatedRequest,
-    @Headers('cf-connecting-ip') cfConnectingIp?: string,
   ) {
     await this.accessPolicy.assertNodeAccess(getAccessActor(request), nodeId);
 
@@ -57,7 +58,7 @@ export class PfsenseUpgradeController {
       nodeId,
       request.auth!.userId,
       body,
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
     );
   }
 }

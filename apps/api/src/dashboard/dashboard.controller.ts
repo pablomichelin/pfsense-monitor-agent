@@ -10,6 +10,7 @@ import {
 import { Observable } from 'rxjs';
 import { getAccessActor } from '../auth/access-actor.util';
 import { AccessPolicyService } from '../auth/access-policy.service';
+import { MfaEnrollmentGuard } from '../auth/mfa-enrollment.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
@@ -17,7 +18,7 @@ import { AuthenticatedRequest } from '../common/authenticated-request.type';
 import { RealtimeService } from '../realtime/realtime.service';
 import { DashboardService } from './dashboard.service';
 
-@UseGuards(SessionAuthGuard, PermissionsGuard)
+@UseGuards(SessionAuthGuard, MfaEnrollmentGuard, PermissionsGuard)
 @Controller('api/v1/dashboard')
 export class DashboardController {
   constructor(

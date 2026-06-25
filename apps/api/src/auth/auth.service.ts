@@ -205,7 +205,10 @@ export class AuthService {
       },
       ipAddress: input.ipAddress,
       userAgent: input.userAgent,
-      mfaEnrollmentRequired: false,
+      mfaEnrollmentRequired: this.mfaService.isEnforcementRequired(
+        user.role,
+        user.mfaEnabled,
+      ),
     });
   }
 

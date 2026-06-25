@@ -10,16 +10,18 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { getAccessActor } from '../auth/access-actor.util';
+import { MfaEnrollmentGuard } from '../auth/mfa-enrollment.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
+import { resolveClientIp } from '../common/client-ip';
 import { RawBodyRequest } from '../common/raw-body-request.type';
 import { AlertsService } from './alerts.service';
 import { ListAlertsQueryDto } from './dto/list-alerts-query.dto';
 import { ResolveAlertDto } from './dto/resolve-alert.dto';
 
-@UseGuards(SessionAuthGuard, PermissionsGuard)
+@UseGuards(SessionAuthGuard, MfaEnrollmentGuard, PermissionsGuard)
 @Controller('api/v1/alerts')
 export class AlertsController {
   constructor(private readonly alertsService: AlertsService) {}
@@ -47,7 +49,7 @@ export class AlertsController {
         userId: request.auth?.userId,
         email: request.auth?.email,
       },
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
     );
   }
 
@@ -67,7 +69,7 @@ export class AlertsController {
         userId: request.auth?.userId,
         email: request.auth?.email,
       },
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
     );
   }
 }

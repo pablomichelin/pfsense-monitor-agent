@@ -26,6 +26,7 @@ const ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/admin\/clientes-sites(?:\/|$)/, requirement: { permissions: ['clients.view'] } },
   {
     pattern: /^\/admin(?:\/|$)/,
+    // PERM-001: cadastro top-level exige escopo global (nao basta clients.create).
     requirement: { requiresGlobalClientScope: true },
   },
   { pattern: /^\/audit(?:\/|$)/, requirement: { permissions: ['audit.view'] } },
@@ -71,6 +72,27 @@ export function evaluateRouteAccess(
   }
 
   return { allowed: true };
+}
+
+/** Primeira rota operacional permitida ao usuario autenticado (HOME-001). */
+export function resolveDefaultAuthenticatedPath(
+  permissions: string[],
+  options?: { hasGlobalClientScope?: boolean },
+): string {
+  const groups = buildNavGroups(permissions, options);
+
+  for (const group of groups) {
+    if (group.id === 'account') {
+      continue;
+    }
+
+    const first = group.items[0];
+    if (first) {
+      return first.href;
+    }
+  }
+
+  return '/conta?access=denied';
 }
 
 export type NavGroup = {

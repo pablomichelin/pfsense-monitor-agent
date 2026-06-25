@@ -4,9 +4,10 @@ import { PageHero } from '@/components/page-hero';
 import { AdminClientsList } from '@/components/admin-clients-list';
 import { AdminSectionMessage } from '@/components/admin-section-message';
 import { Alert, Card, PageSection } from '@/components/ui';
-import { ApiError, getNodesFilters, getNodesList, getSession } from '@/lib/api';
+import { getNodesFilters, getNodesList, getSession } from '@/lib/api';
 import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 import { hasPermission } from '@/lib/authz';
+import { handlePageApiError } from '@/lib/handle-page-api-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,14 +30,11 @@ export default async function AdminClientesPage({
   try {
     session = await getSession();
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      redirect('/login');
-    }
-    throw error;
+    handlePageApiError(error);
   }
 
   if (!hasPermission(session.permissions ?? [], 'clients.view')) {
-    redirect('/dashboard');
+    redirect('/conta?access=denied');
   }
 
   try {
@@ -47,10 +45,7 @@ export default async function AdminClientesPage({
     filterOptions = filters;
     nodesCount = nodes.items.length;
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      redirect('/login');
-    }
-    throw error;
+    handlePageApiError(error);
   }
 
   const activeClients = filterOptions.clients;

@@ -15,7 +15,7 @@ Trilha UX layout (nao altera matriz): `24-plano-fase0-fase1-layout-navegacao-ui-
 | Permissão | Descrição |
 |-----------|-----------|
 | `clients.view` | Listar clientes |
-| `clients.create` | Criar clientes e sites |
+| `clients.create` | Criar clientes e sites (API); cadastro top-level em `/admin` exige escopo global — ver `has_global_client_scope` |
 | `clients.update` | Atualizar clientes e sites |
 | `clients.delete` | Excluir clientes |
 | `firewalls.view` | Listar/ver firewalls, dashboard |

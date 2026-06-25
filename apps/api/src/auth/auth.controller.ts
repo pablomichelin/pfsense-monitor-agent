@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { FastifyReply } from 'fastify';
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
+import { resolveClientIp } from '../common/client-ip';
 import { RawBodyRequest } from '../common/raw-body-request.type';
 
 import { AccessPolicyService } from './access-policy.service';
@@ -70,7 +71,7 @@ export class AuthController {
     const result = await this.authService.login({
       email: body.email,
       password: body.password,
-      ipAddress: cfConnectingIp ?? request.ip,
+      ipAddress: resolveClientIp(request),
       userAgent,
     });
 
@@ -114,7 +115,7 @@ export class AuthController {
     const result = await this.authService.completeMfaLogin({
       mfaToken: body.mfa_token,
       code: body.code,
-      ipAddress: cfConnectingIp ?? request.ip,
+      ipAddress: resolveClientIp(request),
       userAgent,
     });
 
@@ -125,6 +126,10 @@ export class AuthController {
 
     return {
       ok: true,
+      mfa_required: false,
+      mfa_enrollment_required: result.mfaEnrollmentRequired,
+      mfa_enforcement_blocking:
+        result.mfaEnrollmentRequired && this.mfaService.isEnforcementBlocking(),
       expires_at: result.expiresAt.toISOString(),
       user: result.user,
       session_cookie_name: appConfig.auth.sessionCookieName,
@@ -147,7 +152,7 @@ export class AuthController {
     return this.mfaService.startEnrollment({
       userId: request.auth!.userId,
       email: request.auth!.email,
-      ipAddress: cfConnectingIp ?? request.ip,
+      ipAddress: resolveClientIp(request),
     });
   }
 
@@ -161,7 +166,7 @@ export class AuthController {
     return this.mfaService.confirmEnrollment({
       userId: request.auth!.userId,
       code: body.code,
-      ipAddress: cfConnectingIp ?? request.ip,
+      ipAddress: resolveClientIp(request),
     });
   }
 
@@ -175,7 +180,7 @@ export class AuthController {
     await this.mfaService.disable({
       userId: request.auth!.userId,
       code: body.code,
-      ipAddress: cfConnectingIp ?? request.ip,
+      ipAddress: resolveClientIp(request),
     });
     return { ok: true };
   }
@@ -234,7 +239,7 @@ export class AuthController {
     return this.authService.revokeSession(id, {
       userId: request.auth!.userId,
       sessionId: request.auth!.sessionId,
-      ipAddress: cfConnectingIp ?? request.ip,
+      ipAddress: resolveClientIp(request),
     });
   }
 
@@ -248,7 +253,7 @@ export class AuthController {
     const cookies = parseCookies(request.headers.cookie);
     await this.authService.logout(
       cookies[appConfig.auth.sessionCookieName],
-      cfConnectingIp ?? request.ip,
+      resolveClientIp(request),
     );
 
     reply.header('Set-Cookie', [
