@@ -43,6 +43,10 @@ export class MfaService {
     return appConfig.mfa.enforcedRoles.includes(role) && !mfaEnabled;
   }
 
+  isEnforcementBlocking(): boolean {
+    return appConfig.mfa.enforcementBlocking;
+  }
+
   async getStatus(userId: string): Promise<MfaStatus> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {

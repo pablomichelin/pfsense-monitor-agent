@@ -26,6 +26,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'backup_now') {
+        if (!systemup_monitor_current_user_is_admin()) {
+            systemup_monitor_redirect_self(array('msg' => 'forbidden'));
+        }
+
         $result = systemup_monitor_run_backup_now();
         if ((int) $result['exit_code'] !== 0) {
             systemup_monitor_redirect_self(array('msg' => 'backup_fail'));

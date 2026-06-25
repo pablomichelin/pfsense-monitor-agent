@@ -6,12 +6,17 @@ import { sanitizeInternalPath } from '@/lib/internal-path';
 const SESSION_COOKIE = 'monitor_pfsense_session';
 const PUBLIC_PATHS = new Set(['/login']);
 
+const MFA_ALLOWED_PREFIXES = ['/conta', '/sessions', '/login'];
+
 type AuthMeResponse = {
   authenticated?: boolean;
   user?: {
     role?: string;
   };
   permissions?: string[];
+  has_global_client_scope?: boolean;
+  mfa_enrollment_required?: boolean;
+  mfa_enforcement_blocking?: boolean;
 };
 
 function resolveApiBaseUrl(): string {
@@ -47,6 +52,12 @@ async function fetchSession(request: NextRequest): Promise<AuthMeResponse | null
   }
 }
 
+function isMfaAllowedPath(pathname: string): boolean {
+  return MFA_ALLOWED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -76,13 +87,26 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  if (
+    session.mfa_enforcement_blocking &&
+    session.mfa_enrollment_required &&
+    !isMfaAllowedPath(pathname)
+  ) {
+    const contaUrl = new URL('/conta', request.url);
+    contaUrl.searchParams.set('mfa', 'required');
+    return NextResponse.redirect(contaUrl);
+  }
+
   const access = evaluateRouteAccess(pathname, {
     role: session.user.role,
     permissions: session.permissions ?? [],
+    hasGlobalClientScope: session.has_global_client_scope ?? false,
+    mfaEnrollmentRequired: session.mfa_enrollment_required,
+    mfaEnforcementBlocking: session.mfa_enforcement_blocking,
   });
 
   if (!access.allowed) {
-    return NextResponse.redirect(new URL(access.redirectTo ?? '/dashboard', request.url));
+    return NextResponse.redirect(new URL(access.redirectTo ?? '/conta?access=denied', request.url));
   }
 
   return NextResponse.next();

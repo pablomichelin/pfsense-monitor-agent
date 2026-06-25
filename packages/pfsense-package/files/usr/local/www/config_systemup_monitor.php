@@ -3,6 +3,8 @@
 require_once("guiconfig.inc");
 require_once("/usr/local/pkg/systemup_monitor.inc");
 
+systemup_monitor_handle_package_update_post();
+
 systemup_monitor_setup_package_tabs('config');
 
 $pkg = systemup_monitor_read_config();

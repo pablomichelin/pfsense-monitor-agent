@@ -198,6 +198,8 @@ export function NodePfsenseUpgradeSection({
           <h3 className="font-display text-base text-slate-100">Atualização pfSense OS</h3>
           <p className="mt-1 text-sm text-slate-400">
             Detecta novas versões via agente e permite upgrade individual (reboot ~15–90 min).
+            Com execução semi-manual no pfSense (padrão), o agente prepara o upgrade e o operador
+            confirma/reinicia no firewall — ver guia do package.
           </p>
         </div>
 

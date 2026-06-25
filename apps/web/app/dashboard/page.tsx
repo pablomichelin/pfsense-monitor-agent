@@ -1,10 +1,10 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { DashboardKpiGrid } from '@/components/dashboard/dashboard-kpi-grid';
 import { HotZoneExpandableList } from '@/components/hot-zone-expandable-list';
 import { PageHero } from '@/components/page-hero';
 import { Alert, Card, PageSection } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { ApiError, getDashboardSummary, getNodesList, getSession } from '@/lib/api';
 import { isClientRole } from '@/lib/client-profile';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
@@ -29,11 +29,7 @@ export default async function DashboardPage() {
       getSession(),
     ]);
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      redirect('/login');
-    }
-
-    throw error;
+    handlePageApiError(error);
   }
 
   const isClientProfile = isClientRole(session.user.role);

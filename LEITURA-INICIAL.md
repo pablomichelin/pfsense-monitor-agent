@@ -10,16 +10,22 @@ Leia este arquivo primeiro.
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.5.0` | `apps/api/package.json` |
-| Painel web | `1.3.0` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.4.1` | `packages/pfsense-package/Makefile` |
+| API | `0.6.1` | `apps/api/package.json` |
+| Painel web | `1.4.2` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.4.3` | `packages/pfsense-package/Makefile` |
 
-**Ultima entrega (2026-06-24):** fechamento dos itens restantes da auditoria — `docs/103-ENTREGA-FECHAMENTO-AUDITORIA-MFA-RATELIMIT-PACKAGE-2026-06-24.md`. Controlador (API 0.5.0 / painel 1.3.0): **MFA TOTP completo** (enroll + login 2 etapas + recovery codes, enforcement opt-in via `MFA_ENFORCED_ROLES`, desligado por padrao), **rate-limit persistido em PostgreSQL** (C-RL), `syncAlerts` endurecido para heartbeat parcial (C-SA), `permissions.guard` default-deny com `@AllowSessionOnly` (C-PG) e assinatura HMAC com decode hex antes do `timingSafeEqual` (C-HX). Package 0.4.1: rc.d idiomatico (P-RC), logs estruturados em stderr nos coletores (P-GW), catalogo embarcado no firewall (P-CAT) e flag de upgrade honesta (P-UP). Deploy aplicado (migrations `package_release_rate_limit` + `mfa_totp`); `/healthz` `200` em `0.5.0`; `scripts/run-smoke-suite.sh` 100% verde (14/14, incluindo `smoke-mfa.sh`). Zabbix intocado.
+**Ultima entrega (2026-06-24):** correção completa das 23 falhas pós-auditoria (plano 110) — package `0.4.3`, API `0.6.1`, painel `1.4.2`. Ver `docs/111-ENTREGA-CORRECAO-FALHAS-AUDITORIA-110-2026-06-24.md`.
+
+**Entrega anterior (2026-06-24):** hotfix admin check update package — `0.4.2`. Ver `docs/109-HOTFIX-ADMIN-PACKAGE-UPDATE-2026-06-24.md`.
+
+**Entrega anterior (2026-06-24):** link de acesso remoto por firewall — API `0.6.0`, painel `1.4.0`. Campo `remote_access_url` (padrao `https://{ip}:9999`), coluna **Acesso** no inventario. Ver `docs/104-ENTREGA-LINK-ACESSO-REMOTO-FIREWALL-2026-06-24.md`.
+
+**Entrega anterior (2026-06-24):** fechamento dos itens restantes da auditoria — `docs/103-ENTREGA-FECHAMENTO-AUDITORIA-MFA-RATELIMIT-PACKAGE-2026-06-24.md`. API `0.5.0`, painel `1.3.0`, package `0.4.1`. MFA TOTP completo, rate-limit persistido, endurecimentos de seguranca no controlador e package `0.4.1`.
 
 **Entrega anterior (2026-06-24):** alinhamento dos smokes pos-0.4.0 — `docs/102-ALINHAMENTO-SMOKES-POS-0.4.0-2026-06-24.md`. `scripts/run-smoke-suite.sh` 100% verde (13/13). Sem mudanca de runtime.
 
 **Entrega anterior (2026-06-23):** correcoes de auditoria de seguranca (package + agente + controlador + SSE/infra) — `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Cobre A1–A7, B1–B7, C1–C8, D1–D2; gaps adiados E1 (MFA) / E2 (rate-limit) **agora resolvidos** na entrega 103.
-**Proximo passo:** publicar a release do package `0.4.1` (artefato + `gh release create`) e atualizar clientes pfSense; opcionalmente ligar `MFA_ENFORCED_ROLES` para perfis administrativos.
+**Proximo passo:** publicar release package `0.4.3` nos firewalls (artefato pronto em `dist/` + `config/package-release.env`); piloto pfSense 2.7+; opcionalmente ligar `MFA_ENFORCED_ROLES` e `MFA_ENFORCEMENT_BLOCKING` após enrollment.
 
 Ultima entrega infra (Fase 0): `docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`  
 Ultima entrega package: `docs/98-ENTREGA-PACKAGE-0.3.8.md`  

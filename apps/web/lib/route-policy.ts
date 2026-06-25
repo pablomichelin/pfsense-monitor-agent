@@ -1,11 +1,15 @@
 export type RouteSession = {
   role: string;
   permissions: string[];
+  hasGlobalClientScope?: boolean;
+  mfaEnrollmentRequired?: boolean;
+  mfaEnforcementBlocking?: boolean;
 };
 
 export type RouteRequirement = {
   permissions?: readonly string[];
   anyPermissions?: readonly string[];
+  requiresGlobalClientScope?: boolean;
 };
 
 type RouteRule = {
@@ -14,11 +18,16 @@ type RouteRule = {
 };
 
 const ROUTE_RULES: RouteRule[] = [
+  { pattern: /^\/dashboard(?:\/|$)/, requirement: { permissions: ['firewalls.view'] } },
+  { pattern: /^\/nodes(?:\/|$)/, requirement: { permissions: ['firewalls.view'] } },
   { pattern: /^\/admin\/usuarios(?:\/|$)/, requirement: { permissions: ['users.view'] } },
   { pattern: /^\/admin\/permissoes(?:\/|$)/, requirement: { permissions: ['users.view'] } },
   { pattern: /^\/admin\/clientes(?:\/|$)/, requirement: { permissions: ['clients.view'] } },
   { pattern: /^\/admin\/clientes-sites(?:\/|$)/, requirement: { permissions: ['clients.view'] } },
-  { pattern: /^\/admin(?:\/|$)/, requirement: { permissions: ['clients.create'] } },
+  {
+    pattern: /^\/admin(?:\/|$)/,
+    requirement: { requiresGlobalClientScope: true },
+  },
   { pattern: /^\/audit(?:\/|$)/, requirement: { permissions: ['audit.view'] } },
   { pattern: /^\/bootstrap(?:\/|$)/, requirement: { permissions: ['bootstrap.view'] } },
   { pattern: /^\/alerts(?:\/|$)/, requirement: { permissions: ['alerts.view'] } },
@@ -38,19 +47,23 @@ export function evaluateRouteAccess(
       continue;
     }
 
-    const { permissions, anyPermissions } = rule.requirement;
+    const { permissions, anyPermissions, requiresGlobalClientScope } = rule.requirement;
+
+    if (requiresGlobalClientScope && !session.hasGlobalClientScope) {
+      return { allowed: false, redirectTo: '/conta?access=denied' };
+    }
 
     if (permissions?.length) {
       const allowed = permissions.every((permission) => hasPermission(session, permission));
       if (!allowed) {
-        return { allowed: false, redirectTo: '/dashboard' };
+        return { allowed: false, redirectTo: '/conta?access=denied' };
       }
     }
 
     if (anyPermissions?.length) {
       const allowed = anyPermissions.some((permission) => hasPermission(session, permission));
       if (!allowed) {
-        return { allowed: false, redirectTo: '/dashboard' };
+        return { allowed: false, redirectTo: '/conta?access=denied' };
       }
     }
 
@@ -66,10 +79,20 @@ export type NavGroup = {
   items: Array<{ href: string; label: string }>;
 };
 
-export function buildNavGroups(permissions: string[]): NavGroup[] {
+export function buildNavGroups(
+  permissions: string[],
+  options?: { hasGlobalClientScope?: boolean },
+): NavGroup[] {
+  const hasGlobalClientScope = options?.hasGlobalClientScope ?? false;
+  const canViewFirewalls = permissions.includes('firewalls.view');
+
   const operationItems = [
-    { href: '/dashboard', label: 'Dashboard' },
-    { href: '/nodes', label: 'Firewalls' },
+    ...(canViewFirewalls
+      ? [
+          { href: '/dashboard', label: 'Dashboard' },
+          { href: '/nodes', label: 'Firewalls' },
+        ]
+      : []),
     ...(permissions.includes('backups.view')
       ? [{ href: '/backups', label: 'Backups' }]
       : []),
@@ -82,7 +105,7 @@ export function buildNavGroups(permissions: string[]): NavGroup[] {
   ];
 
   const adminItems = [
-    ...(permissions.includes('clients.create')
+    ...(hasGlobalClientScope
       ? [{ href: '/admin', label: 'Cadastro' }]
       : []),
     ...(permissions.includes('clients.view')

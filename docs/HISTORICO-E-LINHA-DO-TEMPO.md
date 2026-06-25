@@ -2,9 +2,24 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-06-23 (correções de auditoria de segurança — package/API 0.4.0, painel 1.2.0)
+**Última atualização:** 2026-06-24 (entrega plano 110 — package 0.4.3, API 0.6.1, painel 1.4.2)
 
 ---
+
+### 2026-06-24 — Correção falhas pós-auditoria (plano 110, 23/23)
+
+- **Package 0.4.3 (P1–P8):** admin check restrito; rate-limit pós-spawn; lock atômico; stale seguro; handler update só em config; CSRF/admin fail-closed; backup_now admin-only.
+- **Agente (A1–A3):** locks backup/upgrade com stale TTL; migração NODE_SECRET para arquivo 0600.
+- **API 0.6.1 (C1–C6):** escopo global em `/auth/me`; MFA blocking opt-in; rate-limit emergência; caches documentados; `resolveClientIp` no backup ingest.
+- **Painel 1.4.2 (W1–W4):** `firewalls.view` no middleware; 403 consistente; cadastro alinhado escopo global; MFA blocking no middleware.
+- **Entrega:** `docs/111-ENTREGA-CORRECAO-FALHAS-AUDITORIA-110-2026-06-24.md`.
+
+### 2026-06-24 — Hotfix: "Acao restrita a administradores" no update package (0.4.2)
+
+- **Sintoma:** botão **Atualizar package** na GUI pfSense retornava `forbidden` mesmo para `admin`.
+- **Causa:** `getUserEntry()` no pfSense 2.7+ retorna wrapper `{idx, item}`; `userHasPrivilege()` recebia o wrapper em vez de `$user['item']` → lista de privilégios vazia.
+- **Correção:** desempacotar `item`, fallbacks grupo `admins` / uid 0 / privs das páginas do package.
+- **Entrega:** `docs/109-HOTFIX-ADMIN-PACKAGE-UPDATE-2026-06-24.md`.
 
 ### 2026-06-23 — Correções de auditoria de segurança (package 0.4.0 · API 0.4.0 · painel 1.2.0)
 
@@ -123,6 +138,12 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 ---
 
 ## 2. Linha do tempo por tema
+
+### 2.0.11 Link de acesso remoto por firewall (**2026-06-24**)
+
+- **Entrega:** `docs/104-ENTREGA-LINK-ACESSO-REMOTO-FIREWALL-2026-06-24.md`
+- **Versões:** API `0.6.0`, painel `1.4.0`
+- **Resumo:** campo `remote_access_url` no node; padrao `https://{ip}:9999`; coluna **Acesso** / botao **Conectar** no inventario.
 
 ### 2.0 Trilha RBAC — usuários, permissões e escopo (2026-06-09)
 

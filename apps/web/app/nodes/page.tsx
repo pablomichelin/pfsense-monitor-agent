@@ -4,6 +4,7 @@ import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 import { Alert, Button, Card, PageSection } from '@/components/ui';
 import type { StatusBadgeStatus } from '@/components/ui/status-badge';
+import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { ApiError, getNodesFilters, getNodesList, getSession } from '@/lib/api';
 import { isClientRole } from '@/lib/client-profile';
 
@@ -57,11 +58,7 @@ export default async function NodesPage({
       getSession(),
     ]);
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      redirect('/login');
-    }
-
-    throw error;
+    handlePageApiError(error);
   }
 
   const isClientProfile = isClientRole(session.user.role);
@@ -104,6 +101,7 @@ export default async function NodesPage({
     open_alerts: node.open_alerts,
     backup_status: node.backup_status,
     latest_backup_received_at: node.latest_backup_received_at,
+    remote_access_url: node.remote_access_url,
   }));
 
   return (

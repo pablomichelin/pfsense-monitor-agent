@@ -23,6 +23,7 @@ import {
 } from '@/lib/api';
 import { isClientRole } from '@/lib/client-profile';
 import { hasPermission } from '@/lib/authz';
+import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { formatRelativeAge } from '@/lib/format';
 import {
   buildAuditHref,
@@ -251,14 +252,10 @@ export default async function NodeDetailsPage({
       </div>
     );
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      redirect('/login');
-    }
-
     if (error instanceof ApiError && error.status === 404) {
       notFound();
     }
 
-    throw error;
+    handlePageApiError(error);
   }
 }

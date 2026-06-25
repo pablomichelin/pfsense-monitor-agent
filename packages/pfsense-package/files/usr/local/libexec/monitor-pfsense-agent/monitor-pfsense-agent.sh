@@ -18,10 +18,24 @@ fi
 . "$CONFIG_FILE"
 
 # B1: o segredo HMAC vive em arquivo 0600 (NODE_SECRET_FILE), nao em texto no .conf.
-# Retrocompat: se o .conf legado ainda trouxer NODE_SECRET, ele e respeitado.
+# A3 (0.4.3): migra NODE_SECRET legado do .conf para o arquivo 0600; fallback DEPRECATED 0.5.0.
 NODE_SECRET_FILE="${NODE_SECRET_FILE:-/var/db/monitor-pfsense-agent/node_secret}"
 if [ -z "${NODE_SECRET:-}" ] && [ -r "${NODE_SECRET_FILE}" ]; then
   NODE_SECRET="$(tr -d '\r\n' <"${NODE_SECRET_FILE}" 2>/dev/null || true)"
+fi
+if [ -n "${NODE_SECRET:-}" ] && [ ! -s "${NODE_SECRET_FILE}" ]; then
+  secret_dir="$(dirname "$NODE_SECRET_FILE")"
+  mkdir -p "$secret_dir" 2>/dev/null || true
+  umask 077
+  printf '%s' "$NODE_SECRET" >"${NODE_SECRET_FILE}" 2>/dev/null || true
+  chmod 0600 "${NODE_SECRET_FILE}" 2>/dev/null || true
+  umask 022
+  if [ -w "$CONFIG_FILE" ] && grep -q '^NODE_SECRET=' "$CONFIG_FILE" 2>/dev/null; then
+    sed -i '' '/^NODE_SECRET=/d' "$CONFIG_FILE" 2>/dev/null \
+      || sed -i '/^NODE_SECRET=/d' "$CONFIG_FILE" 2>/dev/null \
+      || true
+  fi
+  echo "monitor-pfsense-agent: secret migrated to runtime file" >&2
 fi
 NODE_SECRET="${NODE_SECRET:-}"
 
@@ -1339,6 +1353,88 @@ pfsense_upgrade_lock_dir() {
   printf '%s' "/var/run/monitor-pfsense-agent-upgrade.lock"
 }
 
+AGENT_BACKUP_LOCK_STALE_SECONDS="${AGENT_BACKUP_LOCK_STALE_SECONDS:-3600}"
+AGENT_UPGRADE_LOCK_STALE_SECONDS="${AGENT_UPGRADE_LOCK_STALE_SECONDS:-7200}"
+
+agent_lock_pid_alive() {
+  lock_pid="$1"
+  [ -n "$lock_pid" ] || return 1
+  kill -0 "$lock_pid" 2>/dev/null
+}
+
+agent_read_stale_lock() {
+  lock_file="$1"
+  pid=""
+  started_at=""
+  if [ ! -f "$lock_file" ]; then
+    return 1
+  fi
+  while IFS='=' read -r key value; do
+    case "$key" in
+      pid) pid="$value" ;;
+      started_at) started_at="$value" ;;
+    esac
+  done <"$lock_file" 2>/dev/null || true
+  printf '%s %s\n' "$pid" "$started_at"
+}
+
+agent_acquire_stale_lock() {
+  lock_file="$1"
+  ttl="$2"
+  label="${3:-lock}"
+
+  if [ -f "$lock_file" ]; then
+    read -r lock_pid lock_started <<<"$(agent_read_stale_lock "$lock_file")"
+    now="$(date +%s)"
+    lock_age=999999
+    if [ -n "$lock_started" ] && [ "$lock_started" -gt 0 ] 2>/dev/null; then
+      lock_age=$((now - lock_started))
+    fi
+    if agent_lock_pid_alive "$lock_pid" && [ "$lock_age" -lt "$ttl" ]; then
+      echo "${label}: another operation is running (pid=${lock_pid})" >&2
+      return 1
+    fi
+    rm -f "$lock_file" 2>/dev/null || true
+  fi
+
+  if (set -C; umask 077; printf 'pid=%s\nstarted_at=%s\n' "$$" "$(date +%s)" >"$lock_file") 2>/dev/null; then
+    umask 022
+    return 0
+  fi
+
+  echo "${label}: failed to acquire lock" >&2
+  return 1
+}
+
+agent_release_stale_lock() {
+  rm -f "$1" 2>/dev/null || true
+}
+
+agent_cleanup_stale_locks() {
+  if [ -f "$(backup_lock_dir)" ]; then
+    read -r backup_pid backup_started <<<"$(agent_read_stale_lock "$(backup_lock_dir)" 2>/dev/null || true)"
+    now="$(date +%s)"
+    backup_age=999999
+    if [ -n "$backup_started" ] && [ "$backup_started" -gt 0 ] 2>/dev/null; then
+      backup_age=$((now - backup_started))
+    fi
+    if ! agent_lock_pid_alive "$backup_pid" || [ "$backup_age" -ge "$AGENT_BACKUP_LOCK_STALE_SECONDS" ]; then
+      agent_release_stale_lock "$(backup_lock_dir)"
+    fi
+  fi
+  if [ -f "$(pfsense_upgrade_lock_dir)" ]; then
+    read -r upgrade_pid upgrade_started <<<"$(agent_read_stale_lock "$(pfsense_upgrade_lock_dir)" 2>/dev/null || true)"
+    now="$(date +%s)"
+    upgrade_age=999999
+    if [ -n "$upgrade_started" ] && [ "$upgrade_started" -gt 0 ] 2>/dev/null; then
+      upgrade_age=$((now - upgrade_started))
+    fi
+    if ! agent_lock_pid_alive "$upgrade_pid" || [ "$upgrade_age" -ge "$AGENT_UPGRADE_LOCK_STALE_SECONDS" ]; then
+      agent_release_stale_lock "$(pfsense_upgrade_lock_dir)"
+    fi
+  fi
+}
+
 agent_post_command_ack() {
   backup_post_command_ack "$@"
 }
@@ -1430,7 +1526,7 @@ dispatch_pfsense_upgrade() {
   fi
 
   lock_dir="$(pfsense_upgrade_lock_dir)"
-  if ! mkdir "$lock_dir" 2>/dev/null; then
+  if ! agent_acquire_stale_lock "$lock_dir" "$AGENT_UPGRADE_LOCK_STALE_SECONDS" "pfsense-upgrade"; then
     agent_post_command_result_failed "$command_id" "another upgrade is running" "$CURL_CMD" >/dev/null 2>&1 || true
     return 1
   fi
@@ -1450,7 +1546,7 @@ dispatch_pfsense_upgrade() {
   if [ ! -f "$wrapper" ]; then
     agent_post_command_result_failed "$command_id" "run_pfsense_upgrade.sh missing" "$CURL_CMD" >/dev/null 2>&1 || true
     rm -f "$state_file"
-    rmdir "$lock_dir" 2>/dev/null || true
+    agent_release_stale_lock "$lock_dir"
     return 1
   fi
   chmod +x "$wrapper" 2>/dev/null || true
@@ -1461,7 +1557,7 @@ dispatch_pfsense_upgrade() {
   if ! kill -0 "$wrapper_pid" 2>/dev/null; then
     agent_post_command_result_failed "$command_id" "failed to spawn upgrade wrapper" "$CURL_CMD" >/dev/null 2>&1 || true
     rm -f "$state_file"
-    rmdir "$lock_dir" 2>/dev/null || true
+    agent_release_stale_lock "$lock_dir"
     return 1
   fi
 
@@ -1524,7 +1620,7 @@ finalize_pfsense_upgrade_if_pending() {
   fi
 
   rm -f "$state_file"
-  rmdir "$(pfsense_upgrade_lock_dir)" 2>/dev/null || true
+  agent_release_stale_lock "$(pfsense_upgrade_lock_dir)"
 }
 
 build_config_backup_json_fields() {
@@ -1944,15 +2040,11 @@ backup_write_state() {
 }
 
 backup_acquire_lock() {
-  lock_dir="$(backup_lock_dir)"
-  if mkdir "$lock_dir" 2>/dev/null; then
-    return 0
-  fi
-  return 1
+  agent_acquire_stale_lock "$(backup_lock_dir)" "$AGENT_BACKUP_LOCK_STALE_SECONDS" "config-backup"
 }
 
 backup_release_lock() {
-  rmdir "$(backup_lock_dir)" 2>/dev/null || true
+  agent_release_stale_lock "$(backup_lock_dir)"
 }
 
 backup_should_compress() {
@@ -2493,6 +2585,8 @@ heartbeat() {
   require_var NODE_UID
   require_var NODE_SECRET
   require_var CUSTOMER_CODE
+
+  agent_cleanup_stale_locks
 
   finalize_pfsense_upgrade_if_pending
 

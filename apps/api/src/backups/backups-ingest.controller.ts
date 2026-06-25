@@ -12,15 +12,8 @@ import { BackupsIngestService } from './backups-ingest.service';
 import { CommandAckDto } from './dto/command-ack.dto';
 import { CommandResultDto } from './dto/command-result.dto';
 import { NodeRequestAuthService } from '../common/node-request-auth.service';
+import { resolveClientIp } from '../common/client-ip';
 import { RawBodyRequest } from '../common/raw-body-request.type';
-
-const readHeader = (value?: string | string[]): string | undefined => {
-  if (Array.isArray(value)) {
-    return value[0];
-  }
-
-  return value;
-};
 
 const readRawBody = (request: RawBodyRequest): Buffer => {
   if (!request.rawBody) {
@@ -54,6 +47,12 @@ export class BackupsIngestController {
     @Headers('x-agent-version') agentVersion?: string,
     @Headers('x-pfsense-version') pfsenseVersion?: string,
     @Headers('x-config-compression') configCompression?: string,
+    @Headers('x-config-backup-enabled') configBackupEnabled?: string,
+    @Headers('x-config-backup-schedule-mode') configBackupScheduleMode?: string,
+    @Headers('x-config-backup-interval-hours') configBackupIntervalHours?: string,
+    @Headers('x-config-backup-schedule-time') configBackupScheduleTime?: string,
+    @Headers('x-config-backup-schedule-dow') configBackupScheduleDow?: string,
+    @Headers('x-config-backup-schedule-dom') configBackupScheduleDom?: string,
     @Headers('content-type') contentType?: string,
   ) {
     return this.ingestService.ingestConfigBackup({
@@ -68,8 +67,14 @@ export class BackupsIngestController {
       headerAgentVersion: agentVersion,
       headerPfsenseVersion: pfsenseVersion,
       headerConfigCompression: configCompression,
+      headerBackupEnabled: configBackupEnabled,
+      headerBackupScheduleMode: configBackupScheduleMode,
+      headerBackupIntervalHours: configBackupIntervalHours,
+      headerBackupScheduleTime: configBackupScheduleTime,
+      headerBackupScheduleDow: configBackupScheduleDow,
+      headerBackupScheduleDom: configBackupScheduleDom,
       contentType,
-      clientIp: readHeader(request.headers['cf-connecting-ip']) ?? request.ip,
+      clientIp: resolveClientIp(request),
     });
   }
 
@@ -96,7 +101,7 @@ export class BackupsIngestController {
       credentialId: credential.id,
       commandId: body.command_id,
       status: body.status,
-      clientIp: readHeader(request.headers['cf-connecting-ip']) ?? request.ip,
+      clientIp: resolveClientIp(request),
     });
   }
 
@@ -125,7 +130,7 @@ export class BackupsIngestController {
       status: body.status,
       errorMessage: body.error_message,
       resultJson: body.result_json,
-      clientIp: readHeader(request.headers['cf-connecting-ip']) ?? request.ip,
+      clientIp: resolveClientIp(request),
     });
   }
 }

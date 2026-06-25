@@ -15,8 +15,30 @@ export class PackageReleaseRateLimitGuard implements CanActivate {
   private readonly logger = new Logger(PackageReleaseRateLimitGuard.name);
   private readonly maxRequests = 60;
   private readonly windowMs = 60_000;
+  private readonly emergencyMaxRequests = 1;
+  private readonly emergencyWindowMs = 60_000;
+  private readonly emergencyRateLimit = new Map<
+    string,
+    { count: number; windowStart: number }
+  >();
 
   constructor(private readonly prisma: PrismaService) {}
+
+  private checkEmergencyRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const entry = this.emergencyRateLimit.get(ip);
+    if (!entry || now - entry.windowStart >= this.emergencyWindowMs) {
+      this.emergencyRateLimit.set(ip, { count: 1, windowStart: now });
+      return true;
+    }
+
+    entry.count += 1;
+    if (entry.count > this.emergencyMaxRequests) {
+      throw new HttpException('rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    return true;
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<FastifyRequest>();
@@ -54,14 +76,12 @@ export class PackageReleaseRateLimitGuard implements CanActivate {
           .catch(() => undefined);
       }
     } catch (error) {
-      // Fail-open: indisponibilidade do banco nao deve travar a instalacao do
-      // package (endpoint publico de leitura). Registra para observabilidade.
       this.logger.warn(
-        `package release rate-limit indisponivel (fail-open) ip=${ip}: ${
+        `package release rate-limit indisponivel (fail-closed emergency) ip=${ip}: ${
           error instanceof Error ? error.message : 'erro desconhecido'
         }`,
       );
-      return true;
+      return this.checkEmergencyRateLimit(ip);
     }
 
     if (count > this.maxRequests) {

@@ -41,6 +41,7 @@ export type NodesListResponse = {
     agent_version: string | null;
     management_ip: string | null;
     wan_ip: string | null;
+    remote_access_url: string | null;
     open_alerts: number;
     backup_status: 'ok' | 'late' | 'failed' | 'never';
     latest_backup_received_at: string | null;
@@ -98,6 +99,7 @@ export type NodeDetailsResponse = {
     };
     management_ip: string | null;
     wan_ip: string | null;
+    remote_access_url: string | null;
     network_interfaces: Array<{ name: string; ip: string }> | null;
     pfsense_version: string | null;
     agent_version: string | null;
@@ -165,6 +167,7 @@ export type NodeConfigBackupsResponse = {
     latest_received_at: string | null;
     latest_status: 'stored' | 'duplicate' | null;
   };
+  visual_status: 'ok' | 'late' | 'failed' | 'never';
 };
 
 export type ConfigBackupRequestResponse = {
@@ -281,6 +284,9 @@ export type SessionResponse = {
     role: string;
   };
   permissions: string[];
+  has_global_client_scope?: boolean;
+  mfa_enrollment_required?: boolean;
+  mfa_enforcement_blocking?: boolean;
 };
 
 export type AuthSessionsResponse = {
@@ -430,6 +436,7 @@ export type UpdateNodeResponse = {
     display_name: string | null;
     management_ip: string | null;
     wan_ip: string | null;
+    remote_access_url: string | null;
     pfsense_version: string | null;
     agent_version: string | null;
     ha_role: string | null;
@@ -1108,6 +1115,7 @@ export async function createNode(input: {
   display_name?: string;
   management_ip?: string;
   wan_ip?: string;
+  remote_access_url?: string;
   pfsense_version?: string;
   agent_version?: string;
   ha_role?: string;
@@ -1202,6 +1210,7 @@ export async function updateNode(
     display_name?: string;
     management_ip?: string;
     wan_ip?: string;
+    remote_access_url?: string;
     pfsense_version?: string;
     agent_version?: string;
     ha_role?: string;

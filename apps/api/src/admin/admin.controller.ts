@@ -15,6 +15,7 @@ import { AuthenticatedRequest } from '../common/authenticated-request.type';
 import { RawBodyRequest } from '../common/raw-body-request.type';
 import { getAccessActor } from '../auth/access-actor.util';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { MfaEnrollmentGuard } from '../auth/mfa-enrollment.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -38,7 +39,7 @@ import { CreateRoleDto } from './dto/create-role.dto';
 import { SetRolePermissionsDto } from './dto/set-role-permissions.dto';
 
 @Roles('superadmin', 'admin')
-@UseGuards(SessionAuthGuard, RolesGuard, PermissionsGuard)
+@UseGuards(SessionAuthGuard, RolesGuard, MfaEnrollmentGuard, PermissionsGuard)
 @Controller('api/v1/admin')
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}

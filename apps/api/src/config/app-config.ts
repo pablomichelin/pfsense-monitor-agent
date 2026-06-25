@@ -129,6 +129,10 @@ export const appConfig = Object.freeze({
     // papel forcado (default seguro: nao tranca ninguem). A imposicao e "suave":
     // direciona ao enrollment, sem bloquear a sessao/API (evita lockout).
     enforcedRoles: parseList(process.env.MFA_ENFORCED_ROLES),
+    enforcementBlocking: parseBoolean(
+      process.env.MFA_ENFORCEMENT_BLOCKING,
+      false,
+    ),
     challengeTtlMinutes: parseNumber(
       process.env.MFA_CHALLENGE_TTL_MINUTES,
       5,

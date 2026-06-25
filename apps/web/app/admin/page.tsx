@@ -35,8 +35,8 @@ export default async function AdminPage({
 
   const permissions = session.permissions ?? [];
 
-  if (!hasPermission(permissions, 'clients.create')) {
-    redirect('/dashboard');
+  if (!session.has_global_client_scope) {
+    redirect('/conta?access=denied');
   }
 
   const canManageUsers = hasPermission(permissions, 'users.view');

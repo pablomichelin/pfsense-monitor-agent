@@ -68,7 +68,7 @@ O rc.d usa padrão custom `start/stop` com `onecmd` global, atípico frente ao `
 ## ADIADO / DOCUMENTADO (gaps conhecidos)
 
 - **E1 — MFA obrigatório para admin (gap de go-live):** feature grande, **não implementada**. Mitigação aplicada: `AUTH_BOOTSTRAP_LOGIN_ENABLED=false` é agora o default em `.env.api.example`, com comentário reforçado (só ligar durante o primeiro provisionamento do superadmin). Combinado com C1, elimina o risco de sobrescrita de senha. MFA fica como gap de go-live a planejar em trilha própria.
-- **E2 — Rate-limit de release in-memory:** `package-release-rate-limit.guard.ts` mantém o contador em memória. Limitação conhecida: o limite reseta em restart e não é compartilhado entre instâncias (bypass possível em multi-instância). Migração para persistência só se trivial — registrado como dívida.
+- **E2 — Rate-limit de release:** **resolvido na entrega 103** — persistido em PostgreSQL (`package_release_rate_limits`). Com **plano 110 (C3)**, indisponibilidade do PG usa fail-closed conservador (1 req/min/IP em memória local de emergência). Limitação residual multi-instância documentada em `docs/111`.
 - **E3 — Doc × código:** documentação atualizada para refletir o código real (não o contrário): `07-api-e-fluxos.md` (`services[]`/`gateways[]` opcionais no heartbeat leve), `06-modelo-de-dados-inicial.md` (`heartbeats` é legado, snapshot vive no `Node`; `audit_logs` tem `actor_role`/`client_id`/`result`).
 
 ---

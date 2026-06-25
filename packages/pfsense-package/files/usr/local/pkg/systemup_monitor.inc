@@ -17,7 +17,7 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.4.1");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.4.3");
 }
 if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
     define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
@@ -65,7 +65,6 @@ if (!defined("SYSTEMUP_MONITOR_RELEASE_GITHUB_REPO_PATH")) {
 function systemup_monitor_setup_package_tabs($active)
 {
     global $tab_array, $pgtitle, $pglinks, $shortcut_section;
-    systemup_monitor_handle_package_update_post();
     systemup_monitor_apply_flash_message();
     $tab_array = array();
     $tab_array[1][] = array('Configuracao', $active === 'config', '/config_systemup_monitor.php');
@@ -875,17 +874,35 @@ function systemup_monitor_remove_update_secret_file()
     }
 }
 
-function systemup_monitor_acquire_update_lock()
+/**
+ * P3/P4: checagem + aquisicao atomica do lock de update (create exclusivo).
+ * Stale so libera quando idade > TTL, nenhum installer ativo e log sem atividade recente.
+ */
+function systemup_monitor_try_acquire_update_lock()
 {
     $lockFile = SYSTEMUP_MONITOR_UPDATE_LOCK_FILE;
+    systemup_monitor_ensure_directory(dirname($lockFile));
+
     if (is_file($lockFile)) {
         $raw = @file_get_contents($lockFile);
         $data = is_string($raw) ? json_decode($raw, true) : null;
         $startedAt = is_array($data) ? (int) ($data['started_at'] ?? 0) : 0;
         $age = $startedAt > 0 ? (time() - $startedAt) : PHP_INT_MAX;
 
-        if ($age < SYSTEMUP_MONITOR_UPDATE_LOCK_STALE_SECONDS && systemup_monitor_is_update_running()) {
-            return false;
+        if ($age < SYSTEMUP_MONITOR_UPDATE_LOCK_STALE_SECONDS) {
+            if (systemup_monitor_is_update_running()) {
+                return false;
+            }
+        } else {
+            if (systemup_monitor_is_update_running()) {
+                return false;
+            }
+
+            $logFile = SYSTEMUP_MONITOR_UPDATE_LOG_FILE;
+            $logRecent = is_file($logFile) && (time() - (int) @filemtime($logFile)) < 300;
+            if ($logRecent) {
+                return false;
+            }
         }
 
         @unlink($lockFile);
@@ -895,11 +912,22 @@ function systemup_monitor_acquire_update_lock()
         'pid' => getmypid(),
         'started_at' => time(),
     ));
-    if (@file_put_contents($lockFile, $payload, LOCK_EX) === false) {
+
+    $handle = @fopen($lockFile, 'x');
+    if ($handle === false) {
         return false;
     }
 
+    fwrite($handle, $payload);
+    fclose($handle);
+
     return true;
+}
+
+/** @deprecated Use systemup_monitor_try_acquire_update_lock() */
+function systemup_monitor_acquire_update_lock()
+{
+    return systemup_monitor_try_acquire_update_lock();
 }
 
 function systemup_monitor_release_update_lock()
@@ -998,7 +1026,11 @@ function systemup_monitor_csrf_validate_post()
         return (bool) csrf_check(false);
     }
 
-    return true;
+    if (function_exists('log_error')) {
+        log_error('SystemUp Monitor: CSRF helper indisponivel; POST rejeitado.');
+    }
+
+    return false;
 }
 
 /**
@@ -1021,7 +1053,7 @@ function systemup_monitor_csrf_tags()
 function systemup_monitor_current_user_is_admin()
 {
     if (!function_exists('getUserEntry') || !function_exists('userHasPrivilege')) {
-        return true;
+        return false;
     }
 
     $username = $_SESSION['Username'] ?? '';
@@ -1029,13 +1061,39 @@ function systemup_monitor_current_user_is_admin()
         return false;
     }
 
-    $user = getUserEntry($username);
+    $userEntry = getUserEntry($username);
+    if (!is_array($userEntry)) {
+        return false;
+    }
+
+    // pfSense 2.7+ retorna ['idx' => ..., 'item' => ...]; versoes antigas retornam o usuario direto.
+    $user = (isset($userEntry['item']) && is_array($userEntry['item']))
+        ? $userEntry['item']
+        : $userEntry;
+
     if (!is_array($user)) {
         return false;
     }
 
-    return userHasPrivilege($user, 'page-all')
-        || userHasPrivilege($user, 'page-services-systemupmonitor');
+    if (userHasPrivilege($user, 'page-all')) {
+        return true;
+    }
+
+    if (isset($user['uid']) && (string) $user['uid'] === '0') {
+        return true;
+    }
+
+    if (function_exists('getUserGroups')) {
+        $authcfg = function_exists('auth_get_authserver')
+            ? auth_get_authserver(config_get_path('system/webgui/authmode'))
+            : null;
+        $groups = getUserGroups($user['name'] ?? $username, $authcfg, $_SESSION['user_radius_attributes'] ?? null);
+        if (is_array($groups) && in_array('admins', $groups, true)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function systemup_monitor_redirect_self(array $query = array())
@@ -1911,17 +1969,10 @@ function systemup_monitor_start_package_update($force = false)
         );
     }
 
-    if (systemup_monitor_is_update_running()) {
+    if (!systemup_monitor_try_acquire_update_lock()) {
         return array(
             'exit_code' => 1,
-            'output' => 'Ja existe uma atualizacao em andamento.',
-        );
-    }
-
-    if (!systemup_monitor_acquire_update_lock()) {
-        return array(
-            'exit_code' => 1,
-            'output' => 'Nao foi possivel obter lock de atualizacao (outra execucao ativa?).',
+            'output' => 'Outra atualizacao ja em andamento.',
         );
     }
 
@@ -1951,13 +2002,21 @@ function systemup_monitor_start_package_update($force = false)
         );
     }
 
-    systemup_monitor_record_update_started();
     $command = systemup_monitor_build_package_update_command($pkg, $status['release']);
     $result = systemup_monitor_run_command('/bin/sh -c ' . escapeshellarg($command));
 
     if ((int) $result['exit_code'] !== 0) {
         systemup_monitor_release_update_lock();
+        $result['output'] = trim((string) $result['output']);
+        if ($result['output'] === '') {
+            $result['output'] = 'Falha ao iniciar processo de atualizacao (rate-limit nao aplicado).';
+        } else {
+            $result['output'] .= ' (rate-limit nao aplicado).';
+        }
+        return $result;
     }
+
+    systemup_monitor_record_update_started();
 
     return $result;
 }
@@ -2017,6 +2076,10 @@ function systemup_monitor_render_config_update_action()
     }
 
     if (!$status['update_available']) {
+        return;
+    }
+
+    if (!systemup_monitor_current_user_is_admin()) {
         return;
     }
 

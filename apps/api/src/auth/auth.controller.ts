@@ -13,13 +13,16 @@ import { FastifyReply } from 'fastify';
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
 import { RawBodyRequest } from '../common/raw-body-request.type';
 
+import { AccessPolicyService } from './access-policy.service';
 import { AuthService } from './auth.service';
+import { getAccessActor } from './access-actor.util';
 import { LoginDto } from './dto/login.dto';
 import { MfaCodeDto, MfaLoginDto } from './dto/mfa.dto';
 import { MfaService } from './mfa.service';
 import { PermissionsService } from './permissions.service';
 import { SessionAuthGuard } from './session-auth.guard';
 import { appConfig } from '../config/app-config';
+import { PrismaService } from '../prisma/prisma.service';
 
 const readHeader = (value?: string | string[]): string | undefined => {
   if (Array.isArray(value)) {
@@ -52,6 +55,8 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly permissionsService: PermissionsService,
     private readonly mfaService: MfaService,
+    private readonly accessPolicy: AccessPolicyService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Post('login')
@@ -89,6 +94,8 @@ export class AuthController {
       ok: true,
       mfa_required: false,
       mfa_enrollment_required: result.mfaEnrollmentRequired,
+      mfa_enforcement_blocking:
+        result.mfaEnrollmentRequired && this.mfaService.isEnforcementBlocking(),
       expires_at: result.expiresAt.toISOString(),
       user: result.user,
       session_cookie_name: appConfig.auth.sessionCookieName,
@@ -177,7 +184,19 @@ export class AuthController {
   @Get('me')
   async getSession(@Req() request: AuthenticatedRequest) {
     const role = request.auth?.role as string;
+    const userId = request.auth!.userId;
     const permissions = await this.permissionsService.getPermissionsForRole(role);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { mfaEnabled: true, role: true },
+    });
+    const actor = getAccessActor(request);
+    const hasGlobalClientScope = this.accessPolicy.hasGlobalClientScope(actor);
+    const mfaEnrollmentRequired = user
+      ? this.mfaService.isEnforcementRequired(user.role, user.mfaEnabled)
+      : false;
+    const mfaEnforcementBlocking =
+      mfaEnrollmentRequired && this.mfaService.isEnforcementBlocking();
 
     return {
       authenticated: true,
@@ -190,6 +209,9 @@ export class AuthController {
         role: request.auth?.role,
       },
       permissions,
+      has_global_client_scope: hasGlobalClientScope,
+      mfa_enrollment_required: mfaEnrollmentRequired,
+      mfa_enforcement_blocking: mfaEnforcementBlocking,
     };
   }
 

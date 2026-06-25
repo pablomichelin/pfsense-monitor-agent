@@ -9,6 +9,7 @@ import {
   sortBackupFleetNodes,
   type BackupFleetNode,
 } from '@/lib/backup-fleet-helpers';
+import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { ApiError, getNodesFilters, getNodesList, getSession } from '@/lib/api';
 import { isClientRole } from '@/lib/client-profile';
 
@@ -55,15 +56,7 @@ export default async function BackupsPage({
       getSession(),
     ]);
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      redirect('/login');
-    }
-
-    if (error instanceof ApiError && error.status === 403) {
-      redirect('/dashboard');
-    }
-
-    throw error;
+    handlePageApiError(error);
   }
 
   const isClientProfile = isClientRole(session.user.role);

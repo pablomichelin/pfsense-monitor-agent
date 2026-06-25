@@ -43,7 +43,9 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const session = await getOptionalSession();
-  const navGroups = buildNavGroups(session?.permissions ?? []);
+  const navGroups = buildNavGroups(session?.permissions ?? [], {
+    hasGlobalClientScope: session?.has_global_client_scope,
+  });
 
   return (
     <html

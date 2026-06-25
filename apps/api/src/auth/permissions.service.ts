@@ -6,7 +6,8 @@ import { isSuperadminRole } from './role-codes';
 
 @Injectable()
 export class PermissionsService {
-  private readonly cache = new Map<string, string[]>();
+  private readonly cache = new Map<string, { permissions: string[]; expiresAt: number }>();
+  private readonly cacheTtlMs = 60_000;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -32,8 +33,8 @@ export class PermissionsService {
     }
 
     const cached = this.cache.get(role);
-    if (cached) {
-      return cached;
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.permissions;
     }
 
     const rows = await this.prisma.rolePermission.findMany({
@@ -43,7 +44,10 @@ export class PermissionsService {
     });
 
     const permissions = rows.map((row) => row.permissionId);
-    this.cache.set(role, permissions);
+    this.cache.set(role, {
+      permissions,
+      expiresAt: Date.now() + this.cacheTtlMs,
+    });
     return permissions;
   }
 
