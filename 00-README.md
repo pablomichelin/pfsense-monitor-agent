@@ -1,6 +1,6 @@
 # Monitor-Pfsense
 
-Repositorio de planejamento e futura implementacao de uma plataforma de monitoramento centralizado para pfSense CE, com:
+Repositorio do Monitor-Pfsense, plataforma em operacao para monitoramento centralizado de pfSense CE, com evolucao continua de package, painel e controlador:
 
 - controlador central em Ubuntu 24
 - painel web para operacao e visibilidade
@@ -92,7 +92,19 @@ Repositorio de planejamento e futura implementacao de uma plataforma de monitora
 
 ## Status atual do projeto
 
-Em `2026-03-15`, a `Fase 1 - MVP do controlador` segue operacionalmente concluída e registrada como `100%`, com `93%` do plano total entregue. A **trilha de deleção real de clientes** (doc 58) foi implementada: DELETE clients/:id; botão Deletar cliente na UI; painel 0.1.16, API 0.1.6. Trilha semântica deleção (doc 57): delete usuário; getFilters só ativos; listSessions só não revogadas. Trilha navegação admin (doc 56); microtrilha varredura nomenclatura (doc 55); trilha modelo operacional (doc 54); simplificação visual (doc 53); smoke admin (doc 52) encerradas. Polimento cadastro admin (50, 51); desmembramento admin (48–49); simplificação cadastro (47); despoluição dashboard (46); dashboard operacional (45); exclusão hosts (44); homologação package (43).
+**Referencia canonica:** `LEITURA-INICIAL.md` e `docs/00-INDICE-OPERACIONAL.md` (atualizados em `2026-07-01`).
+
+**Versoes atuais:** API `0.6.4`, painel `1.4.5`, package pfSense `0.4.7`.
+
+**Ultima entrega:** coluna **Pacote** no inventario — `docs/115-ENTREGA-COLUNA-PACOTE-INVENTARIO-2026-07-01.md`.
+
+**Proximo passo operacional:** rollout package `0.4.7` na frota; monitorar drift em `/nodes`.
+
+---
+
+### Arquivo historico (2026-03-15)
+
+Em `2026-03-15`, a `Fase 1 - MVP do controlador` seguia operacionalmente concluida e registrada como `100%`, com `93%` do plano total entregue. A **trilha de deleção real de clientes** (doc 58) foi implementada: DELETE clients/:id; botão Deletar cliente na UI; painel 0.1.16, API 0.1.6. Trilha semântica deleção (doc 57): delete usuário; getFilters só ativos; listSessions só não revogadas. Trilha navegação admin (doc 56); microtrilha varredura nomenclatura (doc 55); trilha modelo operacional (doc 54); simplificação visual (doc 53); smoke admin (doc 52) encerradas. Polimento cadastro admin (50, 51); desmembramento admin (48–49); simplificação cadastro (47); despoluição dashboard (46); dashboard operacional (45); exclusão hosts (44); homologação package (43).
 
 Atualização em `2026-03-19`:
 
@@ -106,8 +118,8 @@ Atualizacao em `2026-06-08`:
 - criada camada canonica de retomada em `docs/00-INDICE-OPERACIONAL.md`
 - criado plano mestre de organizacao, qualidade e backup pfSense em `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md`
 - criada especificacao tecnica do modulo de backup do `config.xml` em `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`
-- decisao registrada: antes de codar backup, sanear publicacao/origem interna, limite de upload e criptografia em repouso
-- modulo de backup de `config.xml` ainda nao esta implementado; o estado atual e planejamento/documentacao
+- decisao registrada em 2026-06-08: backup como modulo integrado ao Monitor-Pfsense
+- **modulo de backup de `config.xml` implementado** no controlador (ingest, armazenamento criptografado, painel `/backups`, aba Backup no package); ver `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md` e entrega UX Fase 5 (`docs/84`)
 
 Estado atual consolidado:
 

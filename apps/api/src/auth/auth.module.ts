@@ -5,6 +5,8 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { MfaEnrollmentGuard } from './mfa-enrollment.guard';
 import { MfaService } from './mfa.service';
+import { MfaPolicyController } from '../mfa-policy/mfa-policy.controller';
+import { MfaPolicyService } from '../mfa-policy/mfa-policy.service';
 import { PermissionsGuard } from './permissions.guard';
 import { PermissionsService } from './permissions.service';
 import { RolesGuard } from './roles.guard';
@@ -12,10 +14,11 @@ import { SessionAuthGuard } from './session-auth.guard';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [AuthController],
+  controllers: [AuthController, MfaPolicyController],
   providers: [
     AuthService,
     MfaService,
+    MfaPolicyService,
     MfaEnrollmentGuard,
     SessionAuthGuard,
     RolesGuard,
@@ -26,6 +29,7 @@ import { SessionAuthGuard } from './session-auth.guard';
   exports: [
     AuthService,
     MfaService,
+    MfaPolicyService,
     MfaEnrollmentGuard,
     SessionAuthGuard,
     RolesGuard,

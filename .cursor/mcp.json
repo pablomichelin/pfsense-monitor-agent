@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "stitch": {
+      "command": "/Dados/docker/shared/stitch-mcp/bin/stitch-mcp-run-proxy.sh",
+      "args": []
+    }
+  }
+}

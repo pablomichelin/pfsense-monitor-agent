@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 type ConfirmDialogProps = {
   open: boolean;
@@ -40,8 +41,13 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const [mounted, setMounted] = useState(false);
   const titleId = useId();
   const styles = toneStyles[tone];
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -58,13 +64,13 @@ export function ConfirmDialog({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [loading, onCancel, open]);
 
-  if (!open) {
+  if (!open || !mounted) {
     return null;
   }
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
@@ -95,6 +101,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

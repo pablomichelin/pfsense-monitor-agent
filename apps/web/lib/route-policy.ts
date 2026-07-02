@@ -22,12 +22,15 @@ const ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/nodes(?:\/|$)/, requirement: { permissions: ['firewalls.view'] } },
   { pattern: /^\/admin\/usuarios(?:\/|$)/, requirement: { permissions: ['users.view'] } },
   { pattern: /^\/admin\/permissoes(?:\/|$)/, requirement: { permissions: ['users.view'] } },
+  { pattern: /^\/admin\/notificacoes(?:\/|$)/, requirement: { permissions: ['notifications.view'] } },
+  { pattern: /^\/admin\/mfa-politica(?:\/|$)/, requirement: { permissions: ['security.mfa_policy.view'] } },
+  { pattern: /^\/admin\/grupos(?:\/|$)/, requirement: { anyPermissions: ['tags.view', 'groups.view'] } },
   { pattern: /^\/admin\/clientes(?:\/|$)/, requirement: { permissions: ['clients.view'] } },
   { pattern: /^\/admin\/clientes-sites(?:\/|$)/, requirement: { permissions: ['clients.view'] } },
   {
     pattern: /^\/admin(?:\/|$)/,
-    // PERM-001: cadastro top-level exige escopo global (nao basta clients.create).
-    requirement: { requiresGlobalClientScope: true },
+    // PERM-001: cadastro top-level exige inventory.global (nao basta clients.create).
+    requirement: { anyPermissions: ['inventory.global'] },
   },
   { pattern: /^\/audit(?:\/|$)/, requirement: { permissions: ['audit.view'] } },
   { pattern: /^\/bootstrap(?:\/|$)/, requirement: { permissions: ['bootstrap.view'] } },
@@ -126,10 +129,11 @@ export function buildNavGroups(
       : []),
   ];
 
+  const canAccessInventory =
+    hasGlobalClientScope || permissions.includes('inventory.global');
+
   const adminItems = [
-    ...(hasGlobalClientScope
-      ? [{ href: '/admin', label: 'Cadastro' }]
-      : []),
+    ...(canAccessInventory ? [{ href: '/admin', label: 'Cadastro' }] : []),
     ...(permissions.includes('clients.view')
       ? [{ href: '/admin/clientes', label: 'Clientes' }]
       : []),
@@ -138,6 +142,15 @@ export function buildNavGroups(
           { href: '/admin/usuarios', label: 'Usuários' },
           { href: '/admin/permissoes', label: 'Permissões' },
         ]
+      : []),
+    ...(permissions.includes('notifications.view')
+      ? [{ href: '/admin/notificacoes', label: 'Notificações' }]
+      : []),
+    ...(permissions.includes('security.mfa_policy.view')
+      ? [{ href: '/admin/mfa-politica', label: 'Política MFA' }]
+      : []),
+    ...(permissions.includes('tags.view') || permissions.includes('groups.view')
+      ? [{ href: '/admin/grupos', label: 'Grupos e tags' }]
       : []),
     ...(permissions.includes('audit.view')
       ? [{ href: '/audit', label: 'Auditoria' }]

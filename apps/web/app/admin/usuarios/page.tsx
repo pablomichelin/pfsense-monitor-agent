@@ -98,6 +98,9 @@ export default async function AdminUsuariosPage({
           <Link href="/admin/permissoes" className={adminNavLinkClassName}>
             Permissões
           </Link>
+          <Link href="/admin/mfa-politica" className={adminNavLinkClassName}>
+            Política MFA
+          </Link>
         </div>
       </PageSection>
 
@@ -127,6 +130,9 @@ export default async function AdminUsuariosPage({
               status: u.status,
               client_ids: u.client_ids ?? [],
               client_id: u.client_id ?? null,
+              mfa_enabled: u.mfa_enabled,
+              mfa_enforcement_required: u.mfa_enforcement_required,
+              mfa_recovery_codes_remaining: u.mfa_recovery_codes_remaining,
             }))}
             clients={clients}
             roles={roles}

@@ -4,6 +4,8 @@ import { Suspense } from 'react';
 import { DeleteNodeButton } from '@/components/delete-node-button';
 import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
+import { NodeCommandHistoryPanel } from '@/components/nodes/node-command-history-panel';
+import { NodeOperationalActionsSection } from '@/components/nodes/node-operational-actions-section';
 import { NodeDetailAlertsTab } from '@/components/nodes/node-detail-alerts-tab';
 import { NodeDetailBackupTab } from '@/components/nodes/node-detail-backup-tab';
 import { NodeDetailConfigTab } from '@/components/nodes/node-detail-config-tab';
@@ -17,13 +19,21 @@ import {
   ApiError,
   getNodeBootstrapCommand,
   getNodeConfigBackups,
+  getNodeCommandHistory,
   getNodeDetails,
+  getNodeCapabilities,
+  getOperationalActionsStatus,
+  getPfsenseApiStatus,
+  getNodeMetricsHistory,
+  getPackageUpgradeStatus,
   getPfsenseUpgradeStatus,
   getSession,
+  listFleetTags,
 } from '@/lib/api';
 import { isClientRole } from '@/lib/client-profile';
 import { hasPermission } from '@/lib/authz';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
+import { normalizeMetricsHistoryPeriod } from '@/lib/metrics-history';
 import { formatRelativeAge } from '@/lib/format';
 import {
   buildAuditHref,
@@ -90,6 +100,11 @@ export default async function NodeDetailsPage({
     resolvedSearchParams.config_backup_enabled,
   );
   const initialTab = normalizeNodeDetailTab(resolvedSearchParams.tab);
+  const metricsPeriod = normalizeMetricsHistoryPeriod(
+    typeof resolvedSearchParams.metrics_period === 'string'
+      ? resolvedSearchParams.metrics_period
+      : undefined,
+  );
 
   try {
     const [response, session, configBackups] = await Promise.all([
@@ -103,10 +118,81 @@ export default async function NodeDetailsPage({
     const canManageNode = hasPermission(permissions, 'firewalls.update');
     const canRequestBackup = hasPermission(permissions, 'backups.run');
     const canDownloadBackup = hasPermission(permissions, 'backups.download');
+    const canManageBackup = hasPermission(permissions, 'backups.manage');
     const canRunUpgrade = hasPermission(permissions, 'pfsense.upgrade.run');
+    const canRunPackageUpgrade = hasPermission(permissions, 'package.upgrade.run');
+    const canRestartService = hasPermission(permissions, 'service.restart.run');
+    const canRebootNode = hasPermission(permissions, 'node.reboot.run');
     const canViewBootstrap = hasPermission(permissions, 'bootstrap.view');
+    const canViewPfsenseApi = hasPermission(permissions, 'pfsense.api.view');
+    const canManagePfsenseCredentials = hasPermission(permissions, 'pfsense.credentials.manage');
+    const canViewPfsenseAliases = hasPermission(permissions, 'pfsense.alias.view');
+    const canManageFleetMetadata = canManageNode;
 
-    const upgradeStatus = await getPfsenseUpgradeStatus(id);
+    const [upgradeStatus, packageUpgradeStatus, fleetTags, metricsHistory, commandHistory, operationalStatus, nodeCapabilities, pfsenseApiStatus] =
+      await Promise.all([
+      getPfsenseUpgradeStatus(id),
+      getPackageUpgradeStatus(id),
+      canManageFleetMetadata
+        ? listFleetTags({ client_id: node.client.id }).catch(() => ({ items: [], generated_at: '' }))
+        : Promise.resolve({ items: [], generated_at: '' }),
+      getNodeMetricsHistory(id, metricsPeriod).catch(() => ({
+        enabled: false,
+        generated_at: new Date().toISOString(),
+        node_id: id,
+        period: metricsPeriod,
+        granularity: metricsPeriod === '30d' ? ('daily' as const) : ('hourly' as const),
+        from: '',
+        to: '',
+        points: [],
+        summary: {
+          sample_count: 0,
+          cpu_avg: null,
+          memory_avg: null,
+          disk_avg: null,
+          latency_avg: null,
+          availability_pct: null,
+        },
+      })),
+      getNodeCommandHistory(id).catch(() => ({
+        generated_at: new Date().toISOString(),
+        node_id: id,
+        items: [],
+      })),
+      getOperationalActionsStatus(id).catch(() => ({
+        enabled: false,
+        service_restart_enabled: false,
+        node_reboot_enabled: false,
+        min_agent_version: '0.4.8',
+        agent_version: node.agent_version,
+        agent_version_supported: false,
+        hostname: node.hostname,
+        maintenance_mode: node.maintenance_mode,
+        ha_role: node.ha_role,
+        ha_detected_from_agent: false,
+        last_seen_at: node.last_seen_at,
+        allowed_services: [],
+        reboot_default_delay_seconds: 60,
+        active_service_restart: null,
+        active_reboot: null,
+      })),
+      canViewPfsenseApi
+        ? getNodeCapabilities(id).catch(() => ({ capability: null, credential: null }))
+        : Promise.resolve({ capability: null, credential: null }),
+      canViewPfsenseAliases
+        ? getPfsenseApiStatus(id).catch(() => ({
+            enabled: false,
+            alias_read_enabled: false,
+            alias_apply_enabled: false,
+            require_recent_backup_hours: 24,
+          }))
+        : Promise.resolve({
+            enabled: false,
+            alias_read_enabled: false,
+            alias_apply_enabled: false,
+            require_recent_backup_hours: 24,
+          }),
+    ]);
 
     let bootstrap = null;
     if (canViewBootstrap) {
@@ -178,8 +264,8 @@ export default async function NodeDetailsPage({
               tone: statusHeroTone(node.effective_status),
             },
             { label: 'Último contato', value: formatRelativeAge(node.last_seen_at) },
-            { label: 'pfSense', value: node.pfsense_version ?? '—' },
-            { label: 'Agente', value: node.agent_version ?? '—' },
+            { label: 'Versão pfSense', value: node.pfsense_version ?? '—' },
+            { label: 'Pacote', value: node.agent_version ?? '—' },
           ]}
           aside={
             <div className="space-y-3">
@@ -217,14 +303,47 @@ export default async function NodeDetailsPage({
             tabs={tabs}
             initialTab={initialTab}
             overview={
-              <NodeDetailOverviewTab
+              <>
+                <NodeDetailOverviewTab
+                  node={node}
+                  canManageNode={canManageNode}
+                  canRunUpgrade={canRunUpgrade}
+                  canRunPackageUpgrade={canRunPackageUpgrade}
+                  upgradeStatus={upgradeStatus}
+                  packageUpgradeStatus={packageUpgradeStatus}
+                  nodeCapabilities={nodeCapabilities}
+                  pfsenseApiStatus={pfsenseApiStatus}
+                  canManagePfsenseCredentials={canManagePfsenseCredentials}
+                  canViewPfsenseAliases={canViewPfsenseAliases}
+                  canViewPfsenseApi={canViewPfsenseApi}
+                />
+                {(canRestartService || canRebootNode) && operationalStatus.enabled ? (
+                  <NodeOperationalActionsSection
+                    nodeId={node.id}
+                    hostname={node.hostname}
+                    canRestartService={canRestartService}
+                    canReboot={canRebootNode}
+                    initialStatus={operationalStatus}
+                  />
+                ) : null}
+                <NodeCommandHistoryPanel
+                  nodeId={node.id}
+                  initialHistory={commandHistory}
+                  canCancelBackup={canRequestBackup}
+                  canCancelPfsenseUpgrade={canRunUpgrade}
+                  canCancelPackageUpgrade={canRunPackageUpgrade}
+                  canCancelServiceRestart={canRestartService}
+                  canCancelNodeReboot={canRebootNode}
+                />
+              </>
+            }
+            metrics={
+              <NodeDetailMetricsTab
                 node={node}
-                canManageNode={canManageNode}
-                canRunUpgrade={canRunUpgrade}
-                upgradeStatus={upgradeStatus}
+                metricsHistory={metricsHistory}
+                metricsPeriod={metricsPeriod}
               />
             }
-            metrics={<NodeDetailMetricsTab node={node} />}
             alerts={<NodeDetailAlertsTab node={node} />}
             backup={
               <NodeDetailBackupTab
@@ -232,6 +351,7 @@ export default async function NodeDetailsPage({
                 nodeEffectiveStatus={node.effective_status}
                 canRequest={canRequestBackup}
                 canDownload={canDownloadBackup}
+                canManage={canManageBackup}
                 initialBackups={configBackups}
                 auditHref={isClientProfile ? undefined : nodeAuditHref}
               />
@@ -245,6 +365,8 @@ export default async function NodeDetailsPage({
                 configBackupInstallMode={configBackupInstallMode}
                 releaseBaseUrl={releaseBaseUrl}
                 controllerUrl={controllerUrl}
+                availableTags={fleetTags.items}
+                canManageFleetMetadata={canManageFleetMetadata}
               />
             }
           />

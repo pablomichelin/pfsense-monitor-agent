@@ -70,6 +70,8 @@ install_package_files() {
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/collect_gateways.php" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/collect_config_snapshot.php" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/run_pfsense_upgrade.sh" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/run_package_upgrade.sh" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/run_node_reboot.sh" \
     "$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php"
 }
 
@@ -157,7 +159,9 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
   if [ -n "$CONTROLLER_URL" ] && [ -n "$NODE_UID" ] && [ -n "$NODE_SECRET" ] && [ -n "$CUSTOMER_CODE" ]; then
     if [ -f /usr/local/etc/rc.d/monitor_pfsense_agent ]; then
       /usr/sbin/sysrc monitor_pfsense_agent_enable=YES 2>/dev/null || true
-      /usr/sbin/service monitor_pfsense_agent start 2>/dev/null || true
+      /usr/sbin/service monitor_pfsense_agent restart 2>/dev/null \
+        || /usr/sbin/service monitor_pfsense_agent start 2>/dev/null \
+        || true
     fi
   fi
 fi

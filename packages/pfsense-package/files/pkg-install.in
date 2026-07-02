@@ -4,4 +4,13 @@ if [ "${2}" != "POST-INSTALL" ]; then
 	exit 0
 fi
 
-${PKG_ROOTDIR}/usr/local/bin/php -f ${PKG_ROOTDIR}/etc/rc.packages %%PORTNAME%% ${2}
+/usr/local/bin/php -f /etc/rc.packages %%PORTNAME%% ${2}
+
+# Pos-install: sincroniza config runtime e sobe o servico quando a config estiver completa.
+if [ -x "/usr/local/bin/php" ] && [ -f "/etc/inc/config.inc" ]; then
+	/usr/local/bin/php -d opcache.enable_cli=0 -r "
+		require_once('/etc/inc/config.inc');
+		require_once('/usr/local/pkg/systemup_monitor.inc');
+		systemup_monitor_sync_config(true, false);
+	" 2>/dev/null || true
+fi

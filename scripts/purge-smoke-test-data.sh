@@ -17,14 +17,14 @@ psql_exec() {
 }
 
 smoke_client_sql="(
-  code ~ '^(SCOPE-[AB]|CPROF-[AB]|RBAC|RBAC-ND|PERM|BK|UX-CLIENT|AUDIT|DBG|DL|REQ|RET|ADM|BST|LAB)-[0-9]+\$'
-  OR name ~ '^(Scope [AB]|Client Profile [AB]|RBAC Smoke|RBAC Node Detail|Perm Smoke|Backup Smoke|UX Client|Audit |Dbg |Admin Smoke |Bootstrap Smoke |SystemUp Smoke )[0-9]+\$'
+  code ~ '^(SCOPE-[AB]|CPROF-[AB]|RBAC|RBAC-ND|PERM|BK|UX-CLIENT|AUDIT|DBG|DL|REQ|RET|ADM|BST|LAB|DELUI)-[0-9]+(-U)?\$'
+  OR name ~ '^(Scope [AB]|Client Profile [AB]|RBAC Smoke|RBAC Node Detail|Perm Smoke|Backup Smoke|UX Client|Audit |Dbg |Admin Smoke |Admin Smoke Updated |Bootstrap Smoke |SystemUp Smoke |Delete UI Smoke )[0-9]+\$'
   OR name = 'DBG'
 )"
 
 smoke_user_sql="(
   email ~ '@test\\.local\$'
-  OR email ~ '^(scoped-admin|perm-readonly|perm-operator|readonly|operator|client-user|audit-ro|ux-client|dbg-scoped|admin-smoke|operator-nd|readonly-nd|noscope-nd|mfa-smoke)-[0-9]+@'
+  OR email ~ '^(scoped-admin|perm-readonly|perm-operator|readonly|operator|client-user|audit-ro|ux-client|dbg-scoped|admin-smoke|operator-nd|readonly-nd|noscope-nd|mfa-smoke|session-audit)-[0-9]+@'
 )"
 
 echo "=== Purge de dados smoke (RBAC, backup, escopo) ==="

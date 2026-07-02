@@ -1,7 +1,7 @@
 # $FreeBSD$
 
 PORTNAME=	pfSense-pkg-systemup-monitor
-PORTVERSION=	0.4.4
+PORTVERSION=	0.4.10
 PORTREVISION=	0
 CATEGORIES=	sysutils
 MASTER_SITES=	# empty
@@ -42,6 +42,10 @@ do-install:
 	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/collect_config_snapshot.php \
 		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent
 	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/run_pfsense_upgrade.sh \
+		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent
+	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/run_package_upgrade.sh \
+		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent
+	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/run_node_reboot.sh \
 		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent
 	${INSTALL_DATA} ${FILESDIR}${PREFIX}/pkg/systemup_monitor.inc \
 		${STAGEDIR}${PREFIX}/pkg

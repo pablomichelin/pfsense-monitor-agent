@@ -60,6 +60,7 @@ enum AlertType {
   node_uid_conflict
   clock_skew
   auth_failure_repeated
+  certificate_expiring
 
   @@map("alert_type")
 }
@@ -88,6 +89,46 @@ enum NodeCredentialStatus {
   @@map("node_credential_status")
 }
 
+enum NodeCapabilityAccessMode {
+  unknown
+  direct
+  agent
+  manual
+
+  @@map("node_capability_access_mode")
+}
+
+enum NodeExternalCredentialType {
+  pfrest_api
+
+  @@map("node_external_credential_type")
+}
+
+enum NodeExternalCredentialAuthMethod {
+  api_key
+  bearer_token
+
+  @@map("node_external_credential_auth_method")
+}
+
+enum NodeExternalCredentialStatus {
+  active
+  rotated
+  revoked
+
+  @@map("node_external_credential_status")
+}
+
+enum NodeCredentialEventType {
+  created
+  rotated
+  revoked
+  test_success
+  test_failure
+
+  @@map("node_credential_event_type")
+}
+
 enum AgentTokenStatus {
   active
   expired
@@ -108,6 +149,9 @@ enum ConfigBackupStatus {
 enum NodeCommandType {
   config_backup_now
   pfsense_upgrade
+  package_upgrade
+  service_restart
+  node_reboot
 
   @@map("node_command_type")
 }
@@ -122,6 +166,48 @@ enum NodeCommandStatus {
   cancelled
 
   @@map("node_command_status")
+}
+
+enum JobBatchStatus {
+  pending
+  running
+  completed
+  cancelled
+  failed
+
+  @@map("job_batch_status")
+}
+
+enum NotificationChannelType {
+  email
+  webhook
+  telegram
+
+  @@map("notification_channel_type")
+}
+
+enum NotificationChannelStatus {
+  active
+  inactive
+
+  @@map("notification_channel_status")
+}
+
+enum NotificationDeliveryStatus {
+  pending
+  sending
+  delivered
+  failed
+
+  @@map("notification_delivery_status")
+}
+
+enum NodeCriticality {
+  critical
+  standard
+  lab
+
+  @@map("node_criticality")
 }
 
 model Role {
@@ -148,6 +234,9 @@ model Client {
   userScopes UserClientScope[]
   clientUsers User[] @relation("ClientProfileUsers")
   auditLogs AuditLog[]
+  notificationRules NotificationRule[]
+  tags              Tag[]
+  nodeGroups        NodeGroup[]
 
   @@map("clients")
 }
@@ -287,6 +376,7 @@ model Node {
   displayName     String?             @map("display_name")
   managementIp    String?             @map("management_ip")
   wanIp           String?             @map("wan_ip")
+  remoteAccessUrl String?             @map("remote_access_url")
   pfsenseVersion  String?             @map("pfsense_version")
   agentVersion    String?             @map("agent_version")
   haRole          String?             @map("ha_role")
@@ -304,11 +394,13 @@ model Node {
   networkInterfacesJson Json?         @map("network_interfaces_json")
   status          NodeStatus          @default(unknown)
   maintenanceMode Boolean             @default(false) @map("maintenance_mode")
+  criticality     NodeCriticality     @default(standard)
   pfsenseUpdateAvailable    Boolean?  @map("pfsense_update_available")
   pfsenseUpdateTargetVersion String?  @map("pfsense_update_target_version")
   pfsenseUpdateCheckedAt    DateTime? @map("pfsense_update_checked_at") @db.Timestamptz(6)
   pfsenseUpdateCheckError   String?   @map("pfsense_update_check_error")
   haDetectedFromAgent       Boolean?  @map("ha_detected_from_agent")
+  configBackupPolicyJson    Json?     @map("config_backup_policy_json")
   createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
   site            Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
@@ -321,9 +413,72 @@ model Node {
   configBackups   NodeConfigBackup[]
   nodeCommands    NodeCommand[]
   requestNonces   NodeRequestNonce[]
+  nodeTags        NodeTag[]
+  groupMembers    NodeGroupMember[]
+  metricSamples   NodeMetricSample[]
+  metricRollupsHourly NodeMetricRollupHourly[]
+  metricRollupsDaily  NodeMetricRollupDaily[]
+  certificates        NodeCertificate[]
+  capability          NodeCapability?
+  externalCredentials NodeExternalCredential[]
+  credentialEvents    NodeCredentialEvent[]
 
   @@index([siteId, status])
+  @@index([criticality])
   @@map("nodes")
+}
+
+model Tag {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId  String   @map("client_id") @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  nodeTags  NodeTag[]
+
+  @@unique([clientId, name])
+  @@index([clientId])
+  @@map("tags")
+}
+
+model NodeTag {
+  nodeId    String   @map("node_id") @db.Uuid
+  tagId     String   @map("tag_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  node      Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([nodeId, tagId])
+  @@index([tagId])
+  @@map("node_tags")
+}
+
+model NodeGroup {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId    String            @map("client_id") @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client      Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  members     NodeGroupMember[]
+
+  @@unique([clientId, name])
+  @@index([clientId])
+  @@map("node_groups")
+}
+
+model NodeGroupMember {
+  groupId   String    @map("group_id") @db.Uuid
+  nodeId    String    @map("node_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  group     NodeGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  node      Node      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, nodeId])
+  @@index([nodeId])
+  @@map("node_group_members")
 }
 
 // C2: anti-replay HMAC — assinaturas ja vistas por node, com TTL = janela de skew.
@@ -440,6 +595,87 @@ model NodeGatewayStatus {
   @@map("node_gateway_status")
 }
 
+model NodeCertificate {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nodeId          String   @map("node_id") @db.Uuid
+  certKey         String   @map("cert_key")
+  subject         String
+  issuer          String?
+  usageDescriptor String?  @map("usage_descriptor")
+  notBefore       DateTime @map("not_before") @db.Timestamptz(6)
+  notAfter        DateTime @map("not_after") @db.Timestamptz(6)
+  observedAt      DateTime @map("observed_at") @db.Timestamptz(6)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  node            Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeId, certKey])
+  @@index([nodeId, notAfter])
+  @@map("node_certificates")
+}
+
+model NodeCapability {
+  id               String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nodeId           String                   @unique @map("node_id") @db.Uuid
+  pfrestEnabled    Boolean?                 @map("pfrest_enabled")
+  pfrestVersion    String?                  @map("pfrest_version")
+  apiBaseUrl       String?                  @map("api_base_url")
+  accessMode       NodeCapabilityAccessMode @default(unknown) @map("access_mode")
+  authMethod       String?                  @map("auth_method")
+  capabilitiesJson Json?                    @map("capabilities_json")
+  lastReportedAt   DateTime?                @map("last_reported_at") @db.Timestamptz(6)
+  lastProbeAt      DateTime?                @map("last_probe_at") @db.Timestamptz(6)
+  lastSuccessAt    DateTime?                @map("last_success_at") @db.Timestamptz(6)
+  lastError        String?                  @map("last_error")
+  observedAt       DateTime                 @map("observed_at") @db.Timestamptz(6)
+  createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  node             Node                     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@map("node_capabilities")
+}
+
+model NodeExternalCredential {
+  id               String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nodeId           String                           @map("node_id") @db.Uuid
+  credentialType   NodeExternalCredentialType       @default(pfrest_api) @map("credential_type")
+  authMethod       NodeExternalCredentialAuthMethod @map("auth_method")
+  secretHint       String                           @map("secret_hint")
+  secretEncrypted  String                           @map("secret_encrypted")
+  status           NodeExternalCredentialStatus     @default(active)
+  scopeDescription String?                          @map("scope_description")
+  rotatedAt        DateTime?                        @map("rotated_at") @db.Timestamptz(6)
+  lastTestedAt     DateTime?                        @map("last_tested_at") @db.Timestamptz(6)
+  lastTestResult   String?                          @map("last_test_result")
+  createdBy        String?                          @map("created_by") @db.Uuid
+  revokedAt        DateTime?                        @map("revoked_at") @db.Timestamptz(6)
+  createdAt        DateTime                         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  node             Node                             @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  events           NodeCredentialEvent[]
+
+  @@index([nodeId, status])
+  @@index([nodeId, credentialType, status])
+  @@map("node_external_credentials")
+}
+
+model NodeCredentialEvent {
+  id           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nodeId       String                  @map("node_id") @db.Uuid
+  credentialId String?                 @map("credential_id") @db.Uuid
+  eventType    NodeCredentialEventType @map("event_type")
+  actorId      String?                 @map("actor_id") @db.Uuid
+  result       String                  @default("success")
+  metadataJson Json?                   @map("metadata_json")
+  createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  node         Node                    @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  credential   NodeExternalCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+
+  @@index([nodeId, createdAt])
+  @@index([credentialId])
+  @@map("node_credential_events")
+}
+
 model Alert {
   id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   nodeId         String        @map("node_id") @db.Uuid
@@ -456,6 +692,7 @@ model Alert {
   resolvedAt     DateTime?     @map("resolved_at") @db.Timestamptz(6)
   resolutionNote String?       @map("resolution_note")
   node           Node          @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  notificationDeliveries NotificationDelivery[]
 
   @@index([nodeId, status, severity])
   @@map("alerts")
@@ -493,6 +730,30 @@ model NodeConfigBackup {
   @@map("node_config_backups")
 }
 
+model JobBatch {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  commandType       NodeCommandType @map("command_type")
+  status            JobBatchStatus  @default(pending)
+  requestedByUserId String?         @map("requested_by_user_id") @db.Uuid
+  clientId          String?         @map("client_id") @db.Uuid
+  label             String?
+  metadataJson      Json?           @map("metadata_json")
+  totalCount        Int             @default(0) @map("total_count")
+  succeededCount    Int             @default(0) @map("succeeded_count")
+  failedCount       Int             @default(0) @map("failed_count")
+  cancelledCount    Int             @default(0) @map("cancelled_count")
+  expiredCount      Int             @default(0) @map("expired_count")
+  requestedAt       DateTime        @default(now()) @map("requested_at") @db.Timestamptz(6)
+  completedAt       DateTime?       @map("completed_at") @db.Timestamptz(6)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  commands          NodeCommand[]
+
+  @@index([status])
+  @@index([requestedAt])
+  @@map("job_batches")
+}
+
 model NodeCommand {
   id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   nodeId            String            @map("node_id") @db.Uuid
@@ -507,12 +768,22 @@ model NodeCommand {
   payloadJson       Json?             @map("payload_json")
   resultJson        Json?             @map("result_json")
   errorMessage      String?           @map("error_message")
+  batchId           String?           @map("batch_id") @db.Uuid
+  idempotencyKey    String?           @map("idempotency_key")
+  retryCount        Int               @default(0) @map("retry_count")
+  maxRetries        Int               @default(0) @map("max_retries")
+  nextRetryAt       DateTime?         @map("next_retry_at") @db.Timestamptz(6)
+  cancelledAt       DateTime?         @map("cancelled_at") @db.Timestamptz(6)
+  cancelledByUserId String?           @map("cancelled_by_user_id") @db.Uuid
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   node              Node              @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  batch             JobBatch?         @relation(fields: [batchId], references: [id], onDelete: SetNull)
   configBackups     NodeConfigBackup[]
 
   @@index([nodeId, status])
   @@index([expiresAt])
+  @@index([batchId])
+  @@index([nextRetryAt])
   @@map("node_commands")
 }
 
@@ -536,4 +807,149 @@ model AuditLog {
   @@index([clientId, createdAt])
   @@index([result, createdAt])
   @@map("audit_logs")
+}
+
+model NotificationChannel {
+  id               String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  type             NotificationChannelType
+  status           NotificationChannelStatus @default(active)
+  configPublicJson Json                      @map("config_public_json")
+  secretsEncrypted String?                   @map("secrets_encrypted")
+  createdAt        DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  rules            NotificationRule[]
+  deliveries       NotificationDelivery[]
+
+  @@index([status, type])
+  @@map("notification_channels")
+}
+
+model NotificationRule {
+  id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  enabled   Boolean             @default(true)
+  severity  AlertSeverity?
+  alertType AlertType?          @map("alert_type")
+  clientId  String?             @map("client_id") @db.Uuid
+  channelId String              @map("channel_id") @db.Uuid
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  channel   NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  client    Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([enabled, channelId])
+  @@index([clientId])
+  @@map("notification_rules")
+}
+
+model NotificationDelivery {
+  id             String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  alertId        String                     @map("alert_id") @db.Uuid
+  channelId      String                     @map("channel_id") @db.Uuid
+  idempotencyKey String                     @unique @map("idempotency_key")
+  status         NotificationDeliveryStatus @default(pending)
+  attemptCount   Int                        @default(0) @map("attempt_count")
+  lastError      String?                    @map("last_error")
+  sentAt         DateTime?                  @map("sent_at") @db.Timestamptz(6)
+  createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  alert          Alert                      @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  channel        NotificationChannel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([alertId, createdAt])
+  @@index([channelId, status])
+  @@map("notification_deliveries")
+}
+
+// Fase 6 plano 117: amostras periodicas do snapshot operacional (nao e heartbeat bruto).
+model NodeMetricSample {
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nodeId            String     @map("node_id") @db.Uuid
+  sampledAt         DateTime   @map("sampled_at") @db.Timestamptz(6)
+  status            NodeStatus
+  cpuPercent        Float?     @map("cpu_percent")
+  memoryPercent     Float?     @map("memory_percent")
+  diskPercent       Float?     @map("disk_percent")
+  latencyMs         Int?       @map("latency_ms")
+  availabilityScore Float      @default(0) @map("availability_score")
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  node              Node       @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId, sampledAt])
+  @@map("node_metric_samples")
+}
+
+model NodeMetricRollupHourly {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nodeId          String   @map("node_id") @db.Uuid
+  bucketStart     DateTime @map("bucket_start") @db.Timestamptz(6)
+  sampleCount     Int      @default(0) @map("sample_count")
+  cpuAvg          Float?   @map("cpu_avg")
+  cpuMin          Float?   @map("cpu_min")
+  cpuMax          Float?   @map("cpu_max")
+  memoryAvg       Float?   @map("memory_avg")
+  memoryMin       Float?   @map("memory_min")
+  memoryMax       Float?   @map("memory_max")
+  diskAvg         Float?   @map("disk_avg")
+  diskMin         Float?   @map("disk_min")
+  diskMax         Float?   @map("disk_max")
+  latencyAvg      Float?   @map("latency_avg")
+  latencyMin      Float?   @map("latency_min")
+  latencyMax      Float?   @map("latency_max")
+  availabilityPct Float?   @map("availability_pct")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  node            Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeId, bucketStart])
+  @@index([bucketStart])
+  @@map("node_metric_rollups_hourly")
+}
+
+model NodeMetricRollupDaily {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nodeId          String   @map("node_id") @db.Uuid
+  bucketStart     DateTime @map("bucket_start") @db.Timestamptz(6)
+  sampleCount     Int      @default(0) @map("sample_count")
+  cpuAvg          Float?   @map("cpu_avg")
+  cpuMin          Float?   @map("cpu_min")
+  cpuMax          Float?   @map("cpu_max")
+  memoryAvg       Float?   @map("memory_avg")
+  memoryMin       Float?   @map("memory_min")
+  memoryMax       Float?   @map("memory_max")
+  diskAvg         Float?   @map("disk_avg")
+  diskMin         Float?   @map("disk_min")
+  diskMax         Float?   @map("disk_max")
+  latencyAvg      Float?   @map("latency_avg")
+  latencyMin      Float?   @map("latency_min")
+  latencyMax      Float?   @map("latency_max")
+  availabilityPct Float?   @map("availability_pct")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  node            Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeId, bucketStart])
+  @@index([bucketStart])
+  @@map("node_metric_rollups_daily")
+}
+
+// Lock simples para jobs periodicos (amostragem/rollup).
+model SystemJobLock {
+  lockKey     String   @id @map("lock_key")
+  lockedUntil DateTime @map("locked_until") @db.Timestamptz(6)
+  ownerId     String?  @map("owner_id")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("system_job_locks")
+}
+
+// Fase 4 plano 117: politica MFA persistida (env permanece override break-glass).
+model MfaPolicySettings {
+  id                  String   @id @default("default")
+  enforcedRoles       String[] @default([]) @map("enforced_roles")
+  enforcementBlocking Boolean  @default(false) @map("enforcement_blocking")
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("mfa_policy_settings")
 }

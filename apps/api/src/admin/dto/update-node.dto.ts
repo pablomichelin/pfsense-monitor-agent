@@ -1,5 +1,4 @@
 import {
-  IsIP,
   IsOptional,
   IsString,
   MaxLength,
@@ -16,13 +15,22 @@ export class UpdateNodeDto {
   @MaxLength(255)
   display_name?: string;
 
+  /** IP(s) de gerenciamento; multiplas IPs separadas por virgula (como no heartbeat). */
   @IsOptional()
-  @IsIP()
+  @IsString()
+  @MaxLength(512)
   management_ip?: string;
 
+  /** IP(s) WAN; multiplas IPs separadas por virgula (como no heartbeat). */
   @IsOptional()
-  @IsIP()
+  @IsString()
+  @MaxLength(512)
   wan_ip?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  remote_access_url?: string;
 
   @IsOptional()
   @IsString()

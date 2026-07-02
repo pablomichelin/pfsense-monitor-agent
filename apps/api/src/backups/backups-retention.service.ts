@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigBackupStatus } from '@prisma/client';
-import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveRetentionPolicy } from './backups-retention-policy.util';
 import { BackupsStorageService } from './backups-storage.service';
 
 @Injectable()
@@ -15,6 +15,16 @@ export class BackupsRetentionService {
 
   async enforceRetention(nodeId: string): Promise<string[]> {
     const deletedBackupUids: string[] = [];
+    const node = await this.prisma.node.findUnique({
+      where: { id: nodeId },
+      select: {
+        configBackupPolicyJson: true,
+      },
+    });
+    const retentionPolicy = resolveRetentionPolicy(
+      node?.configBackupPolicyJson ?? null,
+    );
+
     const storedBackups = await this.prisma.nodeConfigBackup.findMany({
       where: {
         nodeId,
@@ -37,11 +47,9 @@ export class BackupsRetentionService {
     let totalBytes = 0;
 
     for (const [index, backup] of storedBackups.entries()) {
-      const withinCount =
-        index < appConfig.configBackup.retentionCount;
+      const withinCount = index < retentionPolicy.count;
       const withinBytes =
-        totalBytes + backup.sizeBytes <=
-        appConfig.configBackup.retentionMaxBytesPerNode;
+        totalBytes + backup.sizeBytes <= retentionPolicy.max_bytes;
 
       if (withinCount && withinBytes) {
         keepIds.add(backup.id);

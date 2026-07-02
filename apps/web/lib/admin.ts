@@ -124,34 +124,35 @@ export async function updateClientAction(formData: FormData): Promise<void> {
   }
 }
 
-export type DeleteClientResult =
-  | { ok: true; redirectUrl: string }
-  | { ok: false; error: string };
+export async function deleteClientAction(
+  clientId: string,
+  returnTo = '/admin/clientes',
+): Promise<void> {
+  const normalizedId = clientId?.trim() ?? '';
+  const safeReturnTo =
+    returnTo && returnTo.startsWith('/admin') ? returnTo : '/admin/clientes';
+  const baseUrl = safeReturnTo.replace(/\?.*$/, '');
 
-export async function deleteClientAction(formData: FormData): Promise<DeleteClientResult> {
-  const clientId = String(formData.get('client_id') ?? '').trim();
-  const returnTo = normalizeOptional(formData.get('returnTo')) || '/admin/clientes';
-  const baseUrl = returnTo.replace(/\?.*$/, '');
-
-  if (!clientId) {
-    redirect(returnTo);
+  if (!normalizedId) {
+    redirect(baseUrl);
   }
 
   try {
-    await deleteClient(clientId);
+    await deleteClient(normalizedId);
     revalidatePath('/admin');
     revalidatePath('/admin/clientes');
     revalidatePath('/nodes');
     revalidatePath('/dashboard');
     revalidatePath('/bootstrap');
-    return {
-      ok: true,
-      redirectUrl: `${baseUrl}?section=client-delete&status=ok&message=${encodeURIComponent('Cliente excluido')}`,
-    };
+    redirect(
+      `${baseUrl}?section=client-delete&status=ok&message=${encodeURIComponent('Cliente excluido')}`,
+    );
   } catch (error) {
     rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao excluir cliente';
-    return { ok: false, error: message };
+    redirect(
+      `${baseUrl}?section=client-delete&status=error&message=${encodeURIComponent(message)}`,
+    );
   }
 }
 
@@ -195,6 +196,7 @@ export async function createNodeAction(formData: FormData): Promise<void> {
       display_name: normalizeOptional(formData.get('display_name')),
       management_ip: normalizeOptional(formData.get('management_ip')),
       wan_ip: normalizeOptional(formData.get('wan_ip')),
+      remote_access_url: normalizeOptional(formData.get('remote_access_url')),
       ha_role: normalizeOptional(formData.get('ha_role')),
       maintenance_mode: String(formData.get('maintenance_mode') ?? '') === 'on',
     };
@@ -484,8 +486,7 @@ export async function updateNodeAction(formData: FormData): Promise<void> {
     await updateNode(nodeId, {
       hostname: normalizeOptional('hostname'),
       display_name: normalizeOptional('display_name'),
-      management_ip: normalizeOptional('management_ip'),
-      wan_ip: normalizeOptional('wan_ip'),
+      remote_access_url: String(formData.get('remote_access_url') ?? '').trim(),
       ha_role: normalizeOptional('ha_role'),
     });
     revalidatePath(`/nodes/${nodeId}`);

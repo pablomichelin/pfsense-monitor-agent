@@ -3,10 +3,12 @@ import {
   Get,
   Header,
   MessageEvent,
+  Query,
   Req,
   Sse,
   UseGuards,
 } from '@nestjs/common';
+import { FleetQueryDto } from './dto/fleet-query.dto';
 import { Observable } from 'rxjs';
 import { getAccessActor } from '../auth/access-actor.util';
 import { AccessPolicyService } from '../auth/access-policy.service';
@@ -31,6 +33,15 @@ export class DashboardController {
   @RequirePermissions('firewalls.view')
   getSummary(@Req() request: AuthenticatedRequest) {
     return this.dashboardService.getSummary(getAccessActor(request));
+  }
+
+  @Get('fleet')
+  @RequirePermissions('firewalls.view')
+  getFleet(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: FleetQueryDto,
+  ) {
+    return this.dashboardService.getFleet(getAccessActor(request), query);
   }
 
   @Sse('events')

@@ -5,8 +5,8 @@ if [ "${2}" != "DEINSTALL" ] && [ "${2}" != "POST-DEINSTALL" ]; then
 	exit 0
 fi
 
-if [ -x ${PKG_ROOTDIR}/usr/local/bin/php ] && [ -f ${PKG_ROOTDIR}/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php ]; then
-	${PKG_ROOTDIR}/usr/local/bin/php -f ${PKG_ROOTDIR}/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php remove 2>/dev/null || true
+if [ -x /usr/local/bin/php ] && [ -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php ]; then
+	/usr/local/bin/php -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php remove 2>/dev/null || true
 fi
 
-${PKG_ROOTDIR}/usr/local/bin/php -f ${PKG_ROOTDIR}/etc/rc.packages %%PORTNAME%% ${2}
+/usr/local/bin/php -f /etc/rc.packages %%PORTNAME%% ${2}

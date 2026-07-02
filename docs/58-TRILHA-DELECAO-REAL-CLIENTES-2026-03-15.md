@@ -31,13 +31,13 @@ Regra: a tela deve permitir **deletar** cliente; se tiver 0 firewalls, delete di
 ### 2.2 Frontend
 
 - **API:** `deleteClient(id)` em `lib/api.ts` (DELETE sem body, csrfProtected).
-- **Server action:** `deleteClientAction(formData)` em `lib/admin.ts`: chama `deleteClient`, revalida `/admin`, `/admin/clientes`, `/nodes`, `/dashboard`, `/bootstrap`, redireciona com `section=client-delete` e `status`/`message`.
+- **Server action:** `deleteClientAction(formData)` em `lib/admin.ts`: chama `deleteClient`, revalida paths, **`redirect()`** com `section=client-delete` (hotfix 2026-06-24; antes retornava URL + `router.push`).
 - **Página /admin/clientes:**
   - Por cliente com **0 firewalls:** botão **"Deletar cliente"** (componente `ClientDeleteButton`).
   - Confirmação antes de excluir: `Excluir o cliente "NOME"? Nao sera possivel desfazer.`
   - Por cliente com **1+ firewalls:** texto *"Remova os firewalls antes de excluir o cliente."* (sem botão de deletar).
   - Mensagem de sucesso/erro após redirect via `AdminSectionMessage` com `section="client-delete"`.
-- **Componente ClientDeleteButton** (`components/client-delete-button.tsx`): client component com botão que chama `deleteClientAction` com `FormData` (client_id, returnTo), confirmação e estado de pending.
+- **Componente ClientDeleteButton** (`components/client-delete-button.tsx`): importa `deleteClientAction` diretamente; confirmação via `ConfirmDialog`; loading com `useState` (hotfix 2026-06-24 — ver `docs/104-HOTFIX-DELETE-CLIENTE-UI-2026-06-24.md`).
 
 ### 2.3 Listagem
 

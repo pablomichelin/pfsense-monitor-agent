@@ -4,9 +4,11 @@ import {
   ConfigBackupStatus,
   NodeCommandStatus,
   NodeCommandType,
+  NodeCriticality,
   Prisma,
 } from '@prisma/client';
 import { deriveBackupVisualStatus } from './backup-visual-status.util';
+import { resolveRemoteAccessUrl } from '../common/remote-access-url';
 import { AccessActor } from '../auth/access-actor.type';
 import { AccessPolicyService } from '../auth/access-policy.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -37,6 +39,21 @@ type FiltersBaseCache = {
     node_count: number;
   }>;
   inactiveClientCount: number;
+  tags: Array<{
+    id: string;
+    name: string;
+    client_id: string;
+    client_name: string;
+    node_count: number;
+  }>;
+  groups: Array<{
+    id: string;
+    name: string;
+    client_id: string;
+    client_name: string;
+    member_count: number;
+  }>;
+  criticality_options: NodeCriticality[];
   expiresAt: number;
 };
 
@@ -76,6 +93,21 @@ export class NodesService {
       status: string;
       node_count: number;
     }>;
+    tags: Array<{
+      id: string;
+      name: string;
+      client_id: string;
+      client_name: string;
+      node_count: number;
+    }>;
+    groups: Array<{
+      id: string;
+      name: string;
+      client_id: string;
+      client_name: string;
+      member_count: number;
+    }>;
+    criticality_options: NodeCriticality[];
   }> {
     const base = await this.getFiltersBase();
     const allowedClientIds = await this.accessPolicy.getAllowedClientIds(actor);
@@ -91,6 +123,13 @@ export class NodesService {
       sites: base.sites.filter(
         (site) => allowedSet === null || allowedSet.has(site.client_id),
       ),
+      tags: base.tags.filter(
+        (tag) => allowedSet === null || allowedSet.has(tag.client_id),
+      ),
+      groups: base.groups.filter(
+        (group) => allowedSet === null || allowedSet.has(group.client_id),
+      ),
+      criticality_options: base.criticality_options,
     };
   }
 
@@ -100,7 +139,7 @@ export class NodesService {
       return this.filtersBaseCache;
     }
 
-    const [clients, sites, inactiveClientCount] = await Promise.all([
+    const [clients, sites, tags, groups, inactiveClientCount] = await Promise.all([
       this.prisma.client.findMany({
         where: { status: 'active' },
         orderBy: [{ name: 'asc' }],
@@ -142,6 +181,38 @@ export class NodesService {
           },
         },
       }),
+      this.prisma.tag.findMany({
+        orderBy: [{ client: { name: 'asc' } }, { name: 'asc' }],
+        include: {
+          client: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          _count: {
+            select: {
+              nodeTags: true,
+            },
+          },
+        },
+      }),
+      this.prisma.nodeGroup.findMany({
+        orderBy: [{ client: { name: 'asc' } }, { name: 'asc' }],
+        include: {
+          client: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          _count: {
+            select: {
+              members: true,
+            },
+          },
+        },
+      }),
       this.prisma.client.count({ where: { status: 'inactive' } }),
     ]);
 
@@ -169,6 +240,25 @@ export class NodesService {
         status: site.status,
         node_count: site._count.nodes,
       })),
+      tags: tags.map((tag) => ({
+        id: tag.id,
+        name: tag.name,
+        client_id: tag.clientId,
+        client_name: tag.client.name,
+        node_count: tag._count.nodeTags,
+      })),
+      groups: groups.map((group) => ({
+        id: group.id,
+        name: group.name,
+        client_id: group.clientId,
+        client_name: group.client.name,
+        member_count: group._count.members,
+      })),
+      criticality_options: [
+        NodeCriticality.critical,
+        NodeCriticality.standard,
+        NodeCriticality.lab,
+      ],
       inactiveClientCount,
       expiresAt: now + FILTERS_CACHE_TTL_MS,
     };
@@ -199,6 +289,7 @@ export class NodesService {
       agent_version: string | null;
       management_ip: string | null;
       wan_ip: string | null;
+      remote_access_url: string | null;
       open_alerts: number;
       backup_status: 'ok' | 'late' | 'failed' | 'never';
       latest_backup_received_at: string | null;
@@ -206,17 +297,57 @@ export class NodesService {
       memory_percent: number | null;
       disk_percent: number | null;
       uptime_seconds: number | null;
+      criticality: NodeCriticality;
+      tags: Array<{ id: string; name: string }>;
     }>;
     generated_at: string;
   }> {
     const now = new Date();
     const searchTerm = query.search?.trim();
     await this.accessPolicy.assertRequestedClientFilter(actor, query.client_id);
+
+    if (query.tag_id) {
+      const tag = await this.prisma.tag.findUnique({
+        where: { id: query.tag_id },
+        select: { clientId: true },
+      });
+      if (!tag) {
+        throw new NotFoundException('tag not found');
+      }
+      await this.accessPolicy.assertClientAccess(actor, tag.clientId);
+    }
+
+    if (query.group_id) {
+      const group = await this.prisma.nodeGroup.findUnique({
+        where: { id: query.group_id },
+        select: { clientId: true },
+      });
+      if (!group) {
+        throw new NotFoundException('group not found');
+      }
+      await this.accessPolicy.assertClientAccess(actor, group.clientId);
+    }
+
     const baseWhere: Prisma.NodeWhereInput = {
       siteId: query.site_id,
+      criticality: query.criticality,
       site: query.client_id
         ? {
             clientId: query.client_id,
+          }
+        : undefined,
+      nodeTags: query.tag_id
+        ? {
+            some: {
+              tagId: query.tag_id,
+            },
+          }
+        : undefined,
+      groupMembers: query.group_id
+        ? {
+            some: {
+              groupId: query.group_id,
+            },
           }
         : undefined,
       OR: searchTerm
@@ -287,6 +418,21 @@ export class NodesService {
             client: true,
           },
         },
+        nodeTags: {
+          include: {
+            tag: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+          orderBy: {
+            tag: {
+              name: 'asc',
+            },
+          },
+        },
         alerts: {
           where: {
             status: AlertStatus.open,
@@ -345,6 +491,8 @@ export class NodesService {
         const backupStatus = deriveBackupVisualStatus({
           latestBackupReceivedAt,
           latestFailedCommandAt,
+          backupPolicyJson: node.configBackupPolicyJson,
+          timeZone: node.site.timezone,
           now,
         });
 
@@ -372,6 +520,11 @@ export class NodesService {
           agent_version: node.agentVersion,
           management_ip: node.managementIp,
           wan_ip: node.wanIp,
+          remote_access_url: resolveRemoteAccessUrl(
+            node.remoteAccessUrl,
+            node.wanIp,
+            node.managementIp,
+          ),
           open_alerts: node.alerts.length,
           backup_status: backupStatus,
           latest_backup_received_at: latestBackupReceivedAt?.toISOString() ?? null,
@@ -379,6 +532,11 @@ export class NodesService {
           memory_percent: node.memoryPercent ?? null,
           disk_percent: node.diskPercent ?? null,
           uptime_seconds: node.uptimeSeconds ?? null,
+          criticality: node.criticality,
+          tags: node.nodeTags.map((entry) => ({
+            id: entry.tag.id,
+            name: entry.tag.name,
+          })),
         };
       })
       .filter((node) => (query.status ? node.effective_status === query.status : true));
@@ -400,10 +558,13 @@ export class NodesService {
       effective_status: string;
       observed_status: string;
       maintenance_mode: boolean;
+      criticality: NodeCriticality;
+      tags: Array<{ id: string; name: string }>;
       client: { id: string; name: string; code: string };
       site: { id: string; name: string; code: string; city: string | null; state: string | null; timezone: string | null };
       management_ip: string | null;
       wan_ip: string | null;
+      remote_access_url: string | null;
       network_interfaces: Array<{ name: string; ip: string; role?: string }> | null;
       pfsense_version: string | null;
       agent_version: string | null;
@@ -445,6 +606,16 @@ export class NodesService {
         opened_at: string;
         resolved_at: string | null;
       }>;
+      certificates: Array<{
+        cert_key: string;
+        subject: string;
+        issuer: string | null;
+        usage: string | null;
+        not_before: string;
+        not_after: string;
+        days_until_expiry: number;
+        observed_at: string;
+      }>;
     };
   }> {
     const now = new Date();
@@ -474,6 +645,24 @@ export class NodesService {
           },
           take: 10,
         },
+        nodeTags: {
+          include: {
+            tag: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+          orderBy: {
+            tag: {
+              name: 'asc',
+            },
+          },
+        },
+        certificates: {
+          orderBy: [{ notAfter: 'asc' }, { subject: 'asc' }],
+        },
       },
     });
 
@@ -500,6 +689,11 @@ export class NodesService {
         effective_status: deriveEffectiveNodeStatus(node, now),
         observed_status: node.status,
         maintenance_mode: node.maintenanceMode,
+        criticality: node.criticality,
+        tags: node.nodeTags.map((entry) => ({
+          id: entry.tag.id,
+          name: entry.tag.name,
+        })),
         client: {
           id: node.site.client.id,
           name: node.site.client.name,
@@ -515,6 +709,11 @@ export class NodesService {
         },
         management_ip: node.managementIp,
         wan_ip: node.wanIp,
+        remote_access_url: resolveRemoteAccessUrl(
+          node.remoteAccessUrl,
+          node.wanIp,
+          node.managementIp,
+        ),
         network_interfaces:
           (node.networkInterfacesJson as Array<{ name: string; ip: string; role?: string }> | null) ?? null,
         pfsense_version: node.pfsenseVersion,
@@ -558,6 +757,19 @@ export class NodesService {
           description: alert.description,
           opened_at: alert.openedAt.toISOString(),
           resolved_at: alert.resolvedAt?.toISOString() ?? null,
+        })),
+        certificates: node.certificates.map((certificate) => ({
+          cert_key: certificate.certKey,
+          subject: certificate.subject,
+          issuer: certificate.issuer,
+          usage: certificate.usageDescriptor,
+          not_before: certificate.notBefore.toISOString(),
+          not_after: certificate.notAfter.toISOString(),
+          days_until_expiry: Math.ceil(
+            (certificate.notAfter.getTime() - now.getTime()) /
+              (24 * 60 * 60 * 1000),
+          ),
+          observed_at: certificate.observedAt.toISOString(),
         })),
       },
     };

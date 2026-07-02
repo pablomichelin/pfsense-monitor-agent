@@ -14,6 +14,11 @@ import {
 } from '@/lib/backups';
 import { BackupDownloadButton } from '@/components/backup-download-button';
 import {
+  BackupDriftIndicator,
+  BackupRetentionPolicyForm,
+} from '@/components/backups/backup-advanced-panel';
+import { BackupDiffViewer } from '@/components/backups/backup-diff-viewer';
+import {
   formatBackupAge,
   formatBytes,
   formatDateTime,
@@ -27,6 +32,7 @@ type Props = {
   nodeEffectiveStatus: string;
   canRequest: boolean;
   canDownload: boolean;
+  canManage: boolean;
   initialBackups: NodeConfigBackupsResponse;
   auditHref?: string;
 };
@@ -129,6 +135,7 @@ export function NodeConfigBackupsSection({
   nodeEffectiveStatus,
   canRequest,
   canDownload,
+  canManage,
   initialBackups,
   auditHref,
 }: Props) {
@@ -406,6 +413,24 @@ export function NodeConfigBackupsSection({
           Nenhum backup recebido deste firewall ainda.
         </div>
       )}
+
+      <BackupDriftIndicator
+        nodeId={nodeId}
+        backups={initialBackups}
+        canManage={canManage}
+      />
+
+      <BackupRetentionPolicyForm
+        nodeId={nodeId}
+        backups={initialBackups}
+        canManage={canManage}
+      />
+
+      <BackupDiffViewer
+        nodeId={nodeId}
+        items={initialBackups.items}
+        enabled={initialBackups.advanced_features?.diff_enabled === true}
+      />
     </section>
   );
 }

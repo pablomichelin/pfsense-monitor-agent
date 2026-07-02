@@ -7,7 +7,7 @@ import {
   setRolePermissionsAction,
 } from '@/lib/admin-permissions';
 import type { PermissionsMatrixResponse } from '@/lib/api';
-import { permissionGroupLabel, roleLabel } from '@/lib/rbac-labels';
+import { permissionGroupLabel, permissionLabel, roleLabel } from '@/lib/rbac-labels';
 
 const SUPERADMIN_ROLE = 'superadmin';
 
@@ -336,10 +336,10 @@ export function PermissionsMatrixEditor({
               ...group.items.map((permission) => (
                 <tr key={permission.id} className="bg-panel-soft/20">
                   <td className="sticky left-0 z-10 bg-panel-soft/95 px-4 py-3">
-                    <p className="font-mono text-xs text-cyan-200">{permission.id}</p>
-                    {permission.description ? (
-                      <p className="mt-1 text-xs text-slate-500">{permission.description}</p>
-                    ) : null}
+                    <p className="text-sm text-slate-200">
+                      {permissionLabel(permission.id, permission.description)}
+                    </p>
+                    <p className="mt-1 font-mono text-xs text-cyan-200/80">{permission.id}</p>
                   </td>
                   {data.roles.map((role) => {
                     const enabled = permissionEnabled(role.code, permission.id);

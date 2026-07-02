@@ -268,6 +268,7 @@ export default async function AlertsPage({
                   <option value="heartbeat_missing">heartbeat_missing</option>
                   <option value="service_down">service_down</option>
                   <option value="gateway_down">gateway_down</option>
+                  <option value="certificate_expiring">certificate_expiring</option>
                   <option value="version_change">version_change</option>
                   <option value="agent_error">agent_error</option>
                   <option value="node_uid_conflict">node_uid_conflict</option>

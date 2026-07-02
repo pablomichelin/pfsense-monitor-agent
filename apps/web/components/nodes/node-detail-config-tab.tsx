@@ -2,8 +2,10 @@ import Link from 'next/link';
 import { AdvancedSection } from '@/components/advanced-section';
 import { CopyButton } from '@/components/copy-button';
 import { RotateSecretButton } from '@/components/rotate-secret-button';
+import { NodeFleetMetadataForm } from '@/components/nodes/node-fleet-metadata-form';
+import { CriticalityBadge, TagChipList } from '@/components/nodes/fleet-org-badges';
 import { updateNodeAction } from '@/lib/admin';
-import type { NodeBootstrapCommandResponse, NodeDetailsResponse } from '@/lib/api';
+import type { FleetTagItem, NodeBootstrapCommandResponse, NodeDetailsResponse } from '@/lib/api';
 import {
   buildAuditHref,
   buildNodeDetailsHref,
@@ -27,6 +29,8 @@ export function NodeDetailConfigTab({
   configBackupInstallMode,
   releaseBaseUrl,
   controllerUrl,
+  availableTags = [],
+  canManageFleetMetadata = false,
 }: {
   node: Node;
   canManageNode: boolean;
@@ -35,6 +39,8 @@ export function NodeDetailConfigTab({
   configBackupInstallMode: ConfigBackupInstallMode;
   releaseBaseUrl?: string;
   controllerUrl?: string;
+  availableTags?: FleetTagItem[];
+  canManageFleetMetadata?: boolean;
 }) {
   const testConnectionAuditHref = buildAuditHref({
     action: 'ingest.test_connection',
@@ -52,14 +58,42 @@ export function NodeDetailConfigTab({
 
   return (
     <div className="space-y-8">
+      <PageSection
+        title="Organização da frota"
+        description="Criticidade/SLA e tags operacionais. Tags não substituem escopo RBAC por cliente."
+      >
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="space-y-3 p-4">
+            <p className="text-xs uppercase tracking-wider text-slate-500">Resumo atual</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <CriticalityBadge criticality={node.criticality} />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wider text-slate-500">Tags</p>
+              <div className="mt-2">
+                <TagChipList tags={node.tags} max={12} />
+              </div>
+            </div>
+          </Card>
+
+          {canManageFleetMetadata ? (
+            <NodeFleetMetadataForm
+              nodeId={node.id}
+              clientId={node.client.id}
+              criticality={node.criticality}
+              selectedTagIds={node.tags.map((tag) => tag.id)}
+              availableTags={availableTags}
+            />
+          ) : null}
+        </div>
+      </PageSection>
+
       {canManageNode ? (
         <PageSection title="Editar cadastro" description="Metadados exibidos no inventário e no detalhe.">
           <Card>
             <form action={updateNodeAction} className="space-y-3">
               <input type="hidden" name="node_id" value={node.id} />
               <input type="hidden" name="hostname" value={node.hostname} />
-              <input type="hidden" name="management_ip" value={node.management_ip ?? ''} />
-              <input type="hidden" name="wan_ip" value={node.wan_ip ?? ''} />
               <input
                 type="text"
                 name="display_name"
@@ -81,6 +115,18 @@ export function NodeDetailConfigTab({
                 <p className="text-xs uppercase tracking-wider text-slate-500">IP WAN (resumo)</p>
                 <p className="mt-0.5 font-mono text-sm text-slate-300">{node.wan_ip || '—'}</p>
               </div>
+              <div>
+                <p className="text-xs uppercase tracking-wider text-slate-500">
+                  IP de acesso direto web
+                </p>
+                <input
+                  type="text"
+                  name="remote_access_url"
+                  defaultValue={node.remote_access_url ?? ''}
+                  placeholder="https://177.38.158.46:9999"
+                  className="mt-1.5 w-full rounded-lg h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                />
+              </div>
               <div className="rounded-lg border border-slate-600/80 bg-slate-900/50 px-4 py-3">
                 <p className="text-xs uppercase tracking-wider text-slate-500">Versão pfSense</p>
                 <p className="mt-0.5 font-mono text-sm text-slate-300">
@@ -88,7 +134,7 @@ export function NodeDetailConfigTab({
                 </p>
               </div>
               <div className="rounded-lg border border-slate-600/80 bg-slate-900/50 px-4 py-3">
-                <p className="text-xs uppercase tracking-wider text-slate-500">Versão do agente</p>
+                <p className="text-xs uppercase tracking-wider text-slate-500">Pacote</p>
                 <p className="mt-0.5 font-mono text-sm text-slate-300">{node.agent_version ?? '—'}</p>
               </div>
               <AdvancedSection

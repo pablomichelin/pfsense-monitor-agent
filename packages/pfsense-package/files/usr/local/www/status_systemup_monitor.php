@@ -12,8 +12,6 @@ $runtime = systemup_monitor_runtime_summary();
 $selected_services = systemup_monitor_selected_service_labels($pkg);
 include("head.inc");
 ?>
-<body>
-<?php include("fbegin.inc"); ?>
 <?php if (isset($tab_array) && function_exists('display_top_tabs')): ?>
 <?php foreach ($tab_array as $tab): ?>
 <?php display_top_tabs($tab); ?>
@@ -135,5 +133,3 @@ if (!empty($runtime['service_detail'])) {
   </div>
 </section>
 <?php include("foot.inc"); ?>
-</body>
-</html>

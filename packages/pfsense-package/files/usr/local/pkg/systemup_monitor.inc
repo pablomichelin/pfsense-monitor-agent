@@ -17,7 +17,7 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.4.4");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.4.10");
 }
 if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
     define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
@@ -267,6 +267,24 @@ function systemup_monitor_normalize_yes_no($value, $default = '')
     return $default;
 }
 
+function systemup_monitor_normalize_interval_seconds($value)
+{
+    $default = (int) SYSTEMUP_MONITOR_DEFAULT_INTERVAL;
+    $normalized = trim((string) $value);
+    if ($normalized === '' || !ctype_digit($normalized)) {
+        return (string) $default;
+    }
+
+    $seconds = (int) $normalized;
+    if ($seconds < 10) {
+        $seconds = 10;
+    } elseif ($seconds > 3600) {
+        $seconds = 3600;
+    }
+
+    return (string) $seconds;
+}
+
 function systemup_monitor_apply_defaults()
 {
     $pkg =& systemup_monitor_config_ref();
@@ -278,9 +296,38 @@ function systemup_monitor_apply_defaults()
         }
     }
 
+    $pkg['interval_seconds'] = systemup_monitor_normalize_interval_seconds($pkg['interval_seconds'] ?? SYSTEMUP_MONITOR_DEFAULT_INTERVAL);
     $pkg['services_csv'] = systemup_monitor_normalize_services_csv($pkg['services_csv'] ?? SYSTEMUP_MONITOR_DEFAULT_SERVICES);
     $pkg['heartbeat_mode'] = systemup_monitor_normalize_heartbeat_mode($pkg['heartbeat_mode'] ?? SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE);
     systemup_monitor_sync_service_fields($pkg);
+}
+
+function systemup_monitor_validate_package_input(&$input_errors)
+{
+    if (!is_array($input_errors)) {
+        $input_errors = array();
+    }
+
+    $controllerUrl = trim((string) ($_POST['controller_url'] ?? ''));
+    if ($controllerUrl !== '') {
+        $parsed = parse_url($controllerUrl);
+        $scheme = strtolower((string) ($parsed['scheme'] ?? ''));
+        if (!is_array($parsed) || $scheme === '' || !in_array($scheme, array('http', 'https'), true) || empty($parsed['host'])) {
+            $input_errors[] = gettext('Controller URL must be a valid http or https URL.');
+        }
+    }
+
+    foreach (array('node_uid' => 'Node UID', 'customer_code' => 'Customer code') as $field => $label) {
+        $value = trim((string) ($_POST[$field] ?? ''));
+        if ($value !== '' && !preg_match('/^[A-Za-z0-9._-]+$/', $value)) {
+            $input_errors[] = sprintf(gettext('%s must contain only letters, numbers, dot, underscore or hyphen.'), $label);
+        }
+    }
+
+    $interval = trim((string) ($_POST['interval_seconds'] ?? ''));
+    if ($interval !== '' && !ctype_digit($interval)) {
+        $input_errors[] = gettext('Heartbeat interval must be a numeric value in seconds.');
+    }
 }
 
 function systemup_monitor_read_config()
@@ -498,7 +545,7 @@ function systemup_monitor_import_package_snapshot(array $snapshot)
 /**
  * Persiste somente secoes do SystemUp Monitor no config.xml.
  *
- * Recarrega o config do disco (config_read) antes de gravar, reaplicando apenas
+ * Recarrega o config do disco (config_read_file) antes de gravar, reaplicando apenas
  * o snapshot do package. Evita sobrescrever VPN/NAT/regras com $config stale.
  *
  * @param string $reason Mensagem do Configuration History
@@ -512,8 +559,10 @@ function systemup_monitor_persist_package_config($reason, $snapshot = null)
         $snapshot = systemup_monitor_export_package_snapshot();
     }
 
-    if (function_exists('config_read')) {
-        config_read();
+    if (function_exists('config_read_file')) {
+        config_read_file();
+    } elseif (function_exists('parse_config')) {
+        $config = parse_config(true);
     }
 
     systemup_monitor_import_package_snapshot($snapshot);
@@ -730,7 +779,7 @@ function systemup_monitor_render_agent_config($pkg)
         'CUSTOMER_CODE="' . systemup_monitor_escape_shell_value($pkg['customer_code']) . '"',
         'AGENT_VERSION="' . (defined("SYSTEMUP_MONITOR_AGENT_VERSION") ? SYSTEMUP_MONITOR_AGENT_VERSION : "0.2.0") . '"',
         'SCHEMA_VERSION="2026-01"',
-        'MONITOR_AGENT_INTERVAL_SECONDS="' . systemup_monitor_escape_shell_value($pkg['interval_seconds']) . '"',
+        'MONITOR_AGENT_INTERVAL_SECONDS="' . systemup_monitor_escape_shell_value(systemup_monitor_normalize_interval_seconds($pkg['interval_seconds'] ?? SYSTEMUP_MONITOR_DEFAULT_INTERVAL)) . '"',
         'MONITOR_AGENT_LOG_FILE="/var/log/monitor-pfsense-agent.log"',
         'MONITOR_AGENT_SERVICES="' . systemup_monitor_escape_shell_value($selectedServices) . '"',
         'MONITOR_AGENT_LIGHT_HEARTBEAT="' . $lightHeartbeat . '"',
@@ -760,6 +809,9 @@ function systemup_monitor_render_agent_config($pkg)
     $lines[] = 'MONITOR_AGENT_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS="' . systemup_monitor_escape_shell_value((string) SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS) . '"';
     $lines[] = 'MONITOR_AGENT_CONFIG_SNAPSHOT_TTL_SECONDS="86400"';
     $lines[] = 'MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['pfsense_upgrade_exec_enabled'] ?? '0')) . '"';
+    $lines[] = 'MONITOR_AGENT_OPERATIONAL_ACTIONS_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['operational_actions_enabled'] ?? '0')) . '"';
+    $lines[] = 'MONITOR_AGENT_SERVICE_RESTART_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['service_restart_enabled'] ?? '0')) . '"';
+    $lines[] = 'MONITOR_AGENT_NODE_REBOOT_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['node_reboot_enabled'] ?? '0')) . '"';
 
     return implode("\n", $lines) . "\n";
 }

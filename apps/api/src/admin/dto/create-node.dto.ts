@@ -1,6 +1,5 @@
 import {
   IsBoolean,
-  IsIP,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -33,13 +32,23 @@ export class CreateNodeDto {
   @MaxLength(255)
   display_name?: string;
 
+  /** IP(s) de gerenciamento; multiplas IPs separadas por virgula (como no heartbeat). */
   @IsOptional()
-  @IsIP()
+  @IsString()
+  @MaxLength(512)
   management_ip?: string;
 
+  /** IP(s) WAN; multiplas IPs separadas por virgula (como no heartbeat). */
   @IsOptional()
-  @IsIP()
+  @IsString()
+  @MaxLength(512)
   wan_ip?: string;
+
+  /** URL de acesso remoto ao pfSense (ex.: https://177.38.158.46:9999). Se omitida, derivada do IP WAN ou de gerenciamento. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  remote_access_url?: string;
 
   @IsOptional()
   @IsString()

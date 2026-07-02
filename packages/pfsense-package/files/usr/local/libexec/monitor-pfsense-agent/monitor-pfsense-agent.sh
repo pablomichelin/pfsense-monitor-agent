@@ -179,7 +179,20 @@ $message"
 }
 
 json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+  printf '%s' "$1" | awk '
+    BEGIN { ORS="" }
+    {
+      for (i = 1; i <= length($0); i++) {
+        c = substr($0, i, 1)
+        if (c == "\\") printf "\\\\"
+        else if (c == "\"") printf "\\\""
+        else if (c == "\n") printf "\\n"
+        else if (c == "\r") printf "\\r"
+        else if (c == "\t") printf "\\t"
+        else printf "%s", c
+      }
+    }
+  '
 }
 
 json_nullable_string() {
@@ -242,6 +255,11 @@ json_string_array() {
 }
 
 hex_hmac() {
+  if command_exists php; then
+    MONITOR_HMAC_KEY="$1" php -r 'echo hash_hmac("sha256", stream_get_contents(STDIN), (string) getenv("MONITOR_HMAC_KEY"));'
+    return
+  fi
+  # Fallback: segredo visivel em ps via argv do openssl — preferir php quando disponivel.
   openssl dgst -sha256 -hmac "$1" -binary | od -An -vtx1 | tr -d ' \n'
 }
 
@@ -1353,6 +1371,125 @@ pfsense_upgrade_lock_dir() {
   printf '%s' "/var/run/monitor-pfsense-agent-upgrade.lock"
 }
 
+package_upgrade_lock_file() {
+  printf '%s' "/var/run/monitor-pfsense-package-upgrade.lock"
+}
+
+package_upgrade_state_file() {
+  printf '%s' "$(backup_state_dir)/package-upgrade-pending.json"
+}
+
+package_upgrade_lock_active() {
+  lock_file="$(package_upgrade_lock_file)"
+  if [ ! -f "$lock_file" ]; then
+    return 1
+  fi
+  lock_pid=""
+  while IFS='=' read -r key value; do
+    case "$key" in
+      pid) lock_pid="$value" ;;
+    esac
+  done <"$lock_file" 2>/dev/null || true
+  if [ -n "$lock_pid" ] && agent_lock_pid_alive "$lock_pid"; then
+    return 0
+  fi
+  if command -v pgrep >/dev/null 2>&1; then
+    pgrep -f "install-from-release.sh.*monitor-pfsense-package" >/dev/null 2>&1 && return 0
+    pgrep -f "run_package_upgrade.sh" >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
+
+package_upgrade_url_allowed() {
+  url="$1"
+  require_var CONTROLLER_URL
+  controller_url="${CONTROLLER_URL%/}"
+
+  php -r '
+    $url = trim((string) $argv[1]);
+    $controller = rtrim(trim((string) $argv[2]), "/");
+    if ($url === "" || $controller === "") { exit(1); }
+    $parsed = parse_url($url);
+    if (!is_array($parsed) || empty($parsed["host"])) { exit(1); }
+    if (strpos($url, $controller . "/") === 0) { exit(0); }
+    $parsedController = parse_url($controller);
+    $controllerHost = trim((string) ($parsedController["host"] ?? ""));
+    if ($controllerHost !== "" && strcasecmp($parsed["host"], $controllerHost) === 0) { exit(0); }
+    $repoPath = "/pablomichelin/pfsense-monitor-agent/";
+    foreach (array("raw.githubusercontent.com", "github.com") as $host) {
+      if (strcasecmp($parsed["host"], $host) === 0
+        && stripos((string) ($parsed["path"] ?? ""), $repoPath) === 0) {
+        exit(0);
+      }
+    }
+    exit(1);
+  ' "$url" "$controller_url"
+}
+
+dispatch_package_upgrade() {
+  command_id="$1"
+  target_version="$2"
+  artifact_url="$3"
+  sha256="$4"
+  CURL_CMD="$5"
+
+  if [ -z "$artifact_url" ] || [ -z "$sha256" ]; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "package_upgrade payload missing artifact_url or sha256" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if ! package_upgrade_url_allowed "$artifact_url"; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "artifact URL not allowed" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if package_upgrade_lock_active; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "another package upgrade is running" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  agent_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
+  agent_post_command_ack "$command_id" "running" "$CURL_CMD" >/dev/null 2>&1 || true
+
+  backup_ensure_state_dir
+  state_file="$(package_upgrade_state_file)"
+  printf '{"command_id":"%s","target_version":"%s","artifact_url":"%s","sha256":"%s","started_at":"%s","status":"running"}\n' \
+    "$(json_escape "$command_id")" \
+    "$(json_escape "$target_version")" \
+    "$(json_escape "$artifact_url")" \
+    "$(json_escape "$sha256")" \
+    "$(json_escape "$(iso_now)")" >"$state_file"
+
+  wrapper="$SCRIPT_DIR/run_package_upgrade.sh"
+  if [ ! -f "$wrapper" ]; then
+    agent_post_command_result_failed "$command_id" "run_package_upgrade.sh missing" "$CURL_CMD" >/dev/null 2>&1 || true
+    rm -f "$state_file"
+    return 1
+  fi
+  chmod +x "$wrapper" 2>/dev/null || true
+
+  upgrade_log="/var/log/monitor-pfsense-package-upgrade.log"
+  nohup "$wrapper" "$command_id" "$target_version" "$artifact_url" "$sha256" "$state_file" "$CURL_CMD" >>"$upgrade_log" 2>&1 &
+  wrapper_pid=$!
+
+  if ! kill -0 "$wrapper_pid" 2>/dev/null; then
+    agent_post_command_result_failed "$command_id" "failed to spawn package upgrade wrapper" "$CURL_CMD" >/dev/null 2>&1 || true
+    rm -f "$state_file"
+    return 1
+  fi
+
+  return 0
+}
+
 AGENT_BACKUP_LOCK_STALE_SECONDS="${AGENT_BACKUP_LOCK_STALE_SECONDS:-3600}"
 AGENT_UPGRADE_LOCK_STALE_SECONDS="${AGENT_UPGRADE_LOCK_STALE_SECONDS:-7200}"
 
@@ -1378,13 +1515,23 @@ agent_read_stale_lock() {
   printf '%s %s\n' "$pid" "$started_at"
 }
 
+# POSIX sh: evita here-string bash (<<<) incompatível com /bin/sh do pfSense.
+agent_read_stale_lock_fields() {
+  lock_file="$1"
+  lock_pid=""
+  lock_started=""
+  read -r lock_pid lock_started <<EOF
+$(agent_read_stale_lock "$lock_file" 2>/dev/null || true)
+EOF
+}
+
 agent_acquire_stale_lock() {
   lock_file="$1"
   ttl="$2"
   label="${3:-lock}"
 
   if [ -f "$lock_file" ]; then
-    read -r lock_pid lock_started <<<"$(agent_read_stale_lock "$lock_file")"
+    agent_read_stale_lock_fields "$lock_file"
     now="$(date +%s)"
     lock_age=999999
     if [ -n "$lock_started" ] && [ "$lock_started" -gt 0 ] 2>/dev/null; then
@@ -1416,7 +1563,7 @@ agent_upgrade_lock_active() {
     return 1
   fi
 
-  read -r lock_pid lock_started <<<"$(agent_read_stale_lock "$lock_file" 2>/dev/null || true)"
+  agent_read_stale_lock_fields "$lock_file"
   now="$(date +%s)"
   lock_age=999999
   if [ -n "$lock_started" ] && [ "$lock_started" -gt 0 ] 2>/dev/null; then
@@ -1432,7 +1579,9 @@ agent_upgrade_lock_active() {
 
 agent_cleanup_stale_locks() {
   if [ -f "$(backup_lock_dir)" ]; then
-    read -r backup_pid backup_started <<<"$(agent_read_stale_lock "$(backup_lock_dir)" 2>/dev/null || true)"
+    agent_read_stale_lock_fields "$(backup_lock_dir)"
+    backup_pid=$lock_pid
+    backup_started=$lock_started
     now="$(date +%s)"
     backup_age=999999
     if [ -n "$backup_started" ] && [ "$backup_started" -gt 0 ] 2>/dev/null; then
@@ -1443,7 +1592,9 @@ agent_cleanup_stale_locks() {
     fi
   fi
   if [ -f "$(pfsense_upgrade_lock_dir)" ]; then
-    read -r upgrade_pid upgrade_started <<<"$(agent_read_stale_lock "$(pfsense_upgrade_lock_dir)" 2>/dev/null || true)"
+    agent_read_stale_lock_fields "$(pfsense_upgrade_lock_dir)"
+    upgrade_pid=$lock_pid
+    upgrade_started=$lock_started
     now="$(date +%s)"
     upgrade_age=999999
     if [ -n "$upgrade_started" ] && [ "$upgrade_started" -gt 0 ] 2>/dev/null; then
@@ -1641,6 +1792,209 @@ finalize_pfsense_upgrade_if_pending() {
   agent_release_stale_lock "$(pfsense_upgrade_lock_dir)"
 }
 
+certificates_collection_enabled() {
+  enabled="${MONITOR_AGENT_CERTIFICATES_ENABLED:-0}"
+  case "$enabled" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+build_certificates_json() {
+  if ! certificates_collection_enabled; then
+    printf '[]'
+    return 0
+  fi
+
+  if ! command_exists php; then
+    printf '[]'
+    return 0
+  fi
+
+  config_path="$(pfsense_config_path)"
+  if [ ! -f "$config_path" ]; then
+    printf '[]'
+    return 0
+  fi
+
+  PFSENSE_CONFIG_XML="$config_path" php -r '
+    function pem_from_pfsense_crt(string $crt): ?string {
+      $crt = trim($crt);
+      if ($crt === "") {
+        return null;
+      }
+      if (strpos($crt, "-----BEGIN") !== false) {
+        return $crt;
+      }
+      $decoded = base64_decode($crt, true);
+      if ($decoded === false) {
+        return null;
+      }
+      if (strpos($decoded, "-----BEGIN") !== false) {
+        return $decoded;
+      }
+      return "-----BEGIN CERTIFICATE-----\n"
+        . chunk_split(base64_encode($decoded), 64, "\n")
+        . "-----END CERTIFICATE-----\n";
+    }
+
+    function dn_to_string(array $parts): string {
+      $chunks = [];
+      foreach ($parts as $key => $value) {
+        if (is_array($value)) {
+          $value = implode(", ", $value);
+        }
+        $chunks[] = strtoupper((string) $key) . "=" . (string) $value;
+      }
+      return implode(", ", $chunks);
+    }
+
+    function cert_metadata(string $pem, string $certKey, string $usage): ?array {
+      $x509 = @openssl_x509_read($pem);
+      if ($x509 === false) {
+        return null;
+      }
+      $parsed = @openssl_x509_parse($x509);
+      if (!is_array($parsed)) {
+        return null;
+      }
+      $subject = isset($parsed["subject"]) ? dn_to_string($parsed["subject"]) : "unknown";
+      $issuer = isset($parsed["issuer"]) ? dn_to_string($parsed["issuer"]) : null;
+      $notBefore = gmdate("c", (int) ($parsed["validFrom_time_t"] ?? 0));
+      $notAfter = gmdate("c", (int) ($parsed["validTo_time_t"] ?? 0));
+      if (($parsed["validTo_time_t"] ?? 0) <= 0) {
+        return null;
+      }
+      return [
+        "cert_key" => $certKey,
+        "subject" => $subject,
+        "issuer" => $issuer,
+        "not_before" => $notBefore,
+        "not_after" => $notAfter,
+        "usage" => $usage,
+      ];
+    }
+
+    function append_cert(array &$items, array $seen, ?array $entry): array {
+      if ($entry === null) {
+        return $seen;
+      }
+      $key = (string) ($entry["cert_key"] ?? "");
+      if ($key === "" || isset($seen[$key])) {
+        return $seen;
+      }
+      $seen[$key] = true;
+      $items[] = $entry;
+      return $seen;
+    }
+
+    $configPath = getenv("PFSENSE_CONFIG_XML") ?: "/conf/config.xml";
+    $config = @simplexml_load_file($configPath);
+    if (!$config) {
+      echo "[]";
+      exit(0);
+    }
+
+    $items = [];
+    $seen = [];
+
+    foreach (($config->cert ?? []) as $cert) {
+      $refid = trim((string) ($cert->refid ?? ""));
+      $descr = trim((string) ($cert->descr ?? "certificate"));
+      $type = trim((string) ($cert->type ?? ""));
+      $usage = $descr;
+      if ($type !== "") {
+        $usage = $descr . " (" . $type . ")";
+      }
+      $pem = pem_from_pfsense_crt((string) ($cert->crt ?? ""));
+      if ($pem === null) {
+        continue;
+      }
+      $certKey = $refid !== "" ? "cert:" . $refid : "cert:" . substr(hash("sha256", $pem), 0, 16);
+      $seen = append_cert($items, $seen, cert_metadata($pem, $certKey, $usage));
+    }
+
+    foreach (($config->ca ?? []) as $ca) {
+      $refid = trim((string) ($ca->refid ?? ""));
+      $descr = trim((string) ($ca->descr ?? "CA"));
+      $pem = pem_from_pfsense_crt((string) ($ca->crt ?? ""));
+      if ($pem === null) {
+        continue;
+      }
+      $certKey = $refid !== "" ? "ca:" . $refid : "ca:" . substr(hash("sha256", $pem), 0, 16);
+      $seen = append_cert($items, $seen, cert_metadata($pem, $certKey, $descr . " (CA)"));
+    }
+
+    $webPaths = ["/var/etc/cert.pem", "/usr/local/etc/ssl/cert.pem"];
+    foreach ($webPaths as $webPath) {
+      if (!is_readable($webPath)) {
+        continue;
+      }
+      $pem = trim((string) file_get_contents($webPath));
+      if ($pem === "") {
+        continue;
+      }
+      $certKey = "system:" . substr(hash("sha256", $pem), 0, 16);
+      $seen = append_cert($items, $seen, cert_metadata($pem, $certKey, "Web GUI (system)"));
+      break;
+    }
+
+    echo json_encode($items, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+  ' 2>/dev/null || printf '[]'
+}
+
+capabilities_collection_enabled() {
+  enabled="${MONITOR_AGENT_CAPABILITIES_ENABLED:-0}"
+  case "$enabled" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+build_capabilities_json() {
+  if ! capabilities_collection_enabled; then
+    printf '{}'
+    return 0
+  fi
+
+  pfrest_enabled="null"
+  pfrest_version=""
+  api_base_url=""
+
+  if command_exists pkg; then
+    if pkg info -e pfSense-restapi 2>/dev/null; then
+      pfrest_enabled="true"
+      pfrest_version="$(pkg info -q pfSense-restapi 2>/dev/null | head -n 1 || true)"
+    else
+      pfrest_enabled="false"
+    fi
+  fi
+
+  mgmt_ip="$(detect_mgmt_ip 2>/dev/null || true)"
+  if [ -n "$mgmt_ip" ]; then
+    first_ip="$(printf '%s' "$mgmt_ip" | cut -d',' -f1 | tr -d ' ')"
+    if [ -n "$first_ip" ]; then
+      api_base_url="https://${first_ip}"
+    fi
+  fi
+
+  modules_json='[]'
+  if [ "$pfrest_enabled" = "true" ]; then
+    modules_json='["pfrest","aliases"]'
+  fi
+
+  cat <<EOF
+{
+  "pfrest_enabled": $pfrest_enabled,
+  "pfrest_version": "$(json_escape "$pfrest_version")",
+  "api_base_url": $(json_nullable_string "$api_base_url"),
+  "access_mode": "agent",
+  "auth_method": "api_key",
+  "modules": $modules_json
+}
+EOF
+}
+
 build_config_backup_json_fields() {
   if backup_is_enabled; then
     mode="${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_MODE:-hours}"
@@ -1700,13 +2054,33 @@ build_payload() {
   heartbeat_id="${NODE_UID}-$(date -u +%Y%m%dT%H%M%SZ)-$$"
   sent_at="$(iso_now)"
   # Heartbeat leve: envia apenas dados essenciais; a API mantem ultimo estado de gateways/servicos (reduz carga).
+  # Apos recovery ou N light bem-sucedidos, envia um heartbeat normal para recalcular status no controlador.
   light="${MONITOR_AGENT_LIGHT_HEARTBEAT:-0}"
+  if [ "$light" = "1" ] || [ "$light" = "true" ] || [ "$light" = "yes" ]; then
+    if light_heartbeat_should_send_normal; then
+      light="0"
+    fi
+  fi
   if [ "$light" = "1" ] || [ "$light" = "true" ] || [ "$light" = "yes" ]; then
     services_json=""
     gateways_json=""
   else
     services_json="$(build_services_json 2>/dev/null)" || services_json="[]"
     gateways_json="$(build_gateways_json 2>/dev/null)" || gateways_json="[]"
+  fi
+
+  certificates_json=""
+  if [ "$light" != "1" ] && [ "$light" != "true" ] && [ "$light" != "yes" ]; then
+    if certificates_collection_enabled; then
+      certificates_json="$(build_certificates_json 2>/dev/null)" || certificates_json="[]"
+    fi
+  fi
+
+  capabilities_json=""
+  if [ "$light" != "1" ] && [ "$light" != "true" ] && [ "$light" != "yes" ]; then
+    if capabilities_collection_enabled; then
+      capabilities_json="$(build_capabilities_json 2>/dev/null)" || capabilities_json=""
+    fi
   fi
 
   if [ -n "${MONITOR_AGENT_NOTICES:-}" ]; then
@@ -1716,6 +2090,16 @@ build_payload() {
   fi
 
   if [ -n "$services_json" ]; then
+    cert_field=""
+    if [ -n "$certificates_json" ]; then
+      cert_field=$(printf ',
+  "certificates": %s' "$certificates_json")
+    fi
+    cap_field=""
+    if [ -n "$capabilities_json" ]; then
+      cap_field=$(printf ',
+  "capabilities": %s' "$capabilities_json")
+    fi
     cat <<EOF
 {
   "schema_version": "$(json_escape "${SCHEMA_VERSION:-2026-01}")",
@@ -1735,10 +2119,20 @@ build_payload() {
   "gateways": $gateways_json,
   "services": $services_json,
   "interfaces": ${interfaces_json:-[]},
-  "notices": $notices_json$update_fields$config_backup_fields
+  "notices": $notices_json$update_fields$config_backup_fields$cert_field$cap_field
 }
 EOF
   else
+    cert_field=""
+    if [ -n "$certificates_json" ]; then
+      cert_field=$(printf ',
+  "certificates": %s' "$certificates_json")
+    fi
+    cap_field=""
+    if [ -n "$capabilities_json" ]; then
+      cap_field=$(printf ',
+  "capabilities": %s' "$capabilities_json")
+    fi
     cat <<EOF
 {
   "schema_version": "$(json_escape "${SCHEMA_VERSION:-2026-01}")",
@@ -1756,7 +2150,7 @@ EOF
   "memory_percent": $(json_nullable_number "$memory_percent"),
   "disk_percent": $(json_nullable_number "$disk_percent"),
   "interfaces": ${interfaces_json:-[]},
-  "notices": $notices_json$update_fields$config_backup_fields
+  "notices": $notices_json$update_fields$config_backup_fields$cert_field$cap_field
 }
 EOF
   fi
@@ -1843,6 +2237,96 @@ heartbeat_backoff_path() {
   printf '%s/heartbeat-upload-backoff.json' "$(backup_state_dir)"
 }
 
+heartbeat_backoff_path() {
+  printf '%s/heartbeat-upload-backoff.json' "$(backup_state_dir)"
+}
+
+light_heartbeat_state_path() {
+  printf '%s/light-heartbeat-state.json' "$(backup_state_dir)"
+}
+
+light_heartbeat_force_normal_after() {
+  n="${MONITOR_AGENT_LIGHT_FORCE_NORMAL_AFTER:-3}"
+  case "$n" in
+    ''|*[!0-9]*) printf '3' ;;
+    *) printf '%s' "$n" ;;
+  esac
+}
+
+light_heartbeat_should_send_normal() {
+  config_snapshot_is_light_mode || return 1
+  path="$(light_heartbeat_state_path)"
+  [ -f "$path" ] || return 1
+  command_exists php || return 1
+
+  threshold="$(light_heartbeat_force_normal_after)"
+  php -r '
+    $data = json_decode(@file_get_contents($argv[1]), true);
+    if (!is_array($data)) {
+      exit(1);
+    }
+    if (!empty($data["force_next_normal"])) {
+      exit(0);
+    }
+    $threshold = max(1, (int) $argv[2]);
+    $successes = (int) ($data["consecutive_light_successes"] ?? 0);
+    exit($successes >= $threshold ? 0 : 1);
+  ' "$path" "$threshold"
+}
+
+light_heartbeat_mark_recovery() {
+  config_snapshot_is_light_mode || return 0
+  backup_ensure_state_dir
+  command_exists php || return 0
+
+  php -r '
+    $path = $argv[1];
+    $current = [];
+    if (is_file($path)) {
+      $decoded = json_decode(file_get_contents($path), true);
+      if (is_array($decoded)) {
+        $current = $decoded;
+      }
+    }
+    $current["force_next_normal"] = true;
+    $current["updated_at"] = gmdate("Y-m-d\TH:i:s\Z");
+    file_put_contents($path, json_encode($current, JSON_UNESCAPED_SLASHES));
+  ' "$(light_heartbeat_state_path)"
+}
+
+light_heartbeat_record_success() {
+  sent_as_light="$1"
+  path="$(light_heartbeat_state_path)"
+  backup_ensure_state_dir
+  command_exists php || return 0
+
+  threshold="$(light_heartbeat_force_normal_after)"
+  php -r '
+    $path = $argv[1];
+    $sentAsLight = $argv[2] === "1";
+    $threshold = max(1, (int) $argv[3]);
+    $current = [];
+    if (is_file($path)) {
+      $decoded = json_decode(file_get_contents($path), true);
+      if (is_array($decoded)) {
+        $current = $decoded;
+      }
+    }
+    if (!$sentAsLight) {
+      $current["consecutive_light_successes"] = 0;
+      $current["force_next_normal"] = false;
+    } else {
+      $successes = (int) ($current["consecutive_light_successes"] ?? 0) + 1;
+      $current["consecutive_light_successes"] = $successes;
+      if (!empty($current["force_next_normal"]) || $successes >= $threshold) {
+        $current["force_next_normal"] = true;
+      }
+    }
+    $current["updated_at"] = gmdate("Y-m-d\TH:i:s\Z");
+    file_put_contents($path, json_encode($current, JSON_UNESCAPED_SLASHES));
+  ' "$path" "$sent_as_light" "$threshold"
+}
+
 heartbeat_error_record() {
   http_code="${1:-}"
   curl_error="${2:-}"
@@ -1875,6 +2359,9 @@ heartbeat_error_record() {
   case "$error_class" in
     auth|validation)
       add_notice "heartbeat auth/validation failure (HTTP ${http_code:-?})"
+      if [ "$error_class" = "auth" ] && [ "${http_code:-}" = "401" ]; then
+        echo "heartbeat-auth-failure: HTTP 401 — autenticacao rejeitada; verifique node_secret ou solicite rekey no controlador" >&2
+      fi
       ;;
   esac
 
@@ -1930,7 +2417,14 @@ heartbeat_backoff_record_failure() {
 }
 
 heartbeat_backoff_clear() {
+  had_backoff=0
+  if [ -f "$(heartbeat_backoff_path)" ]; then
+    had_backoff=1
+  fi
   rm -f "$(heartbeat_backoff_path)" 2>/dev/null || true
+  if [ "$had_backoff" = "1" ]; then
+    light_heartbeat_mark_recovery
+  fi
 }
 
 heartbeat_backoff_blocks() {
@@ -2540,6 +3034,209 @@ backup_scheduled() {
   backup_config_now ""
 }
 
+operational_actions_enabled() {
+  flag="${MONITOR_AGENT_OPERATIONAL_ACTIONS_ENABLED:-0}"
+  case "$flag" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+service_restart_enabled() {
+  operational_actions_enabled || return 1
+  flag="${MONITOR_AGENT_SERVICE_RESTART_ENABLED:-0}"
+  case "$flag" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+node_reboot_enabled() {
+  operational_actions_enabled || return 1
+  flag="${MONITOR_AGENT_NODE_REBOOT_ENABLED:-0}"
+  case "$flag" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+service_restart_allowlist() {
+  printf '%s' "monitor_pfsense_agent unbound dhcpd ntpd dpinger"
+}
+
+service_restart_is_allowed() {
+  service_name="$1"
+  for allowed in $(service_restart_allowlist); do
+    if [ "$service_name" = "$allowed" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+operational_action_lock_file() {
+  printf '%s' "/var/run/monitor-pfsense-agent-operational.lock"
+}
+
+operational_action_lock_active() {
+  lock_file="$(operational_action_lock_file)"
+  [ -f "$lock_file" ] || return 1
+  lock_pid=""
+  while IFS='=' read -r key value; do
+    case "$key" in
+      pid) lock_pid="$value" ;;
+    esac
+  done <"$lock_file" 2>/dev/null || true
+  if [ -n "$lock_pid" ] && agent_lock_pid_alive "$lock_pid"; then
+    return 0
+  fi
+  if command -v pgrep >/dev/null 2>&1; then
+    pgrep -f "run_node_reboot.sh" >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
+
+operational_action_acquire_lock() {
+  lock_file="$(operational_action_lock_file)"
+  if operational_action_lock_active; then
+    return 1
+  fi
+  printf 'pid=%s\naction=%s\nstarted=%s\n' "$$" "$1" "$(iso_now)" >"$lock_file"
+  return 0
+}
+
+operational_action_release_lock() {
+  rm -f "$(operational_action_lock_file)" 2>/dev/null || true
+}
+
+dispatch_service_restart() {
+  command_id="$1"
+  service_name="$2"
+  CURL_CMD="$3"
+
+  if ! service_restart_enabled; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "service restart disabled on agent" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if ! service_restart_is_allowed "$service_name"; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "service not in allowlist" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if ! operational_action_acquire_lock "service_restart"; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "another operational action is running" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  agent_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
+  agent_post_command_ack "$command_id" "running" "$CURL_CMD" >/dev/null 2>&1 || true
+
+  restart_ok="0"
+  restart_detail=""
+  if command_exists service; then
+    if service "$service_name" restart >/tmp/monitor-svc-restart.log 2>&1; then
+      restart_ok="1"
+    else
+      restart_detail="$(head -n 3 /tmp/monitor-svc-restart.log 2>/dev/null | tr '\n' ' ')"
+    fi
+  else
+    restart_detail="service command not found"
+  fi
+
+  operational_action_release_lock
+
+  if [ "$restart_ok" = "1" ]; then
+    result_json="{\"service\":\"$(json_escape "$service_name")\",\"restarted\":true}"
+    agent_post_command_result_succeeded "$command_id" "$result_json" "$CURL_CMD" >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  agent_post_command_result_failed \
+    "$command_id" \
+    "${restart_detail:-service restart failed}" \
+    "$CURL_CMD" >/dev/null 2>&1 || true
+  return 1
+}
+
+dispatch_node_reboot() {
+  command_id="$1"
+  delay_seconds="$2"
+  CURL_CMD="$3"
+
+  if ! node_reboot_enabled; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "node reboot disabled on agent" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if operational_action_lock_active; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "another operational action is running" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  case "$delay_seconds" in
+    ''|*[!0-9]*) delay_seconds=60 ;;
+  esac
+  if [ "$delay_seconds" -lt 30 ] 2>/dev/null; then
+    delay_seconds=30
+  fi
+  if [ "$delay_seconds" -gt 600 ] 2>/dev/null; then
+    delay_seconds=600
+  fi
+
+  agent_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
+  agent_post_command_ack "$command_id" "running" "$CURL_CMD" >/dev/null 2>&1 || true
+
+  state_file="$(backup_state_dir)/node-reboot-pending.json"
+  printf '{"command_id":"%s","delay_seconds":"%s","started_at":"%s","status":"running"}\n' \
+    "$(json_escape "$command_id")" \
+    "$(json_escape "$delay_seconds")" \
+    "$(json_escape "$(iso_now)")" >"$state_file"
+
+  wrapper="$SCRIPT_DIR/run_node_reboot.sh"
+  if [ ! -x "$wrapper" ]; then
+    agent_post_command_result_failed "$command_id" "run_node_reboot.sh missing" "$CURL_CMD" >/dev/null 2>&1 || true
+    rm -f "$state_file" 2>/dev/null || true
+    return 1
+  fi
+
+  if ! operational_action_acquire_lock "node_reboot"; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "failed to acquire operational lock" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    rm -f "$state_file" 2>/dev/null || true
+    return 1
+  fi
+
+  nohup "$wrapper" "$command_id" "$delay_seconds" "$state_file" "$CURL_CMD" \
+    >>/var/log/monitor-pfsense-agent-operational.log 2>&1 &
+  wrapper_pid=$!
+  if [ -z "$wrapper_pid" ]; then
+    operational_action_release_lock
+    agent_post_command_result_failed "$command_id" "failed to spawn reboot wrapper" "$CURL_CMD" >/dev/null 2>&1 || true
+    rm -f "$state_file" 2>/dev/null || true
+    return 1
+  fi
+
+  return 0
+}
+
 process_heartbeat_commands() {
   response_file="$1"
   CURL_CMD="$2"
@@ -2562,10 +3259,18 @@ process_heartbeat_commands() {
       }
       $payload = $command["payload"] ?? null;
       $target = "";
+      $artifactUrl = "";
+      $sha256 = "";
+      $service = "";
+      $delaySeconds = "";
       if (is_array($payload)) {
         $target = trim((string) ($payload["target_version"] ?? ""));
+        $artifactUrl = trim((string) ($payload["artifact_url"] ?? ""));
+        $sha256 = trim((string) ($payload["sha256"] ?? ""));
+        $service = trim((string) ($payload["service"] ?? ""));
+        $delaySeconds = trim((string) ($payload["delay_seconds"] ?? ""));
       }
-      echo $type . "\t" . $id . "\t" . $target . "\n";
+      echo $type . "\t" . $id . "\t" . $target . "\t" . $artifactUrl . "\t" . $sha256 . "\t" . $service . "\t" . $delaySeconds . "\n";
     }
   ' "$response_file" >"$dispatch_file" 2>/dev/null || {
     rm -f "$dispatch_file"
@@ -2577,7 +3282,7 @@ process_heartbeat_commands() {
     return 0
   fi
 
-  while IFS="$(printf '\t')" read -r command_type command_id target_version; do
+  while IFS="$(printf '\t')" read -r command_type command_id target_version artifact_url sha256 service_name delay_seconds; do
     [ -z "$command_id" ] && continue
     case "$command_type" in
       config_backup_now)
@@ -2587,6 +3292,21 @@ process_heartbeat_commands() {
         ;;
       pfsense_upgrade)
         dispatch_pfsense_upgrade "$command_id" "$target_version" "$CURL_CMD" >>/dev/null 2>&1 || true
+        ;;
+      package_upgrade)
+        dispatch_package_upgrade "$command_id" "$target_version" "$artifact_url" "$sha256" "$CURL_CMD" >>/dev/null 2>&1 || true
+        ;;
+      service_restart)
+        dispatch_service_restart "$command_id" "$service_name" "$CURL_CMD" >>/dev/null 2>&1 || true
+        ;;
+      node_reboot)
+        dispatch_node_reboot "$command_id" "$delay_seconds" "$CURL_CMD" >>/dev/null 2>&1 || true
+        ;;
+      *)
+        agent_post_command_result_failed \
+          "$command_id" \
+          "unknown command type" \
+          "$CURL_CMD" >/dev/null 2>&1 || true
         ;;
     esac
   done <"$dispatch_file"
@@ -2636,15 +3356,25 @@ heartbeat() {
     exit 1
   fi
 
+  payload_was_light="0"
+  if ! grep -q '"services"' "$payload_file" 2>/dev/null; then
+    payload_was_light="1"
+  fi
+
   http_code="$(http_post_signed_json "/api/v1/ingest/heartbeat" "$CURL_CMD" "$response_file" body "$payload_file" "$err_file")"
   curl_error="$(cat "$err_file" 2>/dev/null || true)"
 
   if [ -n "$http_code" ] && [ "$http_code" -ge 200 ] 2>/dev/null && [ "$http_code" -lt 300 ] 2>/dev/null; then
     heartbeat_backoff_clear
     rm -f "$(heartbeat_error_path)" 2>/dev/null || true
+    light_heartbeat_record_success "$payload_was_light"
     process_heartbeat_commands "$response_file" "$CURL_CMD"
     heartbeat_cleanup_temp
     return 0
+  fi
+
+  if [ "${http_code:-}" = "401" ]; then
+    light_heartbeat_mark_recovery
   fi
 
   heartbeat_error_record "$http_code" "$curl_error"
@@ -2686,6 +3416,34 @@ test_connection() {
   exit 1
 }
 
+post_command_result() {
+  command_id="${2:-}"
+  status="${3:-}"
+  payload="${4:-}"
+
+  if [ -z "$command_id" ] || [ -z "$status" ]; then
+    echo "post-command-result: command_id and status required" >&2
+    exit 1
+  fi
+
+  require_var NODE_UID
+  require_var NODE_SECRET
+  CURL_CMD="$(resolve_curl_cmd)"
+
+  case "$status" in
+    succeeded)
+      agent_post_command_result_succeeded "$command_id" "$payload" "$CURL_CMD"
+      ;;
+    failed)
+      agent_post_command_result_failed "$command_id" "$payload" "$CURL_CMD"
+      ;;
+    *)
+      echo "post-command-result: invalid status (expected succeeded|failed)" >&2
+      exit 1
+      ;;
+  esac
+}
+
 usage() {
   cat <<EOF
 Usage:
@@ -2695,6 +3453,7 @@ Usage:
   $0 backup-config [command-id]
   $0 backup-status
   $0 backup-scheduled
+  $0 post-command-result <command_id> <succeeded|failed> [payload]
 EOF
 }
 
@@ -2717,6 +3476,9 @@ case "$command_name" in
     ;;
   backup-scheduled)
     backup_scheduled
+    ;;
+  post-command-result)
+    post_command_result "$@"
     ;;
   *)
     usage >&2

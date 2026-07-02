@@ -2,9 +2,21 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-06-24 (entrega pós-varredura — package 0.4.4, API 0.6.2, painel 1.4.3)
+**Última atualização:** 2026-07-01 (auditoria documental — ver `docs/116-AUDITORIA-DOCUMENTAL-CONSOLIDACAO-2026-07-01.md`)
 
 ---
+
+### 2026-07-01 — Coluna Pacote no inventário (painel 1.4.5)
+
+- Coluna **Pacote** dedicada em `/nodes` (`agent_version` vs release alvo); **Versão pfSense** mostra só o OS.
+- Sem mudança de API ou package (release continua **0.4.7**).
+- Entrega: `docs/115-ENTREGA-COLUNA-PACOTE-INVENTARIO-2026-07-01.md`.
+
+### 2026-06-30 — Upgrade remoto de package (0.4.6) e heartbeat light (0.4.5)
+
+- **`package_upgrade`:** comando remoto via painel/API; pré-requisito agente ≥ 0.4.6.
+- **Heartbeat light recovery:** package 0.4.5 força heartbeat normal após recovery.
+- Entregas: `docs/114-*`, `docs/113-*`.
 
 ### 2026-06-24 — Correção pós-varredura read-only (gaps plano 110)
 
@@ -146,6 +158,12 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 ---
 
 ## 2. Linha do tempo por tema
+
+### 2.0.12 Coluna Pacote no inventário (**2026-07-01**)
+
+- **Entrega:** `docs/115-ENTREGA-COLUNA-PACOTE-INVENTARIO-2026-07-01.md`
+- **Versões:** painel `1.4.5` (API/package inalterados)
+- **Resumo:** coluna **Pacote** em `/nodes` com `agent_version` do heartbeat; destaque visual quando abaixo da release alvo do controlador.
 
 ### 2.0.11 Link de acesso remoto por firewall (**2026-06-24**)
 

@@ -9,9 +9,10 @@ type Props = {
   clientId: string;
   clientName: string;
   returnTo?: string;
+  compact?: boolean;
 };
 
-export function ClientDeleteButton({ clientId, clientName, returnTo }: Props) {
+export function ClientDeleteButton({ clientId, clientName, returnTo, compact = false }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +44,11 @@ export function ClientDeleteButton({ clientId, clientName, returnTo }: Props) {
           setOpen(true);
         }}
         disabled={loading}
-        className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-50"
+        className={
+          compact
+            ? 'h-9 shrink-0 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 text-xs text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-50'
+            : 'rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-50'
+        }
       >
         {loading ? 'Excluindo...' : 'Excluir cliente'}
       </button>

@@ -1,5 +1,7 @@
 # Status e Progresso do Projeto
 
+> **Nota (2026-07-02):** versoes e proximo passo operacional estao em `LEITURA-INICIAL.md`. Package pfSense **0.4.10** (artefato gerado; commit/push pendente).
+
 ## Objetivo
 
 Definir como o progresso do projeto sera acompanhado ao longo das fases e tarefas.

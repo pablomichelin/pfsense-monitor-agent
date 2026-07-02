@@ -21,6 +21,7 @@ import { AccessActor } from '../auth/access-actor.type';
 import { AccessPolicyService } from '../auth/access-policy.service';
 import { NodeSecretCryptoService } from '../common/node-secret-crypto.service';
 import { PackageReleaseService } from '../common/package-release.service';
+import { buildDefaultRemoteAccessUrl } from '../common/remote-access-url';
 import { AuditService } from '../audit/audit.service';
 import { AuthService } from '../auth/auth.service';
 import { PermissionsService } from '../auth/permissions.service';
@@ -33,6 +34,7 @@ import {
   SUPERADMIN_ROLE,
 } from '../auth/role-codes';
 import { PERMISSION_KEYS } from '../auth/permission-keys';
+import { MfaPolicyService } from '../mfa-policy/mfa-policy.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { SetRolePermissionsDto } from './dto/set-role-permissions.dto';
 import { NodesService } from '../nodes/nodes.service';
@@ -137,6 +139,7 @@ export class AdminService {
     private readonly auditService: AuditService,
     private readonly permissionsService: PermissionsService,
     private readonly packageReleaseService: PackageReleaseService,
+    private readonly mfaPolicyService: MfaPolicyService,
   ) {}
 
   private invalidateNodesFiltersCache(): void {
@@ -499,6 +502,10 @@ export class AdminService {
       status: EntityStatus;
       client_ids: string[];
       client_id: string | null;
+      mfa_enabled: boolean;
+      mfa_enrolled_at: string | null;
+      mfa_enforcement_required: boolean;
+      mfa_recovery_codes_remaining: number;
       created_at: string;
       updated_at: string;
     }>;
@@ -520,6 +527,18 @@ export class AdminService {
       },
     });
 
+    const recoveryCounts = await this.prisma.mfaRecoveryCode.groupBy({
+      by: ['userId'],
+      where: {
+        usedAt: null,
+        userId: { in: users.map((user) => user.id) },
+      },
+      _count: { _all: true },
+    });
+    const recoveryByUserId = new Map(
+      recoveryCounts.map((entry) => [entry.userId, entry._count._all]),
+    );
+
     return {
       items: users.map((user) => ({
         id: user.id,
@@ -532,6 +551,15 @@ export class AdminService {
           user.role === CLIENT_ROLE && user.clientId
             ? [user.clientId]
             : user.clientScopes.map((scope) => scope.clientId),
+        mfa_enabled: user.mfaEnabled,
+        mfa_enrolled_at: user.mfaEnrolledAt?.toISOString() ?? null,
+        mfa_enforcement_required: this.mfaPolicyService.isEnforcementRequired(
+          user.role,
+          user.mfaEnabled,
+        ),
+        mfa_recovery_codes_remaining: user.mfaEnabled
+          ? recoveryByUserId.get(user.id) ?? 0
+          : 0,
         created_at: user.createdAt.toISOString(),
         updated_at: user.updatedAt.toISOString(),
       })),
@@ -1881,6 +1909,13 @@ export class AdminService {
     );
     const hostname = hostnameRaw || nodeUid;
 
+    const managementIp = normalizeOptional(dto.management_ip);
+    const wanIp = normalizeOptional(dto.wan_ip);
+    const remoteAccessUrl =
+      dto.remote_access_url !== undefined
+        ? normalizeOptional(dto.remote_access_url)
+        : buildDefaultRemoteAccessUrl(wanIp, managementIp) ?? undefined;
+
     const bootstrapSecret = this.generateNodeSecret();
     const secretHint = this.buildSecretHint(bootstrapSecret);
     const secretHash = this.hashSecret(bootstrapSecret);
@@ -1893,8 +1928,9 @@ export class AdminService {
           nodeUid,
           hostname,
           displayName: normalizeOptional(dto.display_name),
-          managementIp: normalizeOptional(dto.management_ip),
-          wanIp: normalizeOptional(dto.wan_ip),
+          managementIp,
+          wanIp,
+          remoteAccessUrl,
           haRole: normalizeOptional(dto.ha_role),
           maintenanceMode: dto.maintenance_mode ?? false,
           status: NodeStatus.unknown,
@@ -2036,6 +2072,7 @@ export class AdminService {
       display_name: string | null;
       management_ip: string | null;
       wan_ip: string | null;
+      remote_access_url: string | null;
       pfsense_version: string | null;
       agent_version: string | null;
       ha_role: string | null;
@@ -2072,6 +2109,10 @@ export class AdminService {
             : undefined,
         wanIp:
           dto.wan_ip !== undefined ? normalizeOptional(dto.wan_ip) : undefined,
+        remoteAccessUrl:
+          dto.remote_access_url !== undefined
+            ? normalizeOptional(dto.remote_access_url) ?? null
+            : undefined,
         haRole:
           dto.ha_role !== undefined ? normalizeOptional(dto.ha_role) : undefined,
       },
@@ -2088,6 +2129,7 @@ export class AdminService {
         display_name: updatedNode.displayName,
         management_ip: updatedNode.managementIp,
         wan_ip: updatedNode.wanIp,
+        remote_access_url: updatedNode.remoteAccessUrl,
         pfsense_version: updatedNode.pfsenseVersion,
         agent_version: updatedNode.agentVersion,
         ha_role: updatedNode.haRole,
@@ -2101,6 +2143,7 @@ export class AdminService {
         display_name: updatedNode.displayName,
         management_ip: updatedNode.managementIp,
         wan_ip: updatedNode.wanIp,
+        remote_access_url: updatedNode.remoteAccessUrl,
         pfsense_version: updatedNode.pfsenseVersion,
         agent_version: updatedNode.agentVersion,
         ha_role: updatedNode.haRole,

@@ -54,8 +54,6 @@ $scheduleTimeParts = systemup_monitor_backup_schedule_time_parts($schedule['time
 
 include("head.inc");
 ?>
-<body>
-<?php include("fbegin.inc"); ?>
 <?php if (isset($tab_array) && function_exists('display_top_tabs')): ?>
 <?php foreach ($tab_array as $tab): ?>
 <?php display_top_tabs($tab); ?>
@@ -266,5 +264,3 @@ include("head.inc");
 </script>
 
 <?php include("foot.inc"); ?>
-</body>
-</html>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { isRedirectError } from 'next/dist/client/components/redirect-error';
 import {
   deleteUserAction,
   revokeUserSessionAdminAction,
@@ -32,6 +33,9 @@ type User = {
   status: string;
   client_ids: string[];
   client_id: string | null;
+  mfa_enabled?: boolean;
+  mfa_enforcement_required?: boolean;
+  mfa_recovery_codes_remaining?: number;
 };
 
 type SessionItem = {
@@ -72,6 +76,7 @@ export function AdminUsuariosTabs({
   const [tab, setTab] = useState<'usuarios' | 'sessoes'>('usuarios');
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const inputClass =
     'rounded-lg border border-slate-600/80 bg-panel-soft h-11 px-4 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500';
@@ -84,15 +89,27 @@ export function AdminUsuariosTabs({
     }
 
     setDeleting(true);
+    setDeleteError(null);
     try {
       const formData = new FormData();
       formData.set('user_id', deleteTarget.id);
       formData.set('returnTo', returnTo);
       await deleteUserAction(formData);
-    } finally {
+    } catch (error) {
+      if (isRedirectError(error)) {
+        throw error;
+      }
+      const message =
+        error instanceof Error ? error.message : 'Falha ao excluir usuario';
+      setDeleteError(message);
       setDeleting(false);
-      setDeleteTarget(null);
+      return;
     }
+  };
+
+  const openDeleteDialog = (user: User) => {
+    setDeleteError(null);
+    setDeleteTarget(user);
   };
 
   return (
@@ -135,6 +152,22 @@ export function AdminUsuariosTabs({
                 <span className="rounded border border-slate-700/80 bg-slate-950/40 px-2 py-1">
                   Perfil: {roleLabel(user.role)}
                 </span>
+                {user.mfa_enabled ? (
+                  <span className="rounded border border-emerald-800/60 bg-emerald-950/30 px-2 py-1 text-emerald-200">
+                    MFA ativo
+                    {(user.mfa_recovery_codes_remaining ?? 0) > 0
+                      ? ` · ${user.mfa_recovery_codes_remaining} recovery`
+                      : ' · sem recovery'}
+                  </span>
+                ) : user.mfa_enforcement_required ? (
+                  <span className="rounded border border-amber-800/60 bg-amber-950/30 px-2 py-1 text-amber-200">
+                    MFA exigido · pendente
+                  </span>
+                ) : (
+                  <span className="rounded border border-slate-700/80 bg-slate-950/40 px-2 py-1">
+                    MFA desligado
+                  </span>
+                )}
               </div>
               <form action={updateUserAction} className="flex flex-col gap-3">
                 <input type="hidden" name="returnTo" value={returnTo} />
@@ -183,7 +216,7 @@ export function AdminUsuariosTabs({
               {currentUserId !== user.id && (
                 <button
                   type="button"
-                  onClick={() => setDeleteTarget(user)}
+                  onClick={() => openDeleteDialog(user)}
                   className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-500/20"
                 >
                   Excluir usuário
@@ -261,6 +294,7 @@ export function AdminUsuariosTabs({
         onCancel={() => {
           if (!deleting) {
             setDeleteTarget(null);
+            setDeleteError(null);
           }
         }}
         onConfirm={handleDeleteConfirm}
@@ -274,6 +308,9 @@ export function AdminUsuariosTabs({
                   Perfil: {roleLabel(deleteTarget.role)}
                 </p>
               </div>
+              {deleteError ? (
+                <p className="mt-3 text-sm text-rose-300">{deleteError}</p>
+              ) : null}
             </>
           ) : null
         }

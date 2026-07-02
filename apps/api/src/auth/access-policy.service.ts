@@ -7,11 +7,15 @@ import { Prisma } from '@prisma/client';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessActor } from './access-actor.type';
+import { PermissionsService } from './permissions.service';
 import { isClientRole, isSuperadminRole } from './role-codes';
 
 @Injectable()
 export class AccessPolicyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
   isScopeEnforced(): boolean {
     return appConfig.rbac.scopeEnabled;
@@ -67,14 +71,18 @@ export class AccessPolicyService {
 
   /**
    * PERM-001: `clients.create` autoriza a rota na API, mas criar cliente top-level
-   * exige escopo global (superadmin ou RBAC scope desligado) — ver hasGlobalClientScope.
+   * exige superadmin, RBAC scope desligado ou permissao `inventory.global`.
    */
   async assertCanCreateClient(actor: AccessActor): Promise<void> {
     if (this.hasGlobalClientScope(actor)) {
       return;
     }
 
-    throw new ForbiddenException('creating clients requires global client scope');
+    if (await this.permissionsService.hasPermission(actor.role, 'inventory.global')) {
+      return;
+    }
+
+    throw new ForbiddenException('creating clients requires inventory.global permission');
   }
 
   async assertClientAccess(actor: AccessActor, clientId: string): Promise<void> {

@@ -1,5 +1,7 @@
 # Roadmap de Fases
 
+> **Nota (2026-07-01):** estado operacional atual e versoes vigentes estao em `LEITURA-INICIAL.md` e `docs/00-INDICE-OPERACIONAL.md`. Este roadmap permanece como visao historica de fases.
+
 ## Diretriz
 
 O projeto deve evoluir em camadas, validando primeiro o caminho critico: coleta, ingestao, persistencia e painel.

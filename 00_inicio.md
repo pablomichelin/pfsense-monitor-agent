@@ -2,9 +2,15 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Ultima entrega (2026-06-24):** fechamento dos itens restantes da auditoria — API `0.5.0`, painel `1.3.0`, package `0.4.1`. **MFA TOTP completo** (enroll + login 2 etapas + recovery codes; enforcement opt-in via `MFA_ENFORCED_ROLES`, desligado por padrao), **rate-limit persistido em PostgreSQL**, `syncAlerts`/`permissions.guard`/HMAC endurecidos, e package (rc.d idiomatico, logs nos coletores, catalogo embarcado, flag de upgrade honesta). Deploy aplicado (`/healthz` 200 em 0.5.0); `run-smoke-suite.sh` 14/14 verde (inclui `smoke-mfa.sh`). Detalhes em `docs/103-ENTREGA-FECHAMENTO-AUDITORIA-MFA-RATELIMIT-PACKAGE-2026-06-24.md`.
+> **Versoes atuais (2026-07-01):** API `0.6.4` · painel `1.4.5` · package pfSense `0.4.7`.
 >
-> **Entrega anterior (2026-06-24):** alinhamento dos smokes pos-0.4.0 — `docs/102-ALINHAMENTO-SMOKES-POS-0.4.0-2026-06-24.md` (13/13 verde, sem mudanca de runtime).
+> **Ultima entrega (2026-07-01):** coluna **Pacote** no inventario (`/nodes`) — painel `1.4.5`. Ver `docs/115-ENTREGA-COLUNA-PACOTE-INVENTARIO-2026-07-01.md`.
+>
+> **Entrega anterior (2026-06-30):** upgrade remoto de package (`package_upgrade`) — package `0.4.6`, API `0.6.4`. Ver `docs/114-ENTREGA-UPGRADE-REMOTO-PACKAGE-2026-06-30.md` e `docs/114-UPGRADE-REMOTO-PACKAGE.md`.
+>
+> **Entrega anterior (2026-06-30):** correcao heartbeat light + recovery offline — package `0.4.5`, API `0.6.3`. Ver `docs/113-ENTREGA-CORRECAO-HEARTBEAT-LIGHT-OFFLINE-2026-06-30.md`.
+>
+> **Entrega anterior (2026-06-24):** link de acesso remoto por firewall — API `0.6.0`, painel `1.4.0`. Campo `remote_access_url`, coluna **Acesso** no inventario. Ver `docs/104-ENTREGA-LINK-ACESSO-REMOTO-FIREWALL-2026-06-24.md`.
 
 ## Leitura obrigatoria
 
@@ -45,9 +51,23 @@ Documentos novos:
 
 ## Estado atual resumido
 
-Data de referencia: `2026-03-15`
+Data de referencia: `2026-07-01`
 
-Fase atual:
+**Versoes:** API `0.6.4`, painel `1.4.5`, package pfSense `0.4.7`.
+
+**Produto operacional:**
+
+- controlador com ingestao snapshot, alertas, RBAC granular, MFA TOTP, backup `config.xml`, upgrade remoto de package e upgrade semi-manual de pfSense OS
+- painel: `/dashboard`, `/nodes` (colunas Versao pfSense, Pacote, Acesso), `/backups`, `/alerts`, `/bootstrap`, `/admin/*`, `/audit`, `/conta`
+- package pfSense: GUI com abas Configuracao, Diagnostico e Backup; comandos `package_upgrade` e `pfsense_upgrade`
+
+**Proximo passo:** rollout package `0.4.7` na frota; usar coluna **Pacote** para monitorar drift; ver `LEITURA-INICIAL.md` e `docs/114-UPGRADE-REMOTO-PACKAGE.md`.
+
+### Arquivo historico (2026-03-15)
+
+> Detalhes do MVP abaixo sao linha do tempo — nao substituem o bloco acima.
+
+Fase registrada na epoca:
 
 - `Fase 1 - MVP do controlador`
 
@@ -161,23 +181,21 @@ Na pratica:
 - nao mexer em `zabbix-server`, `zabbix-agent`, `apache2` ou `mysql` sem necessidade real
 - se houver conflito, o projeto se adapta e o Zabbix nao
 
-## Proximo bloco recomendado
+## Proximo bloco recomendado (2026-07-01)
 
-Trilha RBAC **encerrada** em `2026-06-09` — ver `docs/76-ENCERRAMENTO-TRILHA-RBAC-2026-06-09.md`.
+1. **Rollout package `0.4.7`** na frota (manual uma vez se agente &lt; 0.4.6; remoto depois)
+2. **Monitorar drift** pela coluna **Pacote** em `/nodes`
+3. **Executar proximas melhorias** pelo plano `docs/117-PLANO-EXECUCAO-MELHORIAS-SEGURAS-2026-07-02.md`
+4. **Planejar pos-117 pfREST** pelo plano `docs/125-PLANO-PFREST-GERENCIAMENTO-CENTRALIZADO-2026-07-02.md` quando as fundacoes do 117 estiverem estaveis
+5. **Manter smokes** com `scripts/run-smoke-suite.sh` apos mudancas
 
-Roadmap UX front-end (plano 24, fases 0–8) **encerrado** em `2026-06-09` — ver `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`. Versoes finais: painel `1.1.0`, API `0.3.1`, package pfSense `0.3.3`.
+Trilhas encerradas (nao reimplementar): RBAC (`docs/76`), roadmap UX plano 24 (`docs/88`), homologacao package doc 43.
 
-Proximas trilhas independentes (escolher uma por vez):
+Referencias operacionais:
 
-1. **Homologacao / expansao** em novos firewalls
-2. **Fase B servicos** — `21-evolucao-servicos-e-fase-b-2026-03-13.md`
-3. **Fase G RBAC (opcional)** — apenas com decisao explicita do produto
-
-Referencias RBAC (manutencao, nao reimplementar):
-
-- plano mestre: `22-plano-mestre-rbac-usuarios-permissoes-escopo-2026-06-09.md`
-- matriz: `23-matriz-permissoes-e-escopo-rbac-2026-06-09.md`
-- checklist: `docs/75-CHECKLIST-TESTES-RBAC-ESCOPO-2026-06-09.md`
+- upgrade remoto package: `docs/114-UPGRADE-REMOTO-PACKAGE.md`
+- guia package: `docs/pfsense-package/00-GUIA-OPERACAO-PACKAGE.md`
+- backup: `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md` + painel `/backups`
 
 ## Tarefa atual registrada
 

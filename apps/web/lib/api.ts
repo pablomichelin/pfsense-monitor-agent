@@ -23,6 +23,54 @@ export type SummaryResponse = {
   };
 };
 
+export type FleetResponse = SummaryResponse & {
+  filters: {
+    client_id: string | null;
+    site_id: string | null;
+    status:
+      | 'online'
+      | 'degraded'
+      | 'offline'
+      | 'maintenance'
+      | 'unknown'
+      | null;
+  };
+  totals: SummaryResponse['totals'] & {
+    critical_alerts: number;
+  };
+  compliance: {
+    backup_ok_count: number;
+    backup_ok_percent: number | null;
+    package_outdated_count: number;
+    package_outdated_percent: number | null;
+    package_target_version: string | null;
+  };
+  version_matrix: {
+    pfsense: Array<{ version: string; count: number }>;
+    package: Array<{
+      version: string;
+      count: number;
+      alignment?: 'missing' | 'match' | 'outdated' | 'newer' | 'unknown';
+    }>;
+  };
+};
+
+export type PackageReleaseResponse = {
+  generated_at: string;
+  version: string;
+  sha256: string;
+  repo_raw_base: string;
+  artifact_url: string;
+  installer_url: string;
+};
+
+export type NodeCriticality = 'critical' | 'standard' | 'lab';
+
+export type FleetTagRef = {
+  id: string;
+  name: string;
+};
+
 export type NodesListResponse = {
   generated_at: string;
   items: Array<{
@@ -49,6 +97,8 @@ export type NodesListResponse = {
     memory_percent: number | null;
     disk_percent: number | null;
     uptime_seconds: number | null;
+    criticality: NodeCriticality;
+    tags: FleetTagRef[];
   }>;
 };
 
@@ -75,6 +125,21 @@ export type NodesFiltersResponse = {
     status: string;
     node_count: number;
   }>;
+  tags: Array<{
+    id: string;
+    name: string;
+    client_id: string;
+    client_name: string;
+    node_count: number;
+  }>;
+  groups: Array<{
+    id: string;
+    name: string;
+    client_id: string;
+    client_name: string;
+    member_count: number;
+  }>;
+  criticality_options: NodeCriticality[];
 };
 
 export type NodeDetailsResponse = {
@@ -88,6 +153,8 @@ export type NodeDetailsResponse = {
     effective_status: 'online' | 'degraded' | 'offline' | 'maintenance' | 'unknown';
     observed_status: string;
     maintenance_mode: boolean;
+    criticality: NodeCriticality;
+    tags: FleetTagRef[];
     client: { id: string; name: string; code: string };
     site: {
       id: string;
@@ -141,6 +208,16 @@ export type NodeDetailsResponse = {
       opened_at: string;
       resolved_at: string | null;
     }>;
+    certificates: Array<{
+      cert_key: string;
+      subject: string;
+      issuer: string | null;
+      usage: string | null;
+      not_before: string;
+      not_after: string;
+      days_until_expiry: number;
+      observed_at: string;
+    }>;
   };
 };
 
@@ -168,6 +245,89 @@ export type NodeConfigBackupsResponse = {
     latest_status: 'stored' | 'duplicate' | null;
   };
   visual_status: 'ok' | 'late' | 'failed' | 'never';
+  retention_policy?: {
+    count: number;
+    max_bytes: number;
+    source: 'global' | 'node';
+  };
+  drift?: {
+    enabled: boolean;
+    active: boolean;
+    state: {
+      active: boolean;
+      detected_at?: string;
+      baseline_sha256?: string;
+      baseline_backup_id?: string;
+      current_sha256?: string;
+      changed_sections?: string[];
+      sensitive_changed_sections?: string[];
+    } | null;
+  };
+  advanced_features?: {
+    diff_enabled: boolean;
+    drift_enabled: boolean;
+  };
+};
+
+export type ConfigBackupDiffSection = {
+  name: string;
+  status: 'unchanged' | 'added' | 'removed' | 'modified';
+  masked: boolean;
+  summary?: string;
+  changes?: string[];
+};
+
+export type ConfigBackupDiffResponse = {
+  from: {
+    id: string;
+    backup_uid: string;
+    received_at: string;
+    config_sha256: string;
+  };
+  to: {
+    id: string;
+    backup_uid: string;
+    received_at: string;
+    config_sha256: string;
+  };
+  diff: {
+    identical: boolean;
+    from_sha256: string;
+    to_sha256: string;
+    sections: ConfigBackupDiffSection[];
+    secrets_masked: boolean;
+    unknown_sections_masked: number;
+  };
+};
+
+export type BackupRetentionPolicyResponse = {
+  effective: {
+    count: number;
+    max_bytes: number;
+    source: 'global' | 'node';
+  };
+  global_defaults: {
+    count: number;
+    max_bytes: number;
+  };
+  overrides: {
+    retention_count: number | null;
+    retention_max_bytes: number | null;
+  };
+};
+
+export type BackupExportGuideResponse = {
+  backup: {
+    id: string;
+    backup_uid: string;
+    received_at: string;
+    config_sha256: string;
+    size_bytes: number;
+    pfsense_version: string | null;
+  };
+  restore_automatic_enabled: false;
+  steps: string[];
+  warnings: string[];
 };
 
 export type ConfigBackupRequestResponse = {
@@ -273,6 +433,65 @@ export type PfsenseUpgradeRequestResponse = {
   target_version: string | null;
 };
 
+export type PackageUpgradeStatusResponse = {
+  enabled: boolean;
+  hostname: string;
+  agent_version: string | null;
+  agent_version_supported: boolean;
+  min_agent_version: string;
+  published_version: string;
+  published_sha256: string;
+  published_artifact_url: string;
+  update_available: boolean;
+  last_seen_at: string | null;
+  active_command: {
+    command_id: string;
+    status:
+      | 'pending'
+      | 'picked_up'
+      | 'running'
+      | 'succeeded'
+      | 'failed'
+      | 'expired'
+      | 'cancelled';
+    requested_at: string;
+    picked_up_at: string | null;
+    running_at: string | null;
+    expires_at: string;
+    payload_json: Record<string, unknown> | null;
+  } | null;
+  last_result: {
+    command_id: string;
+    status:
+      | 'pending'
+      | 'picked_up'
+      | 'running'
+      | 'succeeded'
+      | 'failed'
+      | 'expired'
+      | 'cancelled';
+    completed_at: string | null;
+    result_json: Record<string, unknown> | null;
+    error_message: string | null;
+  } | null;
+};
+
+export type PackageUpgradeRequestResponse = {
+  command_id: string;
+  status:
+    | 'pending'
+    | 'picked_up'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'expired'
+    | 'cancelled';
+  expires_at: string;
+  target_version: string;
+  artifact_url: string;
+  sha256: string;
+};
+
 export type SessionResponse = {
   authenticated: true;
   session: {
@@ -325,6 +544,10 @@ export type UsersListResponse = {
     status: string;
     client_ids: string[];
     client_id: string | null;
+    mfa_enabled: boolean;
+    mfa_enrolled_at: string | null;
+    mfa_enforcement_required: boolean;
+    mfa_recovery_codes_remaining: number;
     created_at: string;
     updated_at: string;
   }>;
@@ -567,7 +790,7 @@ export type AuditLogsResponse = {
 };
 
 type ApiFetchOptions = {
-  method?: 'GET' | 'POST' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   csrfProtected?: boolean;
 };
@@ -685,10 +908,39 @@ export async function getDashboardSummary(): Promise<SummaryResponse> {
   return apiFetch<SummaryResponse>('/api/v1/dashboard/summary');
 }
 
+export async function getDashboardFleet(query?: {
+  client_id?: string;
+  site_id?: string;
+  status?: string;
+}): Promise<FleetResponse> {
+  const params = new URLSearchParams();
+  if (query?.client_id) {
+    params.set('client_id', query.client_id);
+  }
+  if (query?.site_id) {
+    params.set('site_id', query.site_id);
+  }
+  if (query?.status) {
+    params.set('status', query.status);
+  }
+
+  const suffix = params.toString();
+  return apiFetch<FleetResponse>(
+    suffix ? `/api/v1/dashboard/fleet?${suffix}` : '/api/v1/dashboard/fleet',
+  );
+}
+
+export async function getPackageRelease(): Promise<PackageReleaseResponse> {
+  return apiFetch<PackageReleaseResponse>('/api/v1/agent/package-release');
+}
+
 export async function getNodesList(query?: {
   client_id?: string;
   site_id?: string;
   status?: string;
+  tag_id?: string;
+  group_id?: string;
+  criticality?: NodeCriticality;
   search?: string;
   sort_by?: 'name' | 'agent_version' | 'version';
   sort_order?: 'asc' | 'desc';
@@ -703,6 +955,15 @@ export async function getNodesList(query?: {
   }
   if (query?.status) {
     params.set('status', query.status);
+  }
+  if (query?.tag_id) {
+    params.set('tag_id', query.tag_id);
+  }
+  if (query?.group_id) {
+    params.set('group_id', query.group_id);
+  }
+  if (query?.criticality) {
+    params.set('criticality', query.criticality);
   }
   if (query?.search) {
     params.set('search', query.search);
@@ -727,6 +988,14 @@ export async function getNodesFilters(): Promise<NodesFiltersResponse> {
 
 export async function getNodeDetails(id: string): Promise<NodeDetailsResponse> {
   return apiFetch<NodeDetailsResponse>(`/api/v1/nodes/${id}`);
+}
+
+export async function getNodeMetricsHistory(
+  nodeId: string,
+  period: '24h' | '7d' | '30d' = '24h',
+): Promise<import('./metrics-history').NodeMetricsHistoryResponse> {
+  const params = new URLSearchParams({ period });
+  return apiFetch(`/api/v1/nodes/${nodeId}/metrics/history?${params.toString()}`);
 }
 
 export async function getNodeConfigBackups(
@@ -758,6 +1027,67 @@ export async function getNodeConfigBackupCommandStatus(
   );
 }
 
+export async function compareNodeConfigBackups(
+  nodeId: string,
+  fromBackupId: string,
+  toBackupId: string,
+): Promise<ConfigBackupDiffResponse> {
+  const params = new URLSearchParams({
+    from: fromBackupId,
+    to: toBackupId,
+  });
+  return apiFetch<ConfigBackupDiffResponse>(
+    `/api/v1/nodes/${nodeId}/config-backups/diff?${params.toString()}`,
+  );
+}
+
+export async function getNodeBackupRetentionPolicy(
+  nodeId: string,
+): Promise<BackupRetentionPolicyResponse> {
+  return apiFetch<BackupRetentionPolicyResponse>(
+    `/api/v1/nodes/${nodeId}/config-backups/retention-policy`,
+  );
+}
+
+export async function updateNodeBackupRetentionPolicy(
+  nodeId: string,
+  body: {
+    retention_count?: number | null;
+    retention_max_bytes?: number | null;
+  },
+): Promise<{
+  ok: boolean;
+  effective: BackupRetentionPolicyResponse['effective'];
+  deleted_backup_uids: string[];
+}> {
+  return apiFetch(
+    `/api/v1/nodes/${nodeId}/config-backups/retention-policy`,
+    {
+      method: 'PATCH',
+      csrfProtected: true,
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function acknowledgeNodeBackupDrift(
+  nodeId: string,
+): Promise<{ ok: boolean; cleared: boolean }> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/config-backups/drift/acknowledge`, {
+    method: 'POST',
+    csrfProtected: true,
+  });
+}
+
+export async function getNodeBackupExportGuide(
+  nodeId: string,
+  backupId: string,
+): Promise<BackupExportGuideResponse> {
+  return apiFetch<BackupExportGuideResponse>(
+    `/api/v1/nodes/${nodeId}/config-backups/${backupId}/export-guide`,
+  );
+}
+
 export async function getPfsenseUpgradeStatus(
   nodeId: string,
 ): Promise<PfsenseUpgradeStatusResponse> {
@@ -779,6 +1109,32 @@ export async function requestPfsenseUpgrade(
       method: 'POST',
       csrfProtected: true,
       body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function getPackageUpgradeStatus(
+  nodeId: string,
+): Promise<PackageUpgradeStatusResponse> {
+  return apiFetch<PackageUpgradeStatusResponse>(
+    `/api/v1/nodes/${nodeId}/package-upgrade/status`,
+  );
+}
+
+export async function requestPackageUpgrade(
+  nodeId: string,
+  body?: {
+    target_version?: string;
+    artifact_url?: string;
+    sha256?: string;
+  },
+): Promise<PackageUpgradeRequestResponse> {
+  return apiFetch<PackageUpgradeRequestResponse>(
+    `/api/v1/nodes/${nodeId}/package-upgrade/request`,
+    {
+      method: 'POST',
+      csrfProtected: true,
+      body: JSON.stringify(body ?? {}),
     },
   );
 }
@@ -1310,4 +1666,589 @@ export async function revokeAuthSession(id: string): Promise<{
 export async function getCurrentCsrfToken(): Promise<string | null> {
   const cookieHeader = await getRequestCookieHeader();
   return parseCookies(cookieHeader)[csrfCookieName] ?? null;
+}
+
+export async function testNotificationChannel(channelId: string): Promise<{
+  channel_id: string;
+  ok: boolean;
+  error: string | null;
+}> {
+  return apiFetch(`/api/v1/notifications/channels/${channelId}/test`, {
+    method: 'POST',
+    csrfProtected: true,
+  });
+}
+
+export type NotificationChannelType = 'email' | 'webhook' | 'telegram';
+
+export type NotificationsStatusResponse = {
+  generated_at: string;
+  enabled: boolean;
+  max_attempts: number;
+};
+
+export type NotificationChannelItem = {
+  id: string;
+  name: string;
+  type: NotificationChannelType;
+  status: 'active' | 'inactive';
+  config_public: Record<string, unknown>;
+  has_secrets: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NotificationRuleItem = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  severity: string | null;
+  alert_type: string | null;
+  client_id: string | null;
+  client_name: string | null;
+  channel_id: string;
+  channel_name: string;
+  channel_type: NotificationChannelType;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NotificationDeliveryItem = {
+  id: string;
+  alert_id: string;
+  alert_title: string;
+  channel_id: string;
+  channel_name: string;
+  channel_type: NotificationChannelType;
+  status: string;
+  attempt_count: number;
+  last_error: string | null;
+  sent_at: string | null;
+  created_at: string;
+};
+
+export async function getNotificationsStatus(): Promise<NotificationsStatusResponse> {
+  return apiFetch('/api/v1/notifications/status');
+}
+
+export async function listNotificationChannels(): Promise<{
+  generated_at: string;
+  items: NotificationChannelItem[];
+}> {
+  return apiFetch('/api/v1/notifications/channels');
+}
+
+export async function listNotificationRules(): Promise<{
+  generated_at: string;
+  items: NotificationRuleItem[];
+}> {
+  return apiFetch('/api/v1/notifications/rules');
+}
+
+export async function listNotificationDeliveries(alertId?: string): Promise<{
+  generated_at: string;
+  items: NotificationDeliveryItem[];
+}> {
+  const query = alertId ? `?alert_id=${encodeURIComponent(alertId)}` : '';
+  return apiFetch(`/api/v1/notifications/deliveries${query}`);
+}
+
+export async function createNotificationChannel(input: {
+  name: string;
+  type: NotificationChannelType;
+  status?: 'active' | 'inactive';
+  config_public: Record<string, unknown>;
+  secrets?: Record<string, unknown>;
+}): Promise<NotificationChannelItem> {
+  return apiFetch('/api/v1/notifications/channels', {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function updateNotificationChannel(
+  channelId: string,
+  input: {
+    name?: string;
+    status?: 'active' | 'inactive';
+    config_public?: Record<string, unknown>;
+    secrets?: Record<string, unknown>;
+  },
+): Promise<NotificationChannelItem> {
+  return apiFetch(`/api/v1/notifications/channels/${channelId}`, {
+    method: 'PATCH',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function deleteNotificationChannel(channelId: string): Promise<{
+  deleted: boolean;
+  channel_id: string;
+}> {
+  return apiFetch(`/api/v1/notifications/channels/${channelId}`, {
+    method: 'DELETE',
+    csrfProtected: true,
+  });
+}
+
+export async function createNotificationRule(input: {
+  name: string;
+  enabled?: boolean;
+  severity?: string;
+  alert_type?: string;
+  client_id?: string;
+  channel_id: string;
+}): Promise<NotificationRuleItem> {
+  return apiFetch('/api/v1/notifications/rules', {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function updateNotificationRule(
+  ruleId: string,
+  input: {
+    name?: string;
+    enabled?: boolean;
+    severity?: string | null;
+    alert_type?: string | null;
+    client_id?: string | null;
+    channel_id?: string;
+  },
+): Promise<NotificationRuleItem> {
+  return apiFetch(`/api/v1/notifications/rules/${ruleId}`, {
+    method: 'PATCH',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function deleteNotificationRule(ruleId: string): Promise<{
+  deleted: boolean;
+  rule_id: string;
+}> {
+  return apiFetch(`/api/v1/notifications/rules/${ruleId}`, {
+    method: 'DELETE',
+    csrfProtected: true,
+  });
+}
+
+export type FleetTagItem = {
+  id: string;
+  client_id: string;
+  client_name: string;
+  name: string;
+  node_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FleetGroupItem = {
+  id: string;
+  client_id: string;
+  client_name: string;
+  name: string;
+  description: string | null;
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FleetGroupDetailsResponse = {
+  group: FleetGroupItem;
+  members: Array<{
+    node_id: string;
+    hostname: string;
+    display_name: string | null;
+  }>;
+  generated_at: string;
+};
+
+export async function listFleetTags(query?: {
+  client_id?: string;
+}): Promise<{ items: FleetTagItem[]; generated_at: string }> {
+  const params = new URLSearchParams();
+  if (query?.client_id) {
+    params.set('client_id', query.client_id);
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch(`/api/v1/tags${suffix}`);
+}
+
+export async function createFleetTag(input: {
+  client_id: string;
+  name: string;
+}): Promise<{ tag: FleetTagItem }> {
+  return apiFetch('/api/v1/tags', {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function updateFleetTag(
+  tagId: string,
+  input: { name?: string },
+): Promise<{ tag: FleetTagItem }> {
+  return apiFetch(`/api/v1/tags/${tagId}`, {
+    method: 'PATCH',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function deleteFleetTag(tagId: string): Promise<{ deleted: true; id: string }> {
+  return apiFetch(`/api/v1/tags/${tagId}`, {
+    method: 'DELETE',
+    csrfProtected: true,
+  });
+}
+
+export async function listFleetGroups(query?: {
+  client_id?: string;
+}): Promise<{ items: FleetGroupItem[]; generated_at: string }> {
+  const params = new URLSearchParams();
+  if (query?.client_id) {
+    params.set('client_id', query.client_id);
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch(`/api/v1/groups${suffix}`);
+}
+
+export async function getFleetGroup(groupId: string): Promise<FleetGroupDetailsResponse> {
+  return apiFetch(`/api/v1/groups/${groupId}`);
+}
+
+export async function createFleetGroup(input: {
+  client_id: string;
+  name: string;
+  description?: string;
+}): Promise<{ group: FleetGroupItem }> {
+  return apiFetch('/api/v1/groups', {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function updateFleetGroup(
+  groupId: string,
+  input: { name?: string; description?: string },
+): Promise<{ group: FleetGroupItem }> {
+  return apiFetch(`/api/v1/groups/${groupId}`, {
+    method: 'PATCH',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function deleteFleetGroup(groupId: string): Promise<{ deleted: true; id: string }> {
+  return apiFetch(`/api/v1/groups/${groupId}`, {
+    method: 'DELETE',
+    csrfProtected: true,
+  });
+}
+
+export async function setFleetGroupMembers(
+  groupId: string,
+  nodeIds: string[],
+): Promise<{ group: FleetGroupItem; member_count: number }> {
+  return apiFetch(`/api/v1/groups/${groupId}/members`, {
+    method: 'PUT',
+    body: { node_ids: nodeIds },
+    csrfProtected: true,
+  });
+}
+
+export async function updateNodeFleetMetadata(
+  nodeId: string,
+  input: {
+    criticality?: NodeCriticality;
+    tag_ids?: string[];
+  },
+): Promise<{
+  node_id: string;
+  criticality: NodeCriticality;
+  tags: FleetTagRef[];
+  updated_at: string;
+}> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/fleet-metadata`, {
+    method: 'PATCH',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export type NodeCommandHistoryItem = {
+  command_id: string;
+  node_id: string;
+  type: 'config_backup_now' | 'pfsense_upgrade' | 'package_upgrade' | 'service_restart' | 'node_reboot';
+  status: string;
+  requested_at: string;
+  picked_up_at: string | null;
+  running_at: string | null;
+  completed_at: string | null;
+  expires_at: string;
+  cancelled_at: string | null;
+  retry_count: number;
+  max_retries: number;
+  batch_id: string | null;
+  error_message: string | null;
+  result_json: unknown;
+  payload_json: unknown;
+  progress: {
+    phase: 'queued' | 'pending' | 'picked_up' | 'running' | 'terminal';
+    is_active: boolean;
+    is_terminal: boolean;
+  };
+};
+
+export type NodeCommandHistoryResponse = {
+  generated_at: string;
+  node_id: string;
+  items: NodeCommandHistoryItem[];
+};
+
+export async function getNodeCommandHistory(
+  nodeId: string,
+  limit = 25,
+): Promise<NodeCommandHistoryResponse> {
+  return apiFetch<NodeCommandHistoryResponse>(
+    `/api/v1/nodes/${nodeId}/commands/history?limit=${limit}`,
+  );
+}
+
+export async function cancelNodeCommand(
+  nodeId: string,
+  commandId: string,
+): Promise<{ ok: true; command_id: string; status: string }> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/commands/${commandId}/cancel`, {
+    method: 'POST',
+    csrfProtected: true,
+  });
+}
+
+export type OperationalActionsStatusResponse = {
+  enabled: boolean;
+  service_restart_enabled: boolean;
+  node_reboot_enabled: boolean;
+  min_agent_version: string;
+  agent_version: string | null;
+  agent_version_supported: boolean;
+  hostname: string;
+  maintenance_mode: boolean;
+  ha_role: string | null;
+  ha_detected_from_agent: boolean;
+  last_seen_at: string | null;
+  allowed_services: string[];
+  reboot_default_delay_seconds: number;
+  active_service_restart: {
+    command_id: string;
+    status: string;
+    payload_json: unknown;
+  } | null;
+  active_reboot: {
+    command_id: string;
+    status: string;
+    payload_json: unknown;
+  } | null;
+};
+
+export async function getOperationalActionsStatus(
+  nodeId: string,
+): Promise<OperationalActionsStatusResponse> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/operational-actions/status`);
+}
+
+export async function requestServiceRestart(
+  nodeId: string,
+  input: { service: string },
+): Promise<{
+  command_id: string;
+  status: string;
+  expires_at: string;
+  service: string;
+}> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/operational-actions/service-restart`, {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function requestNodeReboot(
+  nodeId: string,
+  input: {
+    confirm_hostname: string;
+    delay_seconds?: number;
+    enable_maintenance_mode?: boolean;
+    acknowledge_ha_risk?: boolean;
+  },
+): Promise<{
+  command_id: string;
+  status: string;
+  expires_at: string;
+  delay_seconds: number;
+  maintenance_mode_enabled: boolean;
+}> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/operational-actions/reboot`, {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export type CommandBatchResponse = {
+  generated_at: string;
+  batch: {
+    batch_id: string;
+    command_type: string;
+    status: string;
+    label: string | null;
+    total_count: number;
+  };
+  nodes: Array<{
+    node_id: string;
+    command_id: string;
+    status: string;
+    error_message: string | null;
+  }>;
+};
+
+export async function createBackupBatch(input: {
+  node_ids: string[];
+  label?: string;
+  client_id?: string;
+}): Promise<CommandBatchResponse> {
+  return apiFetch('/api/v1/operational-actions/backup-batch', {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export type NodeCapabilitiesResponse = {
+  capability: {
+    pfrest_enabled: boolean | null;
+    pfrest_version: string | null;
+    api_base_url: string | null;
+    access_mode: string;
+    auth_method: string | null;
+    modules: string[];
+    last_reported_at: string | null;
+    last_probe_at: string | null;
+    last_success_at: string | null;
+    last_error: string | null;
+    observed_at: string;
+  } | null;
+  credential: {
+    id: string;
+    auth_method: string;
+    secret_hint: string;
+    scope_description: string | null;
+    last_tested_at: string | null;
+    last_test_result: string | null;
+    rotated_at: string | null;
+  } | null;
+};
+
+export type PfsenseApiStatusResponse = {
+  enabled: boolean;
+  alias_read_enabled: boolean;
+  alias_apply_enabled: boolean;
+  require_recent_backup_hours: number;
+};
+
+export type PfsenseAliasCompareResponse = {
+  summary: {
+    total: number;
+    match: number;
+    different: number;
+    only_api: number;
+    only_backup: number;
+  };
+  backup_received_at: string | null;
+  items: Array<{
+    name: string;
+    status: 'match' | 'different' | 'only_api' | 'only_backup';
+    api?: { type: string; address: string; description: string | null };
+    backup?: { type: string; address: string; description: string | null };
+  }>;
+};
+
+export async function getNodeCapabilities(
+  nodeId: string,
+): Promise<NodeCapabilitiesResponse> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/capabilities`);
+}
+
+export async function upsertPfrestCredential(
+  nodeId: string,
+  input: {
+    auth_method: 'api_key' | 'bearer_token';
+    secret: string;
+    api_base_url?: string;
+    scope_description?: string;
+  },
+): Promise<{ id: string; auth_method: string; secret_hint: string }> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/capabilities/credentials/pfrest`, {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function testPfrestCredential(
+  nodeId: string,
+): Promise<{ ok: boolean; message: string; latency_ms: number; version?: string | null }> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/capabilities/credentials/pfrest/test`, {
+    method: 'POST',
+    csrfProtected: true,
+  });
+}
+
+export async function revokePfrestCredential(
+  nodeId: string,
+): Promise<{ revoked: boolean }> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/capabilities/credentials/pfrest`, {
+    method: 'DELETE',
+    csrfProtected: true,
+  });
+}
+
+export async function getPfsenseApiStatus(
+  nodeId: string,
+): Promise<PfsenseApiStatusResponse> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/pfsense-api/status`);
+}
+
+export async function comparePfsenseAliases(
+  nodeId: string,
+): Promise<PfsenseAliasCompareResponse> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/pfsense-api/aliases/compare-backup`);
+}
+
+export type {
+  MfaPolicyResponse,
+  MfaPolicyMode,
+  MfaPolicyRoleStatus,
+  MfaPolicyComplianceUser,
+} from '@/lib/mfa-policy';
+
+export async function getMfaPolicy(): Promise<import('@/lib/mfa-policy').MfaPolicyResponse> {
+  return apiFetch('/api/v1/security/mfa-policy');
+}
+
+export async function updateMfaPolicy(input: {
+  enforced_roles?: string[];
+  enforcement_blocking?: boolean;
+}): Promise<import('@/lib/mfa-policy').MfaPolicyResponse> {
+  return apiFetch('/api/v1/security/mfa-policy', {
+    method: 'PATCH',
+    body: input,
+    csrfProtected: true,
+  });
 }

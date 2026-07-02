@@ -1,16 +1,24 @@
 # Indice operacional do projeto
 
-Data de referencia: `2026-06-08`
+Data de referencia: `2026-07-01`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Ultima entrega (2026-06-24):** correção pós-varredura read-only (gaps plano 110) — package `0.4.4`, API `0.6.2`, painel `1.4.3`. Ver `docs/112-ENTREGA-CORRECAO-POS-VARREDURA-2026-06-24.md`.
+> **Versoes atuais (codigo):** API `0.6.4` · painel `1.4.5` · package pfSense `0.4.7` (`config/package-release.env`).
+>
+> **Ultima entrega (2026-07-02):** backup avancado diff/drift/retencao — Fase 5 plano 117. Ver `docs/123-ENTREGA-BACKUP-AVANCADO-2026-07-02.md`.
+> Plano de proximas melhorias seguras: `docs/117-PLANO-EXECUCAO-MELHORIAS-SEGURAS-2026-07-02.md`.
+> Plano pos-117 pfREST / gerenciador centralizado: `docs/125-PLANO-PFREST-GERENCIAMENTO-CENTRALIZADO-2026-07-02.md`.
+>
+> **Entrega anterior (2026-06-30):** upgrade remoto de package — package `0.4.6`, API `0.6.4`. Ver `docs/114-ENTREGA-UPGRADE-REMOTO-PACKAGE-2026-06-30.md`, guia `docs/114-UPGRADE-REMOTO-PACKAGE.md`.
+>
+> **Entrega anterior (2026-06-30):** correção heartbeat light + recovery offline — package `0.4.5`, API `0.6.3`. Ver `docs/113-ENTREGA-CORRECAO-HEARTBEAT-LIGHT-OFFLINE-2026-06-30.md`.
 >
 > **Entrega anterior (2026-06-24):** correção falhas pós-auditoria (plano 110, 23/23) — package `0.4.3`, API `0.6.1`, painel `1.4.2`. Ver `docs/111-ENTREGA-CORRECAO-FALHAS-AUDITORIA-110-2026-06-24.md`.
 >
 > **Entrega anterior (2026-06-24):** link de acesso remoto por firewall — API `0.6.0`, painel `1.4.0`. Campo `remote_access_url`, coluna **Acesso** no inventario. Ver `docs/104-ENTREGA-LINK-ACESSO-REMOTO-FIREWALL-2026-06-24.md`.
 >
-> **Entrega anterior (2026-06-24):** fechamento auditoria — API `0.5.0`, painel `1.3.0`, package `0.4.1`. MFA TOTP completo (enforcement opt-in, off por padrao), rate-limit persistido em PostgreSQL, `syncAlerts`/`permissions.guard`/HMAC endurecidos e package (rc.d, coletores, catalogo, flag upgrade). Deploy aplicado (`/healthz` 200 em 0.5.0); `run-smoke-suite.sh` 14/14 verde. Ver `docs/103-ENTREGA-FECHAMENTO-AUDITORIA-MFA-RATELIMIT-PACKAGE-2026-06-24.md`. Proximo passo: publicar release package `0.4.1`.
+> **Entrega anterior (2026-06-24):** fechamento auditoria — API `0.5.0`, painel `1.3.0`, package `0.4.1`. MFA TOTP completo, rate-limit persistido, endurecimentos de seguranca. Ver `docs/103-ENTREGA-FECHAMENTO-AUDITORIA-MFA-RATELIMIT-PACKAGE-2026-06-24.md`.
 >
 > **Entrega anterior (2026-06-23):** correcoes de auditoria de seguranca — package/API `0.4.0`, painel `1.2.0`. Ver `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md` (A1–A7, B1–B7, C1–C8, D1–D2; gaps E1/E2 resolvidos na entrega 103).
 
@@ -39,28 +47,41 @@ Leia nesta ordem:
 
 Detalhes, fluxo do proxy e exemplos de teste: `docs/89-ACESSO-INTERNO-E-EXTERNO.md`.
 
-## Estado verdadeiro em 2026-06-08
+## Estado verdadeiro em 2026-07-01
 
-Observado no servidor conectado:
+Verificado no repositorio (`apps/*/package.json`, `config/package-release.env`, `packages/pfsense-package/Makefile`, codigo em `apps/api/src/` e `apps/web/app/`):
 
-- stack `docker compose` esta rodando com `api`, `web`, `db` e `nginx` saudaveis
-- dominio publico (externo): `https://pfs-monitor.systemup.inf.br/healthz` responde `200`
-- origem interna (LAN): `http://192.168.100.221:3031`
-- package pfSense publicado no fluxo atual: `0.3.6`
-- `config/package-release.env` aponta para `https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main` e SHA256 do package `0.3.2`
-- agente/package atual envia heartbeat e test-connection por HMAC
-- nao existe ainda modulo de backup de `config.xml` no controlador
-- nao existe ainda endpoint `config-backup`
-- nao existe ainda tela de backups por firewall
-- decisao atual: backup sera modulo integrado ao Monitor-Pfsense e nova aba `Backup` dentro de `Services > SystemUp Monitor`, sem software separado
-- worktree esta com muitas alteracoes nao commitadas e arquivos novos
-- documentacao esta funcional, mas espalhada entre raiz e `docs/`
-- origem interna canonica no repositorio: `http://192.168.100.221:3031`
-- URL publica canonica: `https://pfs-monitor.systemup.inf.br`
-- diretorio canonico no host: `/Dados/Monitor-Pfsense` (migrado de `/opt/Monitor-Pfsense` em 2026-06-23; host historico `192.168.100.244`)
-- limite heartbeat: `64 KB`; rota de backup preparada para `5 MB` em `infra/nginx/default.conf` e `infra/ispconfig/nginx.monitor-pfsense.conf`
-- volume de backups de pfSense preparado: `data/pfsense-config-backups/` montado na API via `compose.yaml`
-- Fase B parcial: falta aplicar snippet ISPConfig no host, criar chave `BACKUP_ENCRYPTION_KEY_BASE64` e medir `config.xml` em homolog
+| Componente | Versao | Fonte |
+|------------|--------|-------|
+| API | `0.6.4` | `apps/api/package.json` |
+| Painel | `1.4.5` | `apps/web/package.json` |
+| Package pfSense | `0.4.7` | Makefile + `config/package-release.env` |
+| Agente no package | `0.4.7` | `SYSTEMUP_MONITOR_AGENT_VERSION` em `systemup_monitor.inc` |
+
+**Infra e acesso:**
+
+- stack `docker compose`: `api`, `web`, `db`, `nginx`
+- externo: `https://pfs-monitor.systemup.inf.br/healthz`
+- LAN: `http://192.168.100.221:3031`; localhost gateway: `http://127.0.0.1:8088`
+- diretorio canonico: `/Dados/Monitor-Pfsense` (host historico `192.168.100.244` migrado em 2026-06-23)
+
+**Modulos implementados (nao planejamento):**
+
+- backup `config.xml`: `POST /api/v1/ingest/config-backup`, listagem/download em `/api/v1/nodes/:id/config-backups/*`, painel `/backups`, aba Backup no package pfSense; armazenamento criptografado em `data/pfsense-config-backups/`
+- MFA TOTP (`/api/v1/auth/mfa/*`), RBAC granular + escopo por cliente, rate-limit persistido
+- `remote_access_url` por firewall; colunas **Acesso** e **Pacote** no inventario
+- `package_upgrade` remoto (agente ≥ 0.4.6); `pfsense_upgrade` semi-manual
+- limite heartbeat `64 KB`; rota backup `5 MB` em nginx interno + referencia ISPConfig
+
+**Proximo passo operacional:** rollout package `0.4.7` na frota; monitorar coluna **Pacote** em `/nodes`; ver `docs/114-UPGRADE-REMOTO-PACKAGE.md`.
+
+### Snapshot historico (2026-06-08)
+
+> Preservado para contexto. **Superseded** pelo bloco acima.
+
+- na epoca, package publicado era `0.3.6` e backup ainda era trilha de planejamento
+- `config/package-release.env` apontava para SHA256 de release antiga
+- origem interna ja migrada para `192.168.100.221:3031`
 
 ## Regra para os documentos antigos
 
@@ -127,6 +148,18 @@ Use esses arquivos para entender por que algo foi feito. Evite usa-los como cont
 
 ### 5. Plano atual de evolucao
 
+#### Plano de melhorias seguras e fundacoes novas (2026-07-02)
+
+- `docs/117-PLANO-EXECUCAO-MELHORIAS-SEGURAS-2026-07-02.md` — trilha executavel para Composer 2.5/Claude, com fases, gates de seguranca, entregas e acompanhamento.
+- Escopo: notificacoes externas, dashboard frota, tags/grupos, politica MFA, backup avancado, observabilidade, fundacao de jobs/comandos, acoes allowlistadas, certificados, vault/capacidades e piloto pfREST read-only/aliases.
+- Fora do escopo: comandos arbitrarios, restore automatico, inbound generalizado, SSO/proxy pfSense completo e gestao ampla de regras/NAT/VPN sem nova decisao.
+
+#### Plano pfREST / gerenciador centralizado pos-117 (2026-07-02)
+
+- `docs/125-PLANO-PFREST-GERENCIAMENTO-CENTRALIZADO-2026-07-02.md` — trilha para evoluir o Monitor-Pfsense em gerenciador centralizado de muitos pfSense usando pfREST.
+- Escopo: capacidades pfREST por firewall, vault/credenciais, inventario read-only, diff/drift/compliance, aliases centralizados, central de mudancas, regras/NAT restritos, DNS/DHCP, VPN read-only, certificados/servicos e governanca.
+- Regra-mestra: read-only primeiro; escrita somente com backup, preview, RBAC, auditoria, canario, job serializado por firewall e feature flags desligadas por padrao.
+
 #### Trilha RBAC (**encerrada** 2026-06-09)
 
 Plano mestre na raiz:
@@ -141,7 +174,7 @@ Trilhas operacionais em `docs/`:
 - `docs/75-CHECKLIST-TESTES-RBAC-ESCOPO-2026-06-09.md`
 - `docs/76-ENCERRAMENTO-TRILHA-RBAC-2026-06-09.md` — **encerramento formal**
 
-Versoes atuais: API `0.3.1`, painel `1.1.1`, package pfSense `0.3.6`. **Roadmap UX plano 24 encerrado** — encerramento formal: `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`; entrega Fase 8: `docs/87-ENTREGA-FRONTEND-FASE8-DESIGN-SYSTEM-PAGES-RESTANTES-2026-06-09.md`. Entrega Fase 7 auditoria filtros: `docs/86-ENTREGA-FRONTEND-FASE7-AUDITORIA-FILTROS-AMIGAVEIS-2026-06-09.md`. Entrega Fase 6 conta separada: `docs/85-ENTREGA-FRONTEND-FASE6-CONTA-SEPARADA-POLIMENTO-PTBR-2026-06-09.md`. Entrega Fase 5 backups frota: `docs/84-ENTREGA-FRONTEND-FASE5-BACKUPS-FROTA-MENU-2026-06-09.md`. Entrega Fase 4 detalhe abas: `docs/83-ENTREGA-FRONTEND-FASE4-DETALHE-FIREWALL-ABAS-2026-06-09.md`. Entrega Fase 3 inventario: `docs/82-ENTREGA-FRONTEND-FASE3-FIREWALLS-INVENTARIO-2026-06-09.md`. Entrega Fase 2 dashboard: `docs/81-ENTREGA-FRONTEND-FASE2-DASHBOARD-ENXUTO-2026-06-09.md`. Entrega Fase 0+1 layout: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`. Entrega pos-RBAC: `docs/77-ENTREGA-POS-RBAC-UX-LAYOUT-2026-06-09.md`. Versionamento: `.cursor/rules/versioning.mdc`. Nao reabrir trilha RBAC sem decisao explicita.
+Versoes atuais (produto): API `0.6.4`, painel `1.4.5`, package pfSense `0.4.7`. **Roadmap UX plano 24 encerrado** — encerramento formal: `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`.
 
 #### Roadmap UX front-end — encerramento formal (**plano 24 encerrado**)
 
@@ -212,22 +245,17 @@ Entrega: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`. Versao pai
 
 Modulo de backup ja implementado no controlador; RBAC reforça escopo e download auditado.
 
-#### Trilha package pfSense 0.3.6+ (**ativa** — 2026-06-23)
+#### Trilha package pfSense 0.3.6+ (**encerrada** — historico 2026-06-23)
 
-Plano mestre de melhorias pendentes (merge `service`, ISPConfig/502, backoff backup, gateways, upgrade OS, cache XML, desinstalacao):
+Plano mestre de melhorias pendentes na epoca (merge `service`, ISPConfig/502, backoff backup, gateways, upgrade OS, cache XML, desinstalacao):
 
-- [`docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`](95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md) — **entrega Opção B Fase 0** (limite backup ISPConfig/compose, testes HTTPS)
-- [`docs/98-ENTREGA-PACKAGE-0.3.8.md`](98-ENTREGA-PACKAGE-0.3.8.md) — **entrega Opção D + Fase 3** (`pfsense_upgrade` semi-manual, `node_secret` runtime, guia package)
-- [`docs/97-SPIKE-PFSENSE-UPGRADE-CE.md`](97-SPIKE-PFSENSE-UPGRADE-CE.md) — spike upgrade OS CE (procedimentos lab)
-- [`docs/pfsense-package/00-GUIA-OPERACAO-PACKAGE.md`](pfsense-package/00-GUIA-OPERACAO-PACKAGE.md) — guia operacional unificado do package
-- [`docs/95-RUNBOOK-ISPConfig-253-BACKUP-LIMIT.md`](95-RUNBOOK-ISPConfig-253-BACKUP-LIMIT.md) — runbook operador SSH 253 (pendente acesso)
-- [`docs/96-ENTREGA-PACKAGE-0.3.7.md`](96-ENTREGA-PACKAGE-0.3.7.md) — entrega Opção C P1
-- [`docs/95-ENTREGA-PACKAGE-0.3.6.md`](95-ENTREGA-PACKAGE-0.3.6.md) — entrega Opção A P0
-- [`docs/94-PLANO-MELHORIAS-PACKAGE-0.3.6.md`](94-PLANO-MELHORIAS-PACKAGE-0.3.6.md) — **plano executavel autossuficiente**
-- Contexto correção parcial 0.3.5: [`docs/92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md`](92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md)
-- Upgrade OS (stub + spike CE): [`docs/91-PLANO-ENTREGA-PFSENSE-OS-UPGRADE.md`](91-PLANO-ENTREGA-PFSENSE-OS-UPGRADE.md)
+- [`docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`](95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md) — entrega Opção B Fase 0 (limite backup ISPConfig/compose)
+- [`docs/98-ENTREGA-PACKAGE-0.3.8.md`](98-ENTREGA-PACKAGE-0.3.8.md) — entrega Opção D + Fase 3 (`pfsense_upgrade`, `node_secret` runtime)
+- [`docs/pfsense-package/00-GUIA-OPERACAO-PACKAGE.md`](pfsense-package/00-GUIA-OPERACAO-PACKAGE.md) — **guia operacional atual** do package (atualizado 2026-07-01)
+- [`docs/114-UPGRADE-REMOTO-PACKAGE.md`](114-UPGRADE-REMOTO-PACKAGE.md) — upgrade remoto `package_upgrade` (≥ 0.4.6)
+- [`docs/94-PLANO-MELHORIAS-PACKAGE-0.3.6.md`](94-PLANO-MELHORIAS-PACKAGE-0.3.6.md) — plano executavel (historico)
 
-Package publicado no fluxo atual: `0.3.8`; pendente lab: flags upgrade CE nao assistido, piloto gateways/VPN.
+**Package publicado hoje:** `0.4.7` (`config/package-release.env`). Trilha 0.3.x superseded.
 
 ## Estrutura de pastas atual
 

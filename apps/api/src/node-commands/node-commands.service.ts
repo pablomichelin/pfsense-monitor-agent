@@ -11,6 +11,7 @@ import {
   NodeCommand,
   NodeCommandStatus,
   NodeCommandType,
+  JobBatchStatus,
   Prisma,
 } from '@prisma/client';
 import { appConfig } from '../config/app-config';
@@ -23,11 +24,19 @@ export interface PendingCommandPayload {
   payload?: Record<string, unknown>;
 }
 
-type CommandAuditPrefix = 'backup.config' | 'pfsense.upgrade';
+type CommandAuditPrefix =
+  | 'backup.config'
+  | 'pfsense.upgrade'
+  | 'package.upgrade'
+  | 'service.restart'
+  | 'node.reboot';
 
 const AUDIT_PREFIX_BY_TYPE: Record<NodeCommandType, CommandAuditPrefix> = {
   [NodeCommandType.config_backup_now]: 'backup.config',
   [NodeCommandType.pfsense_upgrade]: 'pfsense.upgrade',
+  [NodeCommandType.package_upgrade]: 'package.upgrade',
+  [NodeCommandType.service_restart]: 'service.restart',
+  [NodeCommandType.node_reboot]: 'node.reboot',
 };
 
 const ACTIVE_STATUSES: NodeCommandStatus[] = [
@@ -40,18 +49,65 @@ export function toAgentCommandPayload(
   type: NodeCommandType,
   payloadJson: Prisma.JsonValue | null,
 ): Record<string, unknown> | undefined {
-  if (type !== NodeCommandType.pfsense_upgrade || !payloadJson) {
+  if (!payloadJson || typeof payloadJson !== 'object' || Array.isArray(payloadJson)) {
     return undefined;
   }
 
   const raw = payloadJson as Record<string, unknown>;
-  if (raw.target_version == null) {
-    return undefined;
+
+  if (type === NodeCommandType.pfsense_upgrade) {
+    if (raw.target_version == null) {
+      return undefined;
+    }
+
+    return {
+      target_version: raw.target_version,
+    };
   }
 
-  return {
-    target_version: raw.target_version,
-  };
+  if (type === NodeCommandType.package_upgrade) {
+    const targetVersion = raw.target_version;
+    const artifactUrl = raw.artifact_url;
+    const sha256 = raw.sha256;
+
+    if (
+      targetVersion == null ||
+      typeof artifactUrl !== 'string' ||
+      typeof sha256 !== 'string'
+    ) {
+      return undefined;
+    }
+
+    return {
+      target_version: targetVersion,
+      artifact_url: artifactUrl,
+      sha256,
+    };
+  }
+
+  if (type === NodeCommandType.service_restart) {
+    const service = raw.service;
+    if (typeof service !== 'string' || !service.trim()) {
+      return undefined;
+    }
+
+    return {
+      service: service.trim().toLowerCase(),
+    };
+  }
+
+  if (type === NodeCommandType.node_reboot) {
+    const delaySeconds = raw.delay_seconds;
+    if (delaySeconds == null) {
+      return undefined;
+    }
+
+    return {
+      delay_seconds: delaySeconds,
+    };
+  }
+
+  return undefined;
 }
 
 export interface UpgradePayloadJson {
@@ -89,6 +145,17 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       return appConfig.pfsenseUpgrade.commandExpireMinutes;
     }
 
+    if (type === NodeCommandType.package_upgrade) {
+      return appConfig.packageUpgrade.commandExpireMinutes;
+    }
+
+    if (
+      type === NodeCommandType.service_restart ||
+      type === NodeCommandType.node_reboot
+    ) {
+      return appConfig.operationalActions.commandExpireMinutes;
+    }
+
     return appConfig.configBackup.commandExpireMinutes;
   }
 
@@ -105,6 +172,7 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
         expiresAt: {
           gt: now,
         },
+        OR: [{ nextRetryAt: null }, { nextRetryAt: { lte: now } }],
       },
       orderBy: {
         requestedAt: 'asc',
@@ -334,6 +402,10 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
+      if (command.batchId) {
+        await this.reconcileBatchStatus(command.batchId);
+      }
+
       return {
         ok: true,
         command_id: updated.id,
@@ -370,11 +442,78 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    if (command.batchId) {
+      await this.reconcileBatchStatus(command.batchId);
+    }
+
     return {
       ok: true,
       command_id: updated.id,
       status: updated.status,
     };
+  }
+
+  private async reconcileBatchStatus(batchId: string): Promise<void> {
+    const commands = await this.prisma.nodeCommand.findMany({
+      where: { batchId },
+      select: { status: true },
+    });
+
+    if (commands.length === 0) {
+      return;
+    }
+
+    const counts = {
+      succeeded: 0,
+      failed: 0,
+      cancelled: 0,
+      expired: 0,
+      active: 0,
+    };
+
+    for (const entry of commands) {
+      switch (entry.status) {
+        case NodeCommandStatus.succeeded:
+          counts.succeeded += 1;
+          break;
+        case NodeCommandStatus.failed:
+          counts.failed += 1;
+          break;
+        case NodeCommandStatus.cancelled:
+          counts.cancelled += 1;
+          break;
+        case NodeCommandStatus.expired:
+          counts.expired += 1;
+          break;
+        default:
+          counts.active += 1;
+      }
+    }
+
+    let status: JobBatchStatus = JobBatchStatus.running;
+    if (counts.active === 0) {
+      if (counts.succeeded === commands.length) {
+        status = JobBatchStatus.completed;
+      } else if (counts.failed > 0) {
+        status = JobBatchStatus.failed;
+      } else if (counts.cancelled === commands.length) {
+        status = JobBatchStatus.cancelled;
+      } else {
+        status = JobBatchStatus.completed;
+      }
+    }
+
+    await this.prisma.jobBatch.update({
+      where: { id: batchId },
+      data: {
+        status,
+        succeededCount: counts.succeeded,
+        failedCount: counts.failed,
+        cancelledCount: counts.cancelled,
+        expiredCount: counts.expired,
+        completedAt: counts.active === 0 ? new Date() : null,
+      },
+    });
   }
 
   async countActiveUpgradeCommandsGlobal(): Promise<number> {
@@ -659,6 +798,13 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
         }
       }
     });
+
+    const batchIds = new Set(
+      expired.map((command) => command.batchId).filter((id): id is string => id != null),
+    );
+    for (const batchId of batchIds) {
+      await this.reconcileBatchStatus(batchId);
+    }
 
     this.logger.log(`expired ${expired.length} node commands reason=${reason}`);
   }

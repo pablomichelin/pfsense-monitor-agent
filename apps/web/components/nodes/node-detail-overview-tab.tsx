@@ -1,8 +1,12 @@
 import { setNodeMaintenanceAction } from '@/lib/admin';
-import type { NodeDetailsResponse, PfsenseUpgradeStatusResponse } from '@/lib/api';
+import type { NodeCapabilitiesResponse, NodeDetailsResponse, PackageUpgradeStatusResponse, PfsenseApiStatusResponse, PfsenseUpgradeStatusResponse } from '@/lib/api';
+import { NodePackageUpgradeSection } from '@/components/node-package-upgrade-section';
 import { formatDateTime } from '@/lib/format';
 import { parseIps, isPublicIp } from '@/lib/node-detail-helpers';
 import { NodePfsenseUpgradeSection } from '@/components/node-pfsense-upgrade-section';
+import { NodeCertificatesPanel } from '@/components/nodes/node-certificates-panel';
+import { NodeCapabilitiesPanel } from '@/components/nodes/node-capabilities-panel';
+import { NodePfsenseApiPanel } from '@/components/nodes/node-pfsense-api-panel';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -14,12 +18,26 @@ export function NodeDetailOverviewTab({
   node,
   canManageNode,
   canRunUpgrade,
+  canRunPackageUpgrade,
   upgradeStatus,
+  packageUpgradeStatus,
+  nodeCapabilities,
+  pfsenseApiStatus,
+  canManagePfsenseCredentials,
+  canViewPfsenseAliases,
+  canViewPfsenseApi,
 }: {
   node: Node;
   canManageNode: boolean;
   canRunUpgrade: boolean;
+  canRunPackageUpgrade: boolean;
   upgradeStatus: PfsenseUpgradeStatusResponse;
+  packageUpgradeStatus: PackageUpgradeStatusResponse;
+  nodeCapabilities: NodeCapabilitiesResponse;
+  pfsenseApiStatus: PfsenseApiStatusResponse;
+  canManagePfsenseCredentials: boolean;
+  canViewPfsenseAliases: boolean;
+  canViewPfsenseApi: boolean;
 }) {
   type Iface = { name?: string; ip?: string; role?: string };
   const ifaces = (node.network_interfaces ?? []) as Iface[];
@@ -58,6 +76,7 @@ export function NodeDetailOverviewTab({
     ifaces.every((iface) => !(iface?.name ?? '').trim() && !(iface?.ip ?? '').trim());
 
   return (
+    <>
     <PageSection
       title="Visão geral"
       description="Identidade do equipamento, interfaces de rede e modo de manutenção."
@@ -220,7 +239,30 @@ export function NodeDetailOverviewTab({
           canRunUpgrade={canRunUpgrade}
           initialStatus={upgradeStatus}
         />
+
+        <NodePackageUpgradeSection
+          nodeId={node.id}
+          canRunPackageUpgrade={canRunPackageUpgrade}
+          initialStatus={packageUpgradeStatus}
+        />
       </Card>
     </PageSection>
+
+    <NodeCertificatesPanel certificates={node.certificates ?? []} />
+    {canViewPfsenseApi ? (
+      <NodeCapabilitiesPanel
+        nodeId={node.id}
+        canManageCredentials={canManagePfsenseCredentials}
+        initialData={nodeCapabilities}
+      />
+    ) : null}
+    {canViewPfsenseAliases ? (
+      <NodePfsenseApiPanel
+        nodeId={node.id}
+        canViewAliases={canViewPfsenseAliases}
+        status={pfsenseApiStatus}
+      />
+    ) : null}
+    </>
   );
 }

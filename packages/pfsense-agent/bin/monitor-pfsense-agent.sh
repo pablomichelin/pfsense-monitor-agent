@@ -49,7 +49,20 @@ $message"
 }
 
 json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+  printf '%s' "$1" | awk '
+    BEGIN { ORS="" }
+    {
+      for (i = 1; i <= length($0); i++) {
+        c = substr($0, i, 1)
+        if (c == "\\") printf "\\\\"
+        else if (c == "\"") printf "\\\""
+        else if (c == "\n") printf "\\n"
+        else if (c == "\r") printf "\\r"
+        else if (c == "\t") printf "\\t"
+        else printf "%s", c
+      }
+    }
+  '
 }
 
 json_nullable_string() {
@@ -93,6 +106,11 @@ truncate_text() {
 }
 
 hex_hmac() {
+  if command -v php >/dev/null 2>&1; then
+    MONITOR_HMAC_KEY="$1" php -r 'echo hash_hmac("sha256", stream_get_contents(STDIN), (string) getenv("MONITOR_HMAC_KEY"));'
+    return
+  fi
+  # Fallback: segredo visivel em ps via argv do openssl — preferir php quando disponivel.
   openssl dgst -sha256 -hmac "$1" -binary | od -An -vtx1 | tr -d ' \n'
 }
 

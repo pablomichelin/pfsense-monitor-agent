@@ -6,10 +6,12 @@ export type KpiIndicator = { kind: 'status'; dotClass: string };
 export function KpiCard({
   label,
   value,
+  suffix,
   indicator,
 }: {
   label: string;
-  value: number;
+  value: number | string;
+  suffix?: string;
   indicator: KpiIndicator;
 }) {
   return (
@@ -20,6 +22,9 @@ export function KpiCard({
       <div className="mt-3 flex items-end justify-between gap-3">
         <span className="font-display text-3xl font-semibold text-white">
           {value}
+          {suffix ? (
+            <span className="ml-1 text-lg font-medium text-slate-400">{suffix}</span>
+          ) : null}
         </span>
         {indicator.kind === 'status' ? (
           <span

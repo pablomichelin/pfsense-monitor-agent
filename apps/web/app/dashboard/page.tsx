@@ -1,30 +1,25 @@
 import Link from 'next/link';
 import { DashboardKpiGrid } from '@/components/dashboard/dashboard-kpi-grid';
+import { FleetVersionMatrix } from '@/components/dashboard/fleet-version-matrix';
 import { HotZoneExpandableList } from '@/components/hot-zone-expandable-list';
 import { PageHero } from '@/components/page-hero';
 import { Alert, Card, PageSection } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
-import { ApiError, getDashboardSummary, getNodesList, getSession } from '@/lib/api';
+import { getDashboardFleet, getNodesList, getSession } from '@/lib/api';
 import { isClientRole } from '@/lib/client-profile';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 
 export const dynamic = 'force-dynamic';
 
-/** Exibe apenas o número da versão, sem sufixos como -RELEASE */
-function formatVersion(version: string | null | undefined): string {
-  if (version == null || version === '') return '—';
-  return version.replace(/-RELEASE$/i, '').trim() || '—';
-}
-
 export default async function DashboardPage() {
-  let summary;
+  let fleet;
   let nodes;
   let session;
 
   try {
-    [summary, nodes, session] = await Promise.all([
-      getDashboardSummary(),
+    [fleet, nodes, session] = await Promise.all([
+      getDashboardFleet(),
       getNodesList({ sort_by: 'name', sort_order: 'asc', limit: 200 }),
       getSession(),
     ]);
@@ -38,14 +33,6 @@ export default async function DashboardPage() {
     .filter((node) => node.effective_status === 'offline' || node.effective_status === 'degraded')
     .slice(0, 6);
 
-  const distinctVersions = new Set(
-    nodes.items.map((node) =>
-      node.pfsense_version == null || node.pfsense_version === ''
-        ? 'nao informado'
-        : formatVersion(node.pfsense_version),
-    ),
-  ).size;
-
   return (
     <div className="space-y-8">
       <PageHero
@@ -56,7 +43,7 @@ export default async function DashboardPage() {
             ? 'Acompanhe o status e a saúde básica dos firewalls da sua empresa.'
             : 'Veja rapidamente quantos firewalls estão online, precisam de atenção ou ainda aguardam instalação.'
         }
-        aside={<RealtimeRefresh renderedAt={summary.generated_at} />}
+        aside={<RealtimeRefresh renderedAt={fleet.generated_at} />}
       />
 
       <PageSection
@@ -64,16 +51,19 @@ export default async function DashboardPage() {
         description={
           isClientProfile
             ? 'Resumo do status da sua frota monitorada.'
-            : 'Totais consolidados de status e alertas da frota.'
+            : 'Totais consolidados de status, backup e package da frota.'
         }
       >
-        <DashboardKpiGrid
-          online={summary.totals.online}
-          degraded={summary.totals.degraded}
-          offline={summary.totals.offline}
-          openAlerts={summary.totals.open_alerts}
-          distinctVersions={distinctVersions}
-          isClientProfile={isClientProfile}
+        <DashboardKpiGrid fleet={fleet} isClientProfile={isClientProfile} />
+      </PageSection>
+
+      <PageSection
+        title="Matriz de versões"
+        description="Distribuição de pfSense OS e package monitor no escopo atual."
+      >
+        <FleetVersionMatrix
+          matrix={fleet.version_matrix}
+          packageTargetVersion={fleet.compliance.package_target_version}
         />
       </PageSection>
 

@@ -208,6 +208,10 @@ export const appConfig = Object.freeze({
       'CONFIG_BACKUP_ATTEMPT_IDEMPOTENCY_HOURS',
     ),
     encryptionVersion: 'aes-256-gcm:v1',
+    advanced: {
+      diffEnabled: parseBoolean(process.env.BACKUP_DIFF_ENABLED, false),
+      driftEnabled: parseBoolean(process.env.BACKUP_DRIFT_ENABLED, false),
+    },
   },
   backupEncryptionKey: parseEncryptionKey(
     requireEnv('BACKUP_ENCRYPTION_KEY_BASE64'),
@@ -216,6 +220,200 @@ export const appConfig = Object.freeze({
   rbac: {
     scopeEnabled: parseBoolean(process.env.RBAC_SCOPE_ENABLED, true),
     permissionsEnabled: parseBoolean(process.env.RBAC_PERMISSIONS_ENABLED, true),
+  },
+  packageUpgrade: {
+    enabled: parseBoolean(process.env.PACKAGE_UPGRADE_ENABLED, true),
+    commandExpireMinutes: parseNumber(
+      process.env.PACKAGE_UPGRADE_COMMAND_EXPIRE_MINUTES,
+      60,
+      'PACKAGE_UPGRADE_COMMAND_EXPIRE_MINUTES',
+    ),
+    minAgentVersion:
+      process.env.PACKAGE_UPGRADE_MIN_AGENT_VERSION?.trim() || '0.4.6',
+    maxConcurrentGlobal: parseNumber(
+      process.env.PACKAGE_UPGRADE_MAX_CONCURRENT,
+      0,
+      'PACKAGE_UPGRADE_MAX_CONCURRENT',
+    ),
+  },
+  notifications: {
+    enabled: parseBoolean(process.env.NOTIFICATIONS_ENABLED, false),
+    maxAttempts: parseNumber(
+      process.env.NOTIFICATIONS_MAX_ATTEMPTS,
+      3,
+      'NOTIFICATIONS_MAX_ATTEMPTS',
+    ),
+    retryDelayMs: parseNumber(
+      process.env.NOTIFICATIONS_RETRY_DELAY_MS,
+      5000,
+      'NOTIFICATIONS_RETRY_DELAY_MS',
+    ),
+  },
+  metricRollups: {
+    enabled: parseBoolean(process.env.METRIC_ROLLUPS_ENABLED, false),
+    sampleIntervalSeconds: parseNumber(
+      process.env.METRIC_SAMPLE_INTERVAL_SECONDS,
+      300,
+      'METRIC_SAMPLE_INTERVAL_SECONDS',
+    ),
+    sampleRetentionHours: parseNumber(
+      process.env.METRIC_SAMPLE_RETENTION_HOURS,
+      72,
+      'METRIC_SAMPLE_RETENTION_HOURS',
+    ),
+    hourlyRollupIntervalSeconds: parseNumber(
+      process.env.METRIC_HOURLY_ROLLUP_INTERVAL_SECONDS,
+      3600,
+      'METRIC_HOURLY_ROLLUP_INTERVAL_SECONDS',
+    ),
+    dailyRollupIntervalSeconds: parseNumber(
+      process.env.METRIC_DAILY_ROLLUP_INTERVAL_SECONDS,
+      86400,
+      'METRIC_DAILY_ROLLUP_INTERVAL_SECONDS',
+    ),
+    hourlyRetentionDays: parseNumber(
+      process.env.METRIC_HOURLY_RETENTION_DAYS,
+      35,
+      'METRIC_HOURLY_RETENTION_DAYS',
+    ),
+    dailyRetentionDays: parseNumber(
+      process.env.METRIC_DAILY_RETENTION_DAYS,
+      400,
+      'METRIC_DAILY_RETENTION_DAYS',
+    ),
+  },
+  commands: {
+    workerEnabled: parseBoolean(process.env.COMMAND_WORKER_ENABLED, false),
+    workerIntervalSeconds: parseNumber(
+      process.env.COMMAND_WORKER_INTERVAL_SECONDS,
+      30,
+      'COMMAND_WORKER_INTERVAL_SECONDS',
+    ),
+    workerLockTtlSeconds: parseNumber(
+      process.env.COMMAND_WORKER_LOCK_TTL_SECONDS,
+      120,
+      'COMMAND_WORKER_LOCK_TTL_SECONDS',
+    ),
+    historyDefaultLimit: parseNumber(
+      process.env.COMMAND_HISTORY_DEFAULT_LIMIT,
+      25,
+      'COMMAND_HISTORY_DEFAULT_LIMIT',
+    ),
+    retryDefaults: {
+      configBackupMaxRetries: parseNumber(
+        process.env.CONFIG_BACKUP_COMMAND_MAX_RETRIES,
+        2,
+        'CONFIG_BACKUP_COMMAND_MAX_RETRIES',
+      ),
+      configBackupBackoffMs: [
+        parseNumber(
+          process.env.CONFIG_BACKUP_COMMAND_RETRY_BACKOFF_MS_1,
+          30_000,
+          'CONFIG_BACKUP_COMMAND_RETRY_BACKOFF_MS_1',
+        ),
+        parseNumber(
+          process.env.CONFIG_BACKUP_COMMAND_RETRY_BACKOFF_MS_2,
+          120_000,
+          'CONFIG_BACKUP_COMMAND_RETRY_BACKOFF_MS_2',
+        ),
+      ],
+      pfsenseUpgradeMaxRetries: parseNumber(
+        process.env.PFSENSE_UPGRADE_COMMAND_MAX_RETRIES,
+        1,
+        'PFSENSE_UPGRADE_COMMAND_MAX_RETRIES',
+      ),
+      pfsenseUpgradeBackoffMs: [
+        parseNumber(
+          process.env.PFSENSE_UPGRADE_COMMAND_RETRY_BACKOFF_MS_1,
+          300_000,
+          'PFSENSE_UPGRADE_COMMAND_RETRY_BACKOFF_MS_1',
+        ),
+      ],
+      packageUpgradeMaxRetries: parseNumber(
+        process.env.PACKAGE_UPGRADE_COMMAND_MAX_RETRIES,
+        1,
+        'PACKAGE_UPGRADE_COMMAND_MAX_RETRIES',
+      ),
+      packageUpgradeBackoffMs: [
+        parseNumber(
+          process.env.PACKAGE_UPGRADE_COMMAND_RETRY_BACKOFF_MS_1,
+          180_000,
+          'PACKAGE_UPGRADE_COMMAND_RETRY_BACKOFF_MS_1',
+        ),
+      ],
+      serviceRestartMaxRetries: parseNumber(
+        process.env.SERVICE_RESTART_COMMAND_MAX_RETRIES,
+        1,
+        'SERVICE_RESTART_COMMAND_MAX_RETRIES',
+      ),
+      serviceRestartBackoffMs: [
+        parseNumber(
+          process.env.SERVICE_RESTART_COMMAND_RETRY_BACKOFF_MS_1,
+          60_000,
+          'SERVICE_RESTART_COMMAND_RETRY_BACKOFF_MS_1',
+        ),
+      ],
+      nodeRebootMaxRetries: parseNumber(
+        process.env.NODE_REBOOT_COMMAND_MAX_RETRIES,
+        0,
+        'NODE_REBOOT_COMMAND_MAX_RETRIES',
+      ),
+      nodeRebootBackoffMs: [] as number[],
+    },
+  },
+  operationalActions: {
+    enabled: parseBoolean(process.env.OPERATIONAL_ACTIONS_ENABLED, false),
+    serviceRestartEnabled: parseBoolean(
+      process.env.SERVICE_RESTART_ENABLED,
+      false,
+    ),
+    nodeRebootEnabled: parseBoolean(process.env.NODE_REBOOT_ENABLED, false),
+    commandExpireMinutes: parseNumber(
+      process.env.OPERATIONAL_ACTIONS_COMMAND_EXPIRE_MINUTES,
+      15,
+      'OPERATIONAL_ACTIONS_COMMAND_EXPIRE_MINUTES',
+    ),
+    minAgentVersion:
+      process.env.OPERATIONAL_ACTIONS_MIN_AGENT_VERSION?.trim() || '0.4.8',
+    rebootDefaultDelaySeconds: parseNumber(
+      process.env.NODE_REBOOT_DEFAULT_DELAY_SECONDS,
+      60,
+      'NODE_REBOOT_DEFAULT_DELAY_SECONDS',
+    ),
+  },
+  certificates: {
+    enabled: parseBoolean(process.env.CERTIFICATES_ENABLED, false),
+    minAgentVersion:
+      process.env.CERTIFICATES_MIN_AGENT_VERSION?.trim() || '0.4.9',
+  },
+  nodeCapabilities: {
+    enabled: parseBoolean(process.env.NODE_CAPABILITIES_ENABLED, false),
+    minAgentVersion:
+      process.env.NODE_CAPABILITIES_MIN_AGENT_VERSION?.trim() || '0.4.9',
+  },
+  pfsenseVault: {
+    enabled: parseBoolean(process.env.PFSENSE_VAULT_ENABLED, false),
+    testTimeoutMs: parseNumber(
+      process.env.PFSENSE_VAULT_TEST_TIMEOUT_MS,
+      5000,
+      'PFSENSE_VAULT_TEST_TIMEOUT_MS',
+    ),
+  },
+  pfsenseApi: {
+    enabled: parseBoolean(process.env.PFSENSE_API_ENABLED, false),
+    aliasReadEnabled: parseBoolean(
+      process.env.PFSENSE_ALIAS_READ_ENABLED,
+      false,
+    ),
+    aliasApplyEnabled: parseBoolean(
+      process.env.PFSENSE_ALIAS_APPLY_ENABLED,
+      false,
+    ),
+    requireRecentBackupHours: parseNumber(
+      process.env.PFSENSE_ALIAS_REQUIRE_BACKUP_HOURS,
+      24,
+      'PFSENSE_ALIAS_REQUIRE_BACKUP_HOURS',
+    ),
   },
   pfsenseUpgrade: {
     enabled: parseBoolean(process.env.PFSENSE_UPGRADE_ENABLED, false),

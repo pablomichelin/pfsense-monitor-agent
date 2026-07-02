@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { InstallationBadge } from '@/components/nodes/installation-badge';
+import { PackageVersionCell } from '@/components/nodes/package-version-cell';
 import {
   Button,
   DataTable,
@@ -122,7 +123,8 @@ export function NodesTableWithDelete({ nodes, canDelete }: Props) {
             <th className="w-28 min-w-[7rem] px-4 py-4">Status</th>
             <th className="min-w-[10rem] px-4 py-4">Firewall</th>
             <th className="min-w-[8rem] px-4 py-4">Local</th>
-            <th className="min-w-[8rem] px-4 py-4">Versão</th>
+            <th className="min-w-[7rem] px-4 py-4">Versão pfSense</th>
+            <th className="min-w-[7rem] px-4 py-4">Pacote</th>
             <th className="min-w-[6rem] px-4 py-4">Último contato</th>
             <th className="w-28 min-w-[7rem] px-4 py-4">Instalação</th>
             {canDelete ? (
@@ -161,9 +163,13 @@ export function NodesTableWithDelete({ nodes, canDelete }: Props) {
                 <p className="truncate">{node.client.name}</p>
                 <p className="truncate text-slate-500">{node.site.name}</p>
               </td>
-              <td className="min-w-[8rem] px-4 py-4">
-                <p className="font-mono text-cyan-200">{node.pfsense_version ?? '—'}</p>
-                <p className="text-slate-500">Agente {node.agent_version ?? 'não instalado'}</p>
+              <td className="min-w-[7rem] px-4 py-4">
+                <p className="font-mono text-cyan-200">
+                  {node.pfsense_version?.replace(/-RELEASE$/i, '').trim() || '—'}
+                </p>
+              </td>
+              <td className="min-w-[7rem] px-4 py-4">
+                <PackageVersionCell agentVersion={node.agent_version} />
               </td>
               <td className="min-w-[6rem] px-4 py-4 text-slate-400">
                 <p>{formatRelativeAge(node.last_seen_at)}</p>

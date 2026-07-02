@@ -107,7 +107,14 @@ REPO_RAW_BASE="${REPO_RAW_BASE:-${GITHUB_RAW_BASE:-https://raw.githubusercontent
 CONTROLLER_URL="${CONTROLLER_URL:-https://pfs-monitor.systemup.inf.br}"
 
 INSTALLER_URL="${REPO_RAW_BASE}/packages/pfsense-package/bootstrap/install-from-release.sh"
-ARTIFACT_URL="${REPO_RAW_BASE}/dist/pfsense-package/monitor-pfsense-package-v${VERSION}.tar.gz"
+# Preferir artefato servido pelo controlador (mesma lógica de PackageReleaseService.buildReleaseUrls)
+LOCAL_ARTIFACT="$PROJECT_ROOT/dist/pfsense-package/monitor-pfsense-package-v${VERSION}.tar.gz"
+if [[ -f "$LOCAL_ARTIFACT" ]]; then
+  ARTIFACT_URL="${CONTROLLER_URL%/}/api/v1/agent/package-artifact"
+else
+  ARTIFACT_URL="${REPO_RAW_BASE}/dist/pfsense-package/monitor-pfsense-package-v${VERSION}.tar.gz"
+  echo "Aviso: artefato local ausente ($LOCAL_ARTIFACT); usando URL raw do repositório." >&2
+fi
 
 # Colocar secret entre aspas simples no comando gerado para evitar quebra por caracteres especiais
 SECRET_QUOTED="'${NODE_SECRET//\'/\'\\\'\'}'"

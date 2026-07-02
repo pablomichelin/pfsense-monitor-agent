@@ -1,5 +1,7 @@
 # Monitoramento, Backup e Operacao
 
+> **Nota (2026-07-01):** alem do backup do PostgreSQL do controlador (scripts abaixo), o produto inclui **backup de config.xml dos pfSense** — ingest HMAC, armazenamento criptografado, painel `/backups` e aba Backup no package. Ver `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`.
+
 ## Objetivo
 
 Garantir que o proprio controlador seja observavel e recuperavel.
@@ -57,7 +59,7 @@ Minimos:
 
 ## Backup
 
-## Escopo do backup
+### Backup do PostgreSQL (controlador)
 
 - dump do PostgreSQL
 - arquivos de configuracao do Nginx
@@ -65,7 +67,16 @@ Minimos:
 - certificados e chaves
 - eventuais artefatos de release local
 
-## Politica inicial recomendada
+### Backup de config.xml (pfSense — produto)
+
+- agente envia via `POST /api/v1/ingest/config-backup` (HMAC, limite 5 MB)
+- metadados e auditoria no PostgreSQL; payload criptografado em `data/pfsense-config-backups/`
+- operacao humana: painel `/backups` e detalhe do firewall; download com RBAC
+- agendamento e envio manual no pfSense: Services > SystemUp Monitor > aba **Backup**
+
+## Escopo do backup do controlador
+
+### Politica inicial recomendada
 
 - backup diario do banco
 - retencao de 7 backups diarios

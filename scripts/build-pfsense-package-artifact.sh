@@ -37,7 +37,8 @@ mkdir -p "$DIST_DIR"
 cp -R "$PACKAGE_DIR" "$STAGE_DIR/pfsense-package"
 printf 'v%s\n' "$VERSION" > "$STAGE_DIR/pfsense-package/VERSION"
 sed -i "s/%%PKGVERSION%%/${VERSION}/g" \
-  "$STAGE_DIR/pfsense-package/files/usr/local/share/pfSense-pkg-systemup-monitor/info.xml"
+  "$STAGE_DIR/pfsense-package/files/usr/local/share/pfSense-pkg-systemup-monitor/info.xml" \
+  "$STAGE_DIR/pfsense-package/files/usr/local/pkg/systemup_monitor.xml"
 
 tar -C "$STAGE_DIR" -czf "$ARTIFACT_PATH" pfsense-package
 

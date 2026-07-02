@@ -6,13 +6,47 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Versoes atuais do produto (2026-06-24)
+## Versoes atuais do produto (2026-07-02)
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.6.2` | `apps/api/package.json` |
-| Painel web | `1.4.3` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.4.4` | `packages/pfsense-package/Makefile` |
+| API | `0.7.0` | `apps/api/package.json` |
+| Painel web | `1.5.1` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.4.10` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+
+**Release publicada (config versionado):** `config/package-release.env` → package **`0.4.10`** (SHA256 `2b6d26904010c2636be697640a663cf1b24e6f3ae30f33c8fcdb3cdea481b853`; artefato regerado com fix do `%%PKGVERSION%%` no `systemup_monitor.xml`).
+
+**Artefato package:** `/Dados/Monitor-Pfsense/dist/pfsense-package/monitor-pfsense-package-v0.4.10.tar.gz`
+
+**Ultima entrega (2026-07-02):** correções auditoria framework pfSense — package **0.4.10** (wrappers command-result, config_read_file, GUI/XML framework, validação intervalo, HMAC via env, fix `%%PKGVERSION%%` no build). **Homologada em pfSense CE 2.8.1 real.** Ver `docs/132-ENTREGA-CORRECOES-AUDITORIA-FRAMEWORK-PFSENSE-2026-07-02.md`.
+
+**Entrega anterior (2026-07-02):** fechamento plano 117 (Fases 10–12) — vault/capacidades pfREST, piloto read-only/aliases, consolidacao API `0.7.0` / web `1.5.1`. Ver `docs/128-...`, `docs/129-...`, `docs/130-...` e `docs/131-RELATORIO-10-REVISOES-CODIGO-2026-07-02.md`.
+
+**Entrega anterior (2026-07-02):** certificados e expiracao (Fase 9 plano 117) — inventario metadados, alertas 30/15/7 dias. Ver `docs/127-ENTREGA-CERTIFICADOS-EXPIRACAO-2026-07-02.md`.
+
+**Entrega anterior (2026-07-02):** acoes operacionais allowlistadas (Fase 8 plano 117) — `service_restart`, `node_reboot`, backup em lote, flags default off, package agente 0.4.8. Ver `docs/126-ENTREGA-ACOES-OPERACIONAIS-2026-07-02.md`.
+
+**Entrega anterior (2026-07-02):** fundacao jobs/comandos (Fase 7 plano 117) — registry allowlist, lotes `job_batches`, worker opcional `COMMAND_WORKER_ENABLED=false`, historico/cancel/batch na API, UI de comandos no detalhe do firewall. Ver `docs/125-ENTREGA-FUNDACAO-JOBS-COMANDOS-2026-07-02.md`.
+
+**Entrega anterior (2026-07-02):** observabilidade historica e rollups (Fase 6 plano 117) — amostragem periodica do snapshot, rollups horarios/diarios, endpoint `GET /api/v1/nodes/:id/metrics/history`, tendencias na aba Metricas. Flag `METRIC_ROLLUPS_ENABLED` default `false`. Ver `docs/124-ENTREGA-OBSERVABILIDADE-HISTORICA-2026-07-02.md`.
+
+**Entrega anterior (2026-07-02):** backup avancado diff/drift/retencao (Fase 5 plano 117) — diff estruturado com mascaramento fail-closed, drift por secoes sensiveis, retenção configuravel por node, exportacao assistida sem restore automatico. Ver `docs/123-ENTREGA-BACKUP-AVANCADO-2026-07-02.md`. Flags `BACKUP_DIFF_ENABLED` e `BACKUP_DRIFT_ENABLED` default `false`.
+
+**Entrega anterior (2026-07-02):** politica MFA operacional (Fase 4 plano 117) — painel `/admin/mfa-politica`, enforcement soft/blocking, anti-lockout, indicadores em Usuarios. Ver `docs/122-ENTREGA-POLITICA-MFA-2026-07-02.md`.
+
+**Entrega anterior (2026-07-02):** tags, grupos e criticidade (Fase 3 plano 117) — tags livres por cliente, grupos ad-hoc, criticidade `critical`/`standard`/`lab`, filtros no inventário, admin `/admin/grupos`. Ver `docs/121-ENTREGA-TAGS-GRUPOS-CRITICIDADE-2026-07-02.md`.
+
+**Entrega anterior (2026-07-02):** dashboard frota e matriz de versões (Fase 2 plano 117) — KPIs agregados, backup/package %, matrizes pfSense/package em `/dashboard`. Endpoint `GET /api/v1/dashboard/fleet`. Ver `docs/120-ENTREGA-DASHBOARD-FROTA-2026-07-02.md`.
+
+**Entrega anterior (2026-07-02):** notificacoes externas (Fase 1 plano 117) — canais, regras, dispatcher com `NOTIFICATIONS_ENABLED=false` default, painel `/admin/notificacoes`. Ver `docs/119-ENTREGA-NOTIFICACOES-EXTERNAS-2026-07-02.md`. Baseline: `docs/118-BASELINE-MELHORIAS-SEGURAS-2026-07-02.md`.
+
+**Entrega anterior (2026-07-01):** coluna **Pacote** no inventario (`/nodes`) — painel `1.4.5`. Versao instalada vem de `agent_version` (heartbeat). Ver `docs/115-ENTREGA-COLUNA-PACOTE-INVENTARIO-2026-07-01.md`.
+
+**Entrega anterior (2026-06-30):** upgrade remoto de package (`package_upgrade`) — package `0.4.6`, API `0.6.4`. Ver `docs/114-ENTREGA-UPGRADE-REMOTO-PACKAGE-2026-06-30.md` e `docs/114-UPGRADE-REMOTO-PACKAGE.md`.
+
+**Proximo passo operacional:** alinhar frota na versao **0.4.10** via coluna **Pacote** em `/nodes` (upgrade remoto); follow-ups registrados no doc 132 (migracao `config_get_path`, privilegios `priv`).
+
+**Entrega anterior (2026-06-30):** correção heartbeat light + recovery offline — package `0.4.5`, API `0.6.3`. Ver `docs/113-ENTREGA-CORRECAO-HEARTBEAT-LIGHT-OFFLINE-2026-06-30.md`.
 
 **Ultima entrega (2026-06-24):** correção pós-varredura read-only (gaps residuais plano 110) — package `0.4.4`, API `0.6.2`, painel `1.4.3`. Ver `docs/112-ENTREGA-CORRECAO-POS-VARREDURA-2026-06-24.md`.
 
@@ -27,17 +61,12 @@ Leia este arquivo primeiro.
 **Entrega anterior (2026-06-24):** alinhamento dos smokes pos-0.4.0 — `docs/102-ALINHAMENTO-SMOKES-POS-0.4.0-2026-06-24.md`. `scripts/run-smoke-suite.sh` 100% verde (13/13). Sem mudanca de runtime.
 
 **Entrega anterior (2026-06-23):** correcoes de auditoria de seguranca (package + agente + controlador + SSE/infra) — `docs/101-ENTREGA-CORRECOES-AUDITORIA-SEGURANCA-PFSENSE-2026-06-23.md`. Cobre A1–A7, B1–B7, C1–C8, D1–D2; gaps adiados E1 (MFA) / E2 (rate-limit) **agora resolvidos** na entrega 103.
-**Proximo passo:** publicar release package `0.4.4` nos firewalls (artefato pronto em `dist/` + `config/package-release.env`); piloto pfSense 2.7+; opcionalmente ligar `MFA_ENFORCED_ROLES` e `MFA_ENFORCEMENT_BLOCKING` após enrollment.
+Referencias historicas adicionais:
 
-Ultima entrega infra (Fase 0): `docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`  
-Ultima entrega package: `docs/98-ENTREGA-PACKAGE-0.3.8.md`  
-Spike upgrade CE: `docs/97-SPIKE-PFSENSE-UPGRADE-CE.md`  
-Entrega anterior package: `docs/96-ENTREGA-PACKAGE-0.3.7.md`  
-Entrega anterior: `docs/92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md`  
-**Encerramento formal UX:** `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`  
-Entrega anterior UX/layout: `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`  
-Entrega anterior: `docs/77-ENTREGA-POS-RBAC-UX-LAYOUT-2026-06-09.md`  
-Versionamento obrigatorio: `.cursor/rules/versioning.mdc`
+- infra / backup limit: `docs/95-ENTREGA-INFRA-BACKUP-LIMIT-2026-06-23.md`
+- trilha package 0.3.x: `docs/98-ENTREGA-PACKAGE-0.3.8.md`, `docs/97-SPIKE-PFSENSE-UPGRADE-CE.md`, `docs/96-ENTREGA-PACKAGE-0.3.7.md`, `docs/92-ENTREGA-CORRECAO-WRITE-CONFIG-SEGURO-2026-06-23.md`
+- encerramento UX: `docs/88-ENCERRAMENTO-ROADMAP-UX-FASE0-FASE8-2026-06-09.md`, `docs/80-ENTREGA-FRONTEND-FASE0-FASE1-LAYOUT-2026-06-09.md`, `docs/77-ENTREGA-POS-RBAC-UX-LAYOUT-2026-06-09.md`
+- versionamento obrigatorio: `.cursor/rules/versioning.mdc`
 
 ## Roadmap UX front-end — Fases 0–8 (**encerrado**, 2026-06-09)
 
@@ -112,15 +141,40 @@ Estado observado em `2026-06-08`:
 - **interno (LAN):** `http://192.168.100.221:3031` — **interno (localhost):** `http://127.0.0.1:8088` — ver `docs/89-ACESSO-INTERNO-E-EXTERNO.md`
 - stack `docker compose` esta rodando com `api`, `web`, `db` e `nginx` saudaveis
 - dominio publico `https://pfs-monitor.systemup.inf.br/healthz` responde `200`
-- package pfSense atual publicado pelo fluxo do projeto: `0.4.4` (ver tabela de versões acima; linha histórica abaixo refere-se ao estado em 2026-06-08)
+- package pfSense publicado na epoca: `0.3.6` (superseded — ver tabela de versoes no topo deste arquivo)
 - ~~package pfSense legado observado em 2026-06-08: `0.2.27`~~ — superseded pela trilha 0.4.x
-- ainda nao existe modulo de backup de `config.xml` implementado
+- modulo de backup de `config.xml` **nao existia ainda** nesta data (implementado depois — ver estado consolidado abaixo)
 - origem interna canonica no repositorio: `http://192.168.100.221:3031` (docs historicos na raiz podem citar `192.168.100.244`)
 - limite heartbeat `64 KB`; rota de backup preparada para `5 MB` no nginx interno e referencia ISPConfig
 - Fase B parcial: repo saneado; falta ISPConfig no host, chave `BACKUP_ENCRYPTION_KEY_BASE64` e medicao de `config.xml` em homolog
 - para implementar backup, ler `docs/67-CHECKLIST-REVISAO-PLANO-BACKUP-2026-06-08.md` e depois `docs/64-...md`
 
-## Estado atual
+## Estado consolidado (2026-07-01)
+
+Referencia canonica para retomada — confira versoes no topo deste arquivo.
+
+**Produto hoje:**
+
+- controlador: API `0.6.4`, painel `1.4.5`, package/agente `0.4.7`
+- dominio externo: `https://pfs-monitor.systemup.inf.br`; LAN: `http://192.168.100.221:3031`; localhost gateway: `http://127.0.0.1:8088`
+- modulos operacionais: heartbeat snapshot, alertas, RBAC granular + escopo por cliente, MFA TOTP (politica operacional via painel + env override), backup `config.xml` **com diff/drift/retencao avancados (flags off por default)**, `remote_access_url`, `package_upgrade`, **notificacoes externas** (feature flag off por default), **dashboard frota** (`/dashboard` + `GET /api/v1/dashboard/fleet`), **tags/grupos/criticidade** (Fase 3 plano 117), **rollups de metricas** (Fase 6 plano 117, flag off por default)
+- admin `/admin/mfa-politica`: enforcement MFA por perfil, modo soft/blocking, conformidade
+- inventario `/nodes`: colunas **Versao pfSense**, **Pacote** (`agent_version`), **Acesso** (`remote_access_url`), **Criticidade**, **Tags**; filtros tag/grupo/criticidade
+- admin `/admin/notificacoes`: canais (webhook/email/telegram), regras, historico de entregas
+- admin `/admin/grupos`: tags e grupos ad-hoc da frota
+- smokes: `scripts/run-smoke-suite.sh` (referencia pos-mudancas)
+
+**Proximo passo:** Fase 7 plano 117 (fundacao jobs/comandos); homologar rollups com `METRIC_ROLLUPS_ENABLED=true`; homologar backup avancado com flags diff/drift; rollout package `0.4.7`. Ver `docs/124-ENTREGA-OBSERVABILIDADE-HISTORICA-2026-07-02.md`.
+
+**Plano de melhorias seguras:** `docs/117-PLANO-EXECUCAO-MELHORIAS-SEGURAS-2026-07-02.md` — usar como guia para novas implementacoes em chat limpo.
+
+**Plano pfREST / gerenciador centralizado:** `docs/125-PLANO-PFREST-GERENCIAMENTO-CENTRALIZADO-2026-07-02.md` — trilha pos-117 para gestao de muitos pfSense com pfREST, read-only primeiro e escrita com guardrails.
+
+---
+
+## Arquivo historico — estado em 2026-03-15
+
+> Secao abaixo preservada como linha do tempo do MVP. **Nao** usar como verdade operacional atual — ver secao **Estado consolidado (2026-07-01)** acima.
 
 Data de referencia: `2026-03-15`
 
@@ -358,17 +412,14 @@ Restricao principal do ambiente:
 - `CORTEX.md`
 - `PLANO.md`
 
-## O que falta fazer em seguida
+## O que falta fazer em seguida (2026-07-01)
 
-Trilha de homologacao e alinhamento do package **encerrada** (doc 43). Próximos focos (trilhas separadas):
-
-1. **Saneamento antes do backup pfSense:** alinhar origem interna/publicacao, atualizar referencias antigas `192.168.100.244`, definir limite de upload para backup, criar chave `BACKUP_ENCRYPTION_KEY_BASE64` fora do repositorio e validar o contrato externo.
-2. **Modulo backup pfSense:** seguir `docs/63-PLANO-MESTRE-ORGANIZACAO-QUALIDADE-BACKUP-PFSENSE-2026-06-08.md` e `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`.
-3. **Smoke suite:** manter `scripts/run-smoke-suite.sh` como referencia apos mudancas em admin, alerts, bootstrap, realtime e backup.
-4. **Builder nativo:** copiar `packages/pfsense-package` para builder pfSense, `make package`, validar `pkg add`.
-5. **Expansao operacional:** replicar homologacao em novos firewalls usando `generate-install-command.sh` e `verify-bootstrap-release.sh`.
-6. **Fase B (servicos):** catalogo, MONITOR_AGENT_PACKAGES, GUI — ver `21-evolucao-servicos-e-fase-b-2026-03-13.md`.
-7. Validar contrato externo com `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh` se houver ajuste em ISPConfig/Cloudflare/nginx.
+1. **Rollout package `0.4.7`:** alinhar frota a `config/package-release.env`; agentes &lt; 0.4.6 precisam de instalacao manual uma vez antes do upgrade remoto.
+2. **Monitorar drift:** coluna **Pacote** em `/nodes` vs release alvo; acionar upgrade remoto ou manual conforme `docs/114-UPGRADE-REMOTO-PACKAGE.md`.
+3. **Smoke suite:** manter `scripts/run-smoke-suite.sh` apos mudancas em API, painel, backup ou package.
+4. **Expansao operacional:** novos firewalls via `generate-install-command.sh` + `verify-bootstrap-release.sh`.
+5. **Fase B (servicos):** catalogo, `MONITOR_AGENT_PACKAGES`, GUI — ver `21-evolucao-servicos-e-fase-b-2026-03-13.md` (trilha independente).
+6. **Contrato externo:** `BASE_URL="https://pfs-monitor.systemup.inf.br" ./scripts/verify-origin-contract.sh` apos ajustes em ISPConfig/Cloudflare/nginx.
 
 ## Definicoes ainda em aberto
 
@@ -421,7 +472,7 @@ Isso deve bastar para retomar o desenvolvimento sem explicar tudo novamente.
 
 ## Notas especificas para o proximo chat
 
-- **Package 0.3.8 (Opção D + Fase 3 P2) entregue em codigo** — ver `docs/98-ENTREGA-PACKAGE-0.3.8.md`. Spike CE: `docs/97-SPIKE-PFSENSE-UPGRADE-CE.md`. Proximo passo operacional: lab CE (flags nao assistidas) + piloto pfSense (gateways, VPN/NAT, upgrade semi-manual).
+- **Package atual:** `0.4.7` (ver tabela no topo). Entregas 0.3.x–0.4.6 permanecem no historico (`docs/98`, `docs/114`, etc.).
 - **Microtrilha doc 52 (alinhamento smoke admin com novo /admin) está encerrada.** Smoke administrativo com 14 passos; passo [2/14] valida GET /admin HTTP 200; smoke continua API-first; sem grep em texto da página.
 - **Trilhas docs 50 e 51 (polimento cadastro inicial admin) estão encerradas.** Formulários em `/admin` são sob demanda (cards colapsáveis); um card expandido por vez. Versões atuais: painel 0.1.10, API 0.1.3.
 - **Trilhas docs 48 e 49 (desmembramento interface admin) estão encerradas.** Cadastro em `/admin` enxuto; Usuários em `/admin/usuarios` (superadmin); Clientes em `/admin/clientes` (redirect de `/admin/clientes-sites`).

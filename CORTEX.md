@@ -244,7 +244,34 @@ Estado consolidado:
 - agente leve inicial versionado para a proxima etapa de homologacao em pfSense real
 - pacote nativo do pfSense estruturado como port empacotavel, com runtime local do agente e GUI pronta para build em ambiente compativel
 
+### Atualizacao 2026-07-02 (correcoes auditoria framework package pfSense)
+
+- Package pfSense **0.4.10**: wrappers `command-result` via agente, `config_read_file()`, GUI sem `fbegin.inc`, XML framework alinhado, validacao de campos, HMAC via env var, `json_escape` robusto.
+- Entrega: `docs/132-ENTREGA-CORRECOES-AUDITORIA-FRAMEWORK-PFSENSE-2026-07-02.md`
+
+### Atualizacao 2026-07-02 (observabilidade historica / rollups)
+
+- API **0.6.6**: amostragem periodica do snapshot, rollups horarios/diarios, `GET /api/v1/nodes/:id/metrics/history`, flag `METRIC_ROLLUPS_ENABLED=false` default.
+- Painel web **1.4.7**: secao Tendencias na aba Metricas do detalhe do firewall (24h/7d/30d, sparklines CSS).
+- Entrega: `docs/124-ENTREGA-OBSERVABILIDADE-HISTORICA-2026-07-02.md`
+
+### Atualizacao 2026-07-01 (coluna Pacote inventario)
+
+- painel web **1.4.5**: coluna **Pacote** dedicada em `/nodes` (`agent_version` vs release alvo); coluna **Versao pfSense** sem linha secundaria de agente
+- package pfSense **0.4.7** (release atual em `config/package-release.env`)
+- entrega: `docs/115-ENTREGA-COLUNA-PACOTE-INVENTARIO-2026-07-01.md`
+
+### Atualizacao 2026-06-30 (upgrade remoto package)
+
+- API **0.6.4**: comando `package_upgrade` em `node_commands`; endpoints `/api/v1/nodes/:id/package-upgrade/*`; permissao `package.upgrade.run`.
+- Package pfSense **0.4.6+**: handler `dispatch_package_upgrade` + `run_package_upgrade.sh` (allowlist URL, SHA256, install-from-release). Release atual **0.4.7**.
+- Entrega: `docs/114-ENTREGA-UPGRADE-REMOTO-PACKAGE-2026-06-30.md`, guia `docs/114-UPGRADE-REMOTO-PACKAGE.md`.
+
+### Atualizacao 2026-06-30 (heartbeat light)
+- Package pfSense **0.4.5**: agente forca heartbeat normal apos recovery/N light OK; post-install sync; log 401 rekey.
+- Entrega: `docs/113-ENTREGA-CORRECAO-HEARTBEAT-LIGHT-OFFLINE-2026-06-30.md`
+
 ### Atualizacao visual 2026-06-24
 
-- painel web **1.4.3** (pós-varredura 112); entrega anterior visual **1.4.1** — `docs/109-MELHORIAS-VISUAIS-POS-AUDITORIA-108-2026-06-24.md`
+- painel web **1.4.5** (coluna Pacote inventario, 2026-07-01); entrega anterior visual **1.4.3** — pos-varredura 112
 - hotfix 106 (modal portal + nav admin) preservado

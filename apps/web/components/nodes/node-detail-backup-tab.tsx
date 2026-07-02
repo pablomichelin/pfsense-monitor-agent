@@ -7,6 +7,7 @@ export function NodeDetailBackupTab({
   nodeEffectiveStatus,
   canRequest,
   canDownload,
+  canManage,
   initialBackups,
   auditHref,
 }: {
@@ -14,6 +15,7 @@ export function NodeDetailBackupTab({
   nodeEffectiveStatus: string;
   canRequest: boolean;
   canDownload: boolean;
+  canManage: boolean;
   initialBackups: NodeConfigBackupsResponse;
   auditHref?: string;
 }) {
@@ -24,6 +26,7 @@ export function NodeDetailBackupTab({
         nodeEffectiveStatus={nodeEffectiveStatus}
         canRequest={canRequest}
         canDownload={canDownload}
+        canManage={canManage}
         initialBackups={initialBackups}
         auditHref={auditHref}
       />

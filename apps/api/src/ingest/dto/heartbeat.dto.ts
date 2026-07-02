@@ -75,6 +75,112 @@ export class HeartbeatInterfaceDto {
   role?: string;
 }
 
+export const HEARTBEAT_BACKUP_SCHEDULE_MODES = [
+  'hours',
+  'daily',
+  'weekly',
+  'monthly',
+] as const;
+
+export class HeartbeatConfigBackupDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsIn(HEARTBEAT_BACKUP_SCHEDULE_MODES)
+  schedule_mode?: (typeof HEARTBEAT_BACKUP_SCHEDULE_MODES)[number];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(168)
+  interval_hours?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5)
+  schedule_time?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  schedule_dow?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(28)
+  schedule_dom?: number;
+}
+
+export class HeartbeatCertificateDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(128)
+  cert_key!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(512)
+  subject!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  issuer?: string;
+
+  @IsISO8601()
+  not_before!: string;
+
+  @IsISO8601()
+  not_after!: string;
+
+  /** Uso ou descritor legivel (ex.: Web GUI, OpenVPN server). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  usage?: string;
+}
+
+export class HeartbeatCapabilitiesDto {
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsBoolean()
+  pfrest_enabled?: boolean | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  pfrest_version?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  api_base_url?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  access_mode?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  auth_method?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(32)
+  @IsString({ each: true })
+  @MaxLength(64, { each: true })
+  modules?: string[];
+}
+
 export class HeartbeatGatewayDto {
   @IsString()
   @IsNotEmpty()
@@ -240,5 +346,25 @@ export class HeartbeatDto {
   @IsString()
   @MaxLength(500)
   ha_detection_detail?: string;
+
+  /** Politica de backup reportada pelo agente (agendamento local do pfSense). */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HeartbeatConfigBackupDto)
+  config_backup?: HeartbeatConfigBackupDto;
+
+  /** Inventario de certificados (somente metadados publicos). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(64)
+  @ValidateNested({ each: true })
+  @Type(() => HeartbeatCertificateDto)
+  certificates?: HeartbeatCertificateDto[];
+
+  /** Inventario de capacidades pfREST reportado pelo agente. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HeartbeatCapabilitiesDto)
+  capabilities?: HeartbeatCapabilitiesDto;
 }
 

@@ -1,7 +1,7 @@
 # Guia de operação — package pfSense SystemUp Monitor
 
 **Package:** `pfSense-pkg-systemup-monitor`  
-**Versão de referência:** `0.3.10+`  
+**Versão de referência:** `0.4.7` (release publicada em `config/package-release.env`)  
 **Runtime:** agente em `/usr/local/libexec/monitor-pfsense-agent/`
 
 ---
@@ -84,10 +84,19 @@ Env runtime: `MONITOR_AGENT_LIGHT_HEARTBEAT=1` em `/usr/local/etc/monitor-pfsens
 
 ## 6. Atualização do package
 
-- GUI: botão na aba Configuração (release do controlador).
-- CLI: `php .../systemup_monitor_cli.php upgrade [--force]`
+**Release alvo:** definida em `config/package-release.env` no controlador (hoje **`0.4.7`**).
+
+| Canal | Uso |
+|-------|-----|
+| GUI pfSense | Botão **Atualizar** na aba Configuração |
+| CLI local | `php .../systemup_monitor_cli.php upgrade [--force]` |
+| Painel Monitor-Pfsense | Aba Visão geral → **Atualizar package remotamente** (agente ≥ **0.4.6**, permissão `package.upgrade.run`) |
+| API | `POST /api/v1/nodes/:id/package-upgrade/request` |
+
+Guia completo do fluxo remoto: [`docs/114-UPGRADE-REMOTO-PACKAGE.md`](../114-UPGRADE-REMOTO-PACKAGE.md).
+
 - Secret do update via arquivo temporário (não argv).
-- Rate limit: 1 update / 24h (bypass `--force`).
+- Rate limit GUI: 1 update / 24h (bypass `--force`).
 
 ### Troubleshooting — upgrade de 0.3.5 falha com `Refusing --node-secret`
 
@@ -122,7 +131,9 @@ Doc: [`docs/COMANDO-ATUALIZAR-PACKAGE-PFSENSE.md`](../COMANDO-ATUALIZAR-PACKAGE-
 - API flag: `PFSENSE_UPGRADE_ENABLED=true` no controlador.
 - Agente flag: `MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED=0` (default até lab CE).
 
-**Fluxo default (0.3.8):**
+**Fluxo operacional atual:**
+
+> Base entregue na trilha `0.3.8` e ainda valida na release `0.4.7`.
 
 1. Comando enfileirado → ack `running`
 2. Agente executa `pfSense-upgrade -d` (prepara repositórios)
@@ -130,6 +141,23 @@ Doc: [`docs/COMANDO-ATUALIZAR-PACKAGE-PFSENSE.md`](../COMANDO-ATUALIZAR-PACKAGE-
 4. Pós-reboot: agente finaliza via `/conf/upgrade_log.latest.txt`
 
 Spike / lab: [`docs/97-SPIKE-PFSENSE-UPGRADE-CE.md`](../97-SPIKE-PFSENSE-UPGRADE-CE.md)
+
+---
+
+## 7.1 Ações operacionais allowlistadas (package ≥ **0.4.8**)
+
+Comandos via heartbeat — **sem shell remoto**.
+
+| Comando | Allowlist / regras |
+|---------|-------------------|
+| `service_restart` | `monitor_pfsense_agent`, `unbound`, `dhcpd`, `ntpd`, `dpinger` |
+| `node_reboot` | Atraso 30–600s; resultado enviado antes do reboot |
+
+**Controlador:** `OPERATIONAL_ACTIONS_ENABLED=true` (+ sub-flags). RBAC: `service.restart.run`, `node.reboot.run`.
+
+**Agente:** `MONITOR_AGENT_OPERATIONAL_ACTIONS_ENABLED=1`, `MONITOR_AGENT_SERVICE_RESTART_ENABLED=1`, `MONITOR_AGENT_NODE_REBOOT_ENABLED=1` no `.conf` (defaults `0`).
+
+Log: `/var/log/monitor-pfsense-agent-operational.log` · Entrega: [`docs/126-ENTREGA-ACOES-OPERACIONAIS-2026-07-02.md`](../126-ENTREGA-ACOES-OPERACIONAIS-2026-07-02.md)
 
 ---
 
@@ -160,7 +188,6 @@ Remove serviço rc.d, libexec, runtime conf e `node_secret` (documentar backup p
 
 ## Referências cruzadas
 
-- Plano melhorias: `docs/94-PLANO-MELHORIAS-PACKAGE-0.3.6.md`
-- Entrega 0.3.8: `docs/98-ENTREGA-PACKAGE-0.3.8.md`
-- Hotfix upgrade 0.3.5: `docs/99-HOTFIX-UPGRADE-0.3.5-NODE-SECRET.md`
+- Historico da trilha 0.3.x: `docs/94-PLANO-MELHORIAS-PACKAGE-0.3.6.md`, `docs/98-ENTREGA-PACKAGE-0.3.8.md`
+- Hotfix historico upgrade 0.3.5: `docs/99-HOTFIX-UPGRADE-0.3.5-NODE-SECRET.md`
 - CORTEX: [`CORTEX.md`](../../CORTEX.md)

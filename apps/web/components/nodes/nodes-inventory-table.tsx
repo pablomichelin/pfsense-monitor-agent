@@ -4,6 +4,10 @@ import type { StatusBadgeStatus } from '@/components/ui/status-badge';
 import { toBackupStatusBadge, type BackupVisualStatus } from '@/lib/backup-status';
 import { formatRelativeAge } from '@/lib/format';
 import { InstallationBadge } from '@/components/nodes/installation-badge';
+import { PackageVersionCell } from '@/components/nodes/package-version-cell';
+import { CriticalityBadge, TagChipList } from '@/components/nodes/fleet-org-badges';
+import { cn } from '@/lib/cn';
+import type { NodeCriticality } from '@/lib/api';
 
 type InventoryNode = {
   id: string;
@@ -19,14 +23,22 @@ type InventoryNode = {
   open_alerts: number;
   backup_status: BackupVisualStatus;
   latest_backup_received_at: string | null;
+  remote_access_url: string | null;
+  criticality: NodeCriticality;
+  tags: Array<{ id: string; name: string }>;
 };
 
 type Props = {
   nodes: InventoryNode[];
   showAlertsColumn: boolean;
+  targetPackageVersion?: string | null;
 };
 
-export function NodesInventoryTable({ nodes, showAlertsColumn }: Props) {
+export function NodesInventoryTable({
+  nodes,
+  showAlertsColumn,
+  targetPackageVersion,
+}: Props) {
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-left text-sm">
@@ -35,12 +47,20 @@ export function NodesInventoryTable({ nodes, showAlertsColumn }: Props) {
             <th className="w-32 min-w-[8rem] px-4 py-4">Status</th>
             <th className="min-w-[10rem] px-4 py-4">Firewall</th>
             <th className="min-w-[8rem] px-4 py-4">Local</th>
-            <th className="min-w-[8rem] px-4 py-4">Versão</th>
+            <th className="min-w-[6rem] px-4 py-4">Criticidade</th>
+            <th className="min-w-[8rem] px-4 py-4">Tags</th>
+            <th className="min-w-[7rem] px-4 py-4" title="Versão do pfSense OS">
+              Versão pfSense
+            </th>
+            <th className="min-w-[7rem] px-4 py-4" title="Versão instalada do pacote SystemUp Monitor">
+              Pacote
+            </th>
             <th className="min-w-[6rem] px-4 py-4">Último contato</th>
             <th className="min-w-[8rem] px-4 py-4">Backup</th>
             {showAlertsColumn ? (
               <th className="w-24 min-w-[5.5rem] px-4 py-4">Alertas</th>
             ) : null}
+            <th className="w-28 min-w-[6.5rem] px-4 py-4">Acesso</th>
             <th className="w-32 min-w-[7.5rem] px-4 py-4">Instalação</th>
           </tr>
         </thead>
@@ -66,11 +86,22 @@ export function NodesInventoryTable({ nodes, showAlertsColumn }: Props) {
                 <p className="truncate">{node.client.name}</p>
                 <p className="truncate text-slate-500">{node.site.name}</p>
               </td>
+              <td className="min-w-[6rem] px-4 py-4">
+                <CriticalityBadge criticality={node.criticality} />
+              </td>
               <td className="min-w-[8rem] px-4 py-4">
-                <p className="font-mono text-cyan-200">{node.pfsense_version ?? '—'}</p>
-                <p className="text-slate-500">
-                  Agente {node.agent_version ?? 'não instalado'}
+                <TagChipList tags={node.tags} />
+              </td>
+              <td className="min-w-[7rem] px-4 py-4">
+                <p className="font-mono text-cyan-200">
+                  {node.pfsense_version?.replace(/-RELEASE$/i, '').trim() || '—'}
                 </p>
+              </td>
+              <td className="min-w-[7rem] px-4 py-4">
+                <PackageVersionCell
+                  agentVersion={node.agent_version}
+                  targetPackageVersion={targetPackageVersion}
+                />
               </td>
               <td className="min-w-[6rem] px-4 py-4 text-slate-400">
                 <p>{formatRelativeAge(node.last_seen_at)}</p>
@@ -98,6 +129,23 @@ export function NodesInventoryTable({ nodes, showAlertsColumn }: Props) {
                   )}
                 </td>
               ) : null}
+              <td className="w-28 min-w-[6.5rem] px-4 py-4">
+                {node.remote_access_url ? (
+                  <a
+                    href={node.remote_access_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(
+                      'inline-flex h-9 min-h-9 items-center justify-center rounded-lg border px-3 text-xs font-medium transition',
+                      'border-slate-600/80 bg-panel-soft text-slate-200 hover:border-cyan-400/50 hover:text-white',
+                    )}
+                  >
+                    Conectar
+                  </a>
+                ) : (
+                  <span className="text-xs text-slate-500">—</span>
+                )}
+              </td>
               <td className="w-32 min-w-[7.5rem] px-4 py-4">
                 <div className="flex flex-col gap-2">
                   <InstallationBadge

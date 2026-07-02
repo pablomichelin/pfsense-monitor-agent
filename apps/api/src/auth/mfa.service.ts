@@ -11,6 +11,7 @@ import * as QRCode from 'qrcode';
 import { AuditService } from '../audit/audit.service';
 import { NodeSecretCryptoService } from '../common/node-secret-crypto.service';
 import { appConfig } from '../config/app-config';
+import { MfaPolicyService } from '../mfa-policy/mfa-policy.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface MfaEnrollmentStart {
@@ -34,17 +35,18 @@ export class MfaService {
     private readonly prisma: PrismaService,
     private readonly nodeSecretCrypto: NodeSecretCryptoService,
     private readonly auditService: AuditService,
+    private readonly mfaPolicyService: MfaPolicyService,
   ) {
     authenticator.options = { window: appConfig.mfa.totpWindow };
   }
 
   /** Imposicao "suave": papel exigido e usuario ainda sem MFA habilitado. */
   isEnforcementRequired(role: string, mfaEnabled: boolean): boolean {
-    return appConfig.mfa.enforcedRoles.includes(role) && !mfaEnabled;
+    return this.mfaPolicyService.isEnforcementRequired(role, mfaEnabled);
   }
 
   isEnforcementBlocking(): boolean {
-    return appConfig.mfa.enforcementBlocking;
+    return this.mfaPolicyService.isEnforcementBlocking();
   }
 
   async getStatus(userId: string): Promise<MfaStatus> {

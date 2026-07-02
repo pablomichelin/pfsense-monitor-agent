@@ -12,6 +12,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BackupsCommandService } from './backups-command.service';
 import { BackupsRetentionService } from './backups-retention.service';
 import { BackupsStorageService } from './backups-storage.service';
+import { BackupsDriftService } from './backups-drift.service';
+import {
+  normalizeBackupSchedulePolicy,
+  toStoredBackupPolicyJson,
+} from '../nodes/backup-policy.util';
 
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -38,6 +43,7 @@ export class BackupsIngestService {
     private readonly storage: BackupsStorageService,
     private readonly retention: BackupsRetentionService,
     private readonly commandService: BackupsCommandService,
+    private readonly driftService: BackupsDriftService,
   ) {}
 
   async ingestConfigBackup(request: {
@@ -52,6 +58,12 @@ export class BackupsIngestService {
     headerAgentVersion?: string;
     headerPfsenseVersion?: string;
     headerConfigCompression?: string;
+    headerBackupScheduleMode?: string;
+    headerBackupIntervalHours?: string;
+    headerBackupScheduleTime?: string;
+    headerBackupScheduleDow?: string;
+    headerBackupScheduleDom?: string;
+    headerBackupEnabled?: string;
     contentType?: string;
     clientIp?: string;
   }): Promise<{
@@ -372,7 +384,20 @@ export class BackupsIngestService {
       data: { lastUsedAt: receivedAt },
     });
 
+    await this.persistBackupPolicyFromHeaders({
+      nodeId: node.id,
+      receivedAt,
+      headerBackupEnabled: request.headerBackupEnabled,
+      headerBackupScheduleMode: request.headerBackupScheduleMode,
+      headerBackupIntervalHours: request.headerBackupIntervalHours,
+      headerBackupScheduleTime: request.headerBackupScheduleTime,
+      headerBackupScheduleDow: request.headerBackupScheduleDow,
+      headerBackupScheduleDom: request.headerBackupScheduleDom,
+    });
+
     await this.retention.enforceRetention(node.id);
+
+    await this.driftService.evaluateStoredBackup(node.id, storedRecord.id);
 
     this.logger.log(
       `config backup stored node_uid=${headerNodeUid} backup_uid=${storedBackupUid} size=${configSize}`,
@@ -489,5 +514,46 @@ export class BackupsIngestService {
         `config backup payload exceeds ${appConfig.configBackup.maxBytes} bytes`,
       );
     }
+  }
+
+  private async persistBackupPolicyFromHeaders(input: {
+    nodeId: string;
+    receivedAt: Date;
+    headerBackupEnabled?: string;
+    headerBackupScheduleMode?: string;
+    headerBackupIntervalHours?: string;
+    headerBackupScheduleTime?: string;
+    headerBackupScheduleDow?: string;
+    headerBackupScheduleDom?: string;
+  }): Promise<void> {
+    if (
+      input.headerBackupScheduleMode == null &&
+      input.headerBackupEnabled == null
+    ) {
+      return;
+    }
+
+    const policy = normalizeBackupSchedulePolicy({
+      enabled: input.headerBackupEnabled ?? '1',
+      schedule_mode: input.headerBackupScheduleMode,
+      interval_hours: input.headerBackupIntervalHours,
+      schedule_time: input.headerBackupScheduleTime,
+      schedule_dow: input.headerBackupScheduleDow,
+      schedule_dom: input.headerBackupScheduleDom,
+    });
+
+    if (!policy) {
+      return;
+    }
+
+    await this.prisma.node.update({
+      where: { id: input.nodeId },
+      data: {
+        configBackupPolicyJson: toStoredBackupPolicyJson(
+          policy,
+          input.receivedAt,
+        ),
+      },
+    });
   }
 }

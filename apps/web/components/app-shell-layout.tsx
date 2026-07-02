@@ -1,5 +1,6 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { AppHeader } from '@/components/app-header';
 import { AppSidebar, useSidebarCollapsed } from '@/components/app-sidebar';
 import { Breadcrumbs } from '@/components/breadcrumbs';
@@ -16,6 +17,7 @@ export function AppShellLayout({
   children: React.ReactNode;
   footer: React.ReactNode;
 }) {
+  const pathname = usePathname();
   const [collapsed, toggleCollapsed, hydrated] = useSidebarCollapsed();
 
   return (
@@ -34,7 +36,9 @@ export function AppShellLayout({
           breadcrumbs={<Breadcrumbs />}
         />
         <div className="flex min-h-0 flex-1 flex-col px-gutter pb-6 pt-4">
-          <main className="app-page flex-1">{children}</main>
+          <main key={pathname} className="app-page flex-1">
+            {children}
+          </main>
           {footer}
         </div>
       </div>

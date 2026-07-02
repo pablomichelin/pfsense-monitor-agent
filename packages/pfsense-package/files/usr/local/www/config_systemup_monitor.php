@@ -14,8 +14,6 @@ $description = isset($pkg['description']) && (string)$pkg['description'] !== ''
 
 include("head.inc");
 ?>
-<body>
-<?php include("fbegin.inc"); ?>
 <?php if (!empty($savemsg)): ?>
 <div class="alert alert-info"><?=htmlspecialchars($savemsg)?></div>
 <?php endif; ?>
@@ -67,5 +65,3 @@ include("head.inc");
 </section>
 <?php systemup_monitor_render_auto_refresh_script(); ?>
 <?php include("foot.inc"); ?>
-</body>
-</html>

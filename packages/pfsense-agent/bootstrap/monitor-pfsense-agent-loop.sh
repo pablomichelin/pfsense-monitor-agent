@@ -15,6 +15,12 @@ fi
 . "$CONFIG_FILE"
 
 INTERVAL_SECONDS="${MONITOR_AGENT_INTERVAL_SECONDS:-30}"
+case "$INTERVAL_SECONDS" in
+  ''|*[!0-9]*) INTERVAL_SECONDS=30 ;;
+esac
+if [ "$INTERVAL_SECONDS" -lt 10 ] 2>/dev/null; then
+  INTERVAL_SECONDS=10
+fi
 AGENT_BIN="$AGENT_HOME/monitor-pfsense-agent.sh"
 
 while :; do

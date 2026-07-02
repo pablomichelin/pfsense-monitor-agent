@@ -1,5 +1,6 @@
 import type { NodeDetailsResponse } from '@/lib/api';
 import { formatPercent, formatUptime } from '@/lib/format';
+import type { MetricsHistoryPeriod, NodeMetricsHistoryResponse } from '@/lib/metrics-history';
 import {
   groupServicesByType,
   getServiceDisplayName,
@@ -9,10 +10,19 @@ import { Alert } from '@/components/ui/alert';
 import { Card } from '@/components/ui/card';
 import { PageSection } from '@/components/ui/page-section';
 import { Metric } from '@/components/nodes/node-detail-ui';
+import { NodeMetricsTrendsPanel } from '@/components/nodes/node-metrics-trends-panel';
 
 type Node = NodeDetailsResponse['node'];
 
-export function NodeDetailMetricsTab({ node }: { node: Node }) {
+export function NodeDetailMetricsTab({
+  node,
+  metricsHistory,
+  metricsPeriod,
+}: {
+  node: Node;
+  metricsHistory: NodeMetricsHistoryResponse;
+  metricsPeriod: MetricsHistoryPeriod;
+}) {
   return (
     <div className="space-y-8">
       <PageSection
@@ -41,6 +51,17 @@ export function NodeDetailMetricsTab({ node }: { node: Node }) {
         ) : (
           <Alert variant="info">Ainda não há dados recebidos deste firewall.</Alert>
         )}
+      </PageSection>
+
+      <PageSection
+        title="Tendências"
+        description="Rollups agregados (CPU, memória, disco, latência e disponibilidade)."
+      >
+        <NodeMetricsTrendsPanel
+          nodeId={node.id}
+          history={metricsHistory}
+          activePeriod={metricsPeriod}
+        />
       </PageSection>
 
       <PageSection title="Serviços" description="Estado reportado pelo agente (VPN e demais).">

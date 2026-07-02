@@ -8,8 +8,8 @@ Documento de referência para saber **o que está sendo feito** e **como tudo de
 
 ### Onde a versão é definida
 
-- **Makefile:** `packages/pfsense-package/Makefile` → `PORTVERSION` (ex.: `0.2.11`).
-- **Constante do agente:** `packages/pfsense-package/files/usr/local/pkg/systemup_monitor.inc` → `SYSTEMUP_MONITOR_AGENT_VERSION` (ex.: `"0.2.11"`).
+- **Makefile:** `packages/pfsense-package/Makefile` → `PORTVERSION` (ex.: `0.4.7`).
+- **Constante do agente:** `packages/pfsense-package/files/usr/local/pkg/systemup_monitor.inc` → `SYSTEMUP_MONITOR_AGENT_VERSION` (ex.: `"0.4.7"`).
 
 **Regra:** ao alterar qualquer arquivo do package, incrementar **os dois** na mesma alteração (patch: 0.2.11 → 0.2.12). O script de release **não** altera a versão sozinho; ele só lê o Makefile.
 
@@ -24,7 +24,7 @@ Documento de referência para saber **o que está sendo feito** e **como tudo de
 
 ### Onde a versão do agente aparece
 
-- **Painel:** lista operacional (coluna Agente), detalhe do node, editar cadastro (somente leitura).
+- **Painel:** lista operacional (colunas **Versão pfSense**, **Pacote**/`agent_version`, **Acesso**/`remote_access_url`), detalhe do node, editar cadastro (somente leitura).
 - **pfSense:** Services → SystemUp Monitor → **Diagnóstico** → linha "Versão do agente" na tabela (usa a constante do PHP).
 
 ---
@@ -83,10 +83,12 @@ Isso regera o config com o valor atual de `SYSTEMUP_MONITOR_AGENT_VERSION`. Alte
 - **Versão pfSense** e **Versão do agente** no formulário "Editar cadastro" são **somente leitura**, preenchidas pelo agente (heartbeat).
 - A API **não** aceita alteração desses campos no create/update do node; só o **ingest** atualiza com o que o cliente envia. Novos nodes ficam com versões em branco até o primeiro heartbeat.
 
-### Dashboard (lista operacional)
+### Dashboard e inventario (`/nodes`)
 
-- Colunas: Nome, Status, **Versão** (pfSense, sem sufixo -RELEASE), **Agente**, CPU, Mem, Disco, Uptime, Último HB, Alert., Ação.
-- Modo manutenção: indicador **M** ao lado do link "Abrir" (amarelo se em manutenção, apagado se não). Não há mais coluna "M." separada.
+- Colunas principais: Status, Firewall, Local, **Versão pfSense** (OS), **Pacote** (`agent_version`), Último contato, etc.
+- Coluna **Pacote** destaca versao abaixo da release alvo (`config/package-release.env` / `GET /api/v1/agent/package-release`).
+- Coluna **Acesso** linka `remote_access_url` quando cadastrado.
+- Modo manutenção: indicador **M** ao lado do link "Abrir".
 
 ### Build e deploy
 
@@ -125,18 +127,17 @@ Isso regera o config com o valor atual de `SYSTEMUP_MONITOR_AGENT_VERSION`. Alte
 
 ---
 
-## 8. Diretriz para backup do config.xml
+## 8. Modulo de backup do config.xml
 
-O modulo de backup do pfSense ainda nao esta implementado. A decisao atual e:
+**Status:** implementado no controlador e no package pfSense.
 
-- pfSense envia backup por `push`, usando o package atual como base
-- endpoint novo deve reutilizar autenticacao HMAC por node
-- `config.xml` nunca deve ser salvo puro no PostgreSQL nem em disco persistente
-- backup deve ser criptografado em repouso com chave separada de `NODE_SECRET_ENCRYPTION_KEY_BASE64`
-- download deve exigir RBAC e auditoria, inicialmente apenas `superadmin`
-- restore automatico no pfSense fica fora do primeiro MVP
-- antes de codar, sanear publicacao/origem interna e limite de upload conforme o plano mestre
+- **Ingest:** `POST /api/v1/ingest/config-backup` (HMAC por node, limite `5 MB`)
+- **Painel:** rota `/backups` (frota) e aba Backup no detalhe do firewall; download auditado com RBAC
+- **Armazenamento:** criptografado em repouso em `data/pfsense-config-backups/` (nao salvar XML puro no PostgreSQL)
+- **Package:** aba **Backup** em Services > SystemUp Monitor; agendamento e envio manual
+- **Especificacao:** `docs/64-ESPECIFICACAO-MODULO-BACKUP-PFSENSE-2026-06-08.md`
+- restore automatico no pfSense continua fora do escopo
 
 ---
 
-*Última atualização: 2026-06-08 — adicionados indice operacional, plano mestre e especificacao do modulo de backup pfSense.*
+*Ultima atualizacao: 2026-07-01 — versoes 0.4.7 / 1.4.5 / 0.6.4; backup implementado; coluna Pacote no inventario.*

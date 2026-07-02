@@ -1,5 +1,7 @@
 # API e Fluxos
 
+> **Nota (2026-07-01):** além dos fluxos abaixo, o controlador expõe backup `config.xml` (`POST /api/v1/ingest/config-backup`, `/api/v1/nodes/:id/config-backups/*`), MFA (`/api/v1/auth/mfa/*`), upgrade remoto de package (`/api/v1/nodes/:id/package-upgrade/*`) e upgrade pfSense OS (`/api/v1/nodes/:id/pfsense-upgrade/*`). Origem interna canonica: `http://192.168.100.221:3031` (nao `192.168.100.244`). Ver `docs/00-INDICE-OPERACIONAL.md`.
+
 ## Principios da API
 
 - versionamento por URL
@@ -22,7 +24,7 @@ Fluxo de acesso externo:
 
 - Cloudflare
 - `ISPConfig` em `192.168.100.253`
-- origem interna em `http://192.168.100.244:8088`
+- origem interna em `http://192.168.100.221:3031` (gateway Compose localhost: `http://127.0.0.1:8088`)
 
 Decisao desta fase:
 
@@ -212,6 +214,27 @@ Protecao desta fase:
 
 - exigir sessao humana server-side valida
 - cookie seguro emitido pelo `NestJS`
+
+### GET /api/v1/dashboard/fleet
+
+Retorna visao executiva da frota no escopo RBAC do usuario:
+
+- totais de status (inclui manutencao e alertas criticos abertos)
+- percentuais de backup em dia e package desatualizado vs release alvo
+- matrizes de versao pfSense OS e package monitor
+
+Filtros opcionais (query):
+
+- `client_id`
+- `site_id`
+- `status`
+
+Protecao:
+
+- permissao `firewalls.view`
+- escopo por cliente via RBAC (mesmo padrao de `/api/v1/nodes`)
+
+Contrato detalhado: `docs/120-ENTREGA-DASHBOARD-FROTA-2026-07-02.md`
 
 ### GET /api/v1/nodes
 

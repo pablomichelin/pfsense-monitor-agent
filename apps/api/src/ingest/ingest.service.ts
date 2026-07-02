@@ -16,6 +16,7 @@ import { appConfig } from '../config/app-config';
 import { NodeRequestAuthService } from '../common/node-request-auth.service';
 import { BackupsCommandService } from '../backups/backups-command.service';
 import { NodeCommandsService } from '../node-commands/node-commands.service';
+import { NotificationsDispatcherService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import {
@@ -32,6 +33,19 @@ import {
   mapGatewayStatus,
   mapServiceStatus,
 } from '../nodes/node-status.util';
+import {
+  normalizeBackupSchedulePolicy,
+  toStoredBackupPolicyJson,
+} from '../nodes/backup-policy.util';
+import {
+  normalizeHeartbeatCertificates,
+  syncCertificateExpirationAlerts,
+  syncNodeCertificates,
+} from '../certificates/certificate-sync.util';
+import {
+  normalizeHeartbeatCapabilities,
+  syncNodeCapabilities,
+} from '../node-capabilities/capability-sync.util';
 
 interface HeartbeatRequest {
   body: HeartbeatDto;
@@ -62,6 +76,7 @@ export class IngestService {
     private readonly backupsCommandService: BackupsCommandService,
     private readonly nodeCommandsService: NodeCommandsService,
     private readonly realtimeService: RealtimeService,
+    private readonly notificationsDispatcher: NotificationsDispatcherService,
   ) {}
 
   async ingestHeartbeat(request: HeartbeatRequest): Promise<{
@@ -181,9 +196,16 @@ export class IngestService {
       request.body.pfsense_update_check_error != null;
 
     const haDetectedProvided = request.body.ha_detected !== undefined;
+    const configBackupProvided = request.body.config_backup != null;
+    const certificatesProvided = request.body.certificates != null;
+    const capabilitiesProvided = request.body.capabilities != null;
+    const normalizedBackupPolicy = configBackupProvided
+      ? normalizeBackupSchedulePolicy(request.body.config_backup)
+      : null;
 
     let staleSkipped = false;
-    await this.prisma.$transaction(async (tx) => {
+    const openedAlertIds =
+      (await this.prisma.$transaction(async (tx) => {
       // C3: trava a linha do node e aplica CAS por sent_at para impedir que um
       // heartbeat antigo (fora de ordem) sobrescreva um snapshot mais novo.
       const lockedRows = await tx.$queryRaw<
@@ -258,6 +280,14 @@ export class IngestService {
             : {}),
           ...(haDetectedProvided
             ? { haDetectedFromAgent: request.body.ha_detected ?? null }
+            : {}),
+          ...(normalizedBackupPolicy
+            ? {
+                configBackupPolicyJson: toStoredBackupPolicyJson(
+                  normalizedBackupPolicy,
+                  sentAt,
+                ),
+              }
             : {}),
         },
       });
@@ -349,11 +379,63 @@ export class IngestService {
         }
       }
 
-      await this.syncAlerts(tx, node.id, request.body, receivedAt, {
+      let certificateAlertIds: string[] = [];
+      if (
+        appConfig.certificates.enabled &&
+        certificatesProvided &&
+        request.body.certificates != null
+      ) {
+        let normalizedCertificates;
+        try {
+          normalizedCertificates = normalizeHeartbeatCertificates(
+            request.body.certificates,
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'invalid certificate payload';
+          throw new BadRequestException(message);
+        }
+        await syncNodeCertificates(
+          tx,
+          node.id,
+          normalizedCertificates,
+          sentAt,
+        );
+        certificateAlertIds = await syncCertificateExpirationAlerts(
+          tx,
+          node.id,
+          normalizedCertificates,
+          receivedAt,
+        );
+      }
+
+      if (
+        appConfig.nodeCapabilities.enabled &&
+        capabilitiesProvided &&
+        request.body.capabilities != null
+      ) {
+        const normalizedCapabilities = normalizeHeartbeatCapabilities(
+          request.body.capabilities,
+        );
+        await syncNodeCapabilities(
+          tx,
+          node.id,
+          normalizedCapabilities,
+          sentAt,
+        );
+      }
+
+      const heartbeatAlertIds = await this.syncAlerts(tx, node.id, request.body, receivedAt, {
         syncServices: servicesProvided,
         syncGateways: gatewaysProvided,
       });
-    });
+
+      return [...heartbeatAlertIds, ...certificateAlertIds];
+    })) ?? [];
+
+    this.notificationsDispatcher.dispatchForAlertIds(openedAlertIds);
 
     const heartbeatLogMessage =
       `heartbeat accepted node_uid=${headerNodeUid} status=${nodeStatus} ip=${
@@ -481,10 +563,12 @@ export class IngestService {
     services: HeartbeatServiceDto[];
     gateways: HeartbeatGatewayDto[];
   }): Promise<NodeStatus> {
-    if (!input.servicesProvided && !input.gatewaysProvided) {
-      return input.persistedStatus;
+    if (input.maintenanceMode) {
+      return NodeStatus.maintenance;
     }
 
+    // Heartbeat light: recalcular a partir do ultimo snapshot persistido em vez de
+    // preservar offline/degraded do lifecycle (comunicacao recente = node vivo).
     let services = input.services;
     let gateways = input.gateways;
 
@@ -536,8 +620,9 @@ export class IngestService {
       syncServices: boolean;
       syncGateways: boolean;
     },
-  ): Promise<void> {
+  ): Promise<string[]> {
     const activeAlerts = new Map<string, ActiveAlert>();
+    const notifyAlertIds: string[] = [];
 
     if (options.syncServices) {
       for (const service of body.services ?? []) {
@@ -615,7 +700,7 @@ export class IngestService {
       const existing = existingByFingerprint.get(alert.fingerprint);
 
       if (!existing) {
-        await tx.alert.create({
+        const created = await tx.alert.create({
           data: {
             nodeId,
             fingerprint: alert.fingerprint,
@@ -628,8 +713,11 @@ export class IngestService {
             openedAt: observedAt,
           },
         });
+        notifyAlertIds.push(created.id);
         continue;
       }
+
+      const wasResolved = existing.status === AlertStatus.resolved;
 
       await tx.alert.update({
         where: {
@@ -641,22 +729,17 @@ export class IngestService {
           description: alert.description,
           status: AlertStatus.open,
           metadataJson: alert.metadataJson,
-          openedAt:
-            existing.status === AlertStatus.resolved
-              ? observedAt
-              : existing.openedAt,
-          acknowledgedAt:
-            existing.status === AlertStatus.resolved
-              ? null
-              : existing.acknowledgedAt,
-          acknowledgedBy:
-            existing.status === AlertStatus.resolved
-              ? null
-              : existing.acknowledgedBy,
+          openedAt: wasResolved ? observedAt : existing.openedAt,
+          acknowledgedAt: wasResolved ? null : existing.acknowledgedAt,
+          acknowledgedBy: wasResolved ? null : existing.acknowledgedBy,
           resolvedAt: null,
           resolutionNote: null,
         },
       });
+
+      if (wasResolved) {
+        notifyAlertIds.push(existing.id);
+      }
     }
 
     // C-SA: matriz de resolucao por tipo de alerta no ingest de heartbeat.
@@ -710,6 +793,8 @@ export class IngestService {
         },
       });
     }
+
+    return notifyAlertIds;
   }
 
   private async writeAuditLog(input: {

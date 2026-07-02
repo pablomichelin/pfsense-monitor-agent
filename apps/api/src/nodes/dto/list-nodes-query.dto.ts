@@ -19,6 +19,19 @@ export class ListNodesQueryDto {
   status?: 'online' | 'degraded' | 'offline' | 'maintenance' | 'unknown';
 
   @IsOptional()
+  @IsUUID()
+  tag_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  group_id?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['critical', 'standard', 'lab'])
+  criticality?: 'critical' | 'standard' | 'lab';
+
+  @IsOptional()
   @IsString()
   @MaxLength(120)
   search?: string;

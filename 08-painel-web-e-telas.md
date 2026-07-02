@@ -1,5 +1,7 @@
 # Painel Web e Telas
 
+> **Nota (2026-07-01):** rotas atuais incluem `/backups` (frota de backups config.xml), `/conta` (perfil/MFA), `/admin/permissoes` (RBAC). Inventario `/nodes` tem colunas **Versao pfSense**, **Pacote** e **Acesso**. Ver `LEITURA-INICIAL.md`.
+
 ## Objetivo do painel
 
 O painel web precisa permitir leitura rapida do estado dos firewalls sem exigir acesso individual a cada pfSense.
@@ -42,9 +44,25 @@ Uso:
 
 Conteudo:
 
-- tabela de firewalls
+- tabela de firewalls com colunas **Versao pfSense**, **Pacote** (`agent_version`), **Acesso** (`remote_access_url`)
 - filtros por cliente, site e status
 - busca por hostname, IP e nome
+
+### /backups
+
+Uso:
+
+- visao de frota dos backups de `config.xml` por firewall
+
+Conteudo:
+
+- status visual (ok/atrasado/sem backup), politica de agendamento, acoes de solicitar backup e download (RBAC)
+
+### /conta
+
+Uso:
+
+- perfil do usuario, MFA TOTP, mensagens de acesso negado
 
 ### /bootstrap
 

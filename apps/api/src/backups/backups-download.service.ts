@@ -2,10 +2,20 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigBackupStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
 import { BackupsStorageService } from './backups-storage.service';
+import { deriveBackupVisualStatus } from '../nodes/backup-visual-status.util';
+import {
+  parseDriftState,
+  resolveRetentionPolicy,
+} from './backups-retention-policy.util';
+import {
+  ConfigBackupStatus,
+  NodeCommandStatus,
+  NodeCommandType,
+} from '@prisma/client';
 
 @Injectable()
 export class BackupsDownloadService {
@@ -36,7 +46,48 @@ export class BackupsDownloadService {
       latest_received_at: string | null;
       latest_status: ConfigBackupStatus | null;
     };
+    visual_status: ReturnType<typeof deriveBackupVisualStatus>;
+    retention_policy: ReturnType<typeof resolveRetentionPolicy>;
+    drift: {
+      enabled: boolean;
+      active: boolean;
+      state: ReturnType<typeof parseDriftState>;
+    };
+    advanced_features: {
+      diff_enabled: boolean;
+      drift_enabled: boolean;
+    };
   }> {
+    const node = await this.prisma.node.findUnique({
+      where: { id: nodeId },
+      select: {
+        configBackupPolicyJson: true,
+        site: {
+          select: {
+            timezone: true,
+          },
+        },
+        nodeCommands: {
+          where: {
+            type: NodeCommandType.config_backup_now,
+            status: NodeCommandStatus.failed,
+          },
+          orderBy: {
+            requestedAt: 'desc',
+          },
+          take: 1,
+          select: {
+            completedAt: true,
+            requestedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!node) {
+      throw new NotFoundException('node not found');
+    }
+
     const backups = await this.prisma.nodeConfigBackup.findMany({
       where: {
         nodeId,
@@ -55,6 +106,14 @@ export class BackupsDownloadService {
     const storedBackups = backups.filter(
       (backup) => backup.status === ConfigBackupStatus.stored,
     );
+    const latestStoredBackup = storedBackups[0] ?? null;
+    const latestBackupReceivedAt =
+      latestStoredBackup?.receivedAt ?? backups[0]?.receivedAt ?? null;
+    const latestFailedCommand = node.nodeCommands[0];
+    const latestFailedCommandAt =
+      latestFailedCommand?.completedAt ??
+      latestFailedCommand?.requestedAt ??
+      null;
 
     return {
       items: backups.map((backup) => ({
@@ -79,6 +138,22 @@ export class BackupsDownloadService {
         ),
         latest_received_at: backups[0]?.receivedAt.toISOString() ?? null,
         latest_status: backups[0]?.status ?? null,
+      },
+      visual_status: deriveBackupVisualStatus({
+        latestBackupReceivedAt,
+        latestFailedCommandAt,
+        backupPolicyJson: node.configBackupPolicyJson,
+        timeZone: node.site.timezone,
+      }),
+      retention_policy: resolveRetentionPolicy(node.configBackupPolicyJson),
+      drift: {
+        enabled: appConfig.configBackup.advanced.driftEnabled,
+        active: parseDriftState(node.configBackupPolicyJson)?.active === true,
+        state: parseDriftState(node.configBackupPolicyJson),
+      },
+      advanced_features: {
+        diff_enabled: appConfig.configBackup.advanced.diffEnabled,
+        drift_enabled: appConfig.configBackup.advanced.driftEnabled,
       },
     };
   }

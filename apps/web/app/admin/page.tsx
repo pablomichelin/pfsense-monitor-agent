@@ -35,7 +35,10 @@ export default async function AdminPage({
 
   const permissions = session.permissions ?? [];
 
-  if (!session.has_global_client_scope) {
+  if (
+    !session.has_global_client_scope &&
+    !hasPermission(permissions, 'inventory.global')
+  ) {
     redirect('/conta?access=denied');
   }
 
@@ -43,17 +46,20 @@ export default async function AdminPage({
   const canViewPermissions = hasPermission(permissions, 'users.view');
 
   try {
-    const [filterOptionsResult, nodesResult, rolesResult] = await Promise.all([
+    const [filterOptionsResult, nodesResult] = await Promise.all([
       getNodesFilters(),
       getNodesList({ limit: 200 }),
-      getRolesList(),
     ]);
     filterOptions = filterOptionsResult;
     nodes = nodesResult;
-    roles = rolesResult.items.map((role) => ({
-      code: role.code,
-      label: role.label,
-    }));
+
+    if (canManageUsers) {
+      const rolesResult = await getRolesList();
+      roles = rolesResult.items.map((role) => ({
+        code: role.code,
+        label: role.label,
+      }));
+    }
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       redirect('/login');

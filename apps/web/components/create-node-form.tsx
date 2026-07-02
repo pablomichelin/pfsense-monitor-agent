@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { createNodeAction } from '@/lib/admin';
+import { buildDefaultRemoteAccessUrl } from '@/lib/remote-access-url';
 
 type Client = { id: string; name: string; code: string };
 
@@ -12,6 +14,19 @@ export function CreateNodeForm({
   sites: never[];
   sectionMessage: React.ReactNode;
 }) {
+  const [managementIp, setManagementIp] = useState('');
+  const [wanIp, setWanIp] = useState('');
+  const [remoteAccessUrl, setRemoteAccessUrl] = useState('');
+  const [remoteAccessUrlTouched, setRemoteAccessUrlTouched] = useState(false);
+
+  const syncDefaultAccessUrl = (nextWanIp: string, nextManagementIp: string) => {
+    if (remoteAccessUrlTouched) {
+      return;
+    }
+
+    setRemoteAccessUrl(buildDefaultRemoteAccessUrl(nextWanIp, nextManagementIp));
+  };
+
   return (
     <form action={createNodeAction} className="mt-4 space-y-3">
       {sectionMessage}
@@ -49,15 +64,41 @@ export function CreateNodeForm({
       <input
         type="text"
         name="management_ip"
+        value={managementIp}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          setManagementIp(nextValue);
+          syncDefaultAccessUrl(wanIp, nextValue);
+        }}
         placeholder="IP de rede / gerenciamento (opcional – preenchido pelo agente)"
         className="w-full rounded-lg border border-slate-600/80 bg-panel-soft h-11 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
       />
       <input
         type="text"
         name="wan_ip"
-        placeholder="IP WAN (opcional – preenchido pelo agente)"
+        value={wanIp}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          setWanIp(nextValue);
+          syncDefaultAccessUrl(nextValue, managementIp);
+        }}
+        placeholder="IP WAN / acesso remoto (opcional – preenchido pelo agente)"
         className="w-full rounded-lg border border-slate-600/80 bg-panel-soft h-11 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
       />
+      <input
+        type="url"
+        name="remote_access_url"
+        value={remoteAccessUrl}
+        onChange={(event) => {
+          setRemoteAccessUrlTouched(true);
+          setRemoteAccessUrl(event.target.value);
+        }}
+        placeholder="Link de acesso remoto (ex.: https://177.38.158.46:9999)"
+        className="w-full rounded-lg border border-slate-600/80 bg-panel-soft h-11 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+      />
+      <div className="rounded-xl border border-slate-700/80 bg-panel-soft/50 px-4 py-3 text-xs text-slate-400">
+        O link padrão é <strong className="text-slate-300">https://{'{ip}'}:9999</strong> (prioriza IP WAN). Edite se o cliente usar porta ou URL diferente.
+      </div>
       <label className="flex items-center gap-3 rounded-xl border border-slate-700/80 bg-panel-soft/50 px-4 py-3 text-sm text-slate-300">
         <input type="checkbox" name="maintenance_mode" className="h-4 w-4" />
         Criar firewall em modo manutenção

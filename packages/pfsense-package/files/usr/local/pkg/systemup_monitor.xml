@@ -5,21 +5,6 @@
   <version>%%PKGVERSION%%</version>
   <title>Services: SystemUp Monitor</title>
   <include_file>/usr/local/pkg/systemup_monitor.inc</include_file>
-  <additional_files_needed>
-    <prefix>/usr/local/www/</prefix>
-    <chmod>0644</chmod>
-    <item>/usr/local/www/config_systemup_monitor.php</item>
-  </additional_files_needed>
-  <additional_files_needed>
-    <prefix>/usr/local/www/</prefix>
-    <chmod>0644</chmod>
-    <item>/usr/local/www/status_systemup_monitor.php</item>
-  </additional_files_needed>
-  <additional_files_needed>
-    <prefix>/usr/local/www/</prefix>
-    <chmod>0644</chmod>
-    <item>/usr/local/www/backup_systemup_monitor.php</item>
-  </additional_files_needed>
   <menu>
     <name>SystemUp Monitor</name>
     <section>Services</section>
@@ -38,14 +23,7 @@
     <name>monitor_pfsense_agent</name>
     <description>SystemUp Monitor Agent</description>
     <rcfile>monitor_pfsense_agent</rcfile>
-    <custom_php_service_status_command>
-      <![CDATA[
-      $result = array();
-      $exitCode = 0;
-      exec('/usr/sbin/service monitor_pfsense_agent onestatus >/dev/null 2>&1', $result, $exitCode);
-      $rc = ($exitCode === 0);
-      ]]>
-    </custom_php_service_status_command>
+    <custom_php_service_status_command>$rc = (mwexec("/usr/sbin/service monitor_pfsense_agent onestatus >/dev/null 2>&1") == 0);</custom_php_service_status_command>
   </service>
   <tabs>
     <tab>
@@ -62,7 +40,7 @@
       <url>/backup_systemup_monitor.php</url>
     </tab>
   </tabs>
-  <custom_php_global_functions>systemup_monitor_apply_defaults();</custom_php_global_functions>
+  <custom_php_validation_command>systemup_monitor_validate_package_input($input_errors);</custom_php_validation_command>
   <custom_php_resync_config_command>systemup_monitor_sync_config();</custom_php_resync_config_command>
   <custom_php_deinstall_command>systemup_monitor_package_uninstall();</custom_php_deinstall_command>
   <custom_php_after_head_command>systemup_monitor_render_config_section_header();</custom_php_after_head_command>

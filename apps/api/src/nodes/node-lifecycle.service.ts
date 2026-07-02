@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import { appConfig } from '../config/app-config';
 import { NodeCommandsService } from '../node-commands/node-commands.service';
+import { NotificationsDispatcherService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { deriveEffectiveNodeStatus } from './node-status.util';
@@ -27,6 +28,7 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly realtimeService: RealtimeService,
     private readonly nodeCommandsService: NodeCommandsService,
+    private readonly notificationsDispatcher: NotificationsDispatcherService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -56,6 +58,7 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
     let changedNodes = 0;
     let openedAlerts = 0;
     let resolvedAlerts = 0;
+    const openedAlertIds: string[] = [];
 
     try {
       const nodes = await this.prisma.node.findMany({
@@ -121,14 +124,15 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
           }
 
           if (shouldOpenHeartbeatAlert) {
-            const opened = await this.openHeartbeatMissingAlert(
+            const openedAlertId = await this.openHeartbeatMissingAlert(
               tx,
               node.id,
               node.lastSeenAt,
               now,
             );
-            if (opened) {
+            if (openedAlertId) {
               openedAlerts += 1;
+              openedAlertIds.push(openedAlertId);
             }
           }
 
@@ -155,6 +159,7 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
           occurred_at: now.toISOString(),
           reason,
         });
+        this.notificationsDispatcher.dispatchForAlertIds(openedAlertIds);
         this.logger.log(
           `node lifecycle reconciliation reason=${reason} updated_nodes=${changedNodes} opened_alerts=${openedAlerts} resolved_alerts=${resolvedAlerts}`,
         );
@@ -169,7 +174,7 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
     nodeId: string,
     lastSeenAt: Date | null,
     observedAt: Date,
-  ): Promise<boolean> {
+  ): Promise<string | null> {
     const fingerprint = `heartbeat_missing:${nodeId}`;
     const existing = await tx.alert.findUnique({
       where: {
@@ -182,7 +187,7 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
       : `No heartbeat received for more than ${appConfig.nodeStatus.offlineAfterSeconds} seconds.`;
 
     if (!existing) {
-      await tx.alert.create({
+      const created = await tx.alert.create({
         data: {
           nodeId,
           fingerprint,
@@ -200,7 +205,7 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
-      return true;
+      return created.id;
     }
 
     const wasResolved = existing.status === AlertStatus.resolved;
@@ -227,6 +232,6 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    return wasResolved;
+    return wasResolved ? existing.id : null;
   }
 }
