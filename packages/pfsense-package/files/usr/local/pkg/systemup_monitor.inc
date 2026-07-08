@@ -17,7 +17,7 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.4.10");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.4.18");
 }
 if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
     define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
@@ -371,6 +371,112 @@ function systemup_monitor_service_entry_matches($service)
         && ($service['description'] ?? '') === $definition['description'];
 }
 
+/**
+ * Entradas de menu espelhadas de systemup_monitor.xml (Services + Status).
+ *
+ * @return array<int, array<string, string>>
+ */
+function systemup_monitor_menu_definitions()
+{
+    return array(
+        array(
+            'name' => 'SystemUp Monitor',
+            'section' => 'Services',
+            'configfile' => 'systemup_monitor.xml',
+            'tooltiptext' => 'Configure o agente leve do Monitor-Pfsense.',
+            'url' => '/config_systemup_monitor.php',
+        ),
+        array(
+            'name' => 'SystemUp Monitor',
+            'section' => 'Status',
+            'configfile' => 'systemup_monitor.xml',
+            'tooltiptext' => 'Diagnostico e status do agente Monitor-Pfsense.',
+            'url' => '/status_systemup_monitor.php',
+        ),
+    );
+}
+
+function systemup_monitor_count_menu_entries()
+{
+    global $config;
+
+    $menus = $config['installedpackages']['menu'] ?? array();
+    if (!is_array($menus)) {
+        return 0;
+    }
+
+    $total = 0;
+    foreach (systemup_monitor_menu_definitions() as $expected) {
+        foreach ($menus as $menu) {
+            if (!is_array($menu)) {
+                continue;
+            }
+            if (trim((string) ($menu['name'] ?? '')) === trim($expected['name'])
+                && (string) ($menu['section'] ?? '') === (string) $expected['section']) {
+                $total++;
+                break;
+            }
+        }
+    }
+
+    return $total;
+}
+
+function systemup_monitor_is_menu_registered()
+{
+    return systemup_monitor_count_menu_entries() >= count(systemup_monitor_menu_definitions());
+}
+
+/**
+ * Injeta entradas de menu ausentes (mesma logica de install_package_xml).
+ *
+ * @return bool true se alterou installedpackages.menu
+ */
+function systemup_monitor_register_menu()
+{
+    global $config;
+
+    if (!is_array($config['installedpackages']['menu'] ?? null)) {
+        $config['installedpackages']['menu'] = array();
+    }
+
+    $changed = false;
+
+    foreach (systemup_monitor_menu_definitions() as $menu) {
+        foreach ($config['installedpackages']['menu'] as $existing) {
+            if (!is_array($existing)) {
+                continue;
+            }
+            if (trim((string) ($existing['name'] ?? '')) === trim($menu['name'])
+                && (string) ($existing['section'] ?? '') === (string) $menu['section']) {
+                continue 2;
+            }
+        }
+
+        $config['installedpackages']['menu'][] = $menu;
+        $changed = true;
+    }
+
+    return $changed;
+}
+
+/**
+ * Reparo idempotente: install_package_xml + menu manual + servico + write_config.
+ */
+function systemup_monitor_ensure_gui_registration($reason = 'SystemUp Monitor GUI registration')
+{
+    if (!function_exists('install_package_xml')) {
+        require_once('/etc/inc/pkg-utils.inc');
+    }
+
+    install_package_xml('systemup-monitor');
+    systemup_monitor_register_menu();
+    systemup_monitor_register_service();
+    systemup_monitor_persist_package_config($reason);
+
+    return systemup_monitor_is_menu_registered();
+}
+
 function systemup_monitor_is_service_registered()
 {
     global $config;
@@ -555,6 +661,7 @@ function systemup_monitor_persist_package_config($reason, $snapshot = null)
 {
     if ($snapshot === null) {
         systemup_monitor_apply_defaults();
+        systemup_monitor_register_menu();
         systemup_monitor_register_service();
         $snapshot = systemup_monitor_export_package_snapshot();
     }
@@ -569,6 +676,10 @@ function systemup_monitor_persist_package_config($reason, $snapshot = null)
 
     if (empty($snapshot['remove_systemupmonitor'])) {
         systemup_monitor_apply_defaults();
+        // config_read_file() acima descarta entradas de menu adicionadas em
+        // memoria por systemup_monitor_register_menu(); re-injeta as ausentes
+        // antes do write_config para o reparo de GUI nao ser perdido (doc 140).
+        systemup_monitor_register_menu();
     }
 
     write_config($reason);
@@ -808,7 +919,7 @@ function systemup_monitor_render_agent_config($pkg)
     $lines[] = 'MONITOR_AGENT_PFSENSE_CONFIG_XML="/conf/config.xml"';
     $lines[] = 'MONITOR_AGENT_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS="' . systemup_monitor_escape_shell_value((string) SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS) . '"';
     $lines[] = 'MONITOR_AGENT_CONFIG_SNAPSHOT_TTL_SECONDS="86400"';
-    $lines[] = 'MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['pfsense_upgrade_exec_enabled'] ?? '0')) . '"';
+    $lines[] = 'MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['pfsense_upgrade_exec_enabled'] ?? '1')) . '"';
     $lines[] = 'MONITOR_AGENT_OPERATIONAL_ACTIONS_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['operational_actions_enabled'] ?? '0')) . '"';
     $lines[] = 'MONITOR_AGENT_SERVICE_RESTART_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['service_restart_enabled'] ?? '0')) . '"';
     $lines[] = 'MONITOR_AGENT_NODE_REBOOT_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['node_reboot_enabled'] ?? '0')) . '"';
@@ -1297,8 +1408,13 @@ function systemup_monitor_sync_config($restartService = true, $backgroundRestart
 
     // Resync periodico: nao gravar config.xml (evita revert por $config stale).
     // Persistencia explicita via systemup_monitor_persist_package_config() ou save do pfSense.
+    // Durante install_package_xml, custom_php_resync roda ANTES do registro de menu no pfSense;
+    // gravar aqui sem menu deixava package=1/service=1/menu=0 no config.xml.
     if (!systemup_monitor_is_service_registered()) {
-        systemup_monitor_persist_package_config('SystemUp Monitor service registered');
+        systemup_monitor_register_service();
+        if (systemup_monitor_is_menu_registered()) {
+            systemup_monitor_persist_package_config('SystemUp Monitor service registered');
+        }
     }
 
     return true;

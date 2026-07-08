@@ -2,9 +2,22 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-07-01 (auditoria documental — ver `docs/116-AUDITORIA-DOCUMENTAL-CONSOLIDACAO-2026-07-01.md`)
+**Última atualização:** 2026-07-08
 
 ---
+
+### 2026-07-08 — Correção XML mal formado do package (release 0.4.18)
+
+- `systemup_monitor.xml` estava **inválido desde 0.4.10** (`2>&1` sem escape no `custom_php_service_status_command`, introduzido ao remover o CDATA no commit `a3774ea`): `parse_xml_config_pkg` retornava `-1`, `pkg.php`/`pkg_edit.php` viravam **"Package / Editor" vazio** nos clientes e `install_package_xml` falhava silenciosamente (causa primária do menu ausente dos docs 137–140).
+- Release **0.4.18**: `&` escapado (`2>&amp;1`) + guard de well-formedness (expat) em `build-pfsense-package-artifact.sh` — XML inválido agora aborta o build.
+- **Não repetir:** conteúdo PHP/shell dentro de tags XML do pfSense deve usar CDATA ou escapar `&`/`<`/`>`.
+- Entrega: `docs/143-CORRECAO-XML-MALFORMADO-GUI-0.4.18-2026-07-08.md`.
+
+### 2026-07-04 — Correção versão reportada no heartbeat (package 0.4.15)
+
+- Release **0.4.14** tinha `SYSTEMUP_MONITOR_AGENT_VERSION` preso em **0.4.13** — lote concluía com sucesso mas coluna **Pacote** não passava de 0.4.13.
+- Release **0.4.15** alinha constante com `Makefile`; guards em `build-pfsense-package-artifact.sh` e `release-pfsense-package.sh`.
+- Entrega: `docs/141-CORRECAO-AGENT-VERSION-0.4.15-2026-07-04.md`.
 
 ### 2026-07-01 — Coluna Pacote no inventário (painel 1.4.5)
 

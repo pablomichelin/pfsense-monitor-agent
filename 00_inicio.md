@@ -2,9 +2,11 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-07-01):** API `0.6.4` · painel `1.4.5` · package pfSense `0.4.7`.
+> **Versoes atuais (2026-07-08):** API `0.7.0` · painel `1.5.3` · package pfSense `0.4.18`.
 >
-> **Ultima entrega (2026-07-01):** coluna **Pacote** no inventario (`/nodes`) — painel `1.4.5`. Ver `docs/115-ENTREGA-COLUNA-PACOTE-INVENTARIO-2026-07-01.md`.
+> **Ultima entrega (2026-07-08):** correção XML mal formado do package (GUI "Package / Editor" vazia + menu GUI) — package `0.4.18`. Ver `docs/143-CORRECAO-XML-MALFORMADO-GUI-0.4.18-2026-07-08.md`.
+>
+> **Entrega anterior (2026-07-04):** correção versão reportada no heartbeat após lote (`SYSTEMUP_MONITOR_AGENT_VERSION` alinhado) — package `0.4.15`. Ver `docs/141-CORRECAO-AGENT-VERSION-0.4.15-2026-07-04.md`.
 >
 > **Entrega anterior (2026-06-30):** upgrade remoto de package (`package_upgrade`) — package `0.4.6`, API `0.6.4`. Ver `docs/114-ENTREGA-UPGRADE-REMOTO-PACKAGE-2026-06-30.md` e `docs/114-UPGRADE-REMOTO-PACKAGE.md`.
 >
@@ -51,9 +53,9 @@ Documentos novos:
 
 ## Estado atual resumido
 
-Data de referencia: `2026-07-01`
+Data de referencia: `2026-07-08`
 
-**Versoes:** API `0.6.4`, painel `1.4.5`, package pfSense `0.4.7`.
+**Versoes:** API `0.7.0`, painel `1.5.3`, package pfSense `0.4.18`.
 
 **Produto operacional:**
 
@@ -61,7 +63,7 @@ Data de referencia: `2026-07-01`
 - painel: `/dashboard`, `/nodes` (colunas Versao pfSense, Pacote, Acesso), `/backups`, `/alerts`, `/bootstrap`, `/admin/*`, `/audit`, `/conta`
 - package pfSense: GUI com abas Configuracao, Diagnostico e Backup; comandos `package_upgrade` e `pfsense_upgrade`
 
-**Proximo passo:** rollout package `0.4.7` na frota; usar coluna **Pacote** para monitorar drift; ver `LEITURA-INICIAL.md` e `docs/114-UPGRADE-REMOTO-PACKAGE.md`.
+**Proximo passo:** rollout package `0.4.18` na frota (todos os nós 0.4.10–0.4.17 carregam XML inválido); ver `docs/143-CORRECAO-XML-MALFORMADO-GUI-0.4.18-2026-07-08.md`.
 
 ### Arquivo historico (2026-03-15)
 
@@ -181,9 +183,9 @@ Na pratica:
 - nao mexer em `zabbix-server`, `zabbix-agent`, `apache2` ou `mysql` sem necessidade real
 - se houver conflito, o projeto se adapta e o Zabbix nao
 
-## Proximo bloco recomendado (2026-07-01)
+## Proximo bloco recomendado (2026-07-04)
 
-1. **Rollout package `0.4.7`** na frota (manual uma vez se agente &lt; 0.4.6; remoto depois)
+1. **Rollout package `0.4.15`** na frota (lote nos nós ainda em 0.4.13)
 2. **Monitorar drift** pela coluna **Pacote** em `/nodes`
 3. **Executar proximas melhorias** pelo plano `docs/117-PLANO-EXECUCAO-MELHORIAS-SEGURAS-2026-07-02.md`
 4. **Planejar pos-117 pfREST** pelo plano `docs/125-PLANO-PFREST-GERENCIAMENTO-CENTRALIZADO-2026-07-02.md` quando as fundacoes do 117 estiverem estaveis

@@ -23,7 +23,7 @@
     <name>monitor_pfsense_agent</name>
     <description>SystemUp Monitor Agent</description>
     <rcfile>monitor_pfsense_agent</rcfile>
-    <custom_php_service_status_command>$rc = (mwexec("/usr/sbin/service monitor_pfsense_agent onestatus >/dev/null 2>&1") == 0);</custom_php_service_status_command>
+    <custom_php_service_status_command>$rc = (mwexec("/usr/sbin/service monitor_pfsense_agent onestatus >/dev/null 2>&amp;1") == 0);</custom_php_service_status_command>
   </service>
   <tabs>
     <tab>

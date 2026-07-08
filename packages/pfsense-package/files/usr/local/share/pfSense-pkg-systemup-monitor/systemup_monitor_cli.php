@@ -13,6 +13,7 @@ function systemup_monitor_cli_usage()
     $usage = <<<TXT
 Usage:
   systemup_monitor_cli.php seed [--controller-url URL] [--node-uid UID] [--node-secret SECRET] [--customer-code CODE] [--interval-seconds N] [--services CSV] [--heartbeat-mode normal|light] [--config-backup-enabled yes|no] [--enable]
+  systemup_monitor_cli.php register-gui  Registra menu Services/Status no config.xml (reparo quando arquivos existem mas GUI nao aparece).
   systemup_monitor_cli.php sync   Regenera o config do agente com a versão atual do package (AGENT_VERSION).
   systemup_monitor_cli.php upgrade [--force]  Atualiza o package para a versão publicada no controlador.
   systemup_monitor_cli.php release-check  Testa consulta de release no controlador (diagnóstico).
@@ -102,6 +103,16 @@ function systemup_monitor_cli_seed($options)
     echo "SystemUp Monitor package config seeded.\n";
 }
 
+function systemup_monitor_cli_register_gui()
+{
+    if (!systemup_monitor_ensure_gui_registration('SystemUp Monitor GUI registration repair')) {
+        fwrite(STDERR, "SystemUp Monitor GUI registration failed (menu still missing).\n");
+        exit(1);
+    }
+
+    echo "SystemUp Monitor GUI registration refreshed.\n";
+}
+
 function systemup_monitor_cli_remove()
 {
     global $config;
@@ -129,6 +140,9 @@ try {
     switch ($action) {
         case 'seed':
             systemup_monitor_cli_seed(systemup_monitor_cli_parse_args($argv));
+            exit(0);
+        case 'register-gui':
+            systemup_monitor_cli_register_gui();
             exit(0);
         case 'sync':
             systemup_monitor_sync_config();

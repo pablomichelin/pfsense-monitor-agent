@@ -1,12 +1,14 @@
 # Indice operacional do projeto
 
-Data de referencia: `2026-07-01`
+Data de referencia: `2026-07-08`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Versoes atuais (codigo):** API `0.6.4` · painel `1.4.5` · package pfSense `0.4.7` (`config/package-release.env`).
+> **Versoes atuais (codigo):** API `0.7.0` · painel `1.5.3` · package pfSense `0.4.18` (`config/package-release.env`).
 >
-> **Ultima entrega (2026-07-02):** backup avancado diff/drift/retencao — Fase 5 plano 117. Ver `docs/123-ENTREGA-BACKUP-AVANCADO-2026-07-02.md`.
+> **Ultima entrega (2026-07-08):** correção XML mal formado do package (GUI "Package / Editor" vazia + falha do `install_package_xml` desde 0.4.10) — package `0.4.18`, guard de XML no build. Ver `docs/143-CORRECAO-XML-MALFORMADO-GUI-0.4.18-2026-07-08.md`.
+>
+> **Entrega anterior (2026-07-04):** correção versão reportada no heartbeat após lote — package `0.4.15`. Ver `docs/141-CORRECAO-AGENT-VERSION-0.4.15-2026-07-04.md`.
 > Plano de proximas melhorias seguras: `docs/117-PLANO-EXECUCAO-MELHORIAS-SEGURAS-2026-07-02.md`.
 > Plano pos-117 pfREST / gerenciador centralizado: `docs/125-PLANO-PFREST-GERENCIAMENTO-CENTRALIZADO-2026-07-02.md`.
 >

@@ -1449,6 +1449,23 @@ dispatch_package_upgrade() {
     return 1
   fi
 
+  # Reentrega do mesmo comando (ex.: heartbeat do serviço reiniciado durante o
+  # upgrade em andamento): ignora silenciosamente — o wrapper original posta o
+  # resultado. Sem isso, o dedup falharia com "another package upgrade is
+  # running" e sobrescreveria o sucesso real (doc 140).
+  pending_state_file="$(package_upgrade_state_file)"
+  if [ -f "$pending_state_file" ]; then
+    active_upgrade_command_id="$(php -r '
+      $data = json_decode(@file_get_contents($argv[1]), true);
+      echo is_array($data) ? trim((string) ($data["command_id"] ?? "")) : "";
+    ' "$pending_state_file" 2>/dev/null || true)"
+    if [ -n "$active_upgrade_command_id" ] \
+      && [ "$active_upgrade_command_id" = "$command_id" ] \
+      && package_upgrade_lock_active; then
+      return 0
+    fi
+  fi
+
   if package_upgrade_lock_active; then
     agent_post_command_result_failed \
       "$command_id" \
@@ -1775,21 +1792,63 @@ finalize_pfsense_upgrade_if_pending() {
   started_at="$(printf '%s\n' "$state_meta" | sed -n '3p')"
 
   log_file="/conf/upgrade_log.latest.txt"
-  if [ -f "$log_file" ]; then
-    excerpt="$(tail -n 20 "$log_file" | tr '\n' ' ')"
-    new_version="$(detect_pfsense_version 2>/dev/null || true)"
-    agent_post_command_result_succeeded "$parsed" \
-      "{\"target_version\":\"$(json_escape "$state_target_version")\",\"new_version\":\"$(json_escape "$new_version")\",\"started_at\":\"$(json_escape "$started_at")\",\"log_excerpt\":\"$(json_escape "$excerpt")\",\"finalize_status\":\"$(json_escape "$status")\"}" \
-      "$CURL_CMD" >/dev/null 2>&1 || true
-  elif [ "$status" = "prepared_manual_confirm" ]; then
-    # Still awaiting manual Confirm / reboot — keep state, do not fail yet.
+  new_version="$(detect_pfsense_version 2>/dev/null || true)"
+
+  if [ "$status" = "failed" ]; then
+    fail_msg="$(php -r '
+      $data = json_decode(@file_get_contents($argv[1]), true);
+      if (!is_array($data)) { exit(0); }
+      echo trim((string) ($data["message"] ?? "pfSense OS upgrade failed"));
+    ' "$state_file" 2>/dev/null || true)"
+    agent_post_command_result_failed "$parsed" "${fail_msg:-pfSense OS upgrade failed}" "$CURL_CMD" >/dev/null 2>&1 || true
+    rm -f "$state_file"
+    agent_release_stale_lock "$(pfsense_upgrade_lock_dir)"
     return 0
-  else
-    agent_post_command_result_failed "$parsed" "upgrade finished without upgrade log" "$CURL_CMD" >/dev/null 2>&1 || true
   fi
 
-  rm -f "$state_file"
-  agent_release_stale_lock "$(pfsense_upgrade_lock_dir)"
+  upgrade_version_matches_target() {
+    [ -n "$state_target_version" ] && [ -n "$new_version" ] && [ "$new_version" = "$state_target_version" ]
+  }
+
+  if upgrade_version_matches_target; then
+    excerpt=""
+    if [ -f "$log_file" ]; then
+      excerpt="$(tail -n 20 "$log_file" | tr '\n' ' ')"
+    fi
+    finalize_label="$status"
+    if [ "$status" = "prepared_manual_confirm" ]; then
+      finalize_label="completed_after_manual_confirm"
+    elif [ "$status" = "executing" ] || [ "$status" = "rebooting" ]; then
+      finalize_label="completed_after_reboot"
+    fi
+    agent_post_command_result_succeeded "$parsed" \
+      "{\"target_version\":\"$(json_escape "$state_target_version")\",\"new_version\":\"$(json_escape "$new_version")\",\"started_at\":\"$(json_escape "$started_at")\",\"log_excerpt\":\"$(json_escape "$excerpt")\",\"finalize_status\":\"$(json_escape "$finalize_label")\"}" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    rm -f "$state_file"
+    agent_release_stale_lock "$(pfsense_upgrade_lock_dir)"
+    return 0
+  fi
+
+  case "$status" in
+    executing|rebooting|prepared_manual_confirm|running)
+      return 0
+      ;;
+  esac
+
+  if [ -f "$log_file" ] && [ -n "$state_target_version" ] && [ "$new_version" != "$state_target_version" ]; then
+    agent_post_command_result_failed "$parsed" \
+      "upgrade finished but version is ${new_version:-unknown} (expected ${state_target_version})" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    rm -f "$state_file"
+    agent_release_stale_lock "$(pfsense_upgrade_lock_dir)"
+    return 0
+  fi
+
+  if [ "$status" != "prepared_manual_confirm" ] && [ ! -f "$log_file" ]; then
+    agent_post_command_result_failed "$parsed" "upgrade finished without upgrade log" "$CURL_CMD" >/dev/null 2>&1 || true
+    rm -f "$state_file"
+    agent_release_stale_lock "$(pfsense_upgrade_lock_dir)"
+  fi
 }
 
 certificates_collection_enabled() {

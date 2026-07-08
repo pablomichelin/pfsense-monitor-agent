@@ -49,6 +49,9 @@ log_msg() {
 
 cleanup_lock() {
   rm -f "$LOCK_FILE" 2>/dev/null || true
+  # Remove o marcador de upgrade pendente para o dedup de reentrega não
+  # considerar um upgrade concluído como "em andamento".
+  [ -n "$STATE_FILE" ] && rm -f "$STATE_FILE" 2>/dev/null || true
 }
 
 acquire_lock() {
@@ -169,12 +172,6 @@ customer_code="$(read_config_value CUSTOMER_CODE)"
 heartbeat_mode="$(read_config_value HEARTBEAT_MODE)"
 heartbeat_mode="${heartbeat_mode:-normal}"
 
-install_args=""
-install_args="$install_args $(shell_quote "$controller_url")"
-install_args="$install_args $(shell_quote "$node_uid")"
-install_args="$install_args $(shell_quote "$customer_code")"
-install_args="$install_args $(shell_quote "$heartbeat_mode")"
-
 if command -v fetch >/dev/null 2>&1; then
   fetch -o /tmp/install-from-release.sh "$installer_url" >>"$UPGRADE_LOG" 2>&1
 else
@@ -183,6 +180,7 @@ fi
 chmod +x /tmp/install-from-release.sh
 
 set +e
+MONITOR_PACKAGE_UPGRADE_MODE=1 \
 MONITOR_UPDATE_NODE_SECRET="$node_secret" /tmp/install-from-release.sh \
   --release-url "$ARTIFACT_URL" \
   --sha256 "$SHA256" \
@@ -200,6 +198,13 @@ if [ "$install_code" -ne 0 ]; then
   log_msg "install-from-release failed exit=$install_code"
   post_command_failed "install-from-release failed (see $UPGRADE_LOG)"
   exit 1
+fi
+
+if [ -f /usr/local/etc/rc.d/monitor_pfsense_agent ]; then
+  /usr/sbin/sysrc monitor_pfsense_agent_enable=YES 2>/dev/null || true
+  /usr/sbin/service monitor_pfsense_agent restart >>"$UPGRADE_LOG" 2>&1 \
+    || /usr/sbin/service monitor_pfsense_agent start >>"$UPGRADE_LOG" 2>&1 \
+    || true
 fi
 
 log_msg "package upgrade succeeded target=$TARGET_VERSION"

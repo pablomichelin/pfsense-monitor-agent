@@ -6,19 +6,35 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Versoes atuais do produto (2026-07-02)
+## Versoes atuais do produto (2026-07-08)
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
 | API | `0.7.0` | `apps/api/package.json` |
-| Painel web | `1.5.1` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.4.10` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| Painel web | `1.5.3` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.4.18` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
-**Release publicada (config versionado):** `config/package-release.env` → package **`0.4.10`** (SHA256 `2b6d26904010c2636be697640a663cf1b24e6f3ae30f33c8fcdb3cdea481b853`; artefato regerado com fix do `%%PKGVERSION%%` no `systemup_monitor.xml`).
+**Release publicada (config versionado):** `config/package-release.env` → package **`0.4.18`**.
 
-**Artefato package:** `/Dados/Monitor-Pfsense/dist/pfsense-package/monitor-pfsense-package-v0.4.10.tar.gz`
+**Ultima entrega (2026-07-08):** correção XML mal formado do package (`2>&1` sem escape desde 0.4.10) que quebrava `pkg.php`/`pkg_edit.php` ("Package / Editor" vazio) e o `install_package_xml` (menu GUI); guard de well-formedness no build — package **0.4.18**. Ver `docs/143-CORRECAO-XML-MALFORMADO-GUI-0.4.18-2026-07-08.md`.
 
-**Ultima entrega (2026-07-02):** correções auditoria framework pfSense — package **0.4.10** (wrappers command-result, config_read_file, GUI/XML framework, validação intervalo, HMAC via env, fix `%%PKGVERSION%%` no build). **Homologada em pfSense CE 2.8.1 real.** Ver `docs/132-ENTREGA-CORRECOES-AUDITORIA-FRAMEWORK-PFSENSE-2026-07-02.md`.
+**Entrega anterior (2026-07-04):** upgrade pfSense OS remoto completo (`pfSense-upgrade -y` + reboot automático); confirmação no painel substitui GUI; package **0.4.17**, painel **1.5.3**.
+
+**Entrega anterior (2026-07-04):** correção falso sucesso no upgrade pfSense OS semi-manual; package **0.4.16**, painel **1.5.2**.
+
+**Entrega anterior (2026-07-04):** correção `SYSTEMUP_MONITOR_AGENT_VERSION` desalinhado no 0.4.14 — release **0.4.15**. Ver `docs/141-CORRECAO-AGENT-VERSION-0.4.15-2026-07-04.md`.
+
+**Entrega anterior (2026-07-03):** correção reentrega de comandos `running` (falso "another package upgrade is running"), dedup no agente, persist do menu GUI, release **0.4.14**; reconciliação do comando HILE. Ver `docs/140-CORRECAO-REENTREGA-COMANDOS-0.4.14-2026-07-03.md`.
+
+**Entrega anterior (2026-07-03):** correção upgrade remoto (`install.sh` opcache + restart deferido), bug UI lote 3 vs 57, release **0.4.13**. Ver `docs/139-CORRECAO-UPGRADE-REMOTO-0.4.13-2026-07-03.md`.
+
+**Entrega anterior (2026-07-03):** correção race menu GUI — release **0.4.12**. Ver `docs/138-CORRECAO-MENU-GUI-RACE-0.4.12-2026-07-03.md`.
+
+**Entrega anterior (2026-07-03):** correção SHA256 mismatch no `package-artifact`, `Content-Length` no download, guard de checksum na API, purge de 24 clientes smoke. Ver `docs/136-CORRECAO-PACKAGE-ARTIFACT-SHA256-2026-07-03.md`.
+
+**Ultima entrega (2026-07-02):** correções pós-plano 117 (varredura builds/smokes/RBAC) — script smoke suite, C4 createClient, alinhamento package 0.4.10. Ver `docs/135-RELATORIO-CORRECOES-POS-PLANO-117-2026-07-02.md`.
+
+**Entrega anterior (2026-07-02):** correções auditoria framework pfSense — package **0.4.10** (wrappers command-result, config_read_file, GUI/XML framework, validação intervalo, HMAC via env, fix `%%PKGVERSION%%` no build). **Homologada em pfSense CE 2.8.1 real.** Ver `docs/132-ENTREGA-CORRECOES-AUDITORIA-FRAMEWORK-PFSENSE-2026-07-02.md`.
 
 **Entrega anterior (2026-07-02):** fechamento plano 117 (Fases 10–12) — vault/capacidades pfREST, piloto read-only/aliases, consolidacao API `0.7.0` / web `1.5.1`. Ver `docs/128-...`, `docs/129-...`, `docs/130-...` e `docs/131-RELATORIO-10-REVISOES-CODIGO-2026-07-02.md`.
 
@@ -44,7 +60,7 @@ Leia este arquivo primeiro.
 
 **Entrega anterior (2026-06-30):** upgrade remoto de package (`package_upgrade`) — package `0.4.6`, API `0.6.4`. Ver `docs/114-ENTREGA-UPGRADE-REMOTO-PACKAGE-2026-06-30.md` e `docs/114-UPGRADE-REMOTO-PACKAGE.md`.
 
-**Proximo passo operacional:** alinhar frota na versao **0.4.10** via coluna **Pacote** em `/nodes` (upgrade remoto); follow-ups registrados no doc 132 (migracao `config_get_path`, privilegios `priv`).
+**Proximo passo operacional:** homologacao pos-plano 117 — seguir `docs/134-CHECKLIST-ENABLEMENT-POS-PLANO-117-2026-07-02.md` (P0: alinhar frota **0.4.10**, smokes, checkpoints §25; P1: enablement gradual de flags em staging). Upgrade remoto: coluna **Pacote** em `/nodes`.
 
 **Entrega anterior (2026-06-30):** correção heartbeat light + recovery offline — package `0.4.5`, API `0.6.3`. Ver `docs/113-ENTREGA-CORRECAO-HEARTBEAT-LIGHT-OFFLINE-2026-06-30.md`.
 
@@ -164,9 +180,9 @@ Referencia canonica para retomada — confira versoes no topo deste arquivo.
 - admin `/admin/grupos`: tags e grupos ad-hoc da frota
 - smokes: `scripts/run-smoke-suite.sh` (referencia pos-mudancas)
 
-**Proximo passo:** Fase 7 plano 117 (fundacao jobs/comandos); homologar rollups com `METRIC_ROLLUPS_ENABLED=true`; homologar backup avancado com flags diff/drift; rollout package `0.4.7`. Ver `docs/124-ENTREGA-OBSERVABILIDADE-HISTORICA-2026-07-02.md`.
+**Proximo passo:** checklist enablement pos-117 (`docs/134-CHECKLIST-ENABLEMENT-POS-PLANO-117-2026-07-02.md`); homologar flags em staging; rollout package `0.4.10`. Ver `docs/124-ENTREGA-OBSERVABILIDADE-HISTORICA-2026-07-02.md`.
 
-**Plano de melhorias seguras:** `docs/117-PLANO-EXECUCAO-MELHORIAS-SEGURAS-2026-07-02.md` — usar como guia para novas implementacoes em chat limpo.
+**Plano de melhorias seguras:** `docs/117-PLANO-EXECUCAO-MELHORIAS-SEGURAS-2026-07-02.md` — codigo entregue; homologacao operacional pendente (checklist 134).
 
 **Plano pfREST / gerenciador centralizado:** `docs/125-PLANO-PFREST-GERENCIAMENTO-CENTRALIZADO-2026-07-02.md` — trilha pos-117 para gestao de muitos pfSense com pfREST, read-only primeiro e escrita com guardrails.
 

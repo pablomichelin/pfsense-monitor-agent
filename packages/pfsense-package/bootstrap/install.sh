@@ -98,14 +98,87 @@ invalidate_package_php_cache() {
   ' < /dev/null 2>/dev/null || true
 }
 
+register_package_gui() {
+  if [ -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php ]; then
+    /usr/local/bin/php -d opcache.enable_cli=0 \
+      -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php register-gui < /dev/null
+    return $?
+  fi
+
+  /usr/local/bin/php -d opcache.enable_cli=0 -r '
+    require_once("/etc/inc/config.inc");
+    require_once("/etc/inc/globals.inc");
+    require_once("/etc/inc/pkg-utils.inc");
+    require_once("/usr/local/pkg/systemup_monitor.inc");
+    if (!systemup_monitor_ensure_gui_registration("SystemUp Monitor GUI registration")) {
+      fwrite(STDERR, "SystemUp Monitor GUI registration failed.\n");
+      exit(1);
+    }
+  ' < /dev/null
+}
+
+read_package_registration_counts() {
+  /usr/local/bin/php -r '
+    require_once("/etc/inc/config.inc");
+    $count_named = function ($items, $field, $expected) {
+      $total = 0;
+      if (!is_array($items)) {
+        return 0;
+      }
+      foreach ($items as $item) {
+        if (!is_array($item)) {
+          continue;
+        }
+        if (($item[$field] ?? "") === $expected) {
+          $total++;
+        }
+      }
+      return $total;
+    };
+    $package = $count_named($config["installedpackages"]["package"] ?? array(), "name", "systemup-monitor");
+    $menu = $count_named($config["installedpackages"]["menu"] ?? array(), "name", "SystemUp Monitor");
+    $service = $count_named($config["installedpackages"]["service"] ?? array(), "name", "monitor_pfsense_agent");
+    echo "${package},${menu},${service}";
+  ' < /dev/null 2>/dev/null || echo "0,0,0"
+}
+
+ensure_package_gui_registration() {
+  counts="$(read_package_registration_counts)"
+  pkg_count="${counts%%,*}"
+  rest="${counts#*,}"
+  menu_count="${rest%%,*}"
+  service_count="${rest##*,}"
+
+  if [ "$menu_count" != "0" ] && [ "$pkg_count" != "0" ]; then
+    echo "SystemUp Monitor GUI registered (package=${pkg_count}, menu=${menu_count}, service=${service_count})."
+    return 0
+  fi
+
+  echo "SystemUp Monitor GUI missing (package=${pkg_count}, menu=${menu_count}, service=${service_count}); retrying GUI registration..." >&2
+  register_package_gui || true
+
+  counts="$(read_package_registration_counts)"
+  pkg_count="${counts%%,*}"
+  rest="${counts#*,}"
+  menu_count="${rest%%,*}"
+
+  if [ "$menu_count" = "0" ] || [ "$pkg_count" = "0" ]; then
+    echo "SystemUp Monitor GUI registration failed (package=${pkg_count}, menu=${menu_count})." >&2
+    echo "Agent files may be installed, but Services > SystemUp Monitor will not appear until registration succeeds." >&2
+    return 1
+  fi
+
+  echo "SystemUp Monitor GUI registered after retry (package=${pkg_count}, menu=${menu_count})."
+}
+
 install_package_files
 
 if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/config.inc ]; then
-  /usr/local/bin/php -r '
-    require_once("/etc/inc/config.inc");
-    require_once("/etc/inc/pkg-utils.inc");
-    install_package_xml("systemup-monitor");
-  ' < /dev/null
+  MONITOR_PKG_INC="$INSTALL_ROOT/usr/local/pkg/systemup_monitor.inc" \
+  MONITOR_PKG_CLI="$INSTALL_ROOT/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php" \
+  invalidate_package_php_cache
+
+  register_package_gui || true
 
   set -- seed
 
@@ -155,13 +228,17 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
   /usr/local/bin/php -d opcache.enable_cli=0 \
     -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php sync < /dev/null 2>/dev/null || true
 
-  # Garantir que o serviço está habilitado e rodando (o PHP pode falhar ao iniciar quando o install roda em background)
-  if [ -n "$CONTROLLER_URL" ] && [ -n "$NODE_UID" ] && [ -n "$NODE_SECRET" ] && [ -n "$CUSTOMER_CODE" ]; then
-    if [ -f /usr/local/etc/rc.d/monitor_pfsense_agent ]; then
-      /usr/sbin/sysrc monitor_pfsense_agent_enable=YES 2>/dev/null || true
-      /usr/sbin/service monitor_pfsense_agent restart 2>/dev/null \
-        || /usr/sbin/service monitor_pfsense_agent start 2>/dev/null \
-        || true
+  ensure_package_gui_registration || true
+
+  # Durante upgrade remoto o wrapper reinicia o serviço após post-command-result.
+  if [ "${MONITOR_PACKAGE_UPGRADE_MODE:-}" != "1" ]; then
+    if [ -n "$CONTROLLER_URL" ] && [ -n "$NODE_UID" ] && [ -n "$NODE_SECRET" ] && [ -n "$CUSTOMER_CODE" ]; then
+      if [ -f /usr/local/etc/rc.d/monitor_pfsense_agent ]; then
+        /usr/sbin/sysrc monitor_pfsense_agent_enable=YES 2>/dev/null || true
+        /usr/sbin/service monitor_pfsense_agent restart 2>/dev/null \
+          || /usr/sbin/service monitor_pfsense_agent start 2>/dev/null \
+          || true
+      fi
     fi
   fi
 fi

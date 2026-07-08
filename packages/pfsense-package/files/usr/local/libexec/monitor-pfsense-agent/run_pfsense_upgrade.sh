@@ -2,24 +2,23 @@
 # Wrapper pfSense OS upgrade — desacoplado do heartbeat loop.
 # Spawned by dispatch_pfsense_upgrade; resultado final via finalize_pfsense_upgrade_if_pending (reboot).
 #
-# P-UP — IMPORTANTE (comportamento honesto): este wrapper NUNCA executa o upgrade
-# do SO de forma não-interativa. Ele apenas (1) atualiza repositórios com
-# `pfSense-upgrade -d` e (2) marca o estado como "prepared_manual_confirm" para
-# que o operador confirme manualmente em System → Update na GUI do pfSense.
-# A flag MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED=1 NÃO habilita execução remota:
-# os flags não-interativos do pfSense-upgrade ainda não foram homologados (ver
-# docs/97-SPIKE-PFSENSE-UPGRADE-CE.md). Enquanto o spike CE não fechar, qualquer
-# valor da flag resulta no mesmo fluxo seguro (preparar + confirmação manual).
+# Fluxo remoto (default): a confirmação no painel pfs-monitor substitui o Confirm da GUI.
+# 1) pfSense-upgrade -u  — atualiza repositórios
+# 2) ASSUME_ALWAYS_YES=yes pfSense-upgrade -d -y — aplica upgrade e reinicia
+# Pós-reboot: finalize_pfsense_upgrade_if_pending fecha o comando quando a versão == alvo.
+#
+# Opt-out: MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED=0 mantém só refresh de repos (legado).
 
 set -eu
 
 COMMAND_ID="${1:-}"
 TARGET_VERSION="${2:-}"
 STATE_FILE="${3:-}"
-EXEC_ENABLED="${MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED:-0}"
+EXEC_ENABLED="${MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED:-1}"
 LOG_FILE="${MONITOR_AGENT_LOG_FILE:-/var/log/monitor-pfsense-agent.log}"
 UPGRADE_LOG="/var/log/monitor-pfsense-agent-upgrade.log"
 LOCK_FILE="/var/run/monitor-pfsense-agent-upgrade.lock"
+AGENT_BIN="${MONITOR_AGENT_BIN:-/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh}"
 
 json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -58,6 +57,11 @@ update_state() {
   ' "$STATE_FILE" "$status" "$message" "$(iso_now)" 2>/dev/null || true
 }
 
+post_command_failed() {
+  [ -n "$COMMAND_ID" ] || return 0
+  "$AGENT_BIN" post-command-result "$COMMAND_ID" failed "$1" >>"$UPGRADE_LOG" 2>&1 || true
+}
+
 cleanup_lock() {
   rm -f "$LOCK_FILE" 2>/dev/null || true
 }
@@ -65,11 +69,9 @@ cleanup_lock() {
 acquire_lock() {
   if [ -f "$LOCK_FILE" ]; then
     lock_pid=""
-    lock_started=""
     while IFS='=' read -r key value; do
       case "$key" in
         pid) lock_pid="$value" ;;
-        started_at) lock_started="$value" ;;
       esac
     done <"$LOCK_FILE" 2>/dev/null || true
     if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
@@ -88,6 +90,44 @@ acquire_lock() {
   return 1
 }
 
+refresh_repositories() {
+  log_msg "refreshing pkg repositories (pfSense-upgrade -d -u)"
+  set +e
+  pfSense-upgrade -d -u >>"$UPGRADE_LOG" 2>&1
+  repo_code=$?
+  set -e
+
+  if [ "$repo_code" -ne 0 ]; then
+    log_msg "pfSense-upgrade -u failed exit=$repo_code"
+    update_state "failed" "pfSense-upgrade -u failed (see $UPGRADE_LOG)"
+    post_command_failed "pfSense-upgrade -u failed (see $UPGRADE_LOG)"
+    exit 1
+  fi
+}
+
+run_noninteractive_upgrade() {
+  refresh_repositories
+
+  log_msg "running non-interactive OS upgrade (ASSUME_ALWAYS_YES=yes pfSense-upgrade -d -y)"
+  update_state "executing" "Running pfSense-upgrade -y; reboot expected"
+
+  set +e
+  env ASSUME_ALWAYS_YES=yes pfSense-upgrade -d -y >>"$UPGRADE_LOG" 2>&1
+  upgrade_code=$?
+  set -e
+
+  if [ "$upgrade_code" -ne 0 ]; then
+    log_msg "pfSense-upgrade -y failed exit=$upgrade_code"
+    update_state "failed" "pfSense-upgrade -y failed (see $UPGRADE_LOG)"
+    post_command_failed "pfSense-upgrade -y failed (see $UPGRADE_LOG)"
+    exit 1
+  fi
+
+  log_msg "pfSense-upgrade -y finished; reboot expected target=$TARGET_VERSION"
+  update_state "rebooting" "Upgrade applied; waiting for reboot to finalize"
+  exit 0
+}
+
 if [ -z "$COMMAND_ID" ] || [ -z "$STATE_FILE" ]; then
   log_msg "missing command_id or state_file"
   exit 1
@@ -95,6 +135,7 @@ fi
 
 if ! acquire_lock; then
   update_state "failed" "another upgrade operation is running"
+  post_command_failed "another upgrade operation is running"
   exit 1
 fi
 
@@ -105,33 +146,18 @@ log_msg "start command_id=$COMMAND_ID target=$TARGET_VERSION exec_enabled=$EXEC_
 if ! command -v pfSense-upgrade >/dev/null 2>&1; then
   log_msg "pfSense-upgrade not found"
   update_state "failed" "pfSense-upgrade not found"
+  post_command_failed "pfSense-upgrade not found"
   exit 1
 fi
 
-# Download / refresh repositories (safe pre-step, no reboot)
-set +e
-pfSense-upgrade -d >>"$UPGRADE_LOG" 2>&1
-download_code=$?
-set -e
+case "$EXEC_ENABLED" in
+  1|true|yes|on)
+    run_noninteractive_upgrade
+    ;;
+esac
 
-if [ "$download_code" -ne 0 ]; then
-  log_msg "pfSense-upgrade -d failed exit=$download_code"
-  update_state "failed" "pfSense-upgrade -d failed (see $UPGRADE_LOG)"
-  exit 1
-fi
-
-if [ "$EXEC_ENABLED" != "1" ]; then
-  log_msg "exec disabled — prepared for manual Confirm in pfSense GUI (System → Update)"
-  update_state "prepared_manual_confirm" \
-    "Repositories refreshed. Confirm upgrade manually in pfSense GUI (System → Update). Reboot will finalize via agent."
-  exit 0
-fi
-
-# Lab-only path: non-interactive flags NOT validated in spike 97 — do not auto-reboot.
-# P-UP: a flag está ligada, mas execução não-interativa segue NÃO suportada de
-# forma honesta. Mantemos o mesmo fluxo seguro (preparar + confirmação manual)
-# para não prometer um upgrade remoto que não acontece.
-log_msg "exec enabled but non-interactive upgrade flags not validated in CE lab — falling back to manual confirm (see docs/97-SPIKE-PFSENSE-UPGRADE-CE.md)"
+log_msg "exec disabled — repositories only (legacy semi-manual)"
+refresh_repositories
 update_state "prepared_manual_confirm" \
-  "MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED=1 ainda NAO executa upgrade nao-interativo (flags nao homologados). Repositorios atualizados; confirme manualmente em System -> Update."
+  "Repositories refreshed. Remote exec disabled on agent; confirm manually in pfSense GUI (System → Update)."
 exit 0
