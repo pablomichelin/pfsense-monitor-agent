@@ -17,7 +17,7 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.5.7");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.5.8");
 }
 if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
     define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
@@ -242,7 +242,8 @@ function systemup_monitor_defaults()
         'services_csv' => SYSTEMUP_MONITOR_DEFAULT_SERVICES,
         'heartbeat_mode' => SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE,
         'monitored_packages_csv' => '',
-        'config_backup_enabled' => '',
+        // Diretriz 2026-08-01: backup (agendado + remoto) habilitado por padrão.
+        'config_backup_enabled' => 'on',
         'config_backup_schedule_mode' => 'hours',
         'config_backup_interval_hours' => '24',
         'config_backup_schedule_time' => '03:00',
@@ -906,7 +907,7 @@ function systemup_monitor_render_agent_config($pkg)
         $lines[] = 'MONITOR_AGENT_PACKAGES="' . systemup_monitor_escape_shell_value($monitoredPackages) . '"';
     }
 
-    $backupEnabled = systemup_monitor_normalize_yes_no($pkg['config_backup_enabled'] ?? '', '');
+    $backupEnabled = systemup_monitor_normalize_yes_no($pkg['config_backup_enabled'] ?? 'on', 'on');
     $lines[] = 'MONITOR_AGENT_CONFIG_BACKUP_ENABLED="' . ($backupEnabled === 'on' ? '1' : '0') . '"';
     $schedule = systemup_monitor_normalize_backup_schedule($pkg);
     $lines[] = 'MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_MODE="' . systemup_monitor_escape_shell_value($schedule['mode']) . '"';
@@ -2105,7 +2106,7 @@ function systemup_monitor_build_package_update_command($pkg, $release)
         $args[] = '--services ' . systemup_monitor_shell_quote($selectedServices);
     }
 
-    $backupEnabled = systemup_monitor_normalize_yes_no($pkg['config_backup_enabled'] ?? '', '');
+    $backupEnabled = systemup_monitor_normalize_yes_no($pkg['config_backup_enabled'] ?? 'on', 'on');
     $args[] = '--config-backup-enabled ' . systemup_monitor_shell_quote($backupEnabled === 'on' ? 'yes' : 'no');
 
     $installerUrl = $release['installer_url'];

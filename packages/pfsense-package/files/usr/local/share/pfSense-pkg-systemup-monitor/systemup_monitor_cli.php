@@ -91,7 +91,7 @@ function systemup_monitor_cli_seed($options)
     if (isset($options['config_backup_enabled']) && $options['config_backup_enabled'] !== '') {
         $pkg['config_backup_enabled'] = systemup_monitor_normalize_yes_no(
             $options['config_backup_enabled'],
-            ''
+            'on'
         );
     }
 

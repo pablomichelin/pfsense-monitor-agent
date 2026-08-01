@@ -4,9 +4,11 @@ Data de referencia: `2026-07-31`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Versoes atuais (codigo):** API `0.10.3` · painel `1.10.8` · package pfSense `0.5.7` (`config/package-release.env` após release).
+> **Versoes atuais (codigo):** API `0.10.3` · painel `1.10.9` · package pfSense `0.5.8` (`config/package-release.env` após release).
 >
-> **Ultima entrega (2026-08-01):** UX despoluição P0 inventário `/nodes` — painel **1.10.8**. Ver `docs/162-ENTREGA-UX-DESPOLUICAO-P0-INVENTARIO-2026-08-01.md`. Plano: `docs/161-PLANO-UX-DESPOLUICAO-PAINEL-OPERADOR-2026-08-01.md` (P1/P2 pendentes).
+> **Ultima entrega (2026-08-01):** backup habilitado por padrão no package — package **0.5.8**, painel **1.10.9**. Ver `docs/163-ENTREGA-BACKUP-PADRAO-LIGADO-PACKAGE-0.5.8-2026-08-01.md`.
+>
+> **Entrega anterior (2026-08-01):** UX despoluição P0 inventário `/nodes` — painel **1.10.8**. Ver `docs/162-ENTREGA-UX-DESPOLUICAO-P0-INVENTARIO-2026-08-01.md`. Plano: `docs/161-PLANO-UX-DESPOLUICAO-PAINEL-OPERADOR-2026-08-01.md` (P1/P2 pendentes).
 >
 > **Entrega anterior (2026-08-01):** proteção absoluta do usuário `admin` pfSense. API **0.10.3**, painel **1.10.7**, package **0.5.7**. Ver `docs/160-PROTECAO-USUARIO-ADMIN-PFSENSE-2026-08-01.md`.
 >
@@ -200,6 +202,7 @@ Versoes atuais (produto): API `0.6.4`, painel `1.4.5`, package pfSense `0.4.7`. 
 
 - Plano: `docs/161-PLANO-UX-DESPOLUICAO-PAINEL-OPERADOR-2026-08-01.md` — inventário `/nodes` legível (~10s), densidade, filtros sob demanda, lote com contexto
 - Entrega P0: `docs/162-ENTREGA-UX-DESPOLUICAO-P0-INVENTARIO-2026-08-01.md` — painel `1.10.8`
+- Entrega backup padrão ligado: `docs/163-ENTREGA-BACKUP-PADRAO-LIGADO-PACKAGE-0.5.8-2026-08-01.md` — package `0.5.8`, painel `1.10.9`
 - **Não reabre** o roadmap UX Fases 0–8 (`docs/88-...`)
 
 #### Roadmap UX front-end — encerramento formal (**plano 24 encerrado**)

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Valida a logica de backup_should_run_scheduled (convencao: 0=pular, 1=executar com "if !").
+# Valida a logica de backup_should_run_scheduled (convencao: 0=pular, 1=executar).
+# Caller no agente: if backup_should_run_scheduled; then return; fi; backup_config_now
 set -euo pipefail
 
 failures=0

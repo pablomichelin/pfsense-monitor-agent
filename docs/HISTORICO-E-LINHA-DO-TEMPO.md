@@ -6,6 +6,12 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-01 — Backup ligado por padrão (package 0.5.8, painel 1.10.9)
+
+- Default `config_backup_enabled=on` + remoto on; pedido remoto recusado agora falha com mensagem (não expira em silêncio); correção do `if !` em `backup_scheduled`.
+- Motivo: frota inteira com backup off → “Solicitar backup” no portal expirava sem erro.
+- Ver `docs/163-ENTREGA-BACKUP-PADRAO-LIGADO-PACKAGE-0.5.8-2026-08-01.md`.
+
 ### 2026-08-01 — UX despoluição P0 inventário (painel 1.10.8)
 
 - `/nodes` mais legível: colunas Criticidade/Tags/Instalação saíram da tabela (inline condicional); soma `min-w` 90rem → 61rem; filtros em `<details>`; lote só com seleção + backup por filtro explícito.

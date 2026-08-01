@@ -93,6 +93,20 @@ function getLatestStoredBackup(
   return items.find((item) => item.status === 'stored') ?? null;
 }
 
+function mapBackupCommandError(message: string | null | undefined): string | null {
+  if (!message) {
+    return null;
+  }
+  const normalized = message.trim().toLowerCase();
+  if (normalized.includes('config backup disabled on agent')) {
+    return 'Backup desabilitado no package do pfSense. Habilite em Services > SystemUp Monitor > Backup (ou atualize o package para 0.5.8+).';
+  }
+  if (normalized.includes('remote backup requests disabled on agent')) {
+    return 'Pedidos remotos de backup desabilitados no package. Marque "Aceitar backup remoto" na aba Backup.';
+  }
+  return message;
+}
+
 function getCommandStatusLabel(input: {
   status: ConfigBackupCommandStatusResponse['status'];
   nodeEffectiveStatus: string;
@@ -303,7 +317,9 @@ export function NodeConfigBackupsSection({
         >
           <p>{commandLabel}</p>
           {commandStatus?.error_message ? (
-            <p className="mt-1 text-xs opacity-90">{commandStatus.error_message}</p>
+            <p className="mt-1 text-xs opacity-90">
+              {mapBackupCommandError(commandStatus.error_message)}
+            </p>
           ) : null}
           {commandActive ? (
             <p className="mt-1 text-xs opacity-80">

@@ -11,12 +11,14 @@ Leia este arquivo primeiro.
 | Componente | Versao | Referencia |
 |------------|--------|------------|
 | API | `0.10.3` | `apps/api/package.json` |
-| Painel web | `1.10.8` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.5.7` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| Painel web | `1.10.9` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.5.8` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
-**Release (config local):** `config/package-release.env` → package **`0.5.7`** (artefato em `dist/`; publicar no GitHub do agent com `scripts/release-pfsense-package.sh` para upgrade nos firewalls).
+**Release (config local):** `config/package-release.env` → package **`0.5.8`** (artefato em `dist/`; publicar no GitHub do agent com `scripts/release-pfsense-package.sh` para upgrade nos firewalls).
 
-**Ultima entrega (2026-08-01):** UX despoluição P0 do inventário `/nodes` — colunas enxutas (61rem), filtros sob demanda, lote com contexto; painel **1.10.8**. Plano `docs/161-...md`; entrega `docs/162-ENTREGA-UX-DESPOLUICAO-P0-INVENTARIO-2026-08-01.md`. P1/P2 pendentes.
+**Ultima entrega (2026-08-01):** backup habilitado por padrão no package (agendado + pedido remoto do portal) — package **0.5.8**, painel **1.10.9**. Correção do silêncio em `config_backup_now` e do `if !` no agendamento. Ver `docs/163-ENTREGA-BACKUP-PADRAO-LIGADO-PACKAGE-0.5.8-2026-08-01.md`.
+
+**Entrega anterior (2026-08-01):** UX despoluição P0 do inventário `/nodes` — colunas enxutas (61rem), filtros sob demanda, lote com contexto; painel **1.10.8**. Plano `docs/161-...md`; entrega `docs/162-ENTREGA-UX-DESPOLUICAO-P0-INVENTARIO-2026-08-01.md`. P1/P2 pendentes.
 
 **Entrega anterior (2026-08-01):** proteção absoluta do usuário **`admin`** (e `root`) — nunca cadastrar/alterar/excluir via Monitor. API **0.10.3**, painel **1.10.7**, package **0.5.7**. Ver `docs/160-PROTECAO-USUARIO-ADMIN-PFSENSE-2026-08-01.md`.
 

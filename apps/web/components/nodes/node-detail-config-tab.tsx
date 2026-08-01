@@ -245,7 +245,7 @@ export function NodeDetailConfigTab({
                           ? 'habilitado'
                           : configBackupInstallMode === 'no'
                             ? 'desabilitado'
-                            : 'padrão (desabilitado)'}
+                            : 'padrão (habilitado)'}
                       </strong>
                     </span>
                   </div>
@@ -282,7 +282,7 @@ export function NodeDetailConfigTab({
                           : 'border border-slate-700 bg-slate-900/60 text-slate-300 hover:border-slate-500'
                       }`}
                     >
-                      Homolog (sim)
+                      Ligado
                     </Link>
                     <Link
                       href={buildNodeDetailsHref({
@@ -299,7 +299,7 @@ export function NodeDetailConfigTab({
                           : 'border border-slate-700 bg-slate-900/60 text-slate-300 hover:border-slate-500'
                       }`}
                     >
-                      Produção (não)
+                      Desligado
                     </Link>
                   </div>
                   <p className="mt-3 text-sm text-slate-500">

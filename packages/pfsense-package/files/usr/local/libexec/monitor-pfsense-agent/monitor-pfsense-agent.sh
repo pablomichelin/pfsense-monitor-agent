@@ -2607,9 +2607,9 @@ backup_lock_dir() {
 }
 
 backup_is_enabled() {
-  case "${MONITOR_AGENT_CONFIG_BACKUP_ENABLED:-0}" in
-    1|true|yes|on) return 0 ;;
-    *) return 1 ;;
+  case "${MONITOR_AGENT_CONFIG_BACKUP_ENABLED:-1}" in
+    0|false|no|off) return 1 ;;
+    *) return 0 ;;
   esac
 }
 
@@ -3095,7 +3095,8 @@ backup_content_changed() {
 }
 
 backup_should_run_scheduled() {
-  # Convencao com backup_scheduled (if ! ...): 0 = nao executar, 1 = executar.
+  # Convencao: exit 0 = pular, exit 1 = executar.
+  # Caller: if backup_should_run_scheduled; then return; fi; backup_config_now
   backup_is_enabled || return 0
   if backup_backoff_blocks_scheduled; then
     return 0
@@ -3113,7 +3114,9 @@ backup_should_run_scheduled() {
 }
 
 backup_scheduled() {
-  if ! backup_should_run_scheduled; then
+  # exit 0 de backup_should_run_scheduled = pular; exit 1 = executar.
+  # (o "if !" anterior invertia a convencao e rodava backup com flag desligada)
+  if backup_should_run_scheduled; then
     return 0
   fi
   backup_config_now ""
@@ -3523,7 +3526,17 @@ process_heartbeat_commands() {
     [ -z "$command_id" ] && continue
     case "$command_type" in
       config_backup_now)
-        if backup_is_enabled && backup_accepts_remote_requests; then
+        if ! backup_is_enabled; then
+          backup_post_command_failed \
+            "$command_id" \
+            "config backup disabled on agent" \
+            "$CURL_CMD" >/dev/null 2>&1 || true
+        elif ! backup_accepts_remote_requests; then
+          backup_post_command_failed \
+            "$command_id" \
+            "remote backup requests disabled on agent" \
+            "$CURL_CMD" >/dev/null 2>&1 || true
+        else
           backup_config_now "$command_id" >>/dev/null 2>&1 || true
         fi
         ;;

@@ -81,8 +81,8 @@ include("head.inc");
         <div class="col-sm-9">
           <div class="checkbox">
             <label>
-              <input type="checkbox" name="config_backup_enabled" <?=($pkg['config_backup_enabled'] ?? '') === 'on' ? 'checked' : ''?> />
-              Enviar backup conforme agendamento e regras abaixo
+              <input type="checkbox" name="config_backup_enabled" <?=systemup_monitor_normalize_yes_no($pkg['config_backup_enabled'] ?? 'on', 'on') === 'on' ? 'checked' : ''?> />
+              Enviar backup conforme agendamento e aceitar pedidos remotos do portal (padrão: ligado)
             </label>
           </div>
         </div>

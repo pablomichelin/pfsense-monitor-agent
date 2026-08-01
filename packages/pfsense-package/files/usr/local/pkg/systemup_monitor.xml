@@ -168,7 +168,7 @@
     <field>
       <fielddescr>Backup automatico</fielddescr>
       <fieldname>config_backup_enabled</fieldname>
-      <description>Habilita envio agendado de config.xml ao controlador.</description>
+      <description>Habilita envio agendado de config.xml e pedidos remotos do portal. Padrao: ligado.</description>
       <type>checkbox</type>
     </field>
     <field>
