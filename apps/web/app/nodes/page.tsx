@@ -139,6 +139,48 @@ export default async function NodesPage({
     tags: node.tags,
   }));
 
+  const statusFilterLabels: Record<string, string> = {
+    online: 'Online',
+    degraded: 'Degradado',
+    offline: 'Offline',
+    maintenance: 'Manutenção',
+    unknown: 'Desconhecido',
+  };
+  const criticalityFilterLabels: Record<string, string> = {
+    critical: 'Crítico',
+    standard: 'Padrão',
+    lab: 'Lab',
+  };
+
+  const activeFilterChips: string[] = [];
+  if (clientId) {
+    const clientName =
+      filterOptions.clients.find((client) => client.id === clientId)?.name ?? 'Cliente';
+    activeFilterChips.push(clientName);
+  }
+  if (siteId) {
+    const site = sites.find((item) => item.id === siteId);
+    activeFilterChips.push(site ? site.name : 'Site');
+  }
+  if (status) {
+    activeFilterChips.push(statusFilterLabels[status] ?? status);
+  }
+  if (criticality) {
+    activeFilterChips.push(criticalityFilterLabels[criticality] ?? criticality);
+  }
+  if (tagId) {
+    const tag = tags.find((item) => item.id === tagId);
+    activeFilterChips.push(tag ? tag.name : 'Tag');
+  }
+  if (groupId) {
+    const group = groups.find((item) => item.id === groupId);
+    activeFilterChips.push(group ? group.name : 'Grupo');
+  }
+  if (search) {
+    activeFilterChips.push(`“${search.length > 24 ? `${search.slice(0, 24)}…` : search}”`);
+  }
+  const hasActiveFilters = activeFilterChips.length > 0;
+
   return (
     <div className="space-y-8">
       <PageHero
@@ -164,11 +206,32 @@ export default async function NodesPage({
         aside={<RealtimeRefresh renderedAt={nodes.generated_at} />}
       />
 
-      <PageSection
-        title="Filtros"
-        description="Refine por cliente, site, status ou busca textual. A ordenação afeta a listagem abaixo."
+      <details
+        className="glass-panel rounded-xl"
+        open={hasActiveFilters ? true : undefined}
       >
-        <Card className="p-6">
+        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm text-slate-200 marker:content-none [&::-webkit-details-marker]:hidden">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-cyan-400/90">
+            Filtros
+          </span>
+          <span className="font-medium text-white">
+            {hasActiveFilters
+              ? `${activeFilterChips.length} ativo${activeFilterChips.length === 1 ? '' : 's'}`
+              : 'Nenhum filtro ativo'}
+          </span>
+          {activeFilterChips.map((chip, index) => (
+            <span
+              key={`${index}-${chip}`}
+              className="rounded-md border border-slate-600/80 bg-panel-soft px-2 py-0.5 font-mono text-xs text-slate-300"
+            >
+              {chip}
+            </span>
+          ))}
+          <span className="ml-auto text-xs text-slate-500">
+            {hasActiveFilters ? 'Clique para editar' : 'Clique para filtrar'}
+          </span>
+        </summary>
+        <div className="border-t border-slate-800 px-4 py-4 sm:px-6">
           <form className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end xl:gap-4">
             <select
               name="client_id"
@@ -266,8 +329,8 @@ export default async function NodesPage({
             </select>
             <Button type="submit">Aplicar filtros</Button>
           </form>
-        </Card>
-      </PageSection>
+        </div>
+      </details>
 
       {nodes.items.length === 0 ? (
         <PageSection title="Inventário">

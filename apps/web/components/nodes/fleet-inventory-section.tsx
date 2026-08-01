@@ -5,7 +5,7 @@ import { FleetBatchBackupPanel } from '@/components/nodes/fleet-batch-backup-pan
 import { FleetBatchPackageUpgradePanel } from '@/components/nodes/fleet-batch-package-upgrade-panel';
 import { FleetTechnicianManagementPanel } from '@/components/nodes/fleet-technician-management-panel';
 import { NodesInventoryTable } from '@/components/nodes/nodes-inventory-table';
-import { Card, PageSection } from '@/components/ui';
+import { Button, PageSection } from '@/components/ui';
 import type { StatusBadgeStatus } from '@/components/ui/status-badge';
 import type { BackupVisualStatus } from '@/lib/backup-status';
 import type { NodeCriticality } from '@/lib/api';
@@ -51,6 +51,7 @@ export function FleetInventorySection({
   canResetTechnicianPassword,
 }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showFilterBackup, setShowFilterBackup] = useState(false);
 
   const visibleNodeIds = useMemo(
     () => new Set(nodes.map((node) => node.id)),
@@ -66,6 +67,12 @@ export function FleetInventorySection({
       return new Set(pruned);
     });
   }, [visibleNodeIds]);
+
+  useEffect(() => {
+    if (selectedIds.size > 0) {
+      setShowFilterBackup(false);
+    }
+  }, [selectedIds.size]);
 
   const selectedNodes = useMemo(
     () =>
@@ -107,66 +114,65 @@ export function FleetInventorySection({
     });
   };
 
-  const showBatchActions =
-    ((canRequestBackupBatch || canRunPackageUpgrade) && nodes.length > 0) ||
-    canManageTechnicians ||
-    canResetTechnicianPassword;
-
   const showRowSelection =
     canRunPackageUpgrade ||
     canRequestBackupBatch ||
     canManageTechnicians ||
     canResetTechnicianPassword;
 
-  const backupUsesSelection = selectedCount > 0;
-  const backupNodeIds = backupUsesSelection
-    ? selectedNodes.map((node) => node.id)
-    : nodes.map((node) => node.id);
+  const allVisibleNodeIds = useMemo(() => nodes.map((node) => node.id), [nodes]);
+  const selectedNodeIds = selectedNodes.map((node) => node.id);
+  const technicianNodeIds = selectedNodeIds;
 
-  // Técnicos: só a seleção da tabela (mesmo padrão do package upgrade) — sem fallback para "todos do filtro".
-  const technicianNodeIds = selectedNodes.map((node) => node.id);
+  const filterBackupPanel =
+    canRequestBackupBatch && nodes.length > 0 && showFilterBackup ? (
+      <FleetBatchBackupPanel
+        nodeIds={allVisibleNodeIds}
+        mode="filter"
+        totalVisibleCount={nodes.length}
+        clientId={clientId}
+        label={`Inventário — backup lote (${nodes.length} nodes)`}
+      />
+    ) : null;
 
-  const inventorySelectionHint = (() => {
-    if (selectedCount > 0) {
-      return `${selectedCount} selecionado(s) — ações em lote (package, backup e técnicos) usam essa seleção.`;
-    }
-    if (showRowSelection) {
-      return 'Marque firewalls na tabela para ações em lote: package, backup e gestão de técnicos (usuário/senha).';
-    }
-    return 'Visão operacional com backup e alertas abertos por firewall.';
-  })();
+  const filterBackupEntry =
+    canRequestBackupBatch && nodes.length > 0 ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => setShowFilterBackup((open) => !open)}
+        >
+          {showFilterBackup
+            ? 'Ocultar backup por filtro'
+            : `Usar filtro atual (${nodes.length} firewalls)`}
+        </Button>
+      </div>
+    ) : null;
 
   return (
     <>
-      <PageSection title="Inventário" description={inventorySelectionHint}>
-        <Card className="overflow-hidden p-0">
-          <NodesInventoryTable
-            nodes={nodes}
-            showAlertsColumn={showAlertsColumn}
-            targetPackageVersion={targetPackageVersion}
-            selection={
-              showRowSelection
-                ? {
-                    selectedIds,
-                    onToggle: toggleNode,
-                    onToggleAll: toggleAll,
-                  }
-                : undefined
-            }
-          />
-        </Card>
-      </PageSection>
+      {selectedCount > 0 ? (
+        <div className="sticky top-0 z-20 space-y-3 rounded-xl border border-slate-700/70 bg-panel/95 p-3 shadow-lg backdrop-blur">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium text-white">
+              {selectedCount} selecionado(s)
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {filterBackupEntry}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                Limpar seleção
+              </Button>
+            </div>
+          </div>
 
-      {showBatchActions ? (
-        <PageSection
-          title="Ações em lote"
-          description={
-            selectedCount > 0
-              ? `${selectedCount} firewall(s) selecionado(s) — package, backup e técnicos aplicam somente a essa seleção.`
-              : 'Marque firewalls na tabela acima. Backup sem seleção usa o filtro atual; package e técnicos exigem seleção.'
-          }
-        >
-          <div className="space-y-4">
+          <div className="space-y-3">
             {canRunPackageUpgrade ? (
               <FleetBatchPackageUpgradePanel
                 selectedNodes={selectedNodes}
@@ -179,17 +185,15 @@ export function FleetInventorySection({
 
             {canRequestBackupBatch ? (
               <FleetBatchBackupPanel
-                nodeIds={backupNodeIds}
-                mode={backupUsesSelection ? 'selection' : 'filter'}
+                nodeIds={selectedNodeIds}
+                mode="selection"
                 totalVisibleCount={nodes.length}
                 clientId={clientId}
-                label={
-                  backupUsesSelection
-                    ? `Inventário — backup (${selectedCount} selecionados)`
-                    : `Inventário — backup lote (${nodes.length} nodes)`
-                }
+                label={`Inventário — backup (${selectedCount} selecionados)`}
               />
             ) : null}
+
+            {filterBackupPanel}
 
             {canManageTechnicians || canResetTechnicianPassword ? (
               <FleetTechnicianManagementPanel
@@ -202,8 +206,30 @@ export function FleetInventorySection({
               />
             ) : null}
           </div>
-        </PageSection>
+        </div>
+      ) : canRequestBackupBatch && nodes.length > 0 ? (
+        <div className="space-y-3">
+          {filterBackupEntry}
+          {filterBackupPanel}
+        </div>
       ) : null}
+
+      <PageSection title="Inventário">
+        <NodesInventoryTable
+          nodes={nodes}
+          showAlertsColumn={showAlertsColumn}
+          targetPackageVersion={targetPackageVersion}
+          selection={
+            showRowSelection
+              ? {
+                  selectedIds,
+                  onToggle: toggleNode,
+                  onToggleAll: toggleAll,
+                }
+              : undefined
+          }
+        />
+      </PageSection>
     </>
   );
 }

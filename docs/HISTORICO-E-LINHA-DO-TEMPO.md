@@ -6,6 +6,12 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-01 — UX despoluição P0 inventário (painel 1.10.8)
+
+- `/nodes` mais legível: colunas Criticidade/Tags/Instalação saíram da tabela (inline condicional); soma `min-w` 90rem → 61rem; filtros em `<details>`; lote só com seleção + backup por filtro explícito.
+- Motivo: reduzir carga cognitiva do operador/técnico sem regredir Versão pfSense, Acesso remoto nem backup `mode=filter`.
+- Plano `docs/161-...md`; entrega `docs/162-...md`. P1/P2 pendentes.
+
 ### 2026-08-01 — Proteção absoluta do usuário admin pfSense (API 0.10.3, painel 1.10.7, package 0.5.7)
 
 - `admin`/`root` nunca cadastrados nem gerenciados: DTO, validação, serviço (revalida DB), enqueue e agente (reserved + uid 0 / scope system / nome canônico).

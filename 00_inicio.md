@@ -2,9 +2,11 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-01):** API `0.10.3` · painel `1.10.7` · package pfSense `0.5.7`.
+> **Versoes atuais (2026-08-01):** API `0.10.3` · painel `1.10.8` · package pfSense `0.5.7`.
 >
-> **Ultima entrega (2026-08-01):** proteção absoluta do `admin` pfSense (nunca cadastrar/gerenciar). API **0.10.3**, painel **1.10.7**, package **0.5.7**. Ver `docs/160-...md`.
+> **Ultima entrega (2026-08-01):** UX despoluição P0 inventário `/nodes` — painel **1.10.8**. Ver `docs/162-ENTREGA-UX-DESPOLUICAO-P0-INVENTARIO-2026-08-01.md` (plano `docs/161-...md`; P1/P2 pendentes).
+>
+> **Entrega anterior (2026-08-01):** proteção absoluta do `admin` pfSense (nunca cadastrar/gerenciar). API **0.10.3**, painel **1.10.7**, package **0.5.7**. Ver `docs/160-...md`.
 >
 > **Entrega anterior (2026-08-01):** delete de tecnico desabilitado corrigido (`userExistsInSnapshot`). API **0.10.2**.
 >
