@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
-import { NodesInventoryTable } from '@/components/nodes/nodes-inventory-table';
-import { FleetBatchBackupPanel } from '@/components/nodes/fleet-batch-backup-panel';
+import { FleetInventorySection } from '@/components/nodes/fleet-inventory-section';
 import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 import { Alert, Button, Card, PageSection } from '@/components/ui';
@@ -80,6 +79,15 @@ export default async function NodesPage({
   const isClientProfile = isClientRole(session.user.role);
   const showAlertsColumn = !isClientProfile;
   const canRequestBackupBatch = hasPermission(session.permissions ?? [], 'backups.run');
+  const canRunPackageUpgrade = hasPermission(
+    session.permissions ?? [],
+    'package.upgrade.run',
+  );
+  const canManageTechnicians = hasPermission(session.permissions ?? [], 'technicians.manage');
+  const canResetTechnicianPassword = hasPermission(
+    session.permissions ?? [],
+    'technicians.password_reset.run',
+  );
 
   const sites = clientId
     ? filterOptions.sites.filter((site) => site.client_id === clientId)
@@ -261,41 +269,26 @@ export default async function NodesPage({
         </Card>
       </PageSection>
 
-      {canRequestBackupBatch && nodes.items.length > 0 ? (
-        <PageSection
-          title="Ações em lote"
-          description="Operações allowlistadas sobre os firewalls do filtro atual."
-        >
-          <FleetBatchBackupPanel
-            nodeIds={nodes.items.map((node) => node.id)}
-            clientId={clientId}
-            label={`Backup lote — ${nodes.items.length} nodes`}
-          />
-        </PageSection>
-      ) : null}
-
-      <PageSection
-        title="Inventário"
-        description={
-          isClientProfile
-            ? 'Firewalls da sua empresa com status, backup e instalação.'
-            : 'Visão operacional com backup e alertas abertos por firewall.'
-        }
-      >
-        <Card className="overflow-hidden p-0">
-          {nodes.items.length === 0 ? (
+      {nodes.items.length === 0 ? (
+        <PageSection title="Inventário">
+          <Card className="overflow-hidden p-0">
             <Alert variant="info" className="m-6">
               Nenhum firewall encontrado com os filtros atuais.
             </Alert>
-          ) : (
-            <NodesInventoryTable
-              nodes={inventoryNodes}
-              showAlertsColumn={showAlertsColumn}
-              targetPackageVersion={targetPackageVersion}
-            />
-          )}
-        </Card>
-      </PageSection>
+          </Card>
+        </PageSection>
+      ) : (
+        <FleetInventorySection
+          nodes={inventoryNodes}
+          showAlertsColumn={showAlertsColumn}
+          targetPackageVersion={targetPackageVersion}
+          clientId={clientId}
+          canRequestBackupBatch={canRequestBackupBatch}
+          canRunPackageUpgrade={canRunPackageUpgrade}
+          canManageTechnicians={canManageTechnicians}
+          canResetTechnicianPassword={canResetTechnicianPassword}
+        />
+      )}
     </div>
   );
 }

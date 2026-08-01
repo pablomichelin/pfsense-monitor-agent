@@ -6,6 +6,12 @@ import {
   validateNodeRebootPayload,
   validateServiceRestartPayload,
 } from '../operational-actions/operational-actions.util';
+import {
+  validateLocalUserCreatePayload,
+  validateLocalUserDeletePayload,
+  validateLocalUserDisablePayload,
+  validateLocalUserSetPasswordPayload,
+} from '../technicians/technician-accounts.util';
 import { type CommandTypeDefinition } from './command-registry.util';
 
 export {
@@ -154,6 +160,84 @@ export const COMMAND_REGISTRY: Record<NodeCommandType, CommandTypeDefinition> = 
       } catch (error) {
         throw new BadRequestException(
           error instanceof Error ? error.message : 'invalid node_reboot payload',
+        );
+      }
+    },
+  },
+  [NodeCommandType.local_user_create]: {
+    permission: 'technicians.manage',
+    minAgentVersion: appConfig.technicianAccounts.minAgentVersion,
+    expireMinutes: appConfig.technicianAccounts.commandExpireMinutes,
+    maxRetries: appConfig.commands.retryDefaults.localUserMaxRetries,
+    retryBackoffMs: appConfig.commands.retryDefaults.localUserBackoffMs,
+    maxConcurrentPerNode: 1,
+    maxConcurrentGlobal: 0,
+    auditPrefix: 'technician.create',
+    validatePayload: (payload: unknown) => {
+      try {
+        return validateLocalUserCreatePayload(payload);
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : 'invalid local_user_create payload',
+        );
+      }
+    },
+  },
+  [NodeCommandType.local_user_set_password]: {
+    permission: 'technicians.password_reset.run',
+    minAgentVersion: appConfig.technicianAccounts.minAgentVersion,
+    expireMinutes: appConfig.technicianAccounts.commandExpireMinutes,
+    maxRetries: appConfig.commands.retryDefaults.localUserMaxRetries,
+    retryBackoffMs: appConfig.commands.retryDefaults.localUserBackoffMs,
+    maxConcurrentPerNode: 1,
+    maxConcurrentGlobal: 0,
+    auditPrefix: 'technician.password_reset',
+    validatePayload: (payload: unknown) => {
+      try {
+        return validateLocalUserSetPasswordPayload(payload);
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error
+            ? error.message
+            : 'invalid local_user_set_password payload',
+        );
+      }
+    },
+  },
+  [NodeCommandType.local_user_disable]: {
+    permission: 'technicians.manage',
+    minAgentVersion: appConfig.technicianAccounts.minAgentVersion,
+    expireMinutes: appConfig.technicianAccounts.commandExpireMinutes,
+    maxRetries: appConfig.commands.retryDefaults.localUserMaxRetries,
+    retryBackoffMs: appConfig.commands.retryDefaults.localUserBackoffMs,
+    maxConcurrentPerNode: 1,
+    maxConcurrentGlobal: 0,
+    auditPrefix: 'technician.disable',
+    validatePayload: (payload: unknown) => {
+      try {
+        return validateLocalUserDisablePayload(payload);
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : 'invalid local_user_disable payload',
+        );
+      }
+    },
+  },
+  [NodeCommandType.local_user_delete]: {
+    permission: 'technicians.manage',
+    minAgentVersion: appConfig.technicianAccounts.minAgentVersion,
+    expireMinutes: appConfig.technicianAccounts.commandExpireMinutes,
+    maxRetries: appConfig.commands.retryDefaults.localUserMaxRetries,
+    retryBackoffMs: appConfig.commands.retryDefaults.localUserBackoffMs,
+    maxConcurrentPerNode: 1,
+    maxConcurrentGlobal: 0,
+    auditPrefix: 'technician.delete',
+    validatePayload: (payload: unknown) => {
+      try {
+        return validateLocalUserDeletePayload(payload);
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : 'invalid local_user_delete payload',
         );
       }
     },

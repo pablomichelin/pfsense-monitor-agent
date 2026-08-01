@@ -27,6 +27,7 @@ O agente coleta estado local e envia heartbeat por HTTPS.
 
 ## Decisoes que sao permanentes ate segunda ordem
 
+- este produto (pfs-monitor) e **independente** do Theo Portal WhatsApp (`http://192.168.100.221:8791` / Theo Chamados): sem integracao, sem webhook cruzado, sem backlog compartilhado
 - o fluxo principal e `push` do pfSense para o controlador
 - o MVP prioriza monitoramento, nao controle remoto
 - o controlador roda inicialmente em host unico com Docker Compose
@@ -243,6 +244,18 @@ Estado consolidado:
 - `SSE` homologado no dominio publico
 - agente leve inicial versionado para a proxima etapa de homologacao em pfSense real
 - pacote nativo do pfSense estruturado como port empacotavel, com runtime local do agente e GUI pronta para build em ambiente compativel
+
+### Atualizacao 2026-07-02 (checklist enablement pos-plano 117)
+
+- Plano 117: **codigo entregue** (Fases 0–12); homologacao operacional e enablement gradual **pendentes**.
+- Checklist operacional: `docs/134-CHECKLIST-ENABLEMENT-POS-PLANO-117-2026-07-02.md` (P0 frota/smokes/checkpoints §25; P1 ordem de flags em staging).
+- Smoke flags-off: `scripts/smoke-plan117-flags-off.sh` (incluido em `run-smoke-suite.sh`).
+
+### Atualizacao 2026-07-02 (upgrade package em lote)
+
+- API **0.7.0**: `POST /api/v1/package-upgrade/batch`; reutiliza orquestrador de comandos e pré-validação por node.
+- Painel web **1.5.1**: seleção múltipla em `/nodes` + card **Atualizar package em lote** com progresso por firewall.
+- Entrega: `docs/133-ENTREGA-BATCH-UPGRADE-PACKAGE-2026-07-02.md`
 
 ### Atualizacao 2026-07-02 (correcoes auditoria framework package pfSense)
 

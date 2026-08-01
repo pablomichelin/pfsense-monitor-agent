@@ -29,6 +29,10 @@ read_env_value() {
 }
 
 if [[ -z "$VERSION" ]]; then
+  VERSION="$(read_env_value PACKAGE_RELEASE_VERSION "$ROOT_DIR/config/package-release.env" 2>/dev/null || true)"
+fi
+
+if [[ -z "$VERSION" ]]; then
   VERSION="$(read_env_value PACKAGE_RELEASE_VERSION 2>/dev/null || true)"
 fi
 

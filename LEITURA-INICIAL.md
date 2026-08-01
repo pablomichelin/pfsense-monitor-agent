@@ -6,15 +6,35 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Versoes atuais do produto (2026-07-08)
+## Versoes atuais do produto (2026-07-31)
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.7.0` | `apps/api/package.json` |
-| Painel web | `1.5.3` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.4.18` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| API | `0.10.0` | `apps/api/package.json` |
+| Painel web | `1.10.0` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.5.4` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
-**Release publicada (config versionado):** `config/package-release.env` → package **`0.4.18`**.
+**Release publicada (config versionado):** `config/package-release.env` → package **`0.5.4`**.
+
+**Ultima entrega (2026-07-31):** validacao E2E real de `local_user_create`/`set_password`/`delete` contra pfSense de producao (`192.168.100.254`) — revelou e corrigiu um **segundo bug critico independente**: `local_user_set_password()` nessa versao do pfSense exige wrapper `{'item': $user}`, sem o qual a conta Unix nunca era sincronizada (usuario "criado" no config.xml mas inutilizavel, sem login). Corrigido com `apply_local_user_password()`; validado do zero apos a correcao (create/set_password/delete confirmados no SO real, nenhum usuario real tocado). Package **0.5.4**. Ver `docs/155-VALIDACAO-E2E-LOCAL-USER-CREATE-PFSENSE-254-2026-07-31.md`.
+
+**Entrega anterior (2026-07-31):** pagina dedicada `/admin/tecnicos` (Fase 3 do plano 144, matriz tecnico x firewall + indicador de acesso no detalhe do node via `GET /nodes/:id/technician-accounts`) + gate de backup recente de `config.xml` antes de qualquer escrita de usuario local (create/set_password/disable/delete), flags `TECHNICIAN_ACCOUNT_REQUIRE_RECENT_BACKUP_ENABLED`/`TECHNICIAN_ACCOUNT_REQUIRE_BACKUP_MAX_AGE_HOURS`. API **0.10.0**, painel **1.10.0**. Ver `docs/154-ENTREGA-ADMIN-TECNICOS-GATE-BACKUP-2026-07-31.md`.
+
+**Entrega anterior (2026-07-31):** auditoria de codigo da gestao de tecnicos — 2 achados criticos corrigidos (vazamento de senha em texto claro no historico de comandos via `firewalls.view`; `local_user_create` sem atribuir `uid`/`nextuid`, risco real de falha silenciosa) + validacao 400 em vez de 500, reativacao de tecnico revogado, confirmacao obrigatoria em provisionar/resetar em lote. API **0.9.0**, painel **1.9.0**, package **0.5.3**. Ver `docs/153-AUDITORIA-CORRECOES-GESTAO-TECNICOS-2026-07-31.md`.
+
+**Entrega anterior (2026-07-31):** senha gerada visivel + exclusao cadastro central tecnicos — card copiar senha, `DELETE /technicians/:id` (soft-delete). API **0.8.5**, painel **1.8.1**. Ver `docs/152-ENTREGA-SENHA-GERADA-EXCLUSAO-CADASTRO-TECNICOS-2026-07-31.md`.
+
+**Entrega anterior (2026-07-31):** ciclo de vida completo técnicos — provisionamento e reset de senha em lote + UI unificada em `/nodes`. API **0.8.4**, painel **1.8.0**, package **0.5.2**. Ver `docs/151-ENTREGA-CICLO-VIDA-TECNICOS-PROVISION-RESET-2026-07-31.md`.
+
+**Entrega anterior (2026-07-31):** offboarding de tecnicos — cadastro no painel + **revogar em toda a frota** (`POST /technicians/:id/revoke-fleet`), batch max 100. API **0.8.3**, painel **1.7.0**. Ver `docs/150-ENTREGA-OFFBOARDING-TECNICOS-FROTA-2026-07-31.md`.
+
+**Entrega anterior (2026-07-31):** correcao gestao de tecnicos — `getUserEntry` wrapper Plus, payload `pfsense_username`, dispatch agente; **validado E2E no lab 254** (disable `hotspot`). API **0.8.2**, package **0.5.1**. Ver `docs/149-CORRECAO-GESTAO-TECNICOS-GETUSERENTRY-0.5.1-2026-07-31.md`.
+
+**Entrega anterior (2026-07-31):** MVP plano 144 — revogacao de tecnicos em lote. Ver `docs/148-ENTREGA-MVP-REVOCACAO-TECNICOS-LOTE-2026-07-31.md`.
+
+**Plano em andamento:** gestao centralizada de usuarios locais pfSense — **ciclo de vida MVP entregue e auditado** (provision/reset/revoke), **Fase 3 (`/admin/tecnicos`) entregue**, **gate de backup recente entregue** e **validacao E2E contra pfSense real concluida** (2 bugs criticos de agente corrigidos: `uid` ausente e `local_user_set_password()` sem wrapper de item); proximo: smoke dedicado e rollout package **0.5.4** na frota. Ver `docs/144-...md`, `docs/153-...md`, `docs/154-...md`, `docs/155-...md`.
+
+**Governanca documental (2026-07-28):** criados `AGENTS.md`, `CHAT_INIT.md` e `PROJECT_STATUS.md` (não existiam) para alinhar este projeto ao padrão de entrypoints usado no resto do servidor (`/Dados/AGENTS.md`). Sem mudança de produto/código — `LEITURA-INICIAL.md` continua sendo a fonte de verdade de versões/entregas, `CORTEX.md` continua sendo o cérebro técnico; os novos arquivos apenas apontam para eles.
 
 **Ultima entrega (2026-07-08):** correção XML mal formado do package (`2>&1` sem escape desde 0.4.10) que quebrava `pkg.php`/`pkg_edit.php` ("Package / Editor" vazio) e o `install_package_xml` (menu GUI); guard de well-formedness no build — package **0.4.18**. Ver `docs/143-CORRECAO-XML-MALFORMADO-GUI-0.4.18-2026-07-08.md`.
 

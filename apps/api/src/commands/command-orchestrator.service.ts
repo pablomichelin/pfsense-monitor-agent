@@ -22,6 +22,12 @@ import {
 import {
   normalizeCommandHistoryLimit,
 } from './command-registry.util';
+import { scrubPasswordFromPayload } from '../technicians/technician-accounts.util';
+
+const PASSWORD_BEARING_COMMAND_TYPES: NodeCommandType[] = [
+  NodeCommandType.local_user_create,
+  NodeCommandType.local_user_set_password,
+];
 
 const ACTIVE_STATUSES: NodeCommandStatus[] = [
   NodeCommandStatus.pending,
@@ -73,6 +79,14 @@ export class CommandOrchestratorService {
       phase = 'running';
     }
 
+    // Defesa em profundidade: mesmo que a senha ainda nao tenha sido varrida do
+    // registro persistido (janela entre enfileirar e o agente confirmar "picked_up"),
+    // nunca serializar texto claro em respostas de leitura (historico/lote), que sao
+    // acessiveis com permissao mais ampla (firewalls.view) do que a gestao de tecnicos.
+    const payloadForResponse = PASSWORD_BEARING_COMMAND_TYPES.includes(command.type)
+      ? scrubPasswordFromPayload(command.payloadJson)
+      : command.payloadJson;
+
     return {
       command_id: command.id,
       node_id: command.nodeId,
@@ -89,7 +103,7 @@ export class CommandOrchestratorService {
       batch_id: command.batchId,
       error_message: command.errorMessage,
       result_json: command.resultJson,
-      payload_json: command.payloadJson,
+      payload_json: payloadForResponse,
       progress: {
         phase,
         is_active: isActive,
@@ -481,7 +495,7 @@ export class CommandOrchestratorService {
     },
   ): Promise<NodeCommand> {
     const definition = getCommandDefinition(input.type);
-    definition.validatePayload(input.payloadJson);
+    const normalizedPayload = definition.validatePayload(input.payloadJson);
 
     if (input.idempotencyKey) {
       const existing = await tx.nodeCommand.findFirst({
@@ -549,7 +563,7 @@ export class CommandOrchestratorService {
         type: input.type,
         status: NodeCommandStatus.pending,
         requestedByUserId: input.requestedByUserId,
-        payloadJson: input.payloadJson,
+        payloadJson: normalizedPayload as Prisma.InputJsonValue | undefined,
         expiresAt,
         batchId: input.batchId,
         idempotencyKey: input.idempotencyKey,

@@ -2,9 +2,82 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-07-08
+**Última atualização:** 2026-07-31
 
 ---
+
+### 2026-07-31 — Validação E2E real: `local_user_set_password()` exigia wrapper de item (package 0.5.4)
+
+- Validação cautelosa e autorizada contra pfSense de produção real (`192.168.100.254`, Plus `26.03.1`), com usuário descartável, backup prévio e limpeza total ao final, para confirmar em campo o fix de UID da entrega anterior (`0.5.3`).
+- **[Crítico, novo achado]** `local_user_set_password()` do pfSense nessa versão espera o usuário empacotado como `{'item': $user}`; o agente passava `$user` direto. Resultado: o hash de senha era gravado incorretamente e a conta Unix (`pw useradd`/`usermod`) nunca era sincronizada — o usuário "criado" ficava com UID correto no `config.xml` mas sem acesso real (login falhava). Bug **independente** do fix de UID anterior, só visível testando contra pfSense real.
+- Corrigido com `apply_local_user_password()` em `manage_local_user.php`, encapsulando o array antes de chamar a função nativa do pfSense. Revalidado do zero: create → set_password → delete confirmados no `config.xml` e no SO (login funcional, depois removido sem deixar rastro).
+- Package **0.5.4**. Entrega: `docs/155-VALIDACAO-E2E-LOCAL-USER-CREATE-PFSENSE-254-2026-07-31.md`.
+
+### 2026-07-31 — Página `/admin/tecnicos` + gate de backup recente (API 0.10.0, painel 1.10.0, package 0.5.4)
+
+- **Painel:** nova rota `/admin/tecnicos` (Fase 3 do plano 144) — matriz técnico × firewall (expansível), navegação admin, e reaproveita `FleetTechnicianManagementPanel` (`mode: 'filter'`) para cadastro/lote sem duplicar lógica.
+- **Painel + API:** indicador "técnicos com acesso" no detalhe do firewall (`/nodes/[id]`), consumindo novo endpoint `GET /api/v1/nodes/:id/technician-accounts` (`technicians.view`).
+- **Guardrail:** gate de backup recente de `config.xml` antes de qualquer escrita de usuário local (create/set_password/disable/delete), individual ou em lote. Decisão de design: exigir **sempre** (não só "na primeira escrita") — mais simples e igualmente seguro. Flags `TECHNICIAN_ACCOUNT_REQUIRE_RECENT_BACKUP_ENABLED` (default `true`) e `TECHNICIAN_ACCOUNT_REQUIRE_BACKUP_MAX_AGE_HOURS` (default `168`).
+- Entrega: `docs/154-ENTREGA-ADMIN-TECNICOS-GATE-BACKUP-2026-07-31.md`.
+
+### 2026-07-31 — Auditoria e correções: gestão de técnicos (API 0.9.0, painel 1.9.0, package 0.5.3)
+
+- **[Crítico]** `payload_json` do histórico/detalhe de comando (`firewalls.view`, mais amplo que `technicians.manage`) vazava a senha em texto claro de `local_user_create`/`local_user_set_password` enquanto o comando estava `pending`. Corrigido: `serializeCommand()` sempre varre a senha desses tipos, não só no `picked_up`.
+- **[Crítico]** `manage_local_user.php::handle_create()` nunca atribuía `uid`/incrementava `system/nextuid` ao criar usuário — risco real de falha silenciosa no provisionamento (nunca testado E2E contra pfSense real). Corrigido com `allocate_next_local_uid()`, seguindo o padrão da GUI do pfSense.
+- **[Médio]** Validadores (`validatePfsenseUsername`, `validateTechnicianPassword`, etc.) lançavam `Error` genérico → 500 em vez de 400 em erros de validação comuns (senha curta, login reservado). Corrigido para `BadRequestException`.
+- **[Médio]** Login revogado bloqueava recadastro para sempre; agora reativa o técnico existente.
+- **[Médio]** Provisionar/resetar senha em lote não exigia confirmação (ao contrário de revogar); adicionado `confirm: "CONFIRMAR"` obrigatório na API e etapa de confirmação no painel.
+- **[Baixo]** `userExistsInSnapshot` tinha default fail-open inconsistente com `userAlreadyActiveInSnapshot`; alinhado para fail-closed.
+- Entrega: `docs/153-AUDITORIA-CORRECOES-GESTAO-TECNICOS-2026-07-31.md`.
+
+### 2026-07-31 — Senha gerada visível + exclusão cadastro técnicos (API 0.8.5, painel 1.8.1)
+
+- Card destacado com `password_display_once` e botão copiar após provision/reset em lote.
+- `DELETE /api/v1/technicians/:id` — soft-delete do cadastro central (`status=revoked`), sem afetar firewalls.
+- Entrega: `docs/152-ENTREGA-SENHA-GERADA-EXCLUSAO-CADASTRO-TECNICOS-2026-07-31.md`.
+
+### 2026-07-31 — Ciclo de vida técnicos: provision + reset senha (API 0.8.4, painel 1.8.0, package 0.5.2)
+
+- **API:** `POST /technician-accounts/batch-provision`, `batch-password-reset`; provision/reset individual por node; scrub de senha no `picked_up`.
+- **Agente:** `manage_local_user.php` create/set_password; dispatchers no `monitor-pfsense-agent.sh`.
+- **Painel:** `FleetTechnicianManagementPanel` em `/nodes` — cadastro, busca, provisionar, resetar senha, revogar.
+- Flags create/reset habilitadas neste host.
+- Entrega: `docs/151-ENTREGA-CICLO-VIDA-TECNICOS-PROVISION-RESET-2026-07-31.md`.
+
+### 2026-07-31 — Offboarding técnicos: cadastro UI + revoke-fleet (API 0.8.3, painel 1.7.0)
+
+- **Painel:** formulário cadastrar técnico; botão **Revogar em toda a frota**; polling multi-lote.
+- **API:** `POST /api/v1/technicians/:id/revoke-fleet`; login duplicado → 409; `TECHNICIAN_ACCOUNT_BATCH_MAX_SIZE` default 100.
+- Entrega: `docs/150-ENTREGA-OFFBOARDING-TECNICOS-FROTA-2026-07-31.md`.
+
+### 2026-07-31 — Correção gestão técnicos: getUserEntry Plus + payload agente (API 0.8.2, package 0.5.1)
+
+- **Causa:** `getUserEntry()` no Plus retorna `{idx, item}`; `manage_local_user.php` não desempacotava → disable não persistia. API enviava `username` em vez de `pfsense_username` ao agente.
+- **Correção:** `config_set_path` + unwrap em `manage_local_user.php`; dispatch agente com stderr e fallback de payload; `build_local_users_json` via `php -f`.
+- **Validação:** lab 254 — batch revoke disable `hotspot` → `succeeded`; snapshot `disabled: true`.
+- Entrega: `docs/149-CORRECAO-GESTAO-TECNICOS-GETUSERENTRY-0.5.1-2026-07-31.md`.
+
+### 2026-07-31 — MVP plano 144: revogação técnicos em lote (API 0.8.0, web 1.6.0, package 0.5.0)
+
+- Agente: `collect_local_users.php`, `manage_local_user.php` (disable/delete), dispatchers + snapshot no heartbeat.
+- API: módulo `technicians`, `POST /technician-accounts/batch-revoke`, migration `local_users_snapshot_json`.
+- Painel: `FleetBatchTechnicianRevokePanel` no inventário `/nodes`.
+- Flags `TECHNICIAN_ACCOUNTS_*` e `MONITOR_AGENT_TECHNICIAN_ACCOUNTS_ENABLED` default off — piloto pendente.
+- Entrega: `docs/148-ENTREGA-MVP-REVOCACAO-TECNICOS-LOTE-2026-07-31.md`.
+
+### 2026-07-31 — Revisão Fase 0 plano 144 + correções (API 0.7.2)
+
+- `command-orchestrator`: persistir payload normalizado após `validatePayload` (bug: username não lowercase chegava ao agente).
+- `node-commands`: remover mapa `AUDIT_PREFIX_BY_TYPE` duplicado — usar `getCommandDefinition().auditPrefix`.
+- `.env.api.example`: variáveis `TECHNICIAN_ACCOUNTS_*` documentadas.
+
+### 2026-07-31 — Fase 0 plano 144: fundação gestão usuários locais pfSense (API 0.7.1 → 0.7.2)
+
+- Models `Technician` / `TechnicianNodeAccount`, enums de status, 4 tipos `local_user_*` em `NodeCommandType`.
+- RBAC: `technicians.view`, `technicians.manage`, `technicians.password_reset.run` (superadmin only).
+- Flags `TECHNICIAN_ACCOUNTS_*` default off; `minAgentVersion` = `0.5.0` bloqueia dispatch até agente suportar.
+- Sem UI, endpoints ou handler no agente — fundação apenas.
+- Entrega: `docs/145-ENTREGA-TECNICIAN-ACCOUNTS-FOUNDATION-2026-07-31.md`.
 
 ### 2026-07-08 — Correção XML mal formado do package (release 0.4.18)
 

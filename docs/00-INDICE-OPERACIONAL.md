@@ -1,16 +1,18 @@
 # Indice operacional do projeto
 
-Data de referencia: `2026-07-08`
+Data de referencia: `2026-07-31`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Versoes atuais (codigo):** API `0.7.0` · painel `1.5.3` · package pfSense `0.4.18` (`config/package-release.env`).
+> **Versoes atuais (codigo):** API `0.10.0` · painel `1.10.0` · package pfSense `0.5.4` (`config/package-release.env`).
 >
-> **Ultima entrega (2026-07-08):** correção XML mal formado do package (GUI "Package / Editor" vazia + falha do `install_package_xml` desde 0.4.10) — package `0.4.18`, guard de XML no build. Ver `docs/143-CORRECAO-XML-MALFORMADO-GUI-0.4.18-2026-07-08.md`.
+> **Ultima entrega (2026-07-31):** validacao E2E real de `local_user_create`/`set_password`/`delete` contra pfSense de producao (`192.168.100.254`) — achado e corrigido um segundo bug critico independente: `local_user_set_password()` exigia wrapper `{'item': $user}`, sem o qual a conta Unix nunca sincronizava (usuario "criado" mas sem login funcional). Corrigido com `apply_local_user_password()`, revalidado do zero. Package **0.5.4**. Ver `docs/155-VALIDACAO-E2E-LOCAL-USER-CREATE-PFSENSE-254-2026-07-31.md`.
 >
-> **Entrega anterior (2026-07-04):** correção versão reportada no heartbeat após lote — package `0.4.15`. Ver `docs/141-CORRECAO-AGENT-VERSION-0.4.15-2026-07-04.md`.
-> Plano de proximas melhorias seguras: `docs/117-PLANO-EXECUCAO-MELHORIAS-SEGURAS-2026-07-02.md`.
-> Plano pos-117 pfREST / gerenciador centralizado: `docs/125-PLANO-PFREST-GERENCIAMENTO-CENTRALIZADO-2026-07-02.md`.
+> **Entrega anterior (2026-07-31):** pagina dedicada `/admin/tecnicos` (Fase 3 do plano 144 — matriz tecnico x firewall, reuso do painel de lote, indicador de acesso no detalhe do node via `GET /nodes/:id/technician-accounts`) + gate de backup recente de `config.xml` antes de qualquer escrita de usuario local (`local_user_create/set_password/disable/delete`), flags `TECHNICIAN_ACCOUNT_REQUIRE_RECENT_BACKUP_ENABLED`/`TECHNICIAN_ACCOUNT_REQUIRE_BACKUP_MAX_AGE_HOURS`. API **0.10.0**, painel **1.10.0**. Ver `docs/154-ENTREGA-ADMIN-TECNICOS-GATE-BACKUP-2026-07-31.md`.
+>
+> **Entrega anterior (2026-07-31):** auditoria de codigo da gestao de tecnicos — 2 achados criticos corrigidos (vazamento de senha em `payload_json` do historico de comandos; `local_user_create` sem atribuir `uid`/`nextuid`) + validacao 400 vs 500, reativacao de tecnico revogado, confirmacao obrigatoria em lote. API **0.9.0**, painel **1.9.0**, package **0.5.3**. Ver `docs/153-AUDITORIA-CORRECOES-GESTAO-TECNICOS-2026-07-31.md`. Anterior: `docs/152-...md`.
+>
+> **Plano em andamento:** rollout package **0.5.4** na frota (validacao E2E de create/set_password concluida contra pfSense real). Ver `docs/144-...md`, `docs/155-...md`.
 >
 > **Entrega anterior (2026-06-30):** upgrade remoto de package — package `0.4.6`, API `0.6.4`. Ver `docs/114-ENTREGA-UPGRADE-REMOTO-PACKAGE-2026-06-30.md`, guia `docs/114-UPGRADE-REMOTO-PACKAGE.md`.
 >

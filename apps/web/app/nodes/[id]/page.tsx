@@ -12,6 +12,7 @@ import { NodeDetailConfigTab } from '@/components/nodes/node-detail-config-tab';
 import { NodeDetailMetricsTab } from '@/components/nodes/node-detail-metrics-tab';
 import { NodeDetailOverviewTab } from '@/components/nodes/node-detail-overview-tab';
 import { NodeDetailTabs } from '@/components/nodes/node-detail-tabs';
+import { NodeTechnicianAccountsPanel } from '@/components/nodes/node-technician-accounts-panel';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -25,6 +26,7 @@ import {
   getOperationalActionsStatus,
   getPfsenseApiStatus,
   getNodeMetricsHistory,
+  getNodeTechnicianAccounts,
   getPackageUpgradeStatus,
   getPfsenseUpgradeStatus,
   getSession,
@@ -128,8 +130,10 @@ export default async function NodeDetailsPage({
     const canManagePfsenseCredentials = hasPermission(permissions, 'pfsense.credentials.manage');
     const canViewPfsenseAliases = hasPermission(permissions, 'pfsense.alias.view');
     const canManageFleetMetadata = canManageNode;
+    const canViewTechnicians = hasPermission(permissions, 'technicians.view');
+    const canManageTechnicians = hasPermission(permissions, 'technicians.manage');
 
-    const [upgradeStatus, packageUpgradeStatus, fleetTags, metricsHistory, commandHistory, operationalStatus, nodeCapabilities, pfsenseApiStatus] =
+    const [upgradeStatus, packageUpgradeStatus, fleetTags, metricsHistory, commandHistory, operationalStatus, nodeCapabilities, pfsenseApiStatus, technicianAccounts] =
       await Promise.all([
       getPfsenseUpgradeStatus(id),
       getPackageUpgradeStatus(id),
@@ -191,6 +195,19 @@ export default async function NodeDetailsPage({
             alias_read_enabled: false,
             alias_apply_enabled: false,
             require_recent_backup_hours: 24,
+          }),
+      canViewTechnicians
+        ? getNodeTechnicianAccounts(id).catch(() => ({
+            generated_at: new Date().toISOString(),
+            node_id: id,
+            hostname: node.hostname,
+            items: [],
+          }))
+        : Promise.resolve({
+            generated_at: new Date().toISOString(),
+            node_id: id,
+            hostname: node.hostname,
+            items: [],
           }),
     ]);
 
@@ -335,6 +352,12 @@ export default async function NodeDetailsPage({
                   canCancelServiceRestart={canRestartService}
                   canCancelNodeReboot={canRebootNode}
                 />
+                {canViewTechnicians ? (
+                  <NodeTechnicianAccountsPanel
+                    items={technicianAccounts.items}
+                    canManageTechnicians={canManageTechnicians}
+                  />
+                ) : null}
               </>
             }
             metrics={

@@ -199,6 +199,7 @@ export class IngestService {
     const configBackupProvided = request.body.config_backup != null;
     const certificatesProvided = request.body.certificates != null;
     const capabilitiesProvided = request.body.capabilities != null;
+    const localUsersProvided = request.body.local_users != null;
     const normalizedBackupPolicy = configBackupProvided
       ? normalizeBackupSchedulePolicy(request.body.config_backup)
       : null;
@@ -287,6 +288,12 @@ export class IngestService {
                   normalizedBackupPolicy,
                   sentAt,
                 ),
+              }
+            : {}),
+          ...(localUsersProvided
+            ? {
+                localUsersSnapshotJson: request.body
+                  .local_users as unknown as Prisma.InputJsonValue,
               }
             : {}),
         },

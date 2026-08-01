@@ -13,9 +13,14 @@ import {
   NodeCommandType,
   JobBatchStatus,
   Prisma,
+  TechnicianNodeAccountStatus,
 } from '@prisma/client';
+import { getCommandDefinition } from '../commands/command-registry';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  scrubPasswordFromPayload,
+} from '../technicians/technician-accounts.util';
 
 export interface PendingCommandPayload {
   id: string;
@@ -23,21 +28,6 @@ export interface PendingCommandPayload {
   expires_at: string;
   payload?: Record<string, unknown>;
 }
-
-type CommandAuditPrefix =
-  | 'backup.config'
-  | 'pfsense.upgrade'
-  | 'package.upgrade'
-  | 'service.restart'
-  | 'node.reboot';
-
-const AUDIT_PREFIX_BY_TYPE: Record<NodeCommandType, CommandAuditPrefix> = {
-  [NodeCommandType.config_backup_now]: 'backup.config',
-  [NodeCommandType.pfsense_upgrade]: 'pfsense.upgrade',
-  [NodeCommandType.package_upgrade]: 'package.upgrade',
-  [NodeCommandType.service_restart]: 'service.restart',
-  [NodeCommandType.node_reboot]: 'node.reboot',
-};
 
 const ACTIVE_STATUSES: NodeCommandStatus[] = [
   NodeCommandStatus.pending,
@@ -107,6 +97,56 @@ export function toAgentCommandPayload(
     };
   }
 
+  if (type === NodeCommandType.local_user_create) {
+    const pfsenseUsername = raw.pfsense_username ?? raw.username;
+    if (typeof pfsenseUsername !== 'string' || !pfsenseUsername.trim()) {
+      return undefined;
+    }
+
+    const payload: Record<string, unknown> = {
+      pfsense_username: String(pfsenseUsername).trim().toLowerCase(),
+    };
+
+    if (typeof raw.full_name === 'string' && raw.full_name.trim()) {
+      payload.full_name = raw.full_name.trim();
+    }
+
+    if (typeof raw.privilege_profile === 'string' && raw.privilege_profile.trim()) {
+      payload.privilege_profile = raw.privilege_profile.trim();
+    }
+
+    if (typeof raw.password === 'string' && raw.password.length > 0) {
+      payload.password = raw.password;
+    }
+
+    return payload;
+  }
+
+  if (
+    type === NodeCommandType.local_user_set_password ||
+    type === NodeCommandType.local_user_disable ||
+    type === NodeCommandType.local_user_delete
+  ) {
+    const pfsenseUsername = raw.pfsense_username;
+    if (typeof pfsenseUsername !== 'string' || !pfsenseUsername.trim()) {
+      return undefined;
+    }
+
+    const payload: Record<string, unknown> = {
+      pfsense_username: pfsenseUsername.trim().toLowerCase(),
+    };
+
+    if (
+      type === NodeCommandType.local_user_set_password &&
+      typeof raw.password === 'string' &&
+      raw.password.length > 0
+    ) {
+      payload.password = raw.password;
+    }
+
+    return payload;
+  }
+
   return undefined;
 }
 
@@ -156,6 +196,15 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       return appConfig.operationalActions.commandExpireMinutes;
     }
 
+    if (
+      type === NodeCommandType.local_user_create ||
+      type === NodeCommandType.local_user_set_password ||
+      type === NodeCommandType.local_user_disable ||
+      type === NodeCommandType.local_user_delete
+    ) {
+      return appConfig.technicianAccounts.commandExpireMinutes;
+    }
+
     return appConfig.configBackup.commandExpireMinutes;
   }
 
@@ -163,11 +212,14 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
     nodeId: string,
   ): Promise<PendingCommandPayload[]> {
     const now = new Date();
+    // Não reentregar comandos em `running`: o agente já confirmou execução
+    // (ack running) e não possui dedup — a reentrega colide com o lock local
+    // e gera falso "another package upgrade is running" (doc 140).
     const commands = await this.prisma.nodeCommand.findMany({
       where: {
         nodeId,
         status: {
-          in: ACTIVE_STATUSES,
+          in: [NodeCommandStatus.pending, NodeCommandStatus.picked_up],
         },
         expiresAt: {
           gt: now,
@@ -294,7 +346,15 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    const auditPrefix = AUDIT_PREFIX_BY_TYPE[command.type];
+    if (
+      nextStatus === NodeCommandStatus.picked_up &&
+      (command.type === NodeCommandType.local_user_create ||
+        command.type === NodeCommandType.local_user_set_password)
+    ) {
+      await this.scrubCommandPassword(command.id);
+    }
+
+    const auditPrefix = getCommandDefinition(command.type).auditPrefix;
     await this.prisma.auditLog.create({
       data: {
         actorType: 'node_credential',
@@ -362,7 +422,7 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
     }
 
     const completedAt = new Date();
-    const auditPrefix = AUDIT_PREFIX_BY_TYPE[command.type];
+    const auditPrefix = getCommandDefinition(command.type).auditPrefix;
 
     if (input.status === 'failed') {
       const truncatedError = (input.errorMessage ?? 'unknown error')
@@ -406,6 +466,8 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
         await this.reconcileBatchStatus(command.batchId);
       }
 
+      await this.reconcileTechnicianNodeAccount(command, 'failed', truncatedError);
+
       return {
         ok: true,
         command_id: updated.id,
@@ -446,11 +508,83 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       await this.reconcileBatchStatus(command.batchId);
     }
 
+    await this.reconcileTechnicianNodeAccount(command, input.status, input.errorMessage);
+
     return {
       ok: true,
       command_id: updated.id,
       status: updated.status,
     };
+  }
+
+  private async scrubCommandPassword(commandId: string): Promise<void> {
+    const command = await this.prisma.nodeCommand.findUnique({
+      where: { id: commandId },
+      select: { payloadJson: true },
+    });
+
+    if (!command?.payloadJson) {
+      return;
+    }
+
+    const scrubbed = scrubPasswordFromPayload(command.payloadJson);
+    if (scrubbed === command.payloadJson) {
+      return;
+    }
+
+    await this.prisma.nodeCommand.update({
+      where: { id: commandId },
+      data: {
+        payloadJson: scrubbed as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  private async reconcileTechnicianNodeAccount(
+    command: NodeCommand,
+    status: 'succeeded' | 'failed',
+    errorMessage?: string,
+  ): Promise<void> {
+    if (
+      command.type !== NodeCommandType.local_user_create &&
+      command.type !== NodeCommandType.local_user_set_password
+    ) {
+      return;
+    }
+
+    const payload =
+      command.payloadJson &&
+      typeof command.payloadJson === 'object' &&
+      !Array.isArray(command.payloadJson)
+        ? (command.payloadJson as Record<string, unknown>)
+        : null;
+
+    const accountId =
+      typeof payload?.account_id === 'string' ? payload.account_id : null;
+    if (!accountId) {
+      return;
+    }
+
+    if (status === 'succeeded') {
+      await this.prisma.technicianNodeAccount.updateMany({
+        where: { id: accountId },
+        data: {
+          status: TechnicianNodeAccountStatus.active,
+          lastSyncedAt: new Date(),
+          lastError: null,
+        },
+      });
+      return;
+    }
+
+    const truncatedError = (errorMessage ?? 'command failed').trim().slice(0, 500);
+    await this.prisma.technicianNodeAccount.updateMany({
+      where: { id: accountId },
+      data: {
+        status: TechnicianNodeAccountStatus.failed,
+        lastError: truncatedError,
+      },
+    });
   }
 
   private async reconcileBatchStatus(batchId: string): Promise<void> {
@@ -778,7 +912,7 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
 
-        const auditPrefix = AUDIT_PREFIX_BY_TYPE[command.type];
+        const auditPrefix = getCommandDefinition(command.type).auditPrefix;
         await tx.auditLog.create({
           data: {
             actorType: 'system',

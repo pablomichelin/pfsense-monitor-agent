@@ -17,7 +17,7 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.4.18");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.5.4");
 }
 if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
     define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
@@ -923,6 +923,7 @@ function systemup_monitor_render_agent_config($pkg)
     $lines[] = 'MONITOR_AGENT_OPERATIONAL_ACTIONS_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['operational_actions_enabled'] ?? '0')) . '"';
     $lines[] = 'MONITOR_AGENT_SERVICE_RESTART_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['service_restart_enabled'] ?? '0')) . '"';
     $lines[] = 'MONITOR_AGENT_NODE_REBOOT_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['node_reboot_enabled'] ?? '0')) . '"';
+    $lines[] = 'MONITOR_AGENT_TECHNICIAN_ACCOUNTS_ENABLED="' . systemup_monitor_escape_shell_value((string) ($pkg['technician_accounts_enabled'] ?? '0')) . '"';
 
     return implode("\n", $lines) . "\n";
 }

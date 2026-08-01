@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import {
   ApiError,
+  createPackageUpgradeBatch,
+  getCommandBatchStatus,
   getPackageUpgradeStatus,
   requestPackageUpgrade,
   type PackageUpgradeRequestResponse,
@@ -59,4 +61,18 @@ export async function requestPackageUpgradeAction(
 
     return { ok: false, error: 'Falha ao solicitar upgrade de package' };
   }
+}
+
+export async function createPackageUpgradeBatchAction(input: {
+  node_ids: string[];
+  label?: string;
+  client_id?: string;
+}) {
+  const result = await createPackageUpgradeBatch(input);
+  revalidatePath('/nodes');
+  return result;
+}
+
+export async function pollCommandBatchStatusAction(batchId: string) {
+  return getCommandBatchStatus(batchId);
 }

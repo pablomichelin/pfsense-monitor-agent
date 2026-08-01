@@ -23,9 +23,11 @@ export class AgentReleaseController {
   @UseGuards(PackageReleaseRateLimitGuard)
   async downloadPackageArtifact(@Res() reply: FastifyReply) {
     try {
+      this.packageRelease.assertArtifactMatchesConfig();
       const artifact = this.packageRelease.openArtifactStream();
       return reply
         .header('content-type', 'application/gzip')
+        .header('content-length', String(artifact.size))
         .header(
           'content-disposition',
           `attachment; filename="${artifact.filename}"`,

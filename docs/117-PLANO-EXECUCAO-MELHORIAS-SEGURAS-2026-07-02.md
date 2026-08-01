@@ -1,10 +1,11 @@
 # 117 - Plano de execucao: melhorias seguras e fundacoes novas
 
 **Data:** 2026-07-02  
-**Status:** Concluido (2026-07-02)  
+**Status:** Codigo entregue (2026-07-02); homologacao operacional e enablement gradual pendentes  
 **Escopo:** Monitor-Pfsense em `/Dados/Monitor-Pfsense`  
-**Base canonica:** API `0.6.4`, painel `1.4.5`, package pfSense `0.4.7`  
-**Auditoria previa:** `docs/116-AUDITORIA-DOCUMENTAL-CONSOLIDACAO-2026-07-01.md`
+**Versoes finais da trilha 117:** API `0.7.0`, painel `1.5.1`, package pfSense `0.4.10` (`config/package-release.env`, `LEITURA-INICIAL.md`)  
+**Auditoria previa:** `docs/116-AUDITORIA-DOCUMENTAL-CONSOLIDACAO-2026-07-01.md`  
+**Checklist pos-117 (enablement/homologacao):** `docs/134-CHECKLIST-ENABLEMENT-POS-PLANO-117-2026-07-02.md`
 
 Este plano existe para orientar chats limpos no Composer 2.5, Claude ou outro agente de implementacao. Ele transforma as melhorias avaliadas como executaveis em uma trilha segura, faseada e auditavel, sem quebrar funcoes que ja operam hoje.
 

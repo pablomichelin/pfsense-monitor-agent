@@ -3,7 +3,8 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { createReadStream, existsSync, readFileSync } from 'fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'fs';
+import { createHash } from 'crypto';
 import { join } from 'path';
 import { appConfig } from '../config/app-config';
 
@@ -15,6 +16,11 @@ export type PackageReleaseMetadata = {
 
 @Injectable()
 export class PackageReleaseService {
+  private artifactChecksumCache: {
+    path: string;
+    mtimeMs: number;
+    sha256: string;
+  } | null = null;
   getPackageRelease(): {
     generated_at: string;
     version: string;
@@ -68,11 +74,43 @@ export class PackageReleaseService {
     const resolvedVersion =
       version?.trim() || this.readPackageReleaseMetadata().version;
     const filePath = this.resolveLocalArtifactPath(resolvedVersion);
+    const { size } = statSync(filePath);
     return {
       filePath,
       stream: createReadStream(filePath),
       filename: filePath.split('/').pop() ?? 'monitor-pfsense-package.tar.gz',
+      size,
     };
+  }
+
+  /** SHA256 do artefato local; falha se divergir do config versionado. */
+  assertArtifactMatchesConfig(version?: string): string {
+    const release = this.readPackageReleaseMetadata();
+    const resolvedVersion = version?.trim() || release.version;
+    const filePath = this.resolveLocalArtifactPath(resolvedVersion);
+    const actualSha256 = this.sha256HexOfFile(filePath);
+    if (actualSha256 !== release.sha256.toLowerCase()) {
+      throw new ServiceUnavailableException(
+        'package artifact checksum mismatch on controller',
+      );
+    }
+    return actualSha256;
+  }
+
+  private sha256HexOfFile(filePath: string): string {
+    const { mtimeMs } = statSync(filePath);
+    if (
+      this.artifactChecksumCache?.path === filePath &&
+      this.artifactChecksumCache.mtimeMs === mtimeMs
+    ) {
+      return this.artifactChecksumCache.sha256;
+    }
+
+    const sha256 = createHash('sha256')
+      .update(readFileSync(filePath))
+      .digest('hex');
+    this.artifactChecksumCache = { path: filePath, mtimeMs, sha256 };
+    return sha256;
   }
 
   buildReleaseUrls(release: PackageReleaseMetadata): {

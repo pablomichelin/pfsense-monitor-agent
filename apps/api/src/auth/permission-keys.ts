@@ -42,6 +42,9 @@ export const PERMISSION_KEYS = [
   'pfsense.alias.view',
   'pfsense.alias.manage',
   'pfsense.alias.apply',
+  'technicians.view',
+  'technicians.manage',
+  'technicians.password_reset.run',
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];

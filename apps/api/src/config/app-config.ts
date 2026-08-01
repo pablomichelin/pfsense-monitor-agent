@@ -359,6 +359,18 @@ export const appConfig = Object.freeze({
         'NODE_REBOOT_COMMAND_MAX_RETRIES',
       ),
       nodeRebootBackoffMs: [] as number[],
+      localUserMaxRetries: parseNumber(
+        process.env.TECHNICIAN_ACCOUNT_COMMAND_MAX_RETRIES,
+        1,
+        'TECHNICIAN_ACCOUNT_COMMAND_MAX_RETRIES',
+      ),
+      localUserBackoffMs: [
+        parseNumber(
+          process.env.TECHNICIAN_ACCOUNT_COMMAND_RETRY_BACKOFF_MS_1,
+          60_000,
+          'TECHNICIAN_ACCOUNT_COMMAND_RETRY_BACKOFF_MS_1',
+        ),
+      ],
     },
   },
   operationalActions: {
@@ -448,6 +460,43 @@ export const appConfig = Object.freeze({
       process.env.PFSENSE_UPGRADE_REQUIRE_BACKUP_HOURS,
       24,
       'PFSENSE_UPGRADE_REQUIRE_BACKUP_HOURS',
+    ),
+  },
+  technicianAccounts: {
+    enabled: parseBoolean(process.env.TECHNICIAN_ACCOUNTS_ENABLED, false),
+    createEnabled: parseBoolean(process.env.TECHNICIAN_ACCOUNT_CREATE_ENABLED, false),
+    passwordResetEnabled: parseBoolean(
+      process.env.TECHNICIAN_ACCOUNT_PASSWORD_RESET_ENABLED,
+      false,
+    ),
+    disableEnabled: parseBoolean(process.env.TECHNICIAN_ACCOUNT_DISABLE_ENABLED, false),
+    deleteEnabled: parseBoolean(process.env.TECHNICIAN_ACCOUNT_DELETE_ENABLED, false),
+    commandExpireMinutes: parseNumber(
+      process.env.TECHNICIAN_ACCOUNT_COMMAND_EXPIRE_MINUTES,
+      15,
+      'TECHNICIAN_ACCOUNT_COMMAND_EXPIRE_MINUTES',
+    ),
+    minAgentVersion:
+      process.env.TECHNICIAN_ACCOUNT_MIN_AGENT_VERSION?.trim() || '0.5.0',
+    batchMaxSize: parseNumber(
+      process.env.TECHNICIAN_ACCOUNT_BATCH_MAX_SIZE,
+      100,
+      'TECHNICIAN_ACCOUNT_BATCH_MAX_SIZE',
+    ),
+    // Guardrail (doc 144 secao 7 item 9): exigir backup de config.xml
+    // razoavelmente recente antes de qualquer escrita de usuarios locais
+    // (create/set_password/disable/delete), individual ou em lote. Decisao de
+    // design (doc 154): aplicar sempre, nao so "na primeira escrita" — mais
+    // simples de implementar corretamente e continua seguro (backup recente
+    // e sempre desejavel antes de mexer em usuarios locais).
+    requireRecentBackupEnabled: parseBoolean(
+      process.env.TECHNICIAN_ACCOUNT_REQUIRE_RECENT_BACKUP_ENABLED,
+      true,
+    ),
+    requireRecentBackupMaxAgeHours: parseNumber(
+      process.env.TECHNICIAN_ACCOUNT_REQUIRE_BACKUP_MAX_AGE_HOURS,
+      168,
+      'TECHNICIAN_ACCOUNT_REQUIRE_BACKUP_MAX_AGE_HOURS',
     ),
   },
 });

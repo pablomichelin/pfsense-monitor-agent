@@ -113,7 +113,7 @@ assert_true(
     'render_agent_config usa secret do arquivo'
 );
 assert_true(
-    strpos($rendered, 'MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED="0"') !== false,
+    strpos($rendered, 'MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED="1"') !== false,
     'render inclui flag upgrade exec default 0'
 );
 

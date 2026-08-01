@@ -20,6 +20,7 @@ import { MetricsHistoryModule } from './metrics-history/metrics-history.module';
 import { NodeCapabilitiesModule } from './node-capabilities/node-capabilities.module';
 import { PfsenseApiModule } from './pfsense-api/pfsense-api.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { TechniciansModule } from './technicians/technicians.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { PrismaModule } from './prisma/prisma.module';
     OperationalActionsModule,
     NodeCapabilitiesModule,
     PfsenseApiModule,
+    TechniciansModule,
   ],
 })
 export class AppModule {}

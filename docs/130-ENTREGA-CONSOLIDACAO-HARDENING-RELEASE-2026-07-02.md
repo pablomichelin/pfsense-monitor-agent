@@ -44,7 +44,7 @@ Resultado: **20/20** testes API amostrados OK; builds OK.
 
 - Homologação pfREST em lab com pacote `pfSense-restapi` instalado
 - Certificados TLS self-signed nos firewalls (fetch Node pode exigir CA interna — decisão infra)
-- Release publicada do package permanece `0.4.7` até `release-pfsense-package.sh`
+- Enablement gradual em staging — **checklist:** `docs/134-CHECKLIST-ENABLEMENT-POS-PLANO-117-2026-07-02.md`
 - Trilha pos-117: `docs/125-PLANO-PFREST-GERENCIAMENTO-CENTRALIZADO-2026-07-02.md`
 
 ### Próxima trilha sugerida
@@ -73,3 +73,4 @@ Resultado: **20/20** testes API amostrados OK; builds OK.
 | 129 | pfREST/aliases |
 | 130 | Consolidação (este) |
 | 131 | 10 revisões de código pós-plano |
+| 134 | Checklist enablement/homologação pós-117 |

@@ -12,8 +12,10 @@ import {
 import { isAgentVersionAtLeast } from '../common/agent-version';
 import { PackageReleaseService } from '../common/package-release.service';
 import { appConfig } from '../config/app-config';
+import { CommandOrchestratorService } from '../commands/command-orchestrator.service';
 import { NodeCommandsService } from '../node-commands/node-commands.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreatePackageUpgradeBatchDto } from './dto/package-upgrade-batch.dto';
 import { PackageUpgradeRequestDto } from './dto/package-upgrade-request.dto';
 import {
   isAgentAlreadyAtTargetVersion,
@@ -26,12 +28,22 @@ const ACTIVE_STATUSES: NodeCommandStatus[] = [
   NodeCommandStatus.running,
 ];
 
+type PackageUpgradeBatchResultItem = {
+  node_id: string;
+  hostname: string | null;
+  outcome: 'skipped' | 'enqueued' | 'failed';
+  reason: string | null;
+  command_id: string | null;
+  status: string | null;
+};
+
 @Injectable()
 export class PackageUpgradeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly nodeCommandsService: NodeCommandsService,
     private readonly packageReleaseService: PackageReleaseService,
+    private readonly orchestrator: CommandOrchestratorService,
   ) {}
 
   async getStatus(nodeId: string) {
@@ -260,6 +272,197 @@ export class PackageUpgradeService {
       target_version: payload.target_version,
       artifact_url: payload.artifact_url,
       sha256: payload.sha256,
+    };
+  }
+
+  async createUpgradeBatch(
+    userId: string,
+    dto: CreatePackageUpgradeBatchDto,
+    ipAddress?: string,
+  ) {
+    if (!appConfig.packageUpgrade.enabled) {
+      throw new ServiceUnavailableException('package upgrade is disabled');
+    }
+
+    const payload = this.resolvePayload();
+    const uniqueNodeIds = [
+      ...new Set(dto.node_ids.map((id) => id.trim()).filter((id) => id.length > 0)),
+    ];
+
+    if (uniqueNodeIds.length === 0) {
+      throw new ConflictException('node_ids must not be empty');
+    }
+
+    const nodes = await this.prisma.node.findMany({
+      where: { id: { in: uniqueNodeIds } },
+      select: {
+        id: true,
+        hostname: true,
+        agentVersion: true,
+        lastSeenAt: true,
+      },
+    });
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
+    const skipped: PackageUpgradeBatchResultItem[] = [];
+    const eligibleNodeIds: string[] = [];
+    const payloadByNode: Record<string, Record<string, unknown>> = {};
+
+    for (const nodeId of uniqueNodeIds) {
+      const node = nodeById.get(nodeId);
+      if (!node) {
+        skipped.push({
+          node_id: nodeId,
+          hostname: null,
+          outcome: 'skipped',
+          reason: 'node not found',
+          command_id: null,
+          status: null,
+        });
+        continue;
+      }
+
+      const heartbeatRecent =
+        node.lastSeenAt != null &&
+        Date.now() - node.lastSeenAt.getTime() < 5 * 60_000;
+
+      if (!heartbeatRecent) {
+        skipped.push({
+          node_id: nodeId,
+          hostname: node.hostname,
+          outcome: 'skipped',
+          reason: 'node heartbeat is not recent',
+          command_id: null,
+          status: null,
+        });
+        continue;
+      }
+
+      if (isAgentAlreadyAtTargetVersion(node.agentVersion, payload.target_version)) {
+        skipped.push({
+          node_id: nodeId,
+          hostname: node.hostname,
+          outcome: 'skipped',
+          reason: 'agent already at target version',
+          command_id: null,
+          status: null,
+        });
+        continue;
+      }
+
+      const remoteCapable = isAgentVersionAtLeast(
+        node.agentVersion,
+        appConfig.packageUpgrade.minAgentVersion,
+      );
+
+      if (!remoteCapable) {
+        skipped.push({
+          node_id: nodeId,
+          hostname: node.hostname,
+          outcome: 'skipped',
+          reason: `agent version below minimum ${appConfig.packageUpgrade.minAgentVersion}`,
+          command_id: null,
+          status: null,
+        });
+        continue;
+      }
+
+      eligibleNodeIds.push(nodeId);
+      payloadByNode[nodeId] = payload;
+    }
+
+    let batchStatus: Awaited<
+      ReturnType<CommandOrchestratorService['getBatchStatus']>
+    > | null = null;
+    const enqueueResults: PackageUpgradeBatchResultItem[] = [];
+
+    if (eligibleNodeIds.length > 0) {
+      batchStatus = await this.orchestrator.createBatch({
+        commandType: NodeCommandType.package_upgrade,
+        nodeIds: eligibleNodeIds,
+        requestedByUserId: userId,
+        label: dto.label ?? 'package_upgrade batch',
+        clientId: dto.client_id,
+        ipAddress,
+        payloadByNode,
+      });
+
+      const batchRecord = await this.prisma.jobBatch.findUnique({
+        where: { id: batchStatus.batch.batch_id },
+        select: { metadataJson: true },
+      });
+
+      const metadataResults = Array.isArray(
+        (batchRecord?.metadataJson as { results?: unknown[] } | null)?.results,
+      )
+        ? ((batchRecord?.metadataJson as { results: Array<Record<string, unknown>> })
+            .results ?? [])
+        : [];
+
+      const commandByNodeId = new Map(
+        batchStatus.nodes.map((entry) => [entry.node_id, entry]),
+      );
+
+      for (const nodeId of eligibleNodeIds) {
+        const node = nodeById.get(nodeId)!;
+        const metadataEntry = metadataResults.find(
+          (entry) => entry.node_id === nodeId,
+        );
+        const commandEntry = commandByNodeId.get(nodeId);
+
+        if (metadataEntry?.ok === false) {
+          enqueueResults.push({
+            node_id: nodeId,
+            hostname: node.hostname,
+            outcome: 'failed',
+            reason:
+              typeof metadataEntry.error === 'string'
+                ? metadataEntry.error
+                : 'enqueue failed',
+            command_id: null,
+            status: null,
+          });
+          continue;
+        }
+
+        if (commandEntry) {
+          enqueueResults.push({
+            node_id: nodeId,
+            hostname: node.hostname,
+            outcome: 'enqueued',
+            reason: null,
+            command_id: commandEntry.command_id,
+            status: commandEntry.status,
+          });
+          continue;
+        }
+
+        enqueueResults.push({
+          node_id: nodeId,
+          hostname: node.hostname,
+          outcome: 'failed',
+          reason: 'enqueue failed',
+          command_id: null,
+          status: null,
+        });
+      }
+    }
+
+    const results = [...skipped, ...enqueueResults];
+
+    return {
+      generated_at: new Date().toISOString(),
+      published_version: payload.target_version,
+      batch: batchStatus?.batch ?? null,
+      results,
+      summary: {
+        total: uniqueNodeIds.length,
+        enqueued: enqueueResults.filter((entry) => entry.outcome === 'enqueued')
+          .length,
+        skipped: skipped.length,
+        failed: enqueueResults.filter((entry) => entry.outcome === 'failed')
+          .length,
+      },
     };
   }
 }

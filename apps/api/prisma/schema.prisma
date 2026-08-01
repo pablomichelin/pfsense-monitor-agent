@@ -152,8 +152,30 @@ enum NodeCommandType {
   package_upgrade
   service_restart
   node_reboot
+  local_user_create
+  local_user_set_password
+  local_user_disable
+  local_user_delete
 
   @@map("node_command_type")
+}
+
+enum TechnicianStatus {
+  active
+  revoked
+
+  @@map("technician_status")
+}
+
+enum TechnicianNodeAccountStatus {
+  pending_create
+  active
+  password_reset_pending
+  disabled
+  removed
+  failed
+
+  @@map("technician_node_account_status")
 }
 
 enum NodeCommandStatus {
@@ -392,6 +414,7 @@ model Node {
   schemaVersion   String?             @map("schema_version")
   customerCode    String?             @map("customer_code")
   networkInterfacesJson Json?         @map("network_interfaces_json")
+  localUsersSnapshotJson Json?       @map("local_users_snapshot_json")
   status          NodeStatus          @default(unknown)
   maintenanceMode Boolean             @default(false) @map("maintenance_mode")
   criticality     NodeCriticality     @default(standard)
@@ -422,6 +445,7 @@ model Node {
   capability          NodeCapability?
   externalCredentials NodeExternalCredential[]
   credentialEvents    NodeCredentialEvent[]
+  technicianAccounts  TechnicianNodeAccount[]
 
   @@index([siteId, status])
   @@index([criticality])
@@ -942,6 +966,45 @@ model SystemJobLock {
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("system_job_locks")
+}
+
+model Technician {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fullName        String           @map("full_name")
+  loginUsername   String           @unique @map("login_username")
+  status          TechnicianStatus @default(active)
+  notes           String?
+  createdByUserId String?          @map("created_by_user_id") @db.Uuid
+  revokedByUserId String?          @map("revoked_by_user_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  revokedAt       DateTime?        @map("revoked_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  nodeAccounts TechnicianNodeAccount[]
+
+  @@map("technicians")
+}
+
+model TechnicianNodeAccount {
+  id               String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  technicianId     String                      @map("technician_id") @db.Uuid
+  nodeId           String                      @map("node_id") @db.Uuid
+  pfsenseUsername  String                      @map("pfsense_username")
+  privilegeProfile String                      @default("admin_full") @map("privilege_profile")
+  status           TechnicianNodeAccountStatus @default(pending_create)
+  lastCommandId    String?                     @map("last_command_id") @db.Uuid
+  lastSyncedAt     DateTime?                   @map("last_synced_at") @db.Timestamptz(6)
+  lastError        String?                     @map("last_error")
+  createdAt        DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  technician Technician @relation(fields: [technicianId], references: [id])
+  node       Node       @relation(fields: [nodeId], references: [id])
+
+  @@unique([technicianId, nodeId])
+  @@index([nodeId])
+  @@index([status])
+  @@map("technician_node_accounts")
 }
 
 // Fase 4 plano 117: politica MFA persistida (env permanece override break-glass).

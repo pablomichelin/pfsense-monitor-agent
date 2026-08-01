@@ -123,22 +123,38 @@ Doc: [`docs/COMANDO-ATUALIZAR-PACKAGE-PFSENSE.md`](../COMANDO-ATUALIZAR-PACKAGE-
 
 **Resolução:** retentar update após release **0.3.10** no controlador, ou workaround SSH em `docs/99-HOTFIX-UPGRADE-0.3.5-NODE-SECRET.md` (sync com `opcache.enable_cli=0`).
 
+### Troubleshooting — agente online mas menu **Services → SystemUp Monitor** ausente
+
+**Sintoma:** heartbeat OK no controlador, `monitor_pfsense_agent` rodando, mas **SystemUp Monitor** não aparece em **Services** (comum após bootstrap em background com `nohup`).
+
+**Causa:** `install_package_xml('systemup-monitor')` não persistiu no `config.xml`; releases **≤ 0.4.10** não tinham retry automático no `install.sh`.
+
+**Resolução imediata (shell do pfSense, root):**
+
+```sh
+/usr/local/bin/php -d opcache.enable_cli=0 -r 'require_once("/etc/inc/config.inc");require_once("/etc/inc/globals.inc");require_once("/etc/inc/pkg-utils.inc");require_once("/usr/local/pkg/systemup_monitor.inc");install_package_xml("systemup-monitor");systemup_monitor_register_service();systemup_monitor_persist_package_config("SystemUp Monitor GUI registration repair");'
+```
+
+Package **≥ 0.4.11** também expõe `systemup_monitor_cli.php register-gui` e `bootstrap/repair-gui-registration.sh`.
+
+Release **0.4.12** corrige race menu + retry bootstrap incompleto (doc [`138-CORRECAO-MENU-GUI-RACE-0.4.12-2026-07-03.md`](../138-CORRECAO-MENU-GUI-RACE-0.4.12-2026-07-03.md)).
+
 ---
 
 ## 7. Upgrade pfSense OS (remoto)
 
 - Painel: aba Visão geral → **Atualizar pfSense** (RBAC `pfsense.upgrade.run`).
 - API flag: `PFSENSE_UPGRADE_ENABLED=true` no controlador.
-- Agente flag: `MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED=0` (default até lab CE).
+- Agente: `MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED=1` (default desde package **0.4.17**).
 
-**Fluxo operacional atual:**
+**Fluxo operacional (remoto completo):**
 
-> Base entregue na trilha `0.3.8` e ainda valida na release `0.4.7`.
+1. Operador confirma no painel pfs-monitor (hostname / CONFIRMAR) — substitui o Confirm da GUI pfSense.
+2. Comando enfileirado → ack `running`.
+3. Agente executa `pfSense-upgrade -u` e `ASSUME_ALWAYS_YES=yes pfSense-upgrade -d -y` (reboot automático).
+4. Pós-reboot: agente finaliza quando `pfsense_version` == alvo (`finalize_pfsense_upgrade_if_pending`).
 
-1. Comando enfileirado → ack `running`
-2. Agente executa `pfSense-upgrade -d` (prepara repositórios)
-3. Operador confirma manualmente em **System → Update → Confirm**
-4. Pós-reboot: agente finaliza via `/conf/upgrade_log.latest.txt`
+Opt-out legado: `MONITOR_AGENT_PFSENSE_UPGRADE_EXEC_ENABLED=0` no agente deixa só refresh de repos + confirmação manual na GUI.
 
 Spike / lab: [`docs/97-SPIKE-PFSENSE-UPGRADE-CE.md`](../97-SPIKE-PFSENSE-UPGRADE-CE.md)
 

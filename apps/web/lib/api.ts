@@ -833,8 +833,7 @@ async function apiFetch<T>(path: string, options?: ApiFetchOptions): Promise<T> 
   const method = options?.method ?? 'GET';
   const hasBody =
     options?.body !== undefined &&
-    options?.body !== null &&
-    method !== 'DELETE';
+    options?.body !== null;
   const bodyPayload = hasBody
     ? JSON.stringify(options.body)
     : method === 'POST'
@@ -2108,13 +2107,24 @@ export type CommandBatchResponse = {
     command_type: string;
     status: string;
     label: string | null;
+    requested_at?: string;
+    completed_at?: string | null;
     total_count: number;
+    succeeded_count?: number;
+    failed_count?: number;
+    cancelled_count?: number;
+    expired_count?: number;
   };
   nodes: Array<{
     node_id: string;
     command_id: string;
     status: string;
     error_message: string | null;
+    progress?: {
+      phase: string;
+      is_active: boolean;
+      is_terminal: boolean;
+    };
   }>;
 };
 
@@ -2128,6 +2138,46 @@ export async function createBackupBatch(input: {
     body: input,
     csrfProtected: true,
   });
+}
+
+export type PackageUpgradeBatchResultItem = {
+  node_id: string;
+  hostname: string | null;
+  outcome: 'skipped' | 'enqueued' | 'failed';
+  reason: string | null;
+  command_id: string | null;
+  status: string | null;
+};
+
+export type PackageUpgradeBatchResponse = {
+  generated_at: string;
+  published_version: string;
+  batch: CommandBatchResponse['batch'] | null;
+  results: PackageUpgradeBatchResultItem[];
+  summary: {
+    total: number;
+    enqueued: number;
+    skipped: number;
+    failed: number;
+  };
+};
+
+export async function createPackageUpgradeBatch(input: {
+  node_ids: string[];
+  label?: string;
+  client_id?: string;
+}): Promise<PackageUpgradeBatchResponse> {
+  return apiFetch('/api/v1/package-upgrade/batch', {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function getCommandBatchStatus(
+  batchId: string,
+): Promise<CommandBatchResponse> {
+  return apiFetch(`/api/v1/command-batches/${batchId}`);
 }
 
 export type NodeCapabilitiesResponse = {
@@ -2248,6 +2298,235 @@ export async function updateMfaPolicy(input: {
 }): Promise<import('@/lib/mfa-policy').MfaPolicyResponse> {
   return apiFetch('/api/v1/security/mfa-policy', {
     method: 'PATCH',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export type TechnicianListItem = {
+  id: string;
+  full_name: string;
+  login_username: string;
+  status: string;
+  notes: string | null;
+  node_account_count: number;
+  created_at: string;
+  revoked_at: string | null;
+};
+
+export type TechniciansListResponse = {
+  generated_at: string;
+  items: TechnicianListItem[];
+};
+
+export type TechnicianBatchRevokeResultItem = {
+  node_id: string;
+  hostname: string | null;
+  outcome: 'skipped' | 'enqueued' | 'failed';
+  reason: string | null;
+  command_id: string | null;
+  status: string | null;
+};
+
+export type TechnicianBatchRevokeResponse = {
+  generated_at: string;
+  batch: CommandBatchResponse['batch'] | null;
+  technician: {
+    id: string;
+    login_username: string;
+    full_name: string;
+  };
+  action: 'disable' | 'delete';
+  results: TechnicianBatchRevokeResultItem[];
+  summary: {
+    total: number;
+    enqueued: number;
+    skipped: number;
+    failed: number;
+  };
+};
+
+export type TechnicianFleetRevokeResponse = TechnicianBatchRevokeResponse & {
+  batches?: Array<NonNullable<TechnicianBatchRevokeResponse['batch']>>;
+  summary: TechnicianBatchRevokeResponse['summary'] & {
+    total_scanned?: number;
+    eligible?: number;
+    batch_count?: number;
+  };
+};
+
+export async function getTechnicians(
+  status?: 'active' | 'revoked',
+): Promise<TechniciansListResponse> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  return apiFetch(`/api/v1/technicians${query}`);
+}
+
+export type TechnicianNodeAccountDetail = {
+  id: string;
+  node_id: string;
+  hostname: string;
+  display_name: string | null;
+  pfsense_username: string;
+  privilege_profile: string;
+  status: string;
+  last_synced_at: string | null;
+  last_error: string | null;
+};
+
+export type TechnicianDetailResponse = {
+  generated_at: string;
+  technician: {
+    id: string;
+    full_name: string;
+    login_username: string;
+    status: string;
+    notes: string | null;
+    created_at: string;
+    revoked_at: string | null;
+    node_accounts: TechnicianNodeAccountDetail[];
+  };
+};
+
+export async function getTechnician(id: string): Promise<TechnicianDetailResponse> {
+  return apiFetch(`/api/v1/technicians/${encodeURIComponent(id)}`);
+}
+
+export type NodeTechnicianAccountItem = {
+  id: string;
+  technician_id: string;
+  technician_full_name: string;
+  technician_login_username: string;
+  technician_status: string;
+  pfsense_username: string;
+  privilege_profile: string;
+  status: string;
+  last_synced_at: string | null;
+  last_error: string | null;
+};
+
+export type NodeTechnicianAccountsResponse = {
+  generated_at: string;
+  node_id: string;
+  hostname: string;
+  items: NodeTechnicianAccountItem[];
+};
+
+export async function getNodeTechnicianAccounts(
+  nodeId: string,
+): Promise<NodeTechnicianAccountsResponse> {
+  return apiFetch(`/api/v1/nodes/${encodeURIComponent(nodeId)}/technician-accounts`);
+}
+
+export async function createTechnicianBatchRevoke(input: {
+  technician_id: string;
+  node_ids: string[];
+  action: 'disable' | 'delete';
+  confirm: 'CONFIRMAR';
+  label?: string;
+  client_id?: string;
+}): Promise<TechnicianBatchRevokeResponse> {
+  return apiFetch('/api/v1/technician-accounts/batch-revoke', {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export type TechnicianBatchActionResponse = {
+  generated_at: string;
+  batch: CommandBatchResponse['batch'] | null;
+  technician: {
+    id: string;
+    login_username: string;
+    full_name: string;
+  };
+  results: TechnicianBatchRevokeResultItem[];
+  password_display_once?: string;
+  summary: {
+    total: number;
+    enqueued: number;
+    skipped: number;
+    failed: number;
+  };
+};
+
+export async function createTechnicianBatchProvision(input: {
+  technician_id: string;
+  node_ids: string[];
+  password?: string;
+  privilege_profile?: 'admin_full';
+  label?: string;
+  client_id?: string;
+  confirm: 'CONFIRMAR';
+}): Promise<TechnicianBatchActionResponse> {
+  return apiFetch('/api/v1/technician-accounts/batch-provision', {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function createTechnicianBatchPasswordReset(input: {
+  technician_id: string;
+  node_ids: string[];
+  password?: string;
+  label?: string;
+  client_id?: string;
+  confirm: 'CONFIRMAR';
+}): Promise<TechnicianBatchActionResponse> {
+  return apiFetch('/api/v1/technician-accounts/batch-password-reset', {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function createTechnician(input: {
+  full_name: string;
+  login_username: string;
+  notes?: string;
+}): Promise<{
+  id: string;
+  full_name: string;
+  login_username: string;
+  status: string;
+}> {
+  return apiFetch('/api/v1/technicians', {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function deleteTechnicianFromRegistry(
+  technicianId: string,
+  confirmLoginUsername: string,
+): Promise<{
+  id: string;
+  full_name: string;
+  login_username: string;
+  status: string;
+  revoked_at: string | null;
+}> {
+  return apiFetch(`/api/v1/technicians/${encodeURIComponent(technicianId)}`, {
+    method: 'DELETE',
+    body: { confirm_login_username: confirmLoginUsername },
+    csrfProtected: true,
+  });
+}
+
+export async function createTechnicianFleetRevoke(
+  technicianId: string,
+  input: {
+    action: 'disable' | 'delete';
+    confirm: 'CONFIRMAR';
+    label?: string;
+    client_id?: string;
+  },
+): Promise<TechnicianFleetRevokeResponse> {
+  return apiFetch(`/api/v1/technicians/${encodeURIComponent(technicianId)}/revoke-fleet`, {
+    method: 'POST',
     body: input,
     csrfProtected: true,
   });

@@ -25,6 +25,7 @@ const ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/admin\/notificacoes(?:\/|$)/, requirement: { permissions: ['notifications.view'] } },
   { pattern: /^\/admin\/mfa-politica(?:\/|$)/, requirement: { permissions: ['security.mfa_policy.view'] } },
   { pattern: /^\/admin\/grupos(?:\/|$)/, requirement: { anyPermissions: ['tags.view', 'groups.view'] } },
+  { pattern: /^\/admin\/tecnicos(?:\/|$)/, requirement: { permissions: ['technicians.view'] } },
   { pattern: /^\/admin\/clientes(?:\/|$)/, requirement: { permissions: ['clients.view'] } },
   { pattern: /^\/admin\/clientes-sites(?:\/|$)/, requirement: { permissions: ['clients.view'] } },
   {
@@ -151,6 +152,9 @@ export function buildNavGroups(
       : []),
     ...(permissions.includes('tags.view') || permissions.includes('groups.view')
       ? [{ href: '/admin/grupos', label: 'Grupos e tags' }]
+      : []),
+    ...(permissions.includes('technicians.view')
+      ? [{ href: '/admin/tecnicos', label: 'Técnicos' }]
       : []),
     ...(permissions.includes('audit.view')
       ? [{ href: '/audit', label: 'Auditoria' }]

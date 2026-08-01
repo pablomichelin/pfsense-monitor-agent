@@ -26,6 +26,7 @@ Firewalls com agente **&lt; 0.4.6** não possuem o handler `package_upgrade`. Pa
 |--------|----------|-----------|
 | GET | `/api/v1/nodes/:id/package-upgrade/status` | `firewalls.view` |
 | POST | `/api/v1/nodes/:id/package-upgrade/request` | `package.upgrade.run` |
+| POST | `/api/v1/package-upgrade/batch` | `package.upgrade.run` |
 
 Body opcional do POST:
 
@@ -42,6 +43,8 @@ Se omitido, usa `config/package-release.env` / endpoint `GET /api/v1/agent/packa
 ## Painel
 
 Na página do firewall → aba **Visão geral** → card **Atualização do package SystemUp Monitor** → botão **Atualizar package remotamente** (requer `package.upgrade.run` e agente ≥ 0.4.6).
+
+**Em lote:** página **Inventário** (`/nodes`) → selecione firewalls com checkbox → **Atualizar package em lote** (mesma permissão). Doc: `docs/133-ENTREGA-BATCH-UPGRADE-PACKAGE-2026-07-02.md`.
 
 ## Variáveis de ambiente (API)
 

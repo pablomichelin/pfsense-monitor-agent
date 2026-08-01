@@ -2,9 +2,17 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-07-08):** API `0.7.0` · painel `1.5.3` · package pfSense `0.4.18`.
+> **Versoes atuais (2026-07-31):** API `0.10.0` · painel `1.10.0` · package pfSense `0.5.4`.
 >
-> **Ultima entrega (2026-07-08):** correção XML mal formado do package (GUI "Package / Editor" vazia + menu GUI) — package `0.4.18`. Ver `docs/143-CORRECAO-XML-MALFORMADO-GUI-0.4.18-2026-07-08.md`.
+> **Ultima entrega (2026-07-31):** validacao E2E real de create/set_password/delete contra pfSense de producao — achado e corrigido 2o bug critico independente (`local_user_set_password()` exigia wrapper de item; usuario "criado" ficava sem login funcional). Package **0.5.4**. Ver `docs/155-VALIDACAO-E2E-LOCAL-USER-CREATE-PFSENSE-254-2026-07-31.md`.
+>
+> **Entrega anterior (2026-07-31):** pagina `/admin/tecnicos` (Fase 3 plano 144) + gate de backup recente antes de escrita em usuarios locais. Ver `docs/154-ENTREGA-ADMIN-TECNICOS-GATE-BACKUP-2026-07-31.md`.
+>
+> **Entrega anterior (2026-07-31):** auditoria de codigo da gestao de tecnicos — corrigido vazamento de senha em texto claro no historico de comandos e `local_user_create` sem atribuir `uid`. Ver `docs/153-AUDITORIA-CORRECOES-GESTAO-TECNICOS-2026-07-31.md`.
+>
+> **Entrega anterior (2026-07-31):** senha gerada visivel + exclusao cadastro central tecnicos. Ver `docs/152-ENTREGA-SENHA-GERADA-EXCLUSAO-CADASTRO-TECNICOS-2026-07-31.md`.
+>
+> **Plano em andamento:** rollout package **0.5.4** na frota (validacao E2E de create/set_password concluida contra pfSense real). Ver `docs/144-...md`, `docs/155-...md`.
 >
 > **Entrega anterior (2026-07-04):** correção versão reportada no heartbeat após lote (`SYSTEMUP_MONITOR_AGENT_VERSION` alinhado) — package `0.4.15`. Ver `docs/141-CORRECAO-AGENT-VERSION-0.4.15-2026-07-04.md`.
 >

@@ -1185,6 +1185,17 @@ build_services_json() {
   printf ']'
 }
 
+build_local_users_json() {
+  helper="$SCRIPT_DIR/collect_local_users.php"
+  config_path="$(pfsense_config_path)"
+  if [ ! -f "$helper" ] || ! command_exists php; then
+    printf '[]'
+    return 0
+  fi
+  PFSENSE_CONFIG_XML="$config_path" \
+    php -f "$helper" 2>/dev/null || printf '[]'
+}
+
 build_gateways_json() {
   helper="$SCRIPT_DIR/collect_gateways.php"
   if [ ! -f "$helper" ] || ! command_exists php; then
@@ -2142,6 +2153,11 @@ build_payload() {
     fi
   fi
 
+  local_users_json=""
+  if [ "$light" != "1" ] && [ "$light" != "true" ] && [ "$light" != "yes" ]; then
+    local_users_json="$(build_local_users_json 2>/dev/null)" || local_users_json="[]"
+  fi
+
   if [ -n "${MONITOR_AGENT_NOTICES:-}" ]; then
     notices_json="$(json_string_array "$MONITOR_AGENT_NOTICES")"
   else
@@ -2158,6 +2174,11 @@ build_payload() {
     if [ -n "$capabilities_json" ]; then
       cap_field=$(printf ',
   "capabilities": %s' "$capabilities_json")
+    fi
+    local_users_field=""
+    if [ -n "$local_users_json" ]; then
+      local_users_field=$(printf ',
+  "local_users": %s' "$local_users_json")
     fi
     cat <<EOF
 {
@@ -2178,7 +2199,7 @@ build_payload() {
   "gateways": $gateways_json,
   "services": $services_json,
   "interfaces": ${interfaces_json:-[]},
-  "notices": $notices_json$update_fields$config_backup_fields$cert_field$cap_field
+  "notices": $notices_json$update_fields$config_backup_fields$cert_field$cap_field$local_users_field
 }
 EOF
   else
@@ -2191,6 +2212,11 @@ EOF
     if [ -n "$capabilities_json" ]; then
       cap_field=$(printf ',
   "capabilities": %s' "$capabilities_json")
+    fi
+    local_users_field=""
+    if [ -n "$local_users_json" ]; then
+      local_users_field=$(printf ',
+  "local_users": %s' "$local_users_json")
     fi
     cat <<EOF
 {
@@ -2209,7 +2235,7 @@ EOF
   "memory_percent": $(json_nullable_number "$memory_percent"),
   "disk_percent": $(json_nullable_number "$disk_percent"),
   "interfaces": ${interfaces_json:-[]},
-  "notices": $notices_json$update_fields$config_backup_fields$cert_field$cap_field
+  "notices": $notices_json$update_fields$config_backup_fields$cert_field$cap_field$local_users_field
 }
 EOF
   fi
@@ -3119,6 +3145,14 @@ node_reboot_enabled() {
   esac
 }
 
+technician_accounts_enabled() {
+  flag="${MONITOR_AGENT_TECHNICIAN_ACCOUNTS_ENABLED:-0}"
+  case "$flag" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 service_restart_allowlist() {
   printf '%s' "monitor_pfsense_agent unbound dhcpd ntpd dpinger"
 }
@@ -3296,6 +3330,122 @@ dispatch_node_reboot() {
   return 0
 }
 
+dispatch_local_user_action() {
+  action="$1"
+  command_id="$2"
+  payload_file="$3"
+  CURL_CMD="$4"
+
+  cleanup_payload() {
+    rm -f "$payload_file" 2>/dev/null || true
+  }
+  trap cleanup_payload EXIT INT TERM
+
+  if ! technician_accounts_enabled; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "technician accounts disabled on agent" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if ! operational_action_acquire_lock "local_user_${action}"; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "another operational action is running" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  agent_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
+  agent_post_command_ack "$command_id" "running" "$CURL_CMD" >/dev/null 2>&1 || true
+
+  helper="$SCRIPT_DIR/manage_local_user.php"
+  if [ ! -f "$helper" ]; then
+    operational_action_release_lock
+    agent_post_command_result_failed \
+      "$command_id" \
+      "manage_local_user.php missing" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if [ -z "$payload_file" ] || [ ! -r "$payload_file" ]; then
+    fallback_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
+    if [ -r "$fallback_payload" ]; then
+      payload_file="$fallback_payload"
+    else
+      operational_action_release_lock
+      agent_post_command_result_failed \
+        "$command_id" \
+        "local user payload file missing" \
+        "$CURL_CMD" >/dev/null 2>&1 || true
+      return 1
+    fi
+  fi
+
+  php_bin="php"
+  if [ -x /usr/local/bin/php ]; then
+    php_bin="/usr/local/bin/php"
+  elif ! command_exists php; then
+    operational_action_release_lock
+    agent_post_command_result_failed \
+      "$command_id" \
+      "php interpreter not found" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  stderr_file="$(mktemp)"
+  result_json=""
+  php_exit=0
+  result_json="$("$php_bin" -f "$helper" "$action" "$payload_file" 2>"$stderr_file")" || php_exit=$?
+
+  operational_action_release_lock
+
+  if [ -n "$result_json" ]; then
+    ok_flag="$(printf '%s' "$result_json" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN), true); echo is_array($d) && !empty($d["ok"]) ? "1" : "0";' 2>/dev/null || echo 0)"
+    if [ "$ok_flag" = "1" ]; then
+      rm -f "$stderr_file" 2>/dev/null || true
+      agent_post_command_result_succeeded "$command_id" "$result_json" "$CURL_CMD" >/dev/null 2>&1 || true
+      return 0
+    fi
+    err_msg="$(printf '%s' "$result_json" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN), true); echo is_array($d) ? (string)($d["message"] ?? "failed") : "failed";' 2>/dev/null || echo failed)"
+    rm -f "$stderr_file" 2>/dev/null || true
+    agent_post_command_result_failed "$command_id" "$err_msg" "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  err_detail="local user action failed"
+  if [ -s "$stderr_file" ]; then
+    err_detail="$(head -n 1 "$stderr_file" | tr '\r\n' ' ' | cut -c1-200)"
+  elif [ "$php_exit" -ne 0 ]; then
+    err_detail="local user php exited with status ${php_exit}"
+  fi
+  rm -f "$stderr_file" 2>/dev/null || true
+  agent_post_command_result_failed \
+    "$command_id" \
+    "$err_detail" \
+    "$CURL_CMD" >/dev/null 2>&1 || true
+  return 1
+}
+
+dispatch_local_user_disable() {
+  dispatch_local_user_action "disable" "$1" "$2" "$3"
+}
+
+dispatch_local_user_delete() {
+  dispatch_local_user_action "delete" "$1" "$2" "$3"
+}
+
+dispatch_local_user_create() {
+  dispatch_local_user_action "create" "$1" "$2" "$3"
+}
+
+dispatch_local_user_set_password() {
+  dispatch_local_user_action "set_password" "$1" "$2" "$3"
+}
+
 process_heartbeat_commands() {
   response_file="$1"
   CURL_CMD="$2"
@@ -3304,11 +3454,17 @@ process_heartbeat_commands() {
   [ -f "$response_file" ] || return 0
 
   dispatch_file="$(mktemp)"
+  payload_state_dir="$(backup_state_dir)"
 
   php -r '
-    $payload = json_decode(file_get_contents($argv[1]), true);
+    $responseFile = $argv[1];
+    $payloadDir = $argv[2];
+    $payload = json_decode(file_get_contents($responseFile), true);
     if (!is_array($payload["commands"] ?? null)) {
       exit(0);
+    }
+    if (!is_dir($payloadDir)) {
+      @mkdir($payloadDir, 0750, true);
     }
     foreach ($payload["commands"] as $command) {
       $type = trim((string) ($command["type"] ?? ""));
@@ -3316,22 +3472,43 @@ process_heartbeat_commands() {
       if ($id === "" || $type === "") {
         continue;
       }
-      $payload = $command["payload"] ?? null;
+      $payloadPath = "";
+      if (strncmp($type, "local_user_", 11) === 0) {
+        $cmdPayload = $command["payload"] ?? null;
+        if (!is_array($cmdPayload)) {
+          continue;
+        }
+        $payloadPath = rtrim($payloadDir, "/") . "/cmd-payload-" . $id . ".json";
+        $encoded = json_encode($cmdPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($encoded === false) {
+          continue;
+        }
+        $prevUmask = umask(0077);
+        $written = @file_put_contents($payloadPath, $encoded . "\n", LOCK_EX);
+        umask($prevUmask);
+        if ($written === false) {
+          continue;
+        }
+        @chmod($payloadPath, 0600);
+        echo $type . "\t" . $id . "\t\t\t\t\t\t" . $payloadPath . "\n";
+        continue;
+      }
+      $cmdPayload = $command["payload"] ?? null;
       $target = "";
       $artifactUrl = "";
       $sha256 = "";
       $service = "";
       $delaySeconds = "";
-      if (is_array($payload)) {
-        $target = trim((string) ($payload["target_version"] ?? ""));
-        $artifactUrl = trim((string) ($payload["artifact_url"] ?? ""));
-        $sha256 = trim((string) ($payload["sha256"] ?? ""));
-        $service = trim((string) ($payload["service"] ?? ""));
-        $delaySeconds = trim((string) ($payload["delay_seconds"] ?? ""));
+      if (is_array($cmdPayload)) {
+        $target = trim((string) ($cmdPayload["target_version"] ?? ""));
+        $artifactUrl = trim((string) ($cmdPayload["artifact_url"] ?? ""));
+        $sha256 = trim((string) ($cmdPayload["sha256"] ?? ""));
+        $service = trim((string) ($cmdPayload["service"] ?? ""));
+        $delaySeconds = trim((string) ($cmdPayload["delay_seconds"] ?? ""));
       }
-      echo $type . "\t" . $id . "\t" . $target . "\t" . $artifactUrl . "\t" . $sha256 . "\t" . $service . "\t" . $delaySeconds . "\n";
+      echo $type . "\t" . $id . "\t" . $target . "\t" . $artifactUrl . "\t" . $sha256 . "\t" . $service . "\t" . $delaySeconds . "\t\n";
     }
-  ' "$response_file" >"$dispatch_file" 2>/dev/null || {
+  ' "$response_file" "$payload_state_dir" >"$dispatch_file" 2>/dev/null || {
     rm -f "$dispatch_file"
     return 0
   }
@@ -3341,7 +3518,7 @@ process_heartbeat_commands() {
     return 0
   fi
 
-  while IFS="$(printf '\t')" read -r command_type command_id target_version artifact_url sha256 service_name delay_seconds; do
+  while IFS="$(printf '\t')" read -r command_type command_id target_version artifact_url sha256 service_name delay_seconds payload_path; do
     [ -z "$command_id" ] && continue
     case "$command_type" in
       config_backup_now)
@@ -3360,6 +3537,34 @@ process_heartbeat_commands() {
         ;;
       node_reboot)
         dispatch_node_reboot "$command_id" "$delay_seconds" "$CURL_CMD" >>/dev/null 2>&1 || true
+        ;;
+      local_user_disable)
+        resolved_payload="$payload_path"
+        if [ -z "$resolved_payload" ]; then
+          resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
+        fi
+        dispatch_local_user_disable "$command_id" "$resolved_payload" "$CURL_CMD" >>/dev/null 2>&1 || true
+        ;;
+      local_user_delete)
+        resolved_payload="$payload_path"
+        if [ -z "$resolved_payload" ]; then
+          resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
+        fi
+        dispatch_local_user_delete "$command_id" "$resolved_payload" "$CURL_CMD" >>/dev/null 2>&1 || true
+        ;;
+      local_user_create)
+        resolved_payload="$payload_path"
+        if [ -z "$resolved_payload" ]; then
+          resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
+        fi
+        dispatch_local_user_create "$command_id" "$resolved_payload" "$CURL_CMD" >>/dev/null 2>&1 || true
+        ;;
+      local_user_set_password)
+        resolved_payload="$payload_path"
+        if [ -z "$resolved_payload" ]; then
+          resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
+        fi
+        dispatch_local_user_set_password "$command_id" "$resolved_payload" "$CURL_CMD" >>/dev/null 2>&1 || true
         ;;
       *)
         agent_post_command_result_failed \

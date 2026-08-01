@@ -78,6 +78,13 @@ export class AccessPolicyService {
       return;
     }
 
+    // C4: usuarios com escopo por cliente (admin escopado etc.) nunca criam cliente top-level,
+    // mesmo que tenham inventory.global na matriz de permissoes.
+    const allowedClientIds = await this.getAllowedClientIds(actor);
+    if (allowedClientIds !== null) {
+      throw new ForbiddenException('creating clients requires global inventory scope');
+    }
+
     if (await this.permissionsService.hasPermission(actor.role, 'inventory.global')) {
       return;
     }

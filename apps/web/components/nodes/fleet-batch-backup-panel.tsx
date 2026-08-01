@@ -8,11 +8,19 @@ import { Card } from '@/components/ui/card';
 
 type Props = {
   nodeIds: string[];
+  mode?: 'selection' | 'filter';
+  totalVisibleCount?: number;
   clientId?: string;
   label?: string;
 };
 
-export function FleetBatchBackupPanel({ nodeIds, clientId, label }: Props) {
+export function FleetBatchBackupPanel({
+  nodeIds,
+  mode = 'filter',
+  totalVisibleCount,
+  clientId,
+  label,
+}: Props) {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -22,13 +30,26 @@ export function FleetBatchBackupPanel({ nodeIds, clientId, label }: Props) {
     return null;
   }
 
+  const usingSelection = mode === 'selection';
+  const targetLabel = usingSelection
+    ? `${nodeIds.length} firewall(s) selecionado(s)`
+    : `${nodeIds.length} firewall(s) visíveis neste filtro`;
+
   return (
     <Card className="space-y-3 p-4">
       <div>
         <h3 className="font-display text-base text-white">Backup em lote</h3>
         <p className="mt-1 text-sm text-slate-400">
-          Enfileira <code className="text-slate-300">config_backup_now</code> para{' '}
-          {nodeIds.length} firewall(s) visíveis neste filtro.
+          Enfileira <code className="text-slate-300">config_backup_now</code> para {targetLabel}
+          {usingSelection &&
+          totalVisibleCount != null &&
+          totalVisibleCount !== nodeIds.length ? (
+            <>
+              {' '}
+              (de {totalVisibleCount} no filtro atual)
+            </>
+          ) : null}
+          .
         </p>
       </div>
 
@@ -42,8 +63,9 @@ export function FleetBatchBackupPanel({ nodeIds, clientId, label }: Props) {
       ) : (
         <div className="space-y-3">
           <p className="text-sm text-slate-300">
-            Confirma backup imediato para {nodeIds.length} node(s)? Firewalls offline ou com
-            agente antigo podem falhar parcialmente.
+            Confirma backup imediato para {nodeIds.length} firewall(s)
+            {usingSelection ? ' selecionado(s)' : ' visíveis neste filtro'}? Firewalls offline ou
+            com agente antigo podem falhar parcialmente.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button

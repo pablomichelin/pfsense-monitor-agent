@@ -73,6 +73,76 @@ function getActiveCommandLabel(
   }
 }
 
+function getLastResultAlert(
+  status: PfsenseUpgradeStatusResponse,
+): { variant: 'success' | 'warning' | 'error'; text: string } | null {
+  const last = status.last_result;
+  if (!last) {
+    return null;
+  }
+
+  if (last.status === 'failed') {
+    return {
+      variant: 'error',
+      text: `Último upgrade falhou: ${last.error_message ?? 'erro desconhecido'}`,
+    };
+  }
+
+  if (last.status !== 'succeeded') {
+    return null;
+  }
+
+  const resultJson =
+    last.result_json && typeof last.result_json === 'object' && !Array.isArray(last.result_json)
+      ? (last.result_json as Record<string, unknown>)
+      : null;
+  const finalizeStatus =
+    typeof resultJson?.finalize_status === 'string' ? resultJson.finalize_status : null;
+  const newVersion =
+    typeof resultJson?.new_version === 'string' ? resultJson.new_version : null;
+  const resultTarget =
+    typeof resultJson?.target_version === 'string'
+      ? resultJson.target_version
+      : status.target_version;
+
+  if (
+    finalizeStatus === 'prepared_manual_confirm' ||
+    finalizeStatus === 'executing' ||
+    finalizeStatus === 'rebooting' ||
+    (status.last_result?.status === 'succeeded' &&
+      status.update_available === true &&
+      resultTarget != null &&
+      newVersion != null &&
+      newVersion !== resultTarget)
+  ) {
+    if (finalizeStatus === 'executing' || finalizeStatus === 'rebooting') {
+      return {
+        variant: 'warning',
+        text: 'Upgrade em execução no pfSense — aguarde o reboot (~15–90 min). O status será atualizado após o firewall voltar online.',
+      };
+    }
+    if (finalizeStatus === 'prepared_manual_confirm') {
+      return {
+        variant: 'warning',
+        text: `Execução remota desabilitada no agente. Confirme em System → Update no pfSense para aplicar ${resultTarget ?? 'a versão alvo'}.`,
+      };
+    }
+    return {
+      variant: 'warning',
+      text: `Comando encerrado no controlador, mas a versão instalada ainda não mudou. Aguarde o reboot ou verifique System → Update no pfSense.`,
+    };
+  }
+
+  if (status.update_available === true) {
+    return null;
+  }
+
+  return {
+    variant: 'success',
+    text: 'Último upgrade concluído com sucesso.',
+  };
+}
+
 export function NodePfsenseUpgradeSection({
   nodeId,
   nodeEffectiveStatus,
@@ -190,6 +260,7 @@ export function NodePfsenseUpgradeSection({
   };
 
   const activeLabel = getActiveCommandLabel(status, nodeEffectiveStatus);
+  const lastResultAlert = getLastResultAlert(status);
 
   return (
     <Card className="mt-6">
@@ -197,9 +268,9 @@ export function NodePfsenseUpgradeSection({
         <div>
           <h3 className="font-display text-base text-slate-100">Atualização pfSense OS</h3>
           <p className="mt-1 text-sm text-slate-400">
-            Detecta novas versões via agente e permite upgrade individual (reboot ~15–90 min).
-            Com execução semi-manual no pfSense (padrão), o agente prepara o upgrade e o operador
-            confirma/reinicia no firewall — ver guia do package.
+            Detecta novas versões via agente e aplica upgrade remoto completo (reboot automático
+            ~15–90 min). A confirmação neste painel substitui o passo manual em System → Update no
+            pfSense.
           </p>
         </div>
 
@@ -229,14 +300,8 @@ export function NodePfsenseUpgradeSection({
           </Alert>
         ) : null}
 
-        {status.last_result?.status === 'failed' ? (
-          <Alert variant="error">
-            Último upgrade falhou: {status.last_result.error_message ?? 'erro desconhecido'}
-          </Alert>
-        ) : null}
-
-        {status.last_result?.status === 'succeeded' ? (
-          <Alert variant="success">Último upgrade concluído com sucesso.</Alert>
+        {lastResultAlert ? (
+          <Alert variant={lastResultAlert.variant}>{lastResultAlert.text}</Alert>
         ) : null}
 
         {blockReason && !showUpgradeButton ? (

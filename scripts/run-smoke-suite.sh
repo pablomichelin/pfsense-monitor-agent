@@ -21,6 +21,7 @@ DEFAULT_SUITE=(
   "smoke-rbac-client-profile.sh"
   "smoke-rbac-admin-ux.sh"
   "smoke-rbac-audit-hardening.sh"
+  "smoke-plan117-flags-off.sh"
 )
 
 usage() {
@@ -49,6 +50,7 @@ Sem argumentos, roda a suite local padrao:
   - smoke-rbac-client-profile.sh
   - smoke-rbac-admin-ux.sh
   - smoke-rbac-audit-hardening.sh
+  - smoke-plan117-flags-off.sh
 EOF
 }
 

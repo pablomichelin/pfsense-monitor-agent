@@ -205,6 +205,27 @@ export class HeartbeatGatewayDto {
   loss_percent?: number;
 }
 
+export class HeartbeatLocalUserDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  name!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  uid?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  disabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  is_admin?: boolean;
+}
+
 export class HeartbeatDto {
   @IsString()
   @IsNotEmpty()
@@ -366,5 +387,13 @@ export class HeartbeatDto {
   @ValidateNested()
   @Type(() => HeartbeatCapabilitiesDto)
   capabilities?: HeartbeatCapabilitiesDto;
+
+  /** Inventario de usuarios locais pfSense (guardrail revogacao). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(128)
+  @ValidateNested({ each: true })
+  @Type(() => HeartbeatLocalUserDto)
+  local_users?: HeartbeatLocalUserDto[];
 }
 

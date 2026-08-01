@@ -1,4 +1,7 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect, useRef } from 'react';
 import { Badge, StatusBadge } from '@/components/ui';
 import type { StatusBadgeStatus } from '@/components/ui/status-badge';
 import { toBackupStatusBadge, type BackupVisualStatus } from '@/lib/backup-status';
@@ -32,18 +35,54 @@ type Props = {
   nodes: InventoryNode[];
   showAlertsColumn: boolean;
   targetPackageVersion?: string | null;
+  selection?: {
+    selectedIds: Set<string>;
+    onToggle: (nodeId: string) => void;
+    onToggleAll: () => void;
+  };
 };
 
 export function NodesInventoryTable({
   nodes,
   showAlertsColumn,
   targetPackageVersion,
+  selection,
 }: Props) {
+  const allSelected =
+    selection != null &&
+    nodes.length > 0 &&
+    nodes.every((node) => selection.selectedIds.has(node.id));
+
+  const someSelected =
+    selection != null &&
+    nodes.some((node) => selection.selectedIds.has(node.id)) &&
+    !allSelected;
+
+  const headerCheckboxRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-left text-sm">
         <thead className="border-b border-slate-800 bg-slate-950/40 text-slate-400">
           <tr>
+            {selection ? (
+              <th className="w-10 px-3 py-4">
+                <input
+                  ref={headerCheckboxRef}
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={selection.onToggleAll}
+                  aria-label="Selecionar todos os firewalls visíveis"
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-950"
+                />
+              </th>
+            ) : null}
             <th className="w-32 min-w-[8rem] px-4 py-4">Status</th>
             <th className="min-w-[10rem] px-4 py-4">Firewall</th>
             <th className="min-w-[8rem] px-4 py-4">Local</th>
@@ -70,6 +109,17 @@ export function NodesInventoryTable({
               key={node.id}
               className="border-b border-slate-900/80 text-slate-200 transition hover:bg-slate-950/20"
             >
+              {selection ? (
+                <td className="w-10 px-3 py-4">
+                  <input
+                    type="checkbox"
+                    checked={selection.selectedIds.has(node.id)}
+                    onChange={() => selection.onToggle(node.id)}
+                    aria-label={`Selecionar ${node.display_name ?? node.hostname}`}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-950"
+                  />
+                </td>
+              ) : null}
               <td className="w-32 min-w-[8rem] px-4 py-4">
                 <StatusBadge status={node.effective_status} />
               </td>

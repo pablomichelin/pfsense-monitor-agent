@@ -42,6 +42,14 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
+INC_FILE="$PACKAGE_DIR/files/usr/local/pkg/systemup_monitor.inc"
+INC_AGENT_VERSION="$(grep 'define("SYSTEMUP_MONITOR_AGENT_VERSION"' "$INC_FILE" | sed 's/.*"\([^"]*\)".*/\1/')"
+if [[ "$INC_AGENT_VERSION" != "$VERSION" ]]; then
+  echo "Erro: SYSTEMUP_MONITOR_AGENT_VERSION ($INC_AGENT_VERSION) != PORTVERSION ($VERSION) em $INC_FILE" >&2
+  echo "Alinhe a constante com o Makefile antes de publicar o release." >&2
+  exit 1
+fi
+
 echo "Versão do package: $VERSION"
 echo "Build do artefato..."
 "$SCRIPT_DIR/build-pfsense-package-artifact.sh" "$VERSION"

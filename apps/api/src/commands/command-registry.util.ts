@@ -20,6 +20,10 @@ export type CommandAuditPrefix =
   | 'package.upgrade'
   | 'service.restart'
   | 'node.reboot'
+  | 'technician.create'
+  | 'technician.password_reset'
+  | 'technician.disable'
+  | 'technician.delete'
   | 'commands.batch';
 
 export interface CommandTypeDefinition {

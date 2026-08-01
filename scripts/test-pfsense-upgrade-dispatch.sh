@@ -35,6 +35,9 @@ assert_exec() {
 assert_contains "$AGENT_SH" "pfsense_upgrade_ha_detected" "dispatch define ha pre-check"
 assert_contains "$AGENT_SH" "run_pfsense_upgrade.sh" "dispatch spawns wrapper"
 assert_contains "$AGENT_SH" "prepared_manual_confirm" "finalize respects semi-manual state"
+assert_contains "$AGENT_SH" "upgrade_version_matches_target" "finalize requires version match"
+assert_contains "$WRAPPER" "pfSense-upgrade -d -y" "wrapper runs non-interactive upgrade"
+assert_contains "$WRAPPER" "ASSUME_ALWAYS_YES=yes" "wrapper sets pkg non-interactive env"
 assert_contains "$AGENT_SH" "Insufficient disk space" "dispatch disk pre-check"
 assert_contains "$AGENT_SH" "target_version mismatch" "dispatch target coherence"
 
