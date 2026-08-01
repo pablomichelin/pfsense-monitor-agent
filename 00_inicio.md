@@ -2,9 +2,11 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-01):** API `0.10.1` · painel `1.10.6` · package pfSense `0.5.6`.
+> **Versoes atuais (2026-08-01):** API `0.10.3` · painel `1.10.7` · package pfSense `0.5.7`.
 >
-> **Ultima entrega (2026-08-01):** Excluir usuario (delete) + privilegio sem User Manager. Package **0.5.6**, painel **1.10.6**. Ver `docs/158-...md`.
+> **Ultima entrega (2026-08-01):** proteção absoluta do `admin` pfSense (nunca cadastrar/gerenciar). API **0.10.3**, painel **1.10.7**, package **0.5.7**. Ver `docs/160-...md`.
+>
+> **Entrega anterior (2026-08-01):** delete de tecnico desabilitado corrigido (`userExistsInSnapshot`). API **0.10.2**.
 >
 > **Entrega anterior (2026-08-01):** package **0.5.5** — tecnicos habilitados por padrao no agente + checkbox GUI. Ver `docs/157-...md`.
 >

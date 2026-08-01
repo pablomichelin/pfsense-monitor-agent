@@ -18,6 +18,7 @@ import {
   listTechniciansAction,
   pollCommandBatchStatusAction,
 } from '@/lib/technicians';
+import { isValidManagedPfsenseUsername } from '@/lib/pfsense-username';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -96,6 +97,8 @@ function mapSkipReason(reason: string | null): string {
       return 'Usuário já existe no firewall';
     case 'would remove last active admin account':
       return 'Bloqueado — última conta admin';
+    case 'reserved username':
+      return 'Bloqueado — usuário reservado do pfSense (admin/root)';
     case 'no recent config backup found':
       return 'Bloqueado — sem backup recente do config.xml (rode um backup manual)';
     case 'technician accounts disabled on agent':
@@ -160,7 +163,7 @@ export function FleetTechnicianManagementPanel({
   const [deletePending, startDeleteTransition] = useTransition();
 
   const confirmEnabled = confirmText.trim().toUpperCase() === 'CONFIRMAR';
-  const loginUsernameValid = /^[a-z][a-z0-9._-]{2,31}$/.test(newLoginUsername.trim());
+  const loginUsernameValid = isValidManagedPfsenseUsername(newLoginUsername);
   const deleteTarget = technicians.find((item) => item.id === deleteTargetId);
   const deleteConfirmEnabled =
     deleteTarget != null &&
@@ -529,8 +532,13 @@ export function FleetTechnicianManagementPanel({
                     value={newLoginUsername}
                     onChange={(event) => setNewLoginUsername(event.target.value.toLowerCase())}
                     placeholder="joao.silva"
+                    autoComplete="off"
                     className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200"
                   />
+                  <span className="text-xs text-slate-500">
+                    Não use <code className="text-slate-400">admin</code> — conta exclusiva do
+                    pfSense, nunca gerenciada pelo sistema.
+                  </span>
                 </label>
                 <div className="sm:col-span-2">
                   <Button

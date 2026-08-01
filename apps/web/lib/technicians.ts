@@ -38,6 +38,13 @@ function mapTechnicianError(message: string, fallback: string): string {
   if (normalized.includes('login_username already registered')) {
     return 'Este login pfSense já está cadastrado para outro técnico ativo.';
   }
+  if (
+    normalized.includes('is reserved') ||
+    normalized.includes('login_username is reserved') ||
+    normalized.includes('cannot be managed')
+  ) {
+    return 'O usuário admin (e root) é exclusivo do pfSense e não pode ser cadastrado ou gerenciado pelo sistema.';
+  }
   if (normalized.includes('confirm must be')) {
     return 'Digite CONFIRMAR para confirmar a ação.';
   }

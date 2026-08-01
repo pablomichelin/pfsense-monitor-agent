@@ -41,6 +41,11 @@ import {
   wouldViolateLastAdminGuardrail,
 } from './technician-accounts.util';
 
+/** Username gerenciável (padrão + nunca admin/root), inclusive linhas já no banco. */
+function requireManagedPfsenseUsername(raw: string): string {
+  return validatePfsenseUsername(raw);
+}
+
 type BatchTechnicianResultItem = {
   node_id: string;
   hostname: string | null;
@@ -428,6 +433,8 @@ export class TechniciansService {
       throw new NotFoundException('technician not found');
     }
 
+    const pfsenseUsername = requireManagedPfsenseUsername(technician.loginUsername);
+
     const node = await this.prisma.node.findUnique({
       where: { id: nodeId },
       select: {
@@ -444,7 +451,6 @@ export class TechniciansService {
 
     const password = resolveTechnicianPassword(dto.password);
     const privilegeProfile = validatePrivilegeProfile(dto.privilege_profile);
-    const pfsenseUsername = technician.loginUsername;
 
     const latestBackupAt = (await this.fetchLatestBackupAtByNode([nodeId])).get(nodeId) ?? null;
     this.assertProvisionAllowed(node, pfsenseUsername, latestBackupAt);
@@ -546,10 +552,11 @@ export class TechniciansService {
       throw new NotFoundException('technician node account not found');
     }
 
+    const pfsenseUsername = requireManagedPfsenseUsername(account.pfsenseUsername);
     const password = resolveTechnicianPassword(dto.password);
     const latestBackupAt =
       (await this.fetchLatestBackupAtByNode([nodeId])).get(nodeId) ?? null;
-    this.assertPasswordResetAllowed(account.node, account.pfsenseUsername, latestBackupAt);
+    this.assertPasswordResetAllowed(account.node, pfsenseUsername, latestBackupAt);
 
     const command = await this.orchestrator.enqueueCommand({
       nodeId,
@@ -558,7 +565,7 @@ export class TechniciansService {
       payloadJson: {
         technician_id: account.technicianId,
         account_id: account.id,
-        pfsense_username: account.pfsenseUsername,
+        pfsense_username: pfsenseUsername,
         password,
       },
     });
@@ -584,7 +591,7 @@ export class TechniciansService {
           command_id: command.id,
           node_id: nodeId,
           hostname: account.node.hostname,
-          pfsense_username: account.pfsenseUsername,
+          pfsense_username: pfsenseUsername,
           technician_id: account.technicianId,
         },
       },
@@ -611,6 +618,8 @@ export class TechniciansService {
     if (!technician) {
       throw new NotFoundException('technician not found');
     }
+
+    requireManagedPfsenseUsername(technician.loginUsername);
 
     const uniqueNodeIds = [
       ...new Set(dto.node_ids.map((id) => id.trim()).filter((id) => id.length > 0)),
@@ -710,6 +719,8 @@ export class TechniciansService {
       throw new NotFoundException('technician not found');
     }
 
+    requireManagedPfsenseUsername(technician.loginUsername);
+
     const uniqueNodeIds = [
       ...new Set(dto.node_ids.map((id) => id.trim()).filter((id) => id.length > 0)),
     ];
@@ -795,6 +806,7 @@ export class TechniciansService {
     password: string,
     privilegeProfile: string,
   ) {
+    const pfsenseUsername = requireManagedPfsenseUsername(technician.loginUsername);
     const nodes = await this.prisma.node.findMany({
       where: { id: { in: uniqueNodeIds } },
       select: {
@@ -828,7 +840,7 @@ export class TechniciansService {
 
       const skipReason = this.getProvisionSkipReason(
         node,
-        technician.loginUsername,
+        pfsenseUsername,
         backupByNode.get(nodeId) ?? null,
       );
       if (skipReason) {
@@ -846,7 +858,7 @@ export class TechniciansService {
       eligibleNodeIds.push(nodeId);
       payloadByNode[nodeId] = {
         technician_id: technician.id,
-        pfsense_username: technician.loginUsername,
+        pfsense_username: pfsenseUsername,
         full_name: technician.fullName,
         privilege_profile: privilegeProfile,
         password,
@@ -861,6 +873,7 @@ export class TechniciansService {
     uniqueNodeIds: string[],
     password: string,
   ) {
+    const pfsenseUsername = requireManagedPfsenseUsername(technician.loginUsername);
     const nodes = await this.prisma.node.findMany({
       where: { id: { in: uniqueNodeIds } },
       select: {
@@ -894,7 +907,7 @@ export class TechniciansService {
 
       const skipReason = this.getPasswordResetSkipReason(
         node,
-        technician.loginUsername,
+        pfsenseUsername,
         backupByNode.get(nodeId) ?? null,
       );
       if (skipReason) {
@@ -912,7 +925,7 @@ export class TechniciansService {
       eligibleNodeIds.push(nodeId);
       payloadByNode[nodeId] = {
         technician_id: technician.id,
-        pfsense_username: technician.loginUsername,
+        pfsense_username: pfsenseUsername,
         password,
       };
     }
@@ -1220,12 +1233,13 @@ export class TechniciansService {
       throw new NotFoundException('technician node account not found');
     }
 
+    const pfsenseUsername = requireManagedPfsenseUsername(account.pfsenseUsername);
     const snapshot = parseLocalUsersSnapshot(account.node.localUsersSnapshotJson);
     const latestBackupAt =
       (await this.fetchLatestBackupAtByNode([input.nodeId])).get(input.nodeId) ?? null;
     this.assertRevokeAllowed(
       account.node,
-      account.pfsenseUsername,
+      pfsenseUsername,
       snapshot,
       input.action,
       latestBackupAt,
@@ -1241,7 +1255,7 @@ export class TechniciansService {
       type: commandType,
       requestedByUserId: input.userId,
       payloadJson: {
-        pfsense_username: account.pfsenseUsername,
+        pfsense_username: pfsenseUsername,
         technician_id: account.technicianId,
         account_id: account.id,
       },
@@ -1272,7 +1286,7 @@ export class TechniciansService {
           command_id: command.id,
           node_id: input.nodeId,
           hostname: account.node.hostname,
-          pfsense_username: account.pfsenseUsername,
+          pfsense_username: pfsenseUsername,
           technician_id: account.technicianId,
         },
       },
@@ -1303,6 +1317,8 @@ export class TechniciansService {
     if (!technician) {
       throw new NotFoundException('technician not found');
     }
+
+    requireManagedPfsenseUsername(technician.loginUsername);
 
     const uniqueNodeIds = [
       ...new Set(dto.node_ids.map((id) => id.trim()).filter((id) => id.length > 0)),
@@ -1375,6 +1391,8 @@ export class TechniciansService {
     if (!technician) {
       throw new NotFoundException('technician not found');
     }
+
+    requireManagedPfsenseUsername(technician.loginUsername);
 
     await this.accessPolicy.assertRequestedClientFilter(actor, dto.client_id);
 
@@ -1556,7 +1574,22 @@ export class TechniciansService {
       }
 
       const account = accountByNodeId.get(nodeId);
-      const pfsenseUsername = account?.pfsenseUsername ?? technician.loginUsername;
+      let pfsenseUsername: string;
+      try {
+        pfsenseUsername = requireManagedPfsenseUsername(
+          account?.pfsenseUsername ?? technician.loginUsername,
+        );
+      } catch {
+        skipped.push({
+          node_id: nodeId,
+          hostname: node.hostname,
+          outcome: 'skipped',
+          reason: 'reserved username',
+          command_id: null,
+          status: null,
+        });
+        continue;
+      }
       const snapshot = parseLocalUsersSnapshot(node.localUsersSnapshotJson);
 
       if (!snapshot?.length) {

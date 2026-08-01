@@ -46,7 +46,8 @@ if ($username === '' || !preg_match('/^[a-z][a-z0-9._-]{2,31}$/', $username)) {
     exit(1);
 }
 
-if (in_array($username, ['admin', 'root'], true)) {
+// Contas de sistema do pfSense: jamais criar/alterar/desativar/excluir via agente.
+if (is_reserved_local_username($username)) {
     emit_result(false, 'reserved username');
     exit(1);
 }
@@ -85,9 +86,7 @@ try {
     $user = $resolved['user'];
     $canonicalName = trim((string) ($user['name'] ?? $username));
 
-    $scope = trim((string) ($user['scope'] ?? ''));
-    $uid = isset($user['uid']) ? (int) $user['uid'] : null;
-    if ($scope === 'system' || $uid === 0) {
+    if (is_protected_system_local_user($user, $canonicalName)) {
         emit_result(false, 'cannot modify system account');
         exit(1);
     }
@@ -277,9 +276,7 @@ function handle_set_password(array $payload, string $username): void
     $user = $resolved['user'];
     $canonicalName = trim((string) ($user['name'] ?? $username));
 
-    $scope = trim((string) ($user['scope'] ?? ''));
-    $uid = isset($user['uid']) ? (int) $user['uid'] : null;
-    if ($scope === 'system' || $uid === 0) {
+    if (is_protected_system_local_user($user, $canonicalName)) {
         emit_result(false, 'cannot modify system account');
         exit(1);
     }
@@ -394,6 +391,28 @@ function find_user_index_by_name(string $username, string $canonicalName = ''): 
     }
 
     return null;
+}
+
+function is_reserved_local_username(string $username): bool
+{
+    return in_array(strtolower(trim($username)), ['admin', 'root'], true);
+}
+
+/**
+ * Conta de sistema do pfSense: nome reservado, scope system ou uid 0.
+ *
+ * @param array<string, mixed> $user
+ */
+function is_protected_system_local_user(array $user, string $canonicalName): bool
+{
+    if (is_reserved_local_username($canonicalName)) {
+        return true;
+    }
+
+    $scope = trim((string) ($user['scope'] ?? ''));
+    $uid = isset($user['uid']) ? (int) $user['uid'] : null;
+
+    return $scope === 'system' || $uid === 0;
 }
 
 /**

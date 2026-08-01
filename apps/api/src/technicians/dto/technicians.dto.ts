@@ -4,6 +4,7 @@ import {
   IsString,
   IsUUID,
   Matches,
+  IsNotIn,
 } from 'class-validator';
 
 export class CreateTechnicianDto {
@@ -12,6 +13,9 @@ export class CreateTechnicianDto {
 
   @IsString()
   @Matches(/^[a-z][a-z0-9._-]{2,31}$/)
+  @IsNotIn(['admin', 'root'], {
+    message: 'login_username is reserved and cannot be managed',
+  })
   login_username!: string;
 
   @IsOptional()

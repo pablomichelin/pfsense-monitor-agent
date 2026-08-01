@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 
 /** Perfis de privilégio allowlistados — MVP usa admin completo (doc 146). */
@@ -12,6 +12,11 @@ const TECHNICIAN_PASSWORD_CHARS =
 
 export type PrivilegeProfile = (typeof PRIVILEGE_PROFILE_ALLOWLIST)[number];
 
+/**
+ * Contas locais do pfSense que o controlador JAMAIS cadastra, altera senha,
+ * desativa ou exclui. `admin` é exclusivo do appliance; `root` fica bloqueado
+ * por precaução. Defesa em profundidade: cadastro, enqueue de comando e agente.
+ */
 export const RESERVED_PFSENSE_USERNAMES = ['admin', 'root'] as const;
 
 export const PFSENSE_USERNAME_PATTERN = /^[a-z][a-z0-9._-]{2,31}$/;
@@ -30,6 +35,12 @@ export function isValidUuid(value: string): boolean {
   return UUID_PATTERN.test(value);
 }
 
+export function isReservedPfsenseUsername(username: string): boolean {
+  return (RESERVED_PFSENSE_USERNAMES as readonly string[]).includes(
+    username.trim().toLowerCase(),
+  );
+}
+
 export function validatePfsenseUsername(raw: unknown): string {
   if (typeof raw !== 'string' || !raw.trim()) {
     throw new BadRequestException('pfsense_username is required');
@@ -42,8 +53,10 @@ export function validatePfsenseUsername(raw: unknown): string {
     );
   }
 
-  if ((RESERVED_PFSENSE_USERNAMES as readonly string[]).includes(username)) {
-    throw new BadRequestException(`pfsense_username "${username}" is reserved`);
+  if (isReservedPfsenseUsername(username)) {
+    throw new ForbiddenException(
+      `pfsense_username "${username}" is reserved and cannot be managed`,
+    );
   }
 
   return username;
@@ -121,16 +134,16 @@ export function userExistsInSnapshot(
   targetUsername: string,
 ): boolean {
   // Fail-closed: sem snapshot nao ha como confirmar presenca do usuario no
-  // firewall. Todos os chamadores atuais ja bloqueiam antes por snapshot
-  // ausente, mas o default aqui nao deve assumir existencia (evita reintroduzir
-  // um bypass silencioso caso um novo chamador esqueça essa checagem).
+  // firewall. Contas desabilitadas CONTAM como existentes — exclusao/disable
+  // precisam enxergar o usuario mesmo desativado (senao delete falha com
+  // "user not found on firewall"). Para "ja ativo" use userAlreadyActiveInSnapshot.
   if (!snapshot?.length) {
     return false;
   }
 
   const normalizedTarget = targetUsername.trim().toLowerCase();
   return snapshot.some(
-    (entry) => entry.name.trim().toLowerCase() === normalizedTarget && !entry.disabled,
+    (entry) => entry.name.trim().toLowerCase() === normalizedTarget,
   );
 }
 

@@ -6,6 +6,14 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-01 — Proteção absoluta do usuário admin pfSense (API 0.10.3, painel 1.10.7, package 0.5.7)
+
+- `admin`/`root` nunca cadastrados nem gerenciados: DTO, validação, serviço (revalida DB), enqueue e agente (reserved + uid 0 / scope system / nome canônico).
+
+### 2026-08-01 — Delete de técnico desabilitado (API 0.10.2)
+
+- `userExistsInSnapshot` exigia `!disabled`, então excluir conta desativada retornava “Usuário não encontrado no firewall”. Agora existência inclui desabilitados; “já ativo” continua em `userAlreadyActiveInSnapshot`.
+
 ### 2026-08-01 — Excluir técnico + privilégio sem User Manager (package 0.5.6, painel 1.10.6)
 
 - UI: aba **Excluir** com delete como padrão (desativar secundário).

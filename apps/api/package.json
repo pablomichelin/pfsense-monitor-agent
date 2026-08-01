@@ -1,6 +1,6 @@
 {
   "name": "@monitor-pfsense/api",
-  "version": "0.10.1",
+  "version": "0.10.3",
   "private": true,
   "description": "API do controlador Monitor-Pfsense",
   "engines": {

@@ -10,13 +10,17 @@ Leia este arquivo primeiro.
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.10.1` | `apps/api/package.json` |
-| Painel web | `1.10.6` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.5.6` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| API | `0.10.3` | `apps/api/package.json` |
+| Painel web | `1.10.7` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.5.7` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
-**Release publicada (config versionado):** `config/package-release.env` → package **`0.5.6`**.
+**Release (config local):** `config/package-release.env` → package **`0.5.7`** (artefato em `dist/`; publicar no GitHub do agent com `scripts/release-pfsense-package.sh` para upgrade nos firewalls).
 
-**Ultima entrega (2026-08-01):** aba **Excluir** (delete por padrao) + privilegio tecnico sem User Manager (nao altera senha do admin). Package **0.5.6**, painel **1.10.6**. Ver `docs/158-ENTREGA-EXCLUIR-TECNICO-PRIVILEGIO-SEM-USER-MANAGER-2026-08-01.md`.
+**Ultima entrega (2026-08-01):** proteção absoluta do usuário **`admin`** (e `root`) — nunca cadastrar/alterar/excluir via Monitor. API **0.10.3**, painel **1.10.7**, package **0.5.7**. Ver `docs/160-PROTECAO-USUARIO-ADMIN-PFSENSE-2026-08-01.md`.
+
+**Entrega anterior (2026-08-01):** correcao delete de tecnico **desabilitado** — `userExistsInSnapshot` nao ignorava mais contas disabled. API **0.10.2**. Ver `docs/159-CORRECAO-DELETE-TECNICO-DESABILITADO-2026-08-01.md`.
+
+**Entrega anterior (2026-08-01):** aba **Excluir** (delete por padrao) + privilegio tecnico sem User Manager (nao altera senha do admin). Package **0.5.6**, painel **1.10.6**. Ver `docs/158-ENTREGA-EXCLUIR-TECNICO-PRIVILEGIO-SEM-USER-MANAGER-2026-08-01.md`.
 
 **Entrega anterior (2026-08-01):** package **0.5.5** — gestao de tecnicos **habilitada por padrao** no agente + checkbox na GUI. Painel **1.10.5**. Ver `docs/157-ENTREGA-PACKAGE-0.5.5-TECNICOS-PADRAO-LIGADO-2026-08-01.md`.
 

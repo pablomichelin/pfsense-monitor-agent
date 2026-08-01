@@ -14,6 +14,7 @@ import {
   listTechniciansAction,
   pollCommandBatchStatusAction,
 } from '@/lib/technicians';
+import { isValidManagedPfsenseUsername } from '@/lib/pfsense-username';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -82,6 +83,8 @@ function mapSkipReason(reason: string | null): string {
       return 'Usuário não encontrado no firewall';
     case 'would remove last active admin account':
       return 'Bloqueado — última conta admin';
+    case 'reserved username':
+      return 'Bloqueado — usuário reservado do pfSense (admin/root)';
     default:
       if (reason.startsWith('agent version below minimum')) {
         return `Agente incompatível (requer ${MIN_AGENT_VERSION}+)`;
@@ -123,7 +126,7 @@ export function FleetBatchTechnicianRevokePanel({
   const [batchStatuses, setBatchStatuses] = useState<CommandBatchResponse[]>([]);
 
   const confirmEnabled = confirmText.trim().toUpperCase() === 'CONFIRMAR';
-  const loginUsernameValid = /^[a-z][a-z0-9._-]{2,31}$/.test(newLoginUsername.trim());
+  const loginUsernameValid = isValidManagedPfsenseUsername(newLoginUsername);
 
   const reloadTechnicians = useCallback(async () => {
     const response = await listTechniciansAction('active');
@@ -267,8 +270,12 @@ export function FleetBatchTechnicianRevokePanel({
                 value={newLoginUsername}
                 onChange={(event) => setNewLoginUsername(event.target.value.toLowerCase())}
                 placeholder="joao.silva"
+                autoComplete="off"
                 className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200"
               />
+              <span className="text-xs text-slate-500">
+                Não use <code className="text-slate-400">admin</code> — exclusivo do pfSense.
+              </span>
             </label>
           </div>
           <Button
