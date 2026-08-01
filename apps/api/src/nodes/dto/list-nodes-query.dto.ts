@@ -36,11 +36,26 @@ export class ListNodesQueryDto {
   @MaxLength(120)
   search?: string;
 
-  /** Ordenar por: name (nome), agent_version, version (pfSense). Sempre agrupado por cliente. */
+  /** Ordenar por coluna do inventário (status, nome, versões, backup, alertas…). */
   @IsOptional()
   @IsString()
-  @IsIn(['name', 'agent_version', 'version'])
-  sort_by?: 'name' | 'agent_version' | 'version';
+  @IsIn([
+    'name',
+    'agent_version',
+    'version',
+    'status',
+    'backup',
+    'alerts',
+    'last_seen',
+  ])
+  sort_by?:
+    | 'name'
+    | 'agent_version'
+    | 'version'
+    | 'status'
+    | 'backup'
+    | 'alerts'
+    | 'last_seen';
 
   @IsOptional()
   @IsString()

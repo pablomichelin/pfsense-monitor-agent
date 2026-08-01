@@ -13,6 +13,11 @@ import { AccessActor } from '../auth/access-actor.type';
 import { AccessPolicyService } from '../auth/access-policy.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveEffectiveNodeStatus } from './node-status.util';
+import {
+  LIST_NODES_SORT_FIELDS,
+  sortListNodesItems,
+  type ListNodesSortBy,
+} from './list-nodes-sort.util';
 import { LIST_NODES_DEFAULT_LIMIT, ListNodesQueryDto } from './dto/list-nodes-query.dto';
 
 const FILTERS_CACHE_TTL_MS = 120_000;
@@ -395,22 +400,20 @@ export class NodesService {
 
     const limit = Math.min(query.limit ?? LIST_NODES_DEFAULT_LIMIT, 1000);
     const sortOrder = query.sort_order ?? 'asc';
-    const sortBy = query.sort_by ?? 'name';
-    const nullsLast = 'last' as const;
-    const orderBy: Prisma.NodeOrderByWithRelationInput[] = [
-      { site: { client: { name: sortOrder } } },
-      ...(sortBy === 'name'
-        ? [
-            { displayName: { sort: sortOrder, nulls: nullsLast } },
-            { hostname: sortOrder },
-          ]
-        : sortBy === 'agent_version'
-          ? [{ agentVersion: { sort: sortOrder, nulls: nullsLast } }]
-          : [{ pfsenseVersion: { sort: sortOrder, nulls: nullsLast } }]),
-    ];
+    const sortBy: ListNodesSortBy =
+      query.sort_by &&
+      (LIST_NODES_SORT_FIELDS as readonly string[]).includes(query.sort_by)
+        ? query.sort_by
+        : 'name';
+    // Pré-ordenação no banco; a ordem final (incl. status/backup/alertas) é
+    // aplicada em memória após derivar os campos efetivos.
     const nodes = await this.prisma.node.findMany({
       where,
-      orderBy,
+      orderBy: [
+        { site: { client: { name: 'asc' } } },
+        { displayName: { sort: 'asc', nulls: 'last' } },
+        { hostname: 'asc' },
+      ],
       take: limit,
       include: {
         site: {
@@ -542,7 +545,7 @@ export class NodesService {
       .filter((node) => (query.status ? node.effective_status === query.status : true));
 
     return {
-      items,
+      items: sortListNodesItems(items, sortBy, sortOrder),
       generated_at: now.toISOString(),
     };
   }

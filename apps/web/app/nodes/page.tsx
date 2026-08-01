@@ -8,6 +8,7 @@ import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { ApiError, getNodesFilters, getNodesList, getPackageRelease, getSession } from '@/lib/api';
 import { isClientRole } from '@/lib/client-profile';
 import { hasPermission } from '@/lib/authz';
+import { isInventorySortBy } from '@/lib/nodes-inventory-sort';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,14 +38,22 @@ export default async function NodesPage({
       : undefined;
   const search = typeof params.search === 'string' ? params.search : undefined;
   const sortBy =
-    typeof params.sort_by === 'string' &&
-    ['name', 'agent_version', 'version'].includes(params.sort_by)
-      ? (params.sort_by as 'name' | 'agent_version' | 'version')
+    typeof params.sort_by === 'string' && isInventorySortBy(params.sort_by)
+      ? params.sort_by
       : 'name';
   const sortOrder =
     typeof params.sort_order === 'string' && ['asc', 'desc'].includes(params.sort_order)
       ? (params.sort_order as 'asc' | 'desc')
       : 'asc';
+  const inventoryQueryParams: Record<string, string | undefined> = {
+    client_id: clientId,
+    site_id: siteId,
+    status,
+    tag_id: tagId,
+    group_id: groupId,
+    criticality,
+    search,
+  };
 
   const listLimit = 200;
   let filterOptions;
@@ -315,9 +324,12 @@ export default async function NodesPage({
               defaultValue={sortBy}
               className="h-11 min-w-[10rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
-              <option value="name">Ordenar: nome</option>
-              <option value="agent_version">Ordenar: pacote</option>
+              <option value="status">Ordenar: status</option>
+              <option value="name">Ordenar: firewall</option>
               <option value="version">Ordenar: versão pfSense</option>
+              <option value="agent_version">Ordenar: pacote</option>
+              <option value="backup">Ordenar: backup</option>
+              <option value="alerts">Ordenar: alertas</option>
             </select>
             <select
               name="sort_order"
@@ -346,6 +358,9 @@ export default async function NodesPage({
           showAlertsColumn={showAlertsColumn}
           targetPackageVersion={targetPackageVersion}
           clientId={clientId}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          queryParams={inventoryQueryParams}
           canRequestBackupBatch={canRequestBackupBatch}
           canRunPackageUpgrade={canRunPackageUpgrade}
           canManageTechnicians={canManageTechnicians}

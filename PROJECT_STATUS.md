@@ -8,8 +8,8 @@ Ultima atualizacao: **2026-08-01**
 
 | Campo | Valor |
 |---|---|
-| API | `0.10.4` |
-| Painel web | `1.10.10` |
+| API | `0.10.5` |
+| Painel web | `1.10.11` |
 | Package pfSense | `0.5.8` |
-| Última entrega | Exclusão real cadastro técnicos (`docs/164`) |
+| Última entrega | Ordenação colunas inventário (`docs/165`) |
 | Próximo passo | Upgrade package **0.5.8** na frota; validar backup remoto no portal |

@@ -11,6 +11,12 @@ import { PackageVersionCell } from '@/components/nodes/package-version-cell';
 import { CriticalityBadge } from '@/components/nodes/fleet-org-badges';
 import { cn } from '@/lib/cn';
 import type { NodeCriticality } from '@/lib/api';
+import {
+  buildNodesInventoryHref,
+  nextInventorySortOrder,
+  type InventorySortBy,
+  type InventorySortOrder,
+} from '@/lib/nodes-inventory-sort';
 
 type InventoryNode = {
   id: string;
@@ -36,12 +42,73 @@ type Props = {
   showAlertsColumn: boolean;
   targetPackageVersion?: string | null;
   toolbar?: ReactNode;
+  sortBy: InventorySortBy;
+  sortOrder: InventorySortOrder;
+  queryParams: Record<string, string | undefined>;
   selection?: {
     selectedIds: Set<string>;
     onToggle: (nodeId: string) => void;
     onToggleAll: () => void;
   };
 };
+
+function SortableColumnHeader({
+  label,
+  column,
+  sortBy,
+  sortOrder,
+  queryParams,
+  className,
+  title,
+}: {
+  label: string;
+  column: InventorySortBy;
+  sortBy: InventorySortBy;
+  sortOrder: InventorySortOrder;
+  queryParams: Record<string, string | undefined>;
+  className?: string;
+  title?: string;
+}) {
+  const active = sortBy === column;
+  const nextOrder = nextInventorySortOrder({
+    column,
+    currentSortBy: sortBy,
+    currentSortOrder: sortOrder,
+  });
+  const href = buildNodesInventoryHref({
+    params: queryParams,
+    sortBy: column,
+    sortOrder: nextOrder,
+  });
+  const ariaSort = active
+    ? sortOrder === 'asc'
+      ? 'ascending'
+      : 'descending'
+    : 'none';
+
+  return (
+    <th className={className} title={title} aria-sort={ariaSort}>
+      <Link
+        href={href}
+        className={cn(
+          'inline-flex items-center gap-1 rounded-md transition hover:text-white',
+          active ? 'text-cyan-200' : 'text-inherit',
+        )}
+      >
+        <span>{label}</span>
+        <span
+          className={cn(
+            'font-mono text-[0.65rem] leading-none',
+            active ? 'text-cyan-300' : 'text-slate-600',
+          )}
+          aria-hidden="true"
+        >
+          {active ? (sortOrder === 'asc' ? '▲' : '▼') : '↕'}
+        </span>
+      </Link>
+    </th>
+  );
+}
 
 function hasActiveAgent(node: InventoryNode): boolean {
   return node.node_uid_status === 'active' && Boolean(node.agent_version);
@@ -71,6 +138,9 @@ export function NodesInventoryTable({
   showAlertsColumn,
   targetPackageVersion,
   toolbar,
+  sortBy,
+  sortOrder,
+  queryParams,
   selection,
 }: Props) {
   const allSelected =
@@ -108,19 +178,59 @@ export function NodesInventoryTable({
               />
             </th>
           ) : null}
-          <th className="w-28 min-w-[7rem] px-3 py-2.5">Status</th>
-          <th className="min-w-[12rem] px-3 py-2.5">Firewall</th>
+          <SortableColumnHeader
+            label="Status"
+            column="status"
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            queryParams={queryParams}
+            className="w-28 min-w-[7rem] px-3 py-2.5"
+          />
+          <SortableColumnHeader
+            label="Firewall"
+            column="name"
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            queryParams={queryParams}
+            className="min-w-[12rem] px-3 py-2.5"
+          />
           <th className="min-w-[8rem] px-3 py-2.5">Local</th>
-          <th className="min-w-[6.5rem] px-3 py-2.5" title="Versão do pfSense OS">
-            Versão pfSense
-          </th>
-          <th className="min-w-[6.5rem] px-3 py-2.5" title="Versão instalada do pacote SystemUp Monitor">
-            Pacote
-          </th>
+          <SortableColumnHeader
+            label="Versão pfSense"
+            column="version"
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            queryParams={queryParams}
+            className="min-w-[6.5rem] px-3 py-2.5"
+            title="Versão do pfSense OS"
+          />
+          <SortableColumnHeader
+            label="Pacote"
+            column="agent_version"
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            queryParams={queryParams}
+            className="min-w-[6.5rem] px-3 py-2.5"
+            title="Versão instalada do pacote SystemUp Monitor"
+          />
           <th className="min-w-[5.5rem] px-3 py-2.5">Último contato</th>
-          <th className="min-w-[6rem] px-3 py-2.5">Backup</th>
+          <SortableColumnHeader
+            label="Backup"
+            column="backup"
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            queryParams={queryParams}
+            className="min-w-[6rem] px-3 py-2.5"
+          />
           {showAlertsColumn ? (
-            <th className="w-16 min-w-[4rem] px-3 py-2.5">Alertas</th>
+            <SortableColumnHeader
+              label="Alertas"
+              column="alerts"
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              queryParams={queryParams}
+              className="w-16 min-w-[4rem] px-3 py-2.5"
+            />
           ) : null}
           <th className="w-12 min-w-[3rem] px-3 py-2.5">Acesso</th>
         </tr>

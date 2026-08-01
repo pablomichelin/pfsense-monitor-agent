@@ -941,7 +941,14 @@ export async function getNodesList(query?: {
   group_id?: string;
   criticality?: NodeCriticality;
   search?: string;
-  sort_by?: 'name' | 'agent_version' | 'version';
+  sort_by?:
+    | 'name'
+    | 'agent_version'
+    | 'version'
+    | 'status'
+    | 'backup'
+    | 'alerts'
+    | 'last_seen';
   sort_order?: 'asc' | 'desc';
   limit?: number;
 }): Promise<NodesListResponse> {

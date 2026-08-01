@@ -6,6 +6,11 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-01 — Ordenação por colunas no inventário (API 0.10.5, painel 1.10.11)
+
+- Cabeçalhos Status/Firewall/Versão/Pacote/Backup/Alertas clicáveis (asc/desc); API com novos `sort_by`.
+- Ver `docs/165-ENTREGA-ORDENACAO-COLUNAS-INVENTARIO-2026-08-01.md`.
+
 ### 2026-08-01 — Exclusão real do cadastro de técnicos (API 0.10.4, painel 1.10.10)
 
 - `DELETE /technicians/:id` passa a hard-delete (some da matriz); listagem default só ativos; limpeza dos soft-deletes Hotspot/Osmarildo.

@@ -2,9 +2,11 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-01):** API `0.10.4` · painel `1.10.10` · package pfSense `0.5.8`.
+> **Versoes atuais (2026-08-01):** API `0.10.5` · painel `1.10.11` · package pfSense `0.5.8`.
 >
-> **Ultima entrega (2026-08-01):** exclusão real de técnicos do cadastro — API **0.10.4**, painel **1.10.10**. Ver `docs/164-...md`.
+> **Ultima entrega (2026-08-01):** ordenação por colunas no inventário — API **0.10.5**, painel **1.10.11**. Ver `docs/165-...md`.
+>
+> **Entrega anterior (2026-08-01):** exclusão real de técnicos do cadastro — API **0.10.4**, painel **1.10.10**. Ver `docs/164-...md`.
 >
 > **Entrega anterior (2026-08-01):** backup habilitado por padrão (agendado + remoto) — package **0.5.8**, painel **1.10.9**. Ver `docs/163-ENTREGA-BACKUP-PADRAO-LIGADO-PACKAGE-0.5.8-2026-08-01.md`.
 >

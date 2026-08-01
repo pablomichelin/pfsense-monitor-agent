@@ -9,6 +9,7 @@ import { Button, PageSection } from '@/components/ui';
 import type { StatusBadgeStatus } from '@/components/ui/status-badge';
 import type { BackupVisualStatus } from '@/lib/backup-status';
 import type { NodeCriticality } from '@/lib/api';
+import type { InventorySortBy, InventorySortOrder } from '@/lib/nodes-inventory-sort';
 
 type InventoryNode = {
   id: string;
@@ -34,6 +35,9 @@ type Props = {
   showAlertsColumn: boolean;
   targetPackageVersion: string | null;
   clientId?: string;
+  sortBy: InventorySortBy;
+  sortOrder: InventorySortOrder;
+  queryParams: Record<string, string | undefined>;
   canRequestBackupBatch: boolean;
   canRunPackageUpgrade: boolean;
   canManageTechnicians: boolean;
@@ -45,6 +49,9 @@ export function FleetInventorySection({
   showAlertsColumn,
   targetPackageVersion,
   clientId,
+  sortBy,
+  sortOrder,
+  queryParams,
   canRequestBackupBatch,
   canRunPackageUpgrade,
   canManageTechnicians,
@@ -219,6 +226,9 @@ export function FleetInventorySection({
           nodes={nodes}
           showAlertsColumn={showAlertsColumn}
           targetPackageVersion={targetPackageVersion}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          queryParams={queryParams}
           selection={
             showRowSelection
               ? {

@@ -1,6 +1,6 @@
 {
   "name": "@monitor-pfsense/web",
-  "version": "1.10.10",
+  "version": "1.10.11",
   "private": true,
   "description": "Painel web do controlador Monitor-Pfsense",
   "engines": {

@@ -4,9 +4,11 @@ Data de referencia: `2026-07-31`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Versoes atuais (codigo):** API `0.10.4` · painel `1.10.10` · package pfSense `0.5.8` (`config/package-release.env` após release).
+> **Versoes atuais (codigo):** API `0.10.5` · painel `1.10.11` · package pfSense `0.5.8` (`config/package-release.env` após release).
 >
-> **Ultima entrega (2026-08-01):** exclusão real do cadastro de técnicos — API **0.10.4**, painel **1.10.10**. Ver `docs/164-ENTREGA-EXCLUSAO-REAL-CADASTRO-TECNICOS-2026-08-01.md`.
+> **Ultima entrega (2026-08-01):** ordenação clicável das colunas do inventário — API **0.10.5**, painel **1.10.11**. Ver `docs/165-ENTREGA-ORDENACAO-COLUNAS-INVENTARIO-2026-08-01.md`.
+>
+> **Entrega anterior (2026-08-01):** exclusão real do cadastro de técnicos — API **0.10.4**, painel **1.10.10**. Ver `docs/164-ENTREGA-EXCLUSAO-REAL-CADASTRO-TECNICOS-2026-08-01.md`.
 >
 > **Entrega anterior (2026-08-01):** backup habilitado por padrão no package — package **0.5.8**, painel **1.10.9**. Ver `docs/163-ENTREGA-BACKUP-PADRAO-LIGADO-PACKAGE-0.5.8-2026-08-01.md`.
 >
