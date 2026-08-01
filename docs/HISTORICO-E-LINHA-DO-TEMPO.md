@@ -6,6 +6,12 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-01 — Excluir técnico + privilégio sem User Manager (package 0.5.6, painel 1.10.6)
+
+- UI: aba **Excluir** com delete como padrão (desativar secundário).
+- Package: privilégio `page-systemup-technician-admin` — GUI ampla sem User/Group Manager; senha própria via passwordmg.
+- Contas antigas com `page-all` precisam ser recriadas após upgrade 0.5.6. Ver `docs/158-...md`.
+
 ### 2026-08-01 — Package 0.5.5: técnicos habilitados por padrão
 
 - Default do agente mudou de off → **on** (`technician_accounts_enabled`); checkbox na GUI SystemUp Monitor; shell fallback `:-1`.

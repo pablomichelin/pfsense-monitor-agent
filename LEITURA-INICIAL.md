@@ -11,12 +11,14 @@ Leia este arquivo primeiro.
 | Componente | Versao | Referencia |
 |------------|--------|------------|
 | API | `0.10.1` | `apps/api/package.json` |
-| Painel web | `1.10.5` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.5.5` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| Painel web | `1.10.6` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.5.6` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
-**Release publicada (config versionado):** `config/package-release.env` → package **`0.5.5`**.
+**Release publicada (config versionado):** `config/package-release.env` → package **`0.5.6`**.
 
-**Ultima entrega (2026-08-01):** package **0.5.5** — gestao de tecnicos **habilitada por padrao** no agente + checkbox na GUI. Painel **1.10.5**. Ver `docs/157-ENTREGA-PACKAGE-0.5.5-TECNICOS-PADRAO-LIGADO-2026-08-01.md`.
+**Ultima entrega (2026-08-01):** aba **Excluir** (delete por padrao) + privilegio tecnico sem User Manager (nao altera senha do admin). Package **0.5.6**, painel **1.10.6**. Ver `docs/158-ENTREGA-EXCLUIR-TECNICO-PRIVILEGIO-SEM-USER-MANAGER-2026-08-01.md`.
+
+**Entrega anterior (2026-08-01):** package **0.5.5** — gestao de tecnicos **habilitada por padrao** no agente + checkbox na GUI. Painel **1.10.5**. Ver `docs/157-ENTREGA-PACKAGE-0.5.5-TECNICOS-PADRAO-LIGADO-2026-08-01.md`.
 
 **Entrega anterior (2026-08-01):** mensagem amigavel quando o agente recusa com `technician accounts disabled on agent`. Painel **1.10.4**.
 

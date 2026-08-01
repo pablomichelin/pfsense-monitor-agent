@@ -4,9 +4,11 @@ Data de referencia: `2026-07-31`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Versoes atuais (codigo):** API `0.10.1` · painel `1.10.5` · package pfSense `0.5.5` (`config/package-release.env`).
+> **Versoes atuais (codigo):** API `0.10.1` · painel `1.10.6` · package pfSense `0.5.6` (`config/package-release.env`).
 >
-> **Ultima entrega (2026-08-01):** package **0.5.5** — gestao de tecnicos habilitada por padrao + checkbox na GUI. Ver `docs/157-ENTREGA-PACKAGE-0.5.5-TECNICOS-PADRAO-LIGADO-2026-08-01.md`.
+> **Ultima entrega (2026-08-01):** Excluir tecnico (delete padrao) + privilegio sem User Manager. Package **0.5.6**, painel **1.10.6**. Ver `docs/158-ENTREGA-EXCLUIR-TECNICO-PRIVILEGIO-SEM-USER-MANAGER-2026-08-01.md`.
+>
+> **Entrega anterior (2026-08-01):** package **0.5.5** — gestao de tecnicos habilitada por padrao + checkbox na GUI. Ver `docs/157-ENTREGA-PACKAGE-0.5.5-TECNICOS-PADRAO-LIGADO-2026-08-01.md`.
 >
 > **Entrega anterior (2026-08-01):** mensagem PT-BR para flag de tecnicos desligada no agente. Painel **1.10.4**.
 >

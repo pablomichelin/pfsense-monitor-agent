@@ -11,6 +11,7 @@ libexec/monitor-pfsense-agent/run_package_upgrade.sh
 libexec/monitor-pfsense-agent/run_node_reboot.sh
 pkg/systemup_monitor.inc
 pkg/systemup_monitor.xml
+pkg/priv/systemup_technician.inc
 share/pfSense-pkg-systemup-monitor/info.xml
 share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php
 share/pfSense-pkg-systemup-monitor/package-monitor-catalog.json

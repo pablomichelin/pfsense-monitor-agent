@@ -139,7 +139,7 @@ export function FleetTechnicianManagementPanel({
   const [search, setSearch] = useState('');
   const [technicianId, setTechnicianId] = useState('');
   const [actionMode, setActionMode] = useState<ActionMode>('provision');
-  const [revokeAction, setRevokeAction] = useState<'disable' | 'delete'>('disable');
+  const [revokeAction, setRevokeAction] = useState<'disable' | 'delete'>('delete');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -360,7 +360,7 @@ export function FleetTechnicianManagementPanel({
   const actionModeLabels: Record<ActionMode, string> = {
     provision: 'Provisionar',
     password_reset: 'Resetar senha',
-    revoke: 'Revogar',
+    revoke: 'Excluir',
   };
 
   return (
@@ -368,9 +368,9 @@ export function FleetTechnicianManagementPanel({
       <div>
         <h3 className="font-display text-base text-white">Gestão de técnicos pfSense</h3>
         <p className="mt-1 text-sm text-slate-400">
-          Cadastro centralizado e ações em lote. Em <strong className="text-slate-300">/nodes</strong>,
-          marque os firewalls na tabela do inventário (mesma seleção do upgrade de package) — provisionar,
-          resetar senha e revogar na seleção usam só esses marcados. Requer agente {MIN_AGENT_VERSION}+.
+          Cadastro centralizado e ações em lote. Em /nodes, marque os firewalls na tabela (mesma seleção
+          do package). Técnicos novos (package 0.5.6+) têm acesso amplo, sem User Manager — só alteram a
+          própria senha. Requer agente {MIN_AGENT_VERSION}+.
         </p>
       </div>
 
@@ -452,7 +452,7 @@ export function FleetTechnicianManagementPanel({
                   Remover <strong className="text-white">{deleteTarget.full_name}</strong> (
                   <code className="text-slate-200">{deleteTarget.login_username}</code>) do cadastro
                   central? Isso <strong className="text-white">não</strong> remove o usuário dos
-                  firewalls — use a aba Revogar para offboarding nos pfSense.
+                  firewalls — use a aba Excluir para remover o usuário nos pfSense.
                 </p>
                 <p className="text-xs text-slate-400">
                   Digite o login pfSense <code>{deleteTarget.login_username}</code> para confirmar.
@@ -569,7 +569,7 @@ export function FleetTechnicianManagementPanel({
           {technicians.length > 0 && mode === 'selection' && nodeIds.length === 0 ? (
             <Alert variant="info">
               Marque um ou mais firewalls na tabela <strong className="text-slate-200">Inventário</strong>{' '}
-              acima (checkboxes) para provisionar, resetar senha ou revogar só nesses. É a mesma seleção
+              acima (checkboxes) para provisionar, resetar senha ou excluir só nesses. É a mesma seleção
               usada no upgrade de package.
             </Alert>
           ) : null}
@@ -607,10 +607,11 @@ export function FleetTechnicianManagementPanel({
                     variant={actionMode === 'revoke' ? 'primary' : 'ghost'}
                     onClick={() => {
                       setActionMode('revoke');
+                      setRevokeAction('delete');
                       setShowConfirm(false);
                     }}
                   >
-                    Revogar
+                    Excluir
                   </Button>
                 ) : null}
               </div>
@@ -648,7 +649,7 @@ export function FleetTechnicianManagementPanel({
                   </label>
                 ) : (
                   <label className="flex flex-col gap-1 text-sm text-slate-300">
-                    Ação
+                    Modo
                     <select
                       value={revokeAction}
                       onChange={(event) =>
@@ -656,8 +657,8 @@ export function FleetTechnicianManagementPanel({
                       }
                       className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200"
                     >
-                      <option value="disable">Desativar (reversível)</option>
-                      <option value="delete">Remover (destrutivo)</option>
+                      <option value="delete">Excluir usuário do firewall</option>
+                      <option value="disable">Apenas desativar (reversível)</option>
                     </select>
                   </label>
                 )}
@@ -674,17 +675,18 @@ export function FleetTechnicianManagementPanel({
 
               {actionMode === 'revoke' && !showConfirm ? (
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="secondary" onClick={() => openRevokeConfirm('fleet')}>
-                    Revogar em toda a frota…
+                  <Button type="button" variant="secondary" onClick={() => openRevokeConfirm(mode)}>
+                    {revokeAction === 'delete' ? 'Excluir' : 'Desativar'} em {targetLabel}…
                   </Button>
-                  <Button type="button" variant="ghost" onClick={() => openRevokeConfirm(mode)}>
-                    Revogar em {targetLabel}…
+                  <Button type="button" variant="ghost" onClick={() => openRevokeConfirm('fleet')}>
+                    {revokeAction === 'delete' ? 'Excluir' : 'Desativar'} em toda a frota…
                   </Button>
                 </div>
               ) : actionMode === 'revoke' && showConfirm ? (
                 <div className="space-y-3">
                   <p className="text-sm text-slate-300">
-                    Confirma {revokeAction === 'delete' ? 'remoção' : 'desativação'} do técnico{' '}
+                    Confirma {revokeAction === 'delete' ? 'exclusão permanente' : 'desativação'} do
+                    técnico{' '}
                     <strong className="text-white">
                       {selectedTechnician?.full_name ?? technicianId}
                     </strong>
@@ -693,6 +695,9 @@ export function FleetTechnicianManagementPanel({
                     ) : (
                       <> em {nodeIds.length} firewall(s)?</>
                     )}{' '}
+                    {revokeAction === 'delete'
+                      ? 'O usuário será removido do pfSense (não dá para desfazer por aqui).'
+                      : 'A conta permanece no firewall, só fica desabilitada.'}{' '}
                     Digite <code className="text-slate-200">CONFIRMAR</code>.
                   </p>
                   <input
@@ -737,7 +742,7 @@ export function FleetTechnicianManagementPanel({
                           }
 
                           setInitialResponse(result.data);
-                          setLastActionLabel('Revogar');
+                          setLastActionLabel(revokeAction === 'delete' ? 'Excluir' : 'Desativar');
                           setLastPasswordDisplay(null);
                           setPasswordWasAutoGenerated(false);
                           setError(null);
@@ -747,7 +752,7 @@ export function FleetTechnicianManagementPanel({
                         });
                       }}
                     >
-                      Confirmar revogação
+                      Confirmar {revokeAction === 'delete' ? 'exclusão' : 'desativação'}
                     </Button>
                     <Button
                       type="button"
@@ -825,8 +830,9 @@ export function FleetTechnicianManagementPanel({
           ) : technicians.length > 0 && mode === 'selection' && nodeIds.length === 0 && canManageTechnicians ? (
             <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/20 p-4">
               <p className="text-sm text-slate-400">
-                Sem seleção na tabela: só é possível revogar o técnico em <strong className="text-slate-200">toda a frota</strong>.
-                Para provisionar ou resetar senha, marque firewalls no inventário.
+                Sem seleção na tabela: só é possível excluir/desativar o técnico em{' '}
+                <strong className="text-slate-200">toda a frota</strong>. Para provisionar ou resetar
+                senha, marque firewalls no inventário.
               </p>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <label className="flex flex-1 flex-col gap-1 text-sm text-slate-300">
@@ -844,7 +850,7 @@ export function FleetTechnicianManagementPanel({
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-slate-300">
-                  Ação
+                  Modo
                   <select
                     value={revokeAction}
                     onChange={(event) =>
@@ -852,19 +858,20 @@ export function FleetTechnicianManagementPanel({
                     }
                     className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200"
                   >
-                    <option value="disable">Desativar (reversível)</option>
-                    <option value="delete">Remover (destrutivo)</option>
+                    <option value="delete">Excluir usuário do firewall</option>
+                    <option value="disable">Apenas desativar (reversível)</option>
                   </select>
                 </label>
               </div>
               {!showConfirm ? (
                 <Button type="button" variant="secondary" onClick={() => openRevokeConfirm('fleet')}>
-                  Revogar em toda a frota…
+                  {revokeAction === 'delete' ? 'Excluir' : 'Desativar'} em toda a frota…
                 </Button>
               ) : pendingRevokeMode === 'fleet' ? (
                 <div className="space-y-3">
                   <p className="text-sm text-slate-300">
-                    Confirma {revokeAction === 'delete' ? 'remoção' : 'desativação'} do técnico{' '}
+                    Confirma {revokeAction === 'delete' ? 'exclusão permanente' : 'desativação'} do
+                    técnico{' '}
                     <strong className="text-white">
                       {selectedTechnician?.full_name ?? technicianId}
                     </strong>{' '}
@@ -900,7 +907,7 @@ export function FleetTechnicianManagementPanel({
                             return;
                           }
                           setInitialResponse(result.data);
-                          setLastActionLabel('Revogar');
+                          setLastActionLabel(revokeAction === 'delete' ? 'Excluir' : 'Desativar');
                           setLastPasswordDisplay(null);
                           setPasswordWasAutoGenerated(false);
                           setError(null);
@@ -910,7 +917,7 @@ export function FleetTechnicianManagementPanel({
                         });
                       }}
                     >
-                      Confirmar revogação
+                      Confirmar {revokeAction === 'delete' ? 'exclusão' : 'desativação'}
                     </Button>
                     <Button
                       type="button"

@@ -2,9 +2,11 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-01):** API `0.10.1` · painel `1.10.5` · package pfSense `0.5.5`.
+> **Versoes atuais (2026-08-01):** API `0.10.1` · painel `1.10.6` · package pfSense `0.5.6`.
 >
-> **Ultima entrega (2026-08-01):** package **0.5.5** — tecnicos habilitados por padrao no agente + checkbox GUI. Ver `docs/157-...md`.
+> **Ultima entrega (2026-08-01):** Excluir usuario (delete) + privilegio sem User Manager. Package **0.5.6**, painel **1.10.6**. Ver `docs/158-...md`.
+>
+> **Entrega anterior (2026-08-01):** package **0.5.5** — tecnicos habilitados por padrao no agente + checkbox GUI. Ver `docs/157-...md`.
 >
 > **Entrega anterior (2026-08-01):** mensagem PT-BR para `technician accounts disabled on agent`. Painel **1.10.4**.
 >

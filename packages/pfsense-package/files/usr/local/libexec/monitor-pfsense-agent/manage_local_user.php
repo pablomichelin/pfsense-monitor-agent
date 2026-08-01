@@ -184,8 +184,11 @@ function handle_create(array $payload, string $username): void
 
     apply_local_user_password($user, $password);
 
+    // admin_full (controlador) → privilégio SystemUp sem User/Group Manager:
+    // acesso operacional amplo, troca só a própria senha (passwordmg), sem
+    // alterar senha do admin nem auto-escalar via grupos.
     if ($privilegeProfile === 'admin_full') {
-        $user['priv'] = ['page-all'];
+        $user['priv'] = ['page-systemup-technician-admin'];
     }
 
     local_user_set($user);
