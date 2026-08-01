@@ -57,6 +57,9 @@ function mapTechnicianError(message: string, fallback: string): string {
   if (normalized.includes('technician not found')) {
     return 'Técnico não encontrado.';
   }
+  if (normalized.includes('confirm_login_username does not match')) {
+    return 'Digite o login pfSense exato do técnico para confirmar a exclusão.';
+  }
   if (normalized.includes('technician account') && normalized.includes('disabled')) {
     return 'Gestão de contas de técnicos está desabilitada no controlador.';
   }

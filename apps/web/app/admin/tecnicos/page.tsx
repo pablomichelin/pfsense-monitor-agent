@@ -58,7 +58,7 @@ export default async function AdminTecnicosPage() {
 
   try {
     const [techniciansList, nodesList] = await Promise.all([
-      getTechnicians(),
+      getTechnicians('active'),
       getNodesList({ limit: NODE_LIST_LIMIT }),
     ]);
 

@@ -6,6 +6,11 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-01 — Exclusão real do cadastro de técnicos (API 0.10.4, painel 1.10.10)
+
+- `DELETE /technicians/:id` passa a hard-delete (some da matriz); listagem default só ativos; limpeza dos soft-deletes Hotspot/Osmarildo.
+- Ver `docs/164-ENTREGA-EXCLUSAO-REAL-CADASTRO-TECNICOS-2026-08-01.md`.
+
 ### 2026-08-01 — Backup ligado por padrão (package 0.5.8, painel 1.10.9)
 
 - Default `config_backup_enabled=on` + remoto on; pedido remoto recusado agora falha com mensagem (não expira em silêncio); correção do `if !` em `backup_scheduled`.

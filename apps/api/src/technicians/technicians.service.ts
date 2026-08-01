@@ -144,9 +144,14 @@ export class TechniciansService {
     );
   }
 
-  async listTechnicians(status?: TechnicianStatus) {
+  /**
+   * Lista técnicos do cadastro central.
+   * Default: apenas `active` (removidos não aparecem na matriz/painéis).
+   * Passe `'all'` para incluir soft-deletes históricos ainda no banco.
+   */
+  async listTechnicians(status: TechnicianStatus | 'all' = TechnicianStatus.active) {
     const technicians = await this.prisma.technician.findMany({
-      where: status ? { status } : undefined,
+      where: status === 'all' ? undefined : { status },
       orderBy: [{ status: 'asc' }, { fullName: 'asc' }],
       include: {
         _count: {
@@ -263,6 +268,12 @@ export class TechniciansService {
     };
   }
 
+  /**
+   * Remove o técnico do cadastro central de verdade (hard delete).
+   * Não toca usuários nos pfSense — só o registro no controlador e o
+   * histórico de contas por node. Soft-deletes antigos (`revoked`) também
+   * podem ser apagados por este caminho (limpeza da matriz).
+   */
   async revokeTechnicianFromRegistry(
     userId: string,
     technicianId: string,
@@ -273,14 +284,13 @@ export class TechniciansService {
 
     const technician = await this.prisma.technician.findUnique({
       where: { id: technicianId },
+      include: {
+        _count: { select: { nodeAccounts: true } },
+      },
     });
 
     if (!technician) {
       throw new NotFoundException('technician not found');
-    }
-
-    if (technician.status === TechnicianStatus.revoked) {
-      throw new ConflictException('technician already revoked from registry');
     }
 
     const normalizedConfirm = confirmLoginUsername.trim().toLowerCase();
@@ -288,39 +298,42 @@ export class TechniciansService {
       throw new ConflictException('confirm_login_username does not match technician login');
     }
 
-    const revoked = await this.prisma.technician.update({
-      where: { id: technicianId },
-      data: {
-        status: TechnicianStatus.revoked,
-        revokedAt: new Date(),
-        revokedByUserId: userId,
-      },
-    });
+    const nodeAccountCount = technician._count.nodeAccounts;
+    const deletedAt = new Date();
 
     await this.prisma.auditLog.create({
       data: {
         actorType: 'user',
         actorId: userId,
-        action: 'technician.registry_revoke',
+        action: 'technician.registry_delete',
         targetType: 'technician',
         targetId: technician.id,
         ipAddress,
         metadataJson: {
           login_username: technician.loginUsername,
           full_name: technician.fullName,
-          node_account_count: await this.prisma.technicianNodeAccount.count({
-            where: { technicianId: technician.id },
-          }),
+          previous_status: technician.status,
+          node_account_count: nodeAccountCount,
+          deleted_at: deletedAt.toISOString(),
         },
       },
     });
 
+    await this.prisma.$transaction([
+      this.prisma.technicianNodeAccount.deleteMany({
+        where: { technicianId: technician.id },
+      }),
+      this.prisma.technician.delete({
+        where: { id: technician.id },
+      }),
+    ]);
+
     return {
-      id: revoked.id,
-      full_name: revoked.fullName,
-      login_username: revoked.loginUsername,
-      status: revoked.status,
-      revoked_at: revoked.revokedAt?.toISOString() ?? null,
+      id: technician.id,
+      full_name: technician.fullName,
+      login_username: technician.loginUsername,
+      status: 'deleted',
+      revoked_at: deletedAt.toISOString(),
     };
   }
 

@@ -436,7 +436,7 @@ export function FleetTechnicianManagementPanel({
                                 setError(null);
                               }}
                             >
-                              Remover do cadastro
+                              Excluir do cadastro
                             </Button>
                           </td>
                         ) : null}
@@ -452,10 +452,11 @@ export function FleetTechnicianManagementPanel({
             {deleteTarget && canManageTechnicians ? (
               <div className="space-y-3 rounded-lg border border-rose-900/60 bg-rose-950/20 p-4">
                 <p className="text-sm text-slate-200">
-                  Remover <strong className="text-white">{deleteTarget.full_name}</strong> (
+                  Excluir <strong className="text-white">{deleteTarget.full_name}</strong> (
                   <code className="text-slate-200">{deleteTarget.login_username}</code>) do cadastro
-                  central? Isso <strong className="text-white">não</strong> remove o usuário dos
-                  firewalls — use a aba Excluir para remover o usuário nos pfSense.
+                  central? O técnico some da matriz e das listas. Isso{' '}
+                  <strong className="text-white">não</strong> remove o usuário dos firewalls —
+                  use a aba Excluir para remover o usuário nos pfSense.
                 </p>
                 <p className="text-xs text-slate-400">
                   Digite o login pfSense <code>{deleteTarget.login_username}</code> para confirmar.
@@ -490,7 +491,7 @@ export function FleetTechnicianManagementPanel({
                         setDeleteTargetId(null);
                         setDeleteConfirmText('');
                         setInfo(
-                          `Técnico ${deleteTarget.full_name} removido do cadastro central.`,
+                          `Técnico ${deleteTarget.full_name} excluído do cadastro central.`,
                         );
                         setError(null);
                       });

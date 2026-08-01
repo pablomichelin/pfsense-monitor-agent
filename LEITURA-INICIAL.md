@@ -10,13 +10,15 @@ Leia este arquivo primeiro.
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.10.3` | `apps/api/package.json` |
-| Painel web | `1.10.9` | `apps/web/package.json` (rodape do layout) |
+| API | `0.10.4` | `apps/api/package.json` |
+| Painel web | `1.10.10` | `apps/web/package.json` (rodape do layout) |
 | Package pfSense | `0.5.8` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
 **Release (config local):** `config/package-release.env` → package **`0.5.8`** (artefato em `dist/`; publicar no GitHub do agent com `scripts/release-pfsense-package.sh` para upgrade nos firewalls).
 
-**Ultima entrega (2026-08-01):** backup habilitado por padrão no package (agendado + pedido remoto do portal) — package **0.5.8**, painel **1.10.9**. Correção do silêncio em `config_backup_now` e do `if !` no agendamento. Ver `docs/163-ENTREGA-BACKUP-PADRAO-LIGADO-PACKAGE-0.5.8-2026-08-01.md`.
+**Ultima entrega (2026-08-01):** exclusão real do cadastro de técnicos (hard delete + matriz só ativos) — API **0.10.4**, painel **1.10.10**. Ver `docs/164-ENTREGA-EXCLUSAO-REAL-CADASTRO-TECNICOS-2026-08-01.md`.
+
+**Entrega anterior (2026-08-01):** backup habilitado por padrão no package (agendado + pedido remoto do portal) — package **0.5.8**, painel **1.10.9**. Correção do silêncio em `config_backup_now` e do `if !` no agendamento. Ver `docs/163-ENTREGA-BACKUP-PADRAO-LIGADO-PACKAGE-0.5.8-2026-08-01.md`.
 
 **Entrega anterior (2026-08-01):** UX despoluição P0 do inventário `/nodes` — colunas enxutas (61rem), filtros sob demanda, lote com contexto; painel **1.10.8**. Plano `docs/161-...md`; entrega `docs/162-ENTREGA-UX-DESPOLUICAO-P0-INVENTARIO-2026-08-01.md`. P1/P2 pendentes.
 

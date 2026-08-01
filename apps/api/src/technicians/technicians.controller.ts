@@ -31,8 +31,15 @@ export class TechniciansController {
 
   @Get()
   @RequirePermissions('technicians.view')
-  async list(@Query('status') status?: TechnicianStatus) {
-    return this.techniciansService.listTechnicians(status);
+  async list(@Query('status') status?: string) {
+    // Default: só ativos — removidos do cadastro não poluem a matriz.
+    if (status === 'all') {
+      return this.techniciansService.listTechnicians('all');
+    }
+    if (status === TechnicianStatus.revoked) {
+      return this.techniciansService.listTechnicians(TechnicianStatus.revoked);
+    }
+    return this.techniciansService.listTechnicians(TechnicianStatus.active);
   }
 
   @Post()
