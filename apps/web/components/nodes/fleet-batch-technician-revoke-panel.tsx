@@ -277,24 +277,23 @@ export function FleetBatchTechnicianRevokePanel({
             disabled={createPending || !newFullName.trim() || !loginUsernameValid}
             onClick={() => {
               startCreateTransition(async () => {
-                try {
-                  const created = await createTechnicianAction({
-                    full_name: newFullName.trim(),
-                    login_username: newLoginUsername.trim(),
-                  });
-                  await reloadTechnicians();
-                  setTechnicianId(created.id);
-                  setNewFullName('');
-                  setNewLoginUsername('');
-                  setInfo(
-                    `Técnico ${created.full_name} (${created.login_username}) cadastrado.`,
-                  );
-                  setError(null);
-                } catch (err) {
-                  setError(
-                    err instanceof Error ? err.message : 'Falha ao cadastrar técnico',
-                  );
+                const result = await createTechnicianAction({
+                  full_name: newFullName.trim(),
+                  login_username: newLoginUsername.trim(),
+                });
+                if (!result.ok) {
+                  setError(result.error);
+                  return;
                 }
+                const created = result.data;
+                await reloadTechnicians();
+                setTechnicianId(created.id);
+                setNewFullName('');
+                setNewLoginUsername('');
+                setInfo(
+                  `Técnico ${created.full_name} (${created.login_username}) cadastrado.`,
+                );
+                setError(null);
               });
             }}
           >
@@ -482,42 +481,39 @@ export function FleetBatchTechnicianRevokePanel({
               disabled={pending || !confirmEnabled || !technicianId}
               onClick={() => {
                 startTransition(async () => {
-                  try {
-                    const labelBase =
-                      action === 'delete'
-                        ? `Offboarding — remover ${selectedTechnician?.login_username ?? ''}`
-                        : `Offboarding — desativar ${selectedTechnician?.login_username ?? ''}`;
+                  const labelBase =
+                    action === 'delete'
+                      ? `Offboarding — remover ${selectedTechnician?.login_username ?? ''}`
+                      : `Offboarding — desativar ${selectedTechnician?.login_username ?? ''}`;
 
-                    const response =
-                      pendingRevokeMode === 'fleet'
-                        ? await createTechnicianFleetRevokeAction({
-                            technician_id: technicianId,
-                            action,
-                            confirm: 'CONFIRMAR',
-                            client_id: clientId,
-                            label: labelBase,
-                          })
-                        : await createTechnicianBatchRevokeAction({
-                            technician_id: technicianId,
-                            node_ids: nodeIds,
-                            action,
-                            confirm: 'CONFIRMAR',
-                            client_id: clientId,
-                            label: labelBase,
-                          });
+                  const result =
+                    pendingRevokeMode === 'fleet'
+                      ? await createTechnicianFleetRevokeAction({
+                          technician_id: technicianId,
+                          action,
+                          confirm: 'CONFIRMAR',
+                          client_id: clientId,
+                          label: labelBase,
+                        })
+                      : await createTechnicianBatchRevokeAction({
+                          technician_id: technicianId,
+                          node_ids: nodeIds,
+                          action,
+                          confirm: 'CONFIRMAR',
+                          client_id: clientId,
+                          label: labelBase,
+                        });
 
-                    setInitialResponse(response);
-                    setError(null);
-                    setInfo(null);
-                    setShowConfirm(false);
-                    setConfirmText('');
-                  } catch (err) {
-                    setError(
-                      err instanceof Error
-                        ? err.message
-                        : 'Falha ao criar lote de revogação',
-                    );
+                  if (!result.ok) {
+                    setError(result.error);
+                    return;
                   }
+
+                  setInitialResponse(result.data);
+                  setError(null);
+                  setInfo(null);
+                  setShowConfirm(false);
+                  setConfirmText('');
                 });
               }}
             >

@@ -123,23 +123,22 @@ export function FleetInventorySection({
     ? selectedNodes.map((node) => node.id)
     : nodes.map((node) => node.id);
 
-  const revokeUsesSelection = selectedCount > 0;
-  const revokeNodeIds = revokeUsesSelection
-    ? selectedNodes.map((node) => node.id)
-    : nodes.map((node) => node.id);
+  // Técnicos: só a seleção da tabela (mesmo padrão do package upgrade) — sem fallback para "todos do filtro".
+  const technicianNodeIds = selectedNodes.map((node) => node.id);
+
+  const inventorySelectionHint = (() => {
+    if (selectedCount > 0) {
+      return `${selectedCount} selecionado(s) — ações em lote (package, backup e técnicos) usam essa seleção.`;
+    }
+    if (showRowSelection) {
+      return 'Marque firewalls na tabela para ações em lote: package, backup e gestão de técnicos (usuário/senha).';
+    }
+    return 'Visão operacional com backup e alertas abertos por firewall.';
+  })();
 
   return (
     <>
-      <PageSection
-        title="Inventário"
-        description={
-          canRunPackageUpgrade
-            ? selectedCount > 0
-              ? `${selectedCount} selecionado(s) — marque firewalls para atualização em lote do package SystemUp Monitor.`
-              : 'Marque firewalls para atualização em lote do package SystemUp Monitor.'
-            : 'Visão operacional com backup e alertas abertos por firewall.'
-        }
-      >
+      <PageSection title="Inventário" description={inventorySelectionHint}>
         <Card className="overflow-hidden p-0">
           <NodesInventoryTable
             nodes={nodes}
@@ -163,8 +162,8 @@ export function FleetInventorySection({
           title="Ações em lote"
           description={
             selectedCount > 0
-              ? `${selectedCount} firewall(s) selecionado(s) na tabela — upgrade e backup abaixo aplicam somente a essa seleção.`
-              : 'Marque firewalls na tabela acima ou use o filtro atual para backup em massa.'
+              ? `${selectedCount} firewall(s) selecionado(s) — package, backup e técnicos aplicam somente a essa seleção.`
+              : 'Marque firewalls na tabela acima. Backup sem seleção usa o filtro atual; package e técnicos exigem seleção.'
           }
         >
           <div className="space-y-4">
@@ -194,8 +193,8 @@ export function FleetInventorySection({
 
             {canManageTechnicians || canResetTechnicianPassword ? (
               <FleetTechnicianManagementPanel
-                nodeIds={revokeNodeIds}
-                mode={revokeUsesSelection ? 'selection' : 'filter'}
+                nodeIds={technicianNodeIds}
+                mode="selection"
                 totalVisibleCount={nodes.length}
                 clientId={clientId}
                 canManageTechnicians={canManageTechnicians}

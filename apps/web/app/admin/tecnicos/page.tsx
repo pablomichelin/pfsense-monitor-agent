@@ -206,7 +206,7 @@ export default async function AdminTecnicosPage() {
       {canManageTechnicians || canResetTechnicianPassword ? (
         <PageSection
           title="Cadastro e ações em lote"
-          description="Cadastrar técnicos e provisionar, resetar senha ou revogar em toda a frota visível no inventário."
+          description="Cadastrar técnicos e agir sobre toda a frota listada. Para escolher firewalls específicos, use os checkboxes em /nodes (mesma seleção do upgrade de package)."
         >
           <FleetTechnicianManagementPanel
             nodeIds={allNodeIds}

@@ -2,9 +2,19 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-07-31):** API `0.10.0` · painel `1.10.0` · package pfSense `0.5.4`.
+> **Versoes atuais (2026-08-01):** API `0.10.1` · painel `1.10.5` · package pfSense `0.5.5`.
 >
-> **Ultima entrega (2026-07-31):** validacao E2E real de create/set_password/delete contra pfSense de producao — achado e corrigido 2o bug critico independente (`local_user_set_password()` exigia wrapper de item; usuario "criado" ficava sem login funcional). Package **0.5.4**. Ver `docs/155-VALIDACAO-E2E-LOCAL-USER-CREATE-PFSENSE-254-2026-07-31.md`.
+> **Ultima entrega (2026-08-01):** package **0.5.5** — tecnicos habilitados por padrao no agente + checkbox GUI. Ver `docs/157-...md`.
+>
+> **Entrega anterior (2026-08-01):** mensagem PT-BR para `technician accounts disabled on agent`. Painel **1.10.4**.
+>
+> **Entrega anterior (2026-08-01):** tecnicos em `/nodes` usam checkboxes da tabela (como package upgrade). Painel **1.10.3**.
+>
+> **Entrega anterior (2026-08-01):** senha minima de tecnico: **10** caracteres (antes 12). API **0.10.1**, painel **1.10.2**.
+>
+> **Entrega anterior (2026-08-01):** correcao crash Server Components ao provisionar tecnico (`password must be 12-64` derrubava `/nodes`) — actions com `{ ok, error }`, validacao de senha no cliente. Painel **1.10.1**. Ver `docs/156-CORRECAO-SERVER-ACTION-GESTAO-TECNICOS-2026-08-01.md`.
+>
+> **Entrega anterior (2026-07-31):** validacao E2E real de create/set_password/delete contra pfSense de producao — achado e corrigido 2o bug critico independente (`local_user_set_password()` exigia wrapper de item; usuario "criado" ficava sem login funcional). Package **0.5.4**. Ver `docs/155-VALIDACAO-E2E-LOCAL-USER-CREATE-PFSENSE-254-2026-07-31.md`.
 >
 > **Entrega anterior (2026-07-31):** pagina `/admin/tecnicos` (Fase 3 plano 144) + gate de backup recente antes de escrita em usuarios locais. Ver `docs/154-ENTREGA-ADMIN-TECNICOS-GATE-BACKUP-2026-07-31.md`.
 >
@@ -12,7 +22,7 @@ Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 >
 > **Entrega anterior (2026-07-31):** senha gerada visivel + exclusao cadastro central tecnicos. Ver `docs/152-ENTREGA-SENHA-GERADA-EXCLUSAO-CADASTRO-TECNICOS-2026-07-31.md`.
 >
-> **Plano em andamento:** rollout package **0.5.4** na frota (validacao E2E de create/set_password concluida contra pfSense real). Ver `docs/144-...md`, `docs/155-...md`.
+> **Plano em andamento:** rollout package **0.5.5** na frota (tecnicos on por padrao). Ver `docs/157-...md`, `docs/155-...md`.
 >
 > **Entrega anterior (2026-07-04):** correção versão reportada no heartbeat após lote (`SYSTEMUP_MONITOR_AGENT_VERSION` alinhado) — package `0.4.15`. Ver `docs/141-CORRECAO-AGENT-VERSION-0.4.15-2026-07-04.md`.
 >

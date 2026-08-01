@@ -2,9 +2,34 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-07-31
+**Última atualização:** 2026-08-01
 
 ---
+
+### 2026-08-01 — Package 0.5.5: técnicos habilitados por padrão
+
+- Default do agente mudou de off → **on** (`technician_accounts_enabled`); checkbox na GUI SystemUp Monitor; shell fallback `:-1`.
+- Motivo: teste no voner falhou com `technician accounts disabled on agent` porque a flag fail-closed não tinha UI e vinha desligada.
+- Package **0.5.5**, painel **1.10.5**. Ver `docs/157-ENTREGA-PACKAGE-0.5.5-TECNICOS-PADRAO-LIGADO-2026-08-01.md`.
+
+### 2026-08-01 — Mensagem PT-BR: técnicos desligados no agente (painel 1.10.4)
+
+- Erro `technician accounts disabled on agent` (flag fail-closed no package) agora aparece traduzido no resultado do lote.
+
+### 2026-08-01 — Técnicos usam seleção da tabela em `/nodes` (painel 1.10.3)
+
+- Provisionar/resetar/revogar na seleção deixou de cair automaticamente em “todos do filtro”; usa os checkboxes do inventário (mesmo mecanismo do upgrade de package).
+- Sem seleção: aviso claro + cadastro + opção de revogar em toda a frota. Painel **1.10.3**.
+
+### 2026-08-01 — Senha mínima de técnico: 10 caracteres (API 0.10.1, painel 1.10.2)
+
+- Mínimo de senha manual em provisionar/reset reduzido de 12 para **10** caracteres (API + validação do painel). Campo vazio continua gerando senha automaticamente.
+
+### 2026-08-01 — Correção crash Server Action na gestão de técnicos (painel 1.10.1)
+
+- Provisionar técnico em `/nodes` derrubava a página com banner genérico de Server Components; log real: `password must be 12-64 characters`.
+- Causa: Server Actions lançavam `ApiError` (Next.js 15 transforma em falha de RSC) + senha curta (muitas vezes autofill) rejeitada pela API sem feedback amigável.
+- Correção: actions com `{ ok, error }`, validação client-side, mensagens PT-BR, anti-autofill no campo de senha. Painel **1.10.1**. Ver `docs/156-CORRECAO-SERVER-ACTION-GESTAO-TECNICOS-2026-08-01.md`.
 
 ### 2026-07-31 — Validação E2E real: `local_user_set_password()` exigia wrapper de item (package 0.5.4)
 

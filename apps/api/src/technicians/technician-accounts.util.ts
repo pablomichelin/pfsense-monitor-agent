@@ -5,7 +5,7 @@ import type { Prisma } from '@prisma/client';
 /** Perfis de privilégio allowlistados — MVP usa admin completo (doc 146). */
 export const PRIVILEGE_PROFILE_ALLOWLIST = ['admin_full'] as const;
 
-const TECHNICIAN_PASSWORD_MIN_LENGTH = 12;
+const TECHNICIAN_PASSWORD_MIN_LENGTH = 10;
 const TECHNICIAN_PASSWORD_MAX_LENGTH = 64;
 const TECHNICIAN_PASSWORD_CHARS =
   'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*';

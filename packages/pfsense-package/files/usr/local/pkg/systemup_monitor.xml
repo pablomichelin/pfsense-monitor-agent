@@ -229,5 +229,11 @@
       <description>Executa config_backup_now recebido no heartbeat.</description>
       <type>checkbox</type>
     </field>
+    <field>
+      <fielddescr>Gestao de tecnicos (usuarios locais)</fielddescr>
+      <fieldname>technician_accounts_enabled</fieldname>
+      <description>Permite create/set_password/disable/delete de usuarios locais enviados pelo controlador. Padrao: ligado.</description>
+      <type>checkbox</type>
+    </field>
   </fields>
 </packagegui>

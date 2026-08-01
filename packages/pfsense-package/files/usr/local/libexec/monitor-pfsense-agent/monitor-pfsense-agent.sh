@@ -3146,7 +3146,8 @@ node_reboot_enabled() {
 }
 
 technician_accounts_enabled() {
-  flag="${MONITOR_AGENT_TECHNICIAN_ACCOUNTS_ENABLED:-0}"
+  # Default on (package 0.5.5+): gestão de técnicos habilitada salvo override explícito off.
+  flag="${MONITOR_AGENT_TECHNICIAN_ACCOUNTS_ENABLED:-1}"
   case "$flag" in
     1|true|yes|on) return 0 ;;
     *) return 1 ;;

@@ -36,6 +36,6 @@ Toda entrega que altere `apps/api` ou `apps/web` **deve** atualizar a versão an
 
 ## Versões atuais (referência — atualizar a cada entrega)
 
-- API: `0.10.0`
-- Painel: `1.10.0`
-- Package pfSense: `0.5.4`
+- API: `0.10.1`
+- Painel: `1.10.5`
+- Package pfSense: `0.5.5`
