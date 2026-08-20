@@ -2,9 +2,35 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-08-01
+**Última atualização:** 2026-08-20
 
 ---
+
+### 2026-08-20 — Create de técnico deixava usuário órfão no Unix (package 0.5.10)
+
+- `local_user_create` reescrevia `system/user` sem validar a lista e gravava o SO antes do `config.xml`; contas sumiam da GUI e a recriação dizia “reservado pelo sistema”.
+- Varredura antes da publicação: o upgrade da frota passa por `install.sh` (não pelo `pkg-install`); `adopt_orphans` passou a rodar aí. Também: filtro de home `/home/...`, restauração do `admin` se sumiu do config, uid novo sem colidir com órfãos, delete Unix-primeiro.
+- Ver `docs/170-CORRECAO-USUARIO-ORFAO-CREATE-LOCAL-USER-2026-08-20.md`.
+
+### 2026-08-20 — Tema claro completo do painel (painel 1.11.0)
+
+- Alternância Claro / Escuro / Sistema com tokens semânticos; tema escuro preservado; preferência só visual (`mp-theme-preference`).
+- Ver `docs/169-ENTREGA-TEMA-CLARO-PAINEL-2026-08-20.md` e `docs/SISTEMA-VISUAL-PAINEL.md`.
+
+### 2026-08-20 — UX P0 gestão de técnicos (painel 1.10.15)
+
+- Abas Técnicos / Ação em lote; seleção por clique; modal de cadastro; layout em coluna; rótulos sem ambiguidade (cadastro vs firewalls).
+- Ver `docs/168-ENTREGA-UX-P0-GESTAO-TECNICOS-2026-08-20.md`.
+
+### 2026-08-20 — Backup automático antes do provisionamento (API 0.10.8, painel 1.10.14)
+
+- Opção no lote (default ligada) enfileira `config_backup_now` quando falta backup recente e provisiona automaticamente após sucesso; outcome `backup_queued`.
+- Ver `docs/167-ENTREGA-BACKUP-AUTOMATICO-ANTES-PROVISIONAMENTO-2026-08-20.md`.
+
+### 2026-08-19 — Correção senha no provisionamento de técnicos (API 0.10.6, painel 1.10.12, package 0.5.9)
+
+- Lote passa a **atualizar senha** se usuário já existe (upsert create/reset); `account_id` no payload; reconciliação corrigida; agente valida hash antes de `ok:true`; proteção contra reentrega sem senha.
+- Ver `docs/166-ENTREGA-CORRECAO-SENHA-PROVISIONAMENTO-TECNICOS-2026-08-19.md`.
 
 ### 2026-08-01 — Ordenação por colunas no inventário (API 0.10.5, painel 1.10.11)
 
@@ -531,3 +557,7 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 - **Segurança e comandos servidor→agente:** `docs/SEGURANCA-E-MODELO-DE-AMEACAS.md`, `docs/IDEIAS-DE-FUNCOES.md`
 - **Estado do projeto e retomada:** `LEITURA-INICIAL.md`, `00_inicio.md`, `00-README.md`
 - **RBAC (encerrado):** `docs/76-ENCERRAMENTO-TRILHA-RBAC-2026-06-09.md`, `23-matriz-permissoes-e-escopo-rbac-2026-06-09.md`
+### 2026-08-20 — Reorganização visual do painel: bump de continuidade (painel 1.11.1)
+
+- Aplicado bump patch obrigatório antes de continuar as fases do plano 170, evitando publicar mudanças de UI com a versão 1.11.0 já entregue.
+- Escopo permanece exclusivamente visual: sem alteração de API, dados, RBAC, autenticação, SSE, package pfSense ou infraestrutura.

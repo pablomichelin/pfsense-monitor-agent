@@ -2,9 +2,12 @@
 <?php
 /**
  * Gestao de usuarios locais pfSense via auth.inc (create/set_password/disable/delete).
- * Uso: manage_local_user.php <create|set_password|disable|delete> <payload_file.json>
+ * Uso: manage_local_user.php <create|set_password|disable|delete|adopt_orphans> [payload_file.json]
  * Payload: {"pfsense_username":"...", "password":"...", "full_name":"...", "privilege_profile":"admin_full"}
  * Nunca logar senha.
+ *
+ * Ordem segura (igual a GUI): gravar config.xml primeiro, depois sincronizar o SO.
+ * Nunca reescrever system/user sem validar que a lista ainda contem admin.
  */
 
 declare(strict_types=1);
@@ -17,9 +20,22 @@ if (PHP_SAPI !== 'cli') {
 $action = $argv[1] ?? '';
 $payloadFile = $argv[2] ?? '';
 
-if (!in_array($action, ['create', 'set_password', 'disable', 'delete'], true)) {
+if (!in_array($action, ['create', 'set_password', 'disable', 'delete', 'adopt_orphans'], true)) {
     fwrite(STDERR, "invalid action\n");
     exit(1);
+}
+
+require_once('/etc/inc/config.inc');
+require_once('/etc/inc/auth.inc');
+
+if ($action === 'adopt_orphans') {
+    try {
+        handle_adopt_orphans();
+        exit(0);
+    } catch (Throwable $exception) {
+        emit_result(false, 'operation failed');
+        exit(1);
+    }
 }
 
 if ($payloadFile === '' || !is_readable($payloadFile)) {
@@ -52,9 +68,6 @@ if (is_reserved_local_username($username)) {
     exit(1);
 }
 
-require_once('/etc/inc/config.inc');
-require_once('/etc/inc/auth.inc');
-
 if (
     !function_exists('getUserEntry')
     || !function_exists('local_user_set')
@@ -82,7 +95,6 @@ try {
         exit(1);
     }
 
-    $userIndex = $resolved['index'];
     $user = $resolved['user'];
     $canonicalName = trim((string) ($user['name'] ?? $username));
 
@@ -101,20 +113,9 @@ try {
         }
 
         $user['disabled'] = true;
-        if (function_exists('config_set_path')) {
-            config_set_path("system/user/{$userIndex}", $user);
-        } else {
-            $allUsers = config_get_path('system/user');
-            if (!is_array($allUsers) || !isset($allUsers[$userIndex])) {
-                emit_result(false, 'user index not found');
-                exit(1);
-            }
-            $allUsers[$userIndex]['disabled'] = true;
-            config_set_path('system/user', $allUsers);
-        }
-
-        local_user_set($user);
+        write_user_by_name($canonicalName, $user);
         write_config(sprintf('systemup-monitor: disable local user %s', $canonicalName));
+        local_user_set($user);
         emit_result(true, 'disabled', [
             'username' => $canonicalName,
             'action' => 'disable',
@@ -122,19 +123,25 @@ try {
         exit(0);
     }
 
-    // delete
-    $usersPath = 'system/user';
-    $allUsers = config_get_path($usersPath);
-    if (!is_array($allUsers) || !isset($allUsers[$userIndex])) {
-        emit_result(false, 'user index not found');
+    // delete: config primeiro (GUI), depois Unix — evita orfao "reserved by the system"
+    $kept = [];
+    foreach (get_normalized_local_users() as $candidate) {
+        $candidateName = strtolower(trim((string) ($candidate['name'] ?? '')));
+        if ($candidateName === strtolower($canonicalName)) {
+            continue;
+        }
+        $kept[] = $candidate;
+    }
+
+    if (!user_list_has_admin($kept)) {
+        emit_result(false, 'refusing to delete last admin');
         exit(1);
     }
 
-    $targetUser = $allUsers[$userIndex];
-    local_user_del($targetUser);
-    unset($allUsers[$userIndex]);
-    $allUsers = array_values($allUsers);
-    config_set_path($usersPath, $allUsers);
+    // Unix primeiro: se o del falhar, o usuario permanece no config (GUI).
+    // Config-primeiro + del falho deixaria orfao "reserved by the system".
+    local_user_del($user);
+    config_set_path('system/user', $kept);
     write_config(sprintf('systemup-monitor: delete local user %s', $canonicalName));
     emit_result(true, 'deleted', [
         'username' => $canonicalName,
@@ -158,20 +165,36 @@ function handle_create(array $payload, string $username): void
     }
 
     if (resolve_local_user_entry($username) !== null) {
-        emit_result(false, 'user already exists');
+        handle_set_password($payload, $username);
+        return;
+    }
+
+    $users = get_normalized_local_users();
+    if (!user_list_has_admin($users)) {
+        emit_result(false, 'refusing to rewrite users without admin');
         exit(1);
     }
 
     $fullName = trim((string) ($payload['full_name'] ?? $username));
     $privilegeProfile = trim((string) ($payload['privilege_profile'] ?? 'admin_full'));
 
-    // pfSense atribui uid via system_usermanager.php antes de chamar local_user_set();
-    // a função em si não gera/reserva um uid novo. Sem isso o usuário fica sem
-    // identidade Unix válida (falha silenciosa do lado do SO ou conflito de uid).
-    $uid = allocate_next_local_uid();
-    if ($uid === null) {
-        emit_result(false, 'unable to allocate uid');
+    $posixUid = posix_uid_for_username($username);
+    if ($posixUid === 0) {
+        emit_result(false, 'cannot modify system account');
         exit(1);
+    }
+    if ($posixUid !== null && !posix_user_looks_like_local_account($username)) {
+        emit_result(false, 'username reserved by the system');
+        exit(1);
+    }
+
+    $uid = $posixUid;
+    if ($uid === null) {
+        $uid = allocate_next_local_uid($users);
+        if ($uid === null) {
+            emit_result(false, 'unable to allocate uid');
+            exit(1);
+        }
     }
 
     $user = [
@@ -182,6 +205,7 @@ function handle_create(array $payload, string $username): void
     ];
 
     apply_local_user_password($user, $password);
+    assert_password_hash_valid($user, $password);
 
     // admin_full (controlador) → privilégio SystemUp sem User/Group Manager:
     // acesso operacional amplo, troca só a própria senha (passwordmg), sem
@@ -190,20 +214,167 @@ function handle_create(array $payload, string $username): void
         $user['priv'] = ['page-systemup-technician-admin'];
     }
 
+    $users[] = $user;
+    if (!user_list_has_admin($users)) {
+        emit_result(false, 'refusing to rewrite users without admin');
+        exit(1);
+    }
+
+    config_set_path('system/user', $users);
+    if ($posixUid === null) {
+        config_set_path('system/nextuid', (string) ($uid + 1));
+    }
+
+    $adopted = $posixUid !== null;
+    write_config(sprintf(
+        'systemup-monitor: %s local user %s',
+        $adopted ? 'adopt' : 'create',
+        $username,
+    ));
     local_user_set($user);
-
-    $existingUsers = config_get_path('system/user');
-    $existingUsers = is_array($existingUsers) ? $existingUsers : [];
-    $existingUsers[] = $user;
-    config_set_path('system/user', $existingUsers);
-    config_set_path('system/nextuid', (string) ($uid + 1));
-
-    write_config(sprintf('systemup-monitor: create local user %s', $username));
-    emit_result(true, 'created', [
+    emit_result(true, $adopted ? 'adopted' : 'created', [
         'username' => $username,
         'uid' => $uid,
-        'action' => 'create',
+        'action' => $adopted ? 'adopt' : 'create',
     ]);
+}
+
+/**
+ * Recoloca no config.xml contas Unix locais (uid >= 2000) que sumiram da GUI.
+ * Nao altera senha Unix nem chama local_user_set (sem hash o SO ja existe).
+ * Depois o admin redefine senha/privilegios na GUI se precisar.
+ */
+function handle_adopt_orphans(): void
+{
+    $users = read_local_users_for_repair();
+    $adminRestored = false;
+    if (!user_list_has_admin($users)) {
+        $users = restore_missing_admin_account($users);
+        $adminRestored = user_list_has_admin($users);
+    }
+
+    if (!user_list_has_admin($users)) {
+        emit_result(false, 'refusing to rewrite users without admin');
+        exit(1);
+    }
+
+    $known = [];
+    foreach ($users as $candidate) {
+        $known[strtolower(trim((string) ($candidate['name'] ?? '')))] = true;
+    }
+
+    $adopted = [];
+    foreach (list_orphan_local_unix_users($known) as $orphan) {
+        $users[] = [
+            'name' => $orphan['name'],
+            'descr' => $orphan['descr'],
+            'scope' => 'user',
+            'uid' => (string) $orphan['uid'],
+        ];
+        $adopted[] = [
+            'name' => $orphan['name'],
+            'uid' => $orphan['uid'],
+        ];
+    }
+
+    if ($adopted === [] && !$adminRestored) {
+        emit_result(true, 'no orphans', [
+            'adopted' => [],
+            'admin_restored' => false,
+            'action' => 'adopt_orphans',
+        ]);
+        return;
+    }
+
+    if (!user_list_has_admin($users)) {
+        emit_result(false, 'refusing to rewrite users without admin');
+        exit(1);
+    }
+
+    config_set_path('system/user', $users);
+    write_config(sprintf(
+        'systemup-monitor: adopt %d orphaned local user(s)%s',
+        count($adopted),
+        $adminRestored ? ' and restore admin' : '',
+    ));
+    emit_result(true, 'orphans adopted', [
+        'adopted' => $adopted,
+        'admin_restored' => $adminRestored,
+        'action' => 'adopt_orphans',
+    ]);
+}
+
+/**
+ * @param array<string, true> $knownNames
+ * @return array<int, array{name:string,uid:int,descr:string}>
+ */
+function list_orphan_local_unix_users(array $knownNames): array
+{
+    $passwdPath = '/etc/passwd';
+    if (!is_readable($passwdPath)) {
+        return [];
+    }
+
+    $lines = file($passwdPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if (!is_array($lines)) {
+        return [];
+    }
+
+    $orphans = [];
+    foreach ($lines as $line) {
+        $parts = explode(':', $line);
+        if (count($parts) < 7) {
+            continue;
+        }
+
+        $name = strtolower(trim((string) $parts[0]));
+        $uid = (int) $parts[2];
+        $gecos = trim((string) $parts[4]);
+        $home = trim((string) $parts[5]);
+
+        if ($uid < 2000 || $uid === 0) {
+            continue;
+        }
+        if (!preg_match('/^[a-z][a-z0-9._-]{2,31}$/', $name)) {
+            continue;
+        }
+        if (is_reserved_local_username($name) || is_denied_service_username($name)) {
+            continue;
+        }
+        if (!unix_home_looks_like_local_user($name, $home)) {
+            continue;
+        }
+        if (isset($knownNames[$name])) {
+            continue;
+        }
+
+        $orphans[] = [
+            'name' => $name,
+            'uid' => $uid,
+            'descr' => $gecos !== '' ? $gecos : $name,
+        ];
+    }
+
+    return $orphans;
+}
+
+function is_denied_service_username(string $username): bool
+{
+    if (isset($username[0]) && $username[0] === '_') {
+        return true;
+    }
+
+    static $denied = [
+        'nobody', 'daemon', 'operator', 'toor', 'sshd', 'unbound', 'dhcpd',
+        'ntpd', 'www', 'squid', 'snort', 'suricata', 'haproxy', 'mysql',
+        'postgres', 'zabbix', 'bind', 'named', 'proxy', 'stunnel',
+        'redis', 'telegraf', 'netdata', 'grafana', 'influxdb', 'mosquitto',
+        'avahi', 'nut', 'minio', 'git', 'elasticsearch', 'mongodb', 'nginx',
+        'apache', 'ftp', 'postfix', 'dovecot', 'clamav', 'memcached',
+        'prometheus', 'node_exporter', 'hass',
+    ];
+
+    return in_array($username, $denied, true);
 }
 
 /**
@@ -219,29 +390,70 @@ function handle_create(array $payload, string $username): void
  * por falta de hash no local certo. Validado em laboratorio real
  * (192.168.100.254) em 2026-07-31 — ver docs/155.
  *
+ * Preserva campos originais (name/uid/priv/grupos): a funcao nativa pode
+ * devolver um item parcial; gravar isso no config.xml some com o usuario
+ * da GUI e deixa o Unix orfao ("reserved by the system").
+ *
  * @param array<string, mixed> $user
  */
 function apply_local_user_password(array &$user, string $password): void
 {
+    $preserved = $user;
     $wrapper = ['item' => $user];
     local_user_set_password($wrapper, $password);
-    $user = $wrapper['item'];
+    $updated = isset($wrapper['item']) && is_array($wrapper['item']) ? $wrapper['item'] : [];
+
+    foreach (['bcrypt-hash', 'sha512-hash', 'md5-hash', 'password'] as $key) {
+        if (isset($updated[$key])) {
+            $preserved[$key] = $updated[$key];
+        }
+    }
+
+    $user = $preserved;
+}
+
+/**
+ * Falha cedo se o hash nao ficou no nivel correto do usuario (bug historico
+ * do wrapper em local_user_set_password — ver docs/155).
+ *
+ * @param array<string, mixed> $user
+ */
+function assert_password_hash_valid(array $user, string $password): void
+{
+    if (isset($user['item']) && is_array($user['item'])) {
+        emit_result(false, 'invalid user structure (nested item key)');
+        exit(1);
+    }
+
+    $bcryptHash = isset($user['bcrypt-hash']) ? (string) $user['bcrypt-hash'] : '';
+    $sha512Hash = isset($user['sha512-hash']) ? (string) $user['sha512-hash'] : '';
+
+    if ($bcryptHash === '' && $sha512Hash === '') {
+        emit_result(false, 'password hash missing after apply');
+        exit(1);
+    }
+
+    if ($bcryptHash !== '' && !password_verify($password, $bcryptHash)) {
+        emit_result(false, 'password hash verification failed');
+        exit(1);
+    }
 }
 
 /**
  * Replica a alocacao de uid feita pela GUI (system_usermanager.php) antes de
  * local_user_set(): le system/nextuid; se ausente/invalido, deriva do maior
  * uid existente (piso 2000, convencao pfSense para contas locais).
+ *
+ * @param array<int, array<string, mixed>>|null $users
  */
-function allocate_next_local_uid(): ?int
+function allocate_next_local_uid(?array $users = null): ?int
 {
     $configuredNext = config_get_path('system/nextuid');
     $nextUid = is_numeric($configuredNext) ? (int) $configuredNext : null;
 
-    $allUsers = config_get_path('system/user');
-    $allUsers = is_array($allUsers) ? $allUsers : [];
+    $allUsers = $users ?? get_normalized_local_users();
 
-    $highestExisting = 1999;
+    $highestExisting = max(1999, highest_posix_local_uid());
     foreach ($allUsers as $candidate) {
         if (is_array($candidate) && isset($candidate['uid']) && is_numeric($candidate['uid'])) {
             $highestExisting = max($highestExisting, (int) $candidate['uid']);
@@ -272,7 +484,6 @@ function handle_set_password(array $payload, string $username): void
         exit(1);
     }
 
-    $userIndex = $resolved['index'];
     $user = $resolved['user'];
     $canonicalName = trim((string) ($user['name'] ?? $username));
 
@@ -287,21 +498,11 @@ function handle_set_password(array $payload, string $username): void
     }
 
     apply_local_user_password($user, $password);
+    assert_password_hash_valid($user, $password);
 
-    if (function_exists('config_set_path')) {
-        config_set_path("system/user/{$userIndex}", $user);
-    } else {
-        $allUsers = config_get_path('system/user');
-        if (!is_array($allUsers) || !isset($allUsers[$userIndex])) {
-            emit_result(false, 'user index not found');
-            exit(1);
-        }
-        $allUsers[$userIndex] = $user;
-        config_set_path('system/user', $allUsers);
-    }
-
-    local_user_set($user);
+    write_user_by_name($canonicalName, $user);
     write_config(sprintf('systemup-monitor: reset password for %s', $canonicalName));
+    local_user_set($user);
     emit_result(true, 'password reset', [
         'username' => $canonicalName,
         'action' => 'set_password',
@@ -319,26 +520,20 @@ function resolve_local_user_entry(string $username): ?array
         if ($index === null) {
             $index = find_user_index_by_name($username, (string) ($userEntry['item']['name'] ?? ''));
         }
-        if ($index === null) {
-            return null;
+        if ($index !== null) {
+            return [
+                'index' => $index,
+                'user' => $userEntry['item'],
+            ];
         }
-
-        return [
-            'index' => $index,
-            'user' => $userEntry['item'],
-        ];
-    }
-
-    if (is_array($userEntry) && $userEntry !== []) {
+    } elseif (is_array($userEntry) && $userEntry !== []) {
         $index = find_user_index_by_name($username, (string) ($userEntry['name'] ?? ''));
-        if ($index === null) {
-            return null;
+        if ($index !== null) {
+            return [
+                'index' => $index,
+                'user' => $userEntry,
+            ];
         }
-
-        return [
-            'index' => $index,
-            'user' => $userEntry,
-        ];
     }
 
     return find_user_entry_case_insensitive($username);
@@ -349,15 +544,12 @@ function resolve_local_user_entry(string $username): ?array
  */
 function find_user_entry_case_insensitive(string $username): ?array
 {
-    $allUsers = config_get_path('system/user');
-    if (!is_array($allUsers)) {
+    $users = read_normalized_local_users();
+    if ($users === null) {
         return null;
     }
 
-    foreach ($allUsers as $index => $candidate) {
-        if (!is_array($candidate)) {
-            continue;
-        }
+    foreach ($users as $index => $candidate) {
         $candidateName = strtolower(trim((string) ($candidate['name'] ?? '')));
         if ($candidateName === $username) {
             return [
@@ -372,15 +564,12 @@ function find_user_entry_case_insensitive(string $username): ?array
 
 function find_user_index_by_name(string $username, string $canonicalName = ''): ?int
 {
-    $allUsers = config_get_path('system/user');
-    if (!is_array($allUsers)) {
+    $users = read_normalized_local_users();
+    if ($users === null) {
         return null;
     }
 
-    foreach ($allUsers as $index => $candidate) {
-        if (!is_array($candidate)) {
-            continue;
-        }
+    foreach ($users as $index => $candidate) {
         $candidateName = strtolower(trim((string) ($candidate['name'] ?? '')));
         if ($candidateName === $username) {
             return (int) $index;
@@ -391,6 +580,252 @@ function find_user_index_by_name(string $username, string $canonicalName = ''): 
     }
 
     return null;
+}
+
+/**
+ * Lista canonica de usuarios locais. Recusa reescrita se a leitura falhar
+ * ou se admin/uid 0 desaparecer — evita apagar contas da GUI e deixar
+ * orfaos Unix ("The username is reserved by the system").
+ *
+ * @return array<int, array<string, mixed>>
+ */
+/**
+ * @return array<int, array<string, mixed>>|null
+ */
+function read_normalized_local_users(): ?array
+{
+    if (function_exists('init_config_arr')) {
+        init_config_arr(['system', 'user']);
+    }
+
+    $users = config_get_path('system/user');
+    if (!is_array($users) || $users === []) {
+        return null;
+    }
+
+    if (isset($users['name']) && is_string($users['name'])) {
+        $users = [$users];
+    }
+
+    $normalized = [];
+    foreach ($users as $candidate) {
+        if (!is_array($candidate)) {
+            continue;
+        }
+        $name = trim((string) ($candidate['name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+        $normalized[] = $candidate;
+    }
+
+    if ($normalized === [] || !user_list_has_admin($normalized)) {
+        return null;
+    }
+
+    return $normalized;
+}
+
+/**
+ * Leitura permissiva para reparo: nao exige admin (pode ter sido apagado
+ * do config.xml pelo create quebrado). Nao usar em create/delete/set_password.
+ *
+ * @return array<int, array<string, mixed>>
+ */
+function read_local_users_for_repair(): array
+{
+    if (function_exists('init_config_arr')) {
+        init_config_arr(['system', 'user']);
+    }
+
+    $users = config_get_path('system/user');
+    if (!is_array($users) || $users === []) {
+        $users = [];
+    }
+
+    if (isset($users['name']) && is_string($users['name'])) {
+        $users = [$users];
+    }
+
+    $normalized = [];
+    foreach ($users as $candidate) {
+        if (!is_array($candidate)) {
+            continue;
+        }
+        $name = trim((string) ($candidate['name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+        $normalized[] = $candidate;
+    }
+
+    return $normalized;
+}
+
+/**
+ * Recoloca o admin (uid 0) no config se o Unix ainda tiver a conta e a GUI nao.
+ * Nao altera senha Unix. Login web pode exigir redefinir senha na consola.
+ *
+ * @param array<int, array<string, mixed>> $users
+ * @return array<int, array<string, mixed>>
+ */
+function restore_missing_admin_account(array $users): array
+{
+    if (user_list_has_admin($users)) {
+        return $users;
+    }
+
+    if (!function_exists('posix_getpwnam')) {
+        return $users;
+    }
+
+    $pw = @posix_getpwnam('admin');
+    if (!is_array($pw) || !isset($pw['uid']) || (int) $pw['uid'] !== 0) {
+        return $users;
+    }
+
+    $gecos = trim((string) ($pw['gecos'] ?? ''));
+    $users[] = [
+        'name' => 'admin',
+        'descr' => $gecos !== '' ? $gecos : 'System Administrator',
+        'scope' => 'system',
+        'uid' => '0',
+        'priv' => ['page-all'],
+    ];
+
+    return $users;
+}
+
+function unix_home_looks_like_local_user(string $name, string $home): bool
+{
+    $home = rtrim($home, '/');
+    return $home === '/home/' . $name || $home === '/home';
+}
+
+function posix_user_looks_like_local_account(string $username): bool
+{
+    if (is_denied_service_username($username) || is_reserved_local_username($username)) {
+        return false;
+    }
+
+    if (!function_exists('posix_getpwnam')) {
+        return true;
+    }
+
+    $pw = @posix_getpwnam($username);
+    if (!is_array($pw)) {
+        return false;
+    }
+
+    $home = trim((string) ($pw['dir'] ?? ''));
+    return unix_home_looks_like_local_user($username, $home);
+}
+
+function highest_posix_local_uid(): int
+{
+    $highest = 1999;
+    $passwdPath = '/etc/passwd';
+    if (!is_readable($passwdPath)) {
+        return $highest;
+    }
+
+    $lines = file($passwdPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if (!is_array($lines)) {
+        return $highest;
+    }
+
+    foreach ($lines as $line) {
+        $parts = explode(':', $line);
+        if (count($parts) < 3) {
+            continue;
+        }
+        $uid = (int) $parts[2];
+        if ($uid >= 2000) {
+            $highest = max($highest, $uid);
+        }
+    }
+
+    return $highest;
+}
+
+/**
+ * @return array<int, array<string, mixed>>
+ */
+function get_normalized_local_users(): array
+{
+    $users = read_normalized_local_users();
+    if ($users === null) {
+        emit_result(false, 'refusing to rewrite users without admin');
+        exit(1);
+    }
+
+    return $users;
+}
+
+/**
+ * @param array<int, array<string, mixed>> $users
+ */
+function user_list_has_admin(array $users): bool
+{
+    foreach ($users as $candidate) {
+        if (!is_array($candidate)) {
+            continue;
+        }
+        $name = strtolower(trim((string) ($candidate['name'] ?? '')));
+        $uid = isset($candidate['uid']) && is_numeric($candidate['uid'])
+            ? (int) $candidate['uid']
+            : null;
+        if ($name === 'admin' || $uid === 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * @param array<string, mixed> $user
+ */
+function write_user_by_name(string $username, array $user): void
+{
+    $users = get_normalized_local_users();
+    $found = false;
+    $needle = strtolower(trim($username));
+
+    foreach ($users as $index => $candidate) {
+        $candidateName = strtolower(trim((string) ($candidate['name'] ?? '')));
+        if ($candidateName === $needle) {
+            $users[$index] = $user;
+            $found = true;
+            break;
+        }
+    }
+
+    if (!$found) {
+        emit_result(false, 'user index not found');
+        exit(1);
+    }
+
+    if (!user_list_has_admin($users)) {
+        emit_result(false, 'refusing to rewrite users without admin');
+        exit(1);
+    }
+
+    config_set_path('system/user', array_values($users));
+}
+
+function posix_uid_for_username(string $username): ?int
+{
+    if (!function_exists('posix_getpwnam')) {
+        return null;
+    }
+
+    $pw = @posix_getpwnam($username);
+    if (!is_array($pw) || !isset($pw['uid']) || !is_numeric($pw['uid'])) {
+        return null;
+    }
+
+    return (int) $pw['uid'];
 }
 
 function is_reserved_local_username(string $username): bool

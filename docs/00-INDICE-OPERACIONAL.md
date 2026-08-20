@@ -4,9 +4,17 @@ Data de referencia: `2026-07-31`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Versoes atuais (codigo):** API `0.10.5` · painel `1.10.11` · package pfSense `0.5.8` (`config/package-release.env` após release).
+> **Versoes atuais (codigo):** API `0.10.8` · painel `1.11.1` · package pfSense `0.5.10` (publicado).
 >
-> **Ultima entrega (2026-08-01):** ordenação clicável das colunas do inventário — API **0.10.5**, painel **1.10.11**. Ver `docs/165-ENTREGA-ORDENACAO-COLUNAS-INVENTARIO-2026-08-01.md`.
+> **Entrega em andamento (2026-08-20):** reorganização visual do painel — painel **1.11.1**. Bump patch obrigatório aplicado antes de continuar o plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`.
+>
+> **Ultima entrega (2026-08-20):** package **0.5.10** publicado — órfão Unix + `adopt_orphans` no upgrade da frota. Ver `docs/170-CORRECAO-USUARIO-ORFAO-CREATE-LOCAL-USER-2026-08-20.md`.
+>
+> **Entrega anterior (2026-08-20):** tema claro completo do painel — painel **1.11.0**. Ver `docs/169-ENTREGA-TEMA-CLARO-PAINEL-2026-08-20.md`.
+>
+> **Entrega anterior (2026-08-20):** UX P0 gestao de tecnicos — painel **1.10.15**. Ver `docs/168-ENTREGA-UX-P0-GESTAO-TECNICOS-2026-08-20.md`.
+>
+> **Entrega anterior (2026-08-01):** ordenação clicável das colunas do inventário — API **0.10.5**, painel **1.10.11**. Ver `docs/165-ENTREGA-ORDENACAO-COLUNAS-INVENTARIO-2026-08-01.md`.
 >
 > **Entrega anterior (2026-08-01):** exclusão real do cadastro de técnicos — API **0.10.4**, painel **1.10.10**. Ver `docs/164-ENTREGA-EXCLUSAO-REAL-CADASTRO-TECNICOS-2026-08-01.md`.
 >
@@ -207,6 +215,7 @@ Versoes atuais (produto): API `0.6.4`, painel `1.4.5`, package pfSense `0.4.7`. 
 - Plano: `docs/161-PLANO-UX-DESPOLUICAO-PAINEL-OPERADOR-2026-08-01.md` — inventário `/nodes` legível (~10s), densidade, filtros sob demanda, lote com contexto
 - Entrega P0: `docs/162-ENTREGA-UX-DESPOLUICAO-P0-INVENTARIO-2026-08-01.md` — painel `1.10.8`
 - Entrega backup padrão ligado: `docs/163-ENTREGA-BACKUP-PADRAO-LIGADO-PACKAGE-0.5.8-2026-08-01.md` — package `0.5.8`, painel `1.10.9`
+- Tema claro: `docs/169-ENTREGA-TEMA-CLARO-PAINEL-2026-08-20.md` — painel `1.11.0`; tokens em `docs/SISTEMA-VISUAL-PAINEL.md`
 - **Não reabre** o roadmap UX Fases 0–8 (`docs/88-...`)
 
 #### Roadmap UX front-end — encerramento formal (**plano 24 encerrado**)

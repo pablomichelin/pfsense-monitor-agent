@@ -2,9 +2,15 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-01):** API `0.10.5` · painel `1.10.11` · package pfSense `0.5.8`.
+> **Versoes atuais (2026-08-20):** API `0.10.8` · painel `1.11.1` · package pfSense `0.5.10` (publicado).
 >
-> **Ultima entrega (2026-08-01):** ordenação por colunas no inventário — API **0.10.5**, painel **1.10.11**. Ver `docs/165-...md`.
+> **Entrega em andamento (2026-08-20):** reorganização visual do painel — painel **1.11.1** (bump obrigatório antes de continuar as fases do plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`).
+>
+> **Ultima entrega (2026-08-20):** correção órfão Unix no create de técnico — package **0.5.10**. Ver `docs/170-...md`.
+>
+> **Entrega anterior (2026-08-20):** tema claro completo do painel — painel **1.11.0**. Ver `docs/169-ENTREGA-TEMA-CLARO-PAINEL-2026-08-20.md`.
+>
+> **Entrega anterior (2026-08-20):** UX P0 gestao de tecnicos — painel **1.10.15**. Ver `docs/168-...md`.
 >
 > **Entrega anterior (2026-08-01):** exclusão real de técnicos do cadastro — API **0.10.4**, painel **1.10.10**. Ver `docs/164-...md`.
 >

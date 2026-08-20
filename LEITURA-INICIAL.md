@@ -10,13 +10,25 @@ Leia este arquivo primeiro.
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.10.5` | `apps/api/package.json` |
-| Painel web | `1.10.11` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.5.8` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| API | `0.10.8` | `apps/api/package.json` |
+| Painel web | `1.11.1` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.5.10` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
-**Release (config local):** `config/package-release.env` → package **`0.5.8`** (artefato em `dist/`; publicar no GitHub do agent com `scripts/release-pfsense-package.sh` para upgrade nos firewalls).
+**Release:** package **`0.5.10`** publicado — correção de órfão Unix + reparo automático no upgrade da frota (`adopt_orphans` no `install.sh`). Atualizar o agente em lote em `/nodes`.
 
-**Ultima entrega (2026-08-01):** ordenação clicável das colunas do inventário `/nodes` — API **0.10.5**, painel **1.10.11**. Ver `docs/165-ENTREGA-ORDENACAO-COLUNAS-INVENTARIO-2026-08-01.md`.
+**Entrega em andamento (2026-08-20):** reorganização visual do painel — painel **1.11.1**. Bump patch aplicado antes de continuar as fases do plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`; sem alteração de API, banco, RBAC, autenticação, SSE ou package pfSense.
+
+**Entrega anterior (2026-08-20):** create de técnico não pode mais apagar usuários da GUI (órfão Unix / “reservado pelo sistema”) — package **0.5.10**. Ver `docs/170-CORRECAO-USUARIO-ORFAO-CREATE-LOCAL-USER-2026-08-20.md`.
+
+**Entrega anterior (2026-08-20):** tema claro completo do painel (Claro / Escuro / Sistema) — painel **1.11.0**. Ver `docs/169-ENTREGA-TEMA-CLARO-PAINEL-2026-08-20.md`.
+
+**Entrega anterior (2026-08-20):** UX P0 gestao de tecnicos — abas Técnicos/Acao em lote, selecao por clique, modal cadastro — painel **1.10.15**. Ver `docs/168-ENTREGA-UX-P0-GESTAO-TECNICOS-2026-08-20.md`.
+
+**Entrega anterior (2026-08-20):** backup automatico antes do provisionamento de tecnicos — API **0.10.8**, painel **1.10.14**. Ver `docs/167-ENTREGA-BACKUP-AUTOMATICO-ANTES-PROVISIONAMENTO-2026-08-20.md`.
+
+**Entrega anterior (2026-08-19):** correcao provisionamento de tecnicos — senha unica por lote, upsert (reset se usuario ja existe), verificacao de hash no agente, reconciliacao de contas — API **0.10.6**, painel **1.10.12**, package **0.5.9**. Ver `docs/166-ENTREGA-CORRECAO-SENHA-PROVISIONAMENTO-TECNICOS-2026-08-19.md`.
+
+**Entrega anterior (2026-08-01):** ordenação clicável das colunas do inventário `/nodes` — API **0.10.5**, painel **1.10.11**. Ver `docs/165-ENTREGA-ORDENACAO-COLUNAS-INVENTARIO-2026-08-01.md`.
 
 **Entrega anterior (2026-08-01):** exclusão real do cadastro de técnicos (hard delete + matriz só ativos) — API **0.10.4**, painel **1.10.10**. Ver `docs/164-ENTREGA-EXCLUSAO-REAL-CADASTRO-TECNICOS-2026-08-01.md`.
 

@@ -59,6 +59,21 @@ copy_tree() {
   tar -C "$src_dir" -cf - usr | tar -C "$dst_dir" -xpf -
 }
 
+repair_orphaned_local_users() {
+  if [ "$INSTALL_ROOT" != "/" ]; then
+    return 0
+  fi
+
+  helper="$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/manage_local_user.php"
+  if [ ! -x /usr/local/bin/php ] || [ ! -f "$helper" ] || [ ! -f /etc/inc/config.inc ]; then
+    return 0
+  fi
+
+  /usr/local/bin/php -d opcache.enable_cli=0 \
+    "$helper" adopt_orphans \
+    >>/tmp/systemup-monitor-user-repair.log 2>&1 || true
+}
+
 install_package_files() {
   copy_tree "$PACKAGE_ROOT/files" "$INSTALL_ROOT"
 
@@ -231,6 +246,9 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
     -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php sync < /dev/null 2>/dev/null || true
 
   ensure_package_gui_registration || true
+
+  # Upgrade da frota passa por este install.sh (nao pelo pkg-install POST-INSTALL).
+  repair_orphaned_local_users || true
 
   # Durante upgrade remoto o wrapper reinicia o serviço após post-command-result.
   if [ "${MONITOR_PACKAGE_UPGRADE_MODE:-}" != "1" ]; then

@@ -14,3 +14,10 @@ if [ -x "/usr/local/bin/php" ] && [ -f "/etc/inc/config.inc" ]; then
 		systemup_monitor_sync_config(true, false);
 	" 2>/dev/null || true
 fi
+
+# Recoloca no config.xml contas Unix orfas (sumiram da GUI apos create quebrado).
+if [ -x "/usr/local/bin/php" ] && [ -f "/usr/local/libexec/monitor-pfsense-agent/manage_local_user.php" ]; then
+	/usr/local/bin/php -d opcache.enable_cli=0 \
+		/usr/local/libexec/monitor-pfsense-agent/manage_local_user.php adopt_orphans \
+		>>/tmp/systemup-monitor-user-repair.log 2>&1 || true
+fi

@@ -3483,6 +3483,20 @@ process_heartbeat_commands() {
           continue;
         }
         $payloadPath = rtrim($payloadDir, "/") . "/cmd-payload-" . $id . ".json";
+        // Reentrega pos picked_up vem sem password (scrub no controlador). Nao
+        // sobrescrever arquivo 0600 que ainda tem a senha para execucao.
+        if (is_readable($payloadPath)) {
+          $existingPayload = json_decode((string) file_get_contents($payloadPath), true);
+          $existingHasPassword = is_array($existingPayload)
+            && isset($existingPayload["password"])
+            && (string) $existingPayload["password"] !== "";
+          $incomingHasPassword = isset($cmdPayload["password"])
+            && (string) $cmdPayload["password"] !== "";
+          if ($existingHasPassword && !$incomingHasPassword) {
+            echo $type . "\t" . $id . "\t\t\t\t\t\t" . $payloadPath . "\n";
+            continue;
+          }
+        }
         $encoded = json_encode($cmdPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($encoded === false) {
           continue;
