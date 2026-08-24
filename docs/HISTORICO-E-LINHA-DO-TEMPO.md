@@ -6,6 +6,11 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-23 — Lote 0.5.15 falhou por SHA do artefato (nenhum box atualizado)
+
+- O `package-release.env` ficou com SHA `b27f1fe9…` e o tarball real/GitHub era `9114082d…`. O controlador devolveu 503 no download; o agente reportou `install-from-release failed`.
+- Frota continuou em 0.5.14 e com heartbeat. SHA do env alinhado ao arquivo.
+
 ### 2026-08-23 — Hotfix helper firmware branch (package 0.5.15, painel 1.12.2)
 
 - O 0.5.14 copiava `set_pfsense_update_branch.php` em modo 644; o check usava `-x` e reportava “not found”.

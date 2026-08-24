@@ -27,6 +27,8 @@ A GUI do pfSense no mesmo host já oferecia `Current Stable Version (2.9.0)` —
 
 ## Uso
 
-1. No firewall: **Atualizar package remotamente** para **0.5.15** (SHA256 `b27f1fe9d167e8e1f996c519d56ff085a3fac8f7c586279b37eb0904cb03f450`).
+1. No firewall: **Atualizar package remotamente** para **0.5.15** (SHA256 `9114082d8d127b1164333b535dc9357d02b9356a7d564444c60d5ea65cd6e6de`).
+
+> **Nota (mesmo dia):** o lote 0.5.15 falhou em massa porque o `package-release.env` ficou com SHA antigo (`b27f1fe9…`) depois de um rebuild do tarball. O endpoint `/api/v1/agent/package-artifact` respondia **503** (checksum mismatch). Nenhum firewall instalou 0.5.15. SHA corrigido para `9114082d…`.
 2. Depois: **Apontar branch** → `2.9.0` → CONFIRMAR.
 3. Atalho na GUI do pfSense (já válido agora): System → Update → Branch → `Current Stable Version (2.9.0)`.

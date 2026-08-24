@@ -15,8 +15,12 @@ trap cleanup EXIT
 mkdir -p "$FROOT/usr/local/pkg"
 git show 3abf515:packages/pfsense-package/files/usr/local/pkg/systemup_monitor.inc >"$FROOT/usr/local/pkg/systemup_monitor.inc"
 
-"$ROOT_DIR/scripts/build-pfsense-package-artifact.sh" "$VERSION" >/dev/null
-tar -xzf "$ROOT_DIR/dist/pfsense-package/monitor-pfsense-package-v${VERSION}.tar.gz" -C "$STAGE"
+ARTIFACT="$ROOT_DIR/dist/pfsense-package/monitor-pfsense-package-v${VERSION}.tar.gz"
+if [[ ! -f "$ARTIFACT" ]]; then
+  echo "FAIL: artefato $ARTIFACT ausente (não rebuildar dist/ — isso muda o SHA publicado)" >&2
+  exit 1
+fi
+tar -xzf "$ARTIFACT" -C "$STAGE"
 mkdir -p "$EXTRACT"
 mv "$STAGE/pfsense-package" "$EXTRACT/"
 
