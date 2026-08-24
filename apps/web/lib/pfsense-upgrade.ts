@@ -6,6 +6,7 @@ import {
   getPfsenseUpgradeStatus,
   requestPfsenseUpgrade,
   requestPfsenseUpdateRefreshCheck,
+  requestPfsenseRepoRepair,
   type PfsenseUpgradeRefreshCheckResponse,
   type PfsenseUpgradeRequestResponse,
 } from './api';
@@ -51,6 +52,12 @@ function mapUpgradeRequestError(message: string, status?: number): string {
   if (normalized === 'refresh already requested') {
     return 'A verificação já foi pedida. Aguarde o próximo heartbeat do firewall (~30s).';
   }
+  if (normalized === 'agent version too old for repo repair') {
+    return 'Este agente ainda não repara o repositório pkg. Atualize o package SystemUp Monitor para 0.5.13+ e tente de novo.';
+  }
+  if (normalized === 'repo repair already requested') {
+    return 'O reparo do repositório já foi pedido. Aguarde o próximo heartbeat (~30s).';
+  }
   if (status === 409 && normalized.includes('no_recent_backup')) {
     return 'Backup recente obrigatório. Confirme que aceita prosseguir sem backup recente.';
   }
@@ -79,6 +86,26 @@ export async function requestPfsenseUpdateRefreshCheckAction(
     }
 
     return { ok: false, error: 'Falha ao solicitar nova verificação' };
+  }
+}
+
+export async function requestPfsenseRepoRepairAction(
+  nodeId: string,
+): Promise<PfsenseUpgradeRefreshActionResult> {
+  try {
+    const result = await requestPfsenseRepoRepair(nodeId);
+    revalidatePath(`/nodes/${nodeId}`);
+    return { ok: true, data: result };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return {
+        ok: false,
+        error: mapUpgradeRequestError(error.message, error.status),
+        status: error.status,
+      };
+    }
+
+    return { ok: false, error: 'Falha ao solicitar reparo do repositório' };
   }
 }
 

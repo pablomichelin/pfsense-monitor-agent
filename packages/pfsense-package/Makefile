@@ -1,7 +1,7 @@
 # $FreeBSD$
 
 PORTNAME=	pfSense-pkg-systemup-monitor
-PORTVERSION=	0.5.12
+PORTVERSION=	0.5.13
 PORTREVISION=	0
 CATEGORIES=	sysutils
 MASTER_SITES=	# empty

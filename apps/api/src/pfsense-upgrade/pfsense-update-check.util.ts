@@ -1,6 +1,8 @@
 export const PFSENSE_UPDATE_REFRESH_MIN_AGENT = '0.5.12';
+export const PFSENSE_UPDATE_REPAIR_MIN_AGENT = '0.5.13';
 export const PFSENSE_UPDATE_FORCE_CHECK_TTL_MS = 24 * 60 * 60_000;
 export const PFSENSE_UPDATE_FORCE_CHECK_COOLDOWN_MS = 2 * 60_000;
+export const PFSENSE_REPO_REPAIR_COOLDOWN_MS = 5 * 60_000;
 
 export function isPfsenseForceCheckPending(
   requestedAt: Date | null | undefined,

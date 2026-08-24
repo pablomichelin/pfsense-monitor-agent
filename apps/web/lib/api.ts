@@ -385,10 +385,16 @@ export type PfsenseUpgradeStatusResponse = {
   target_version: string | null;
   update_checked_at: string | null;
   update_check_error: string | null;
+  update_error_class: string | null;
+  update_log_snippet: string | null;
   refresh_check_supported: boolean;
   refresh_check_min_agent_version: string;
+  repair_supported: boolean;
+  repair_min_agent_version: string;
   force_check_pending: boolean;
   force_check_requested_at: string | null;
+  repair_pending: boolean;
+  repair_requested_at: string | null;
   last_seen_at: string | null;
   maintenance_mode: boolean;
   active_command: {
@@ -1117,6 +1123,18 @@ export async function requestPfsenseUpdateRefreshCheck(
 ): Promise<PfsenseUpgradeRefreshCheckResponse> {
   return apiFetch<PfsenseUpgradeRefreshCheckResponse>(
     `/api/v1/nodes/${nodeId}/pfsense-upgrade/refresh-check`,
+    {
+      method: 'POST',
+      csrfProtected: true,
+    },
+  );
+}
+
+export async function requestPfsenseRepoRepair(
+  nodeId: string,
+): Promise<PfsenseUpgradeRefreshCheckResponse> {
+  return apiFetch<PfsenseUpgradeRefreshCheckResponse>(
+    `/api/v1/nodes/${nodeId}/pfsense-upgrade/repair-repo`,
     {
       method: 'POST',
       csrfProtected: true,

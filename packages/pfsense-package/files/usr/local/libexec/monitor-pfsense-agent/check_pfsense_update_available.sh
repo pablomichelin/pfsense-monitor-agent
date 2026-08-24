@@ -20,11 +20,12 @@ STATE_DIR="${MONITOR_AGENT_CONFIG_BACKUP_STATE_DIR:-/var/db/monitor-pfsense-agen
 STATE_FILE="$STATE_DIR/pfsense-update-check.json"
 INTERVAL_HOURS="${MONITOR_AGENT_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS:-6}"
 # Bump quando o formato do cache ou o parser mudar (invalida resultado antigo).
-# v5: refresh de repositórios (pfSense-upgrade -u) antes do -c.
-CACHE_VERSION=5
+# v6: certctl rehash, lock órfão agressivo, fallback IPv4, classificação, repair-repo.
+CACHE_VERSION=6
 REPO_REFRESH_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_REPO_REFRESH_TIMEOUT_SEC:-180}"
 CHECK_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_UPDATE_CHECK_TIMEOUT_SEC:-120}"
-STALE_LOCK_WITHOUT_PID_SEC=1800
+REPAIR_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_REPO_REPAIR_TIMEOUT_SEC:-180}"
+UPGRADE_LOG_FILE="/conf/upgrade_log.latest.txt"
 
 json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -234,23 +235,107 @@ file_age_sec() {
   printf '%s' $((now - mtime))
 }
 
+pkg_process_busy() {
+  if command -v pgrep >/dev/null 2>&1; then
+    pgrep -x pkg-static >/dev/null 2>&1 && return 0
+    pgrep -x pfSense-upgrade >/dev/null 2>&1 && return 0
+    pgrep -x pkg >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
+
 clear_stale_pfsense_upgrade_locks() {
   for lock in \
     /tmp/pfSense-upgrade.lock \
     /var/run/pfSense-upgrade.lock \
-    /var/run/pfSense-upgrade.pid
+    /var/run/pfSense-upgrade.pid \
+    /tmp/pkg.lock \
+    /var/run/pkg.lock
   do
     [ -e "$lock" ] || continue
     pid="$(extract_lock_pid "$lock")"
     if is_pid_alive "$pid"; then
       continue
     fi
-    age="$(file_age_sec "$lock")"
-    if [ -z "$pid" ] && [ "$age" -lt "$STALE_LOCK_WITHOUT_PID_SEC" ]; then
-      continue
-    fi
+    case "$lock" in
+      *pkg.lock)
+        if pkg_process_busy; then
+          continue
+        fi
+        ;;
+    esac
     rm -f "$lock" 2>/dev/null || true
   done
+}
+
+looks_like_tls_error() {
+  printf '%s' "$1" | grep -qiE 'ssl certificate|certificate chain|cafile: none|does not trust|fetching package|self-signed|certificate problem|certctl'
+}
+
+looks_like_dns_error() {
+  printf '%s' "$1" | grep -qiE 'no address record|name does not resolve|nxdomain|temporary failure in name resolution|cannot resolve'
+}
+
+looks_like_metadata_error() {
+  printf '%s' "$1" | grep -qiE 'wrong version|meta cannot be loaded|repository meta'
+}
+
+looks_like_lock_error() {
+  printf '%s' "$1" | grep -qiE 'another instance|already running|is locked|lock present'
+}
+
+looks_like_timeout_or_route() {
+  printf '%s' "$1" | grep -qiE 'timed out|timeout|no route to host|network is unreachable|cannot assign requested'
+}
+
+classify_check_error() {
+  msg="$1"
+  if looks_like_lock_error "$msg"; then
+    printf 'lock'
+  elif looks_like_tls_error "$msg"; then
+    printf 'tls'
+  elif looks_like_dns_error "$msg"; then
+    printf 'dns'
+  elif looks_like_metadata_error "$msg"; then
+    printf 'metadata'
+  elif looks_like_timeout_or_route "$msg"; then
+    printf 'ipv6'
+  else
+    printf 'unknown'
+  fi
+}
+
+upgrade_log_snippet() {
+  if [ ! -f "$UPGRADE_LOG_FILE" ]; then
+    return 0
+  fi
+  php -r '
+    $lines = @file($argv[1], FILE_IGNORE_NEW_LINES);
+    if (!is_array($lines)) {
+      exit(0);
+    }
+    $lines = array_values(array_filter(array_map("trim", $lines), static fn ($line) => $line !== ""));
+    if ($lines === []) {
+      exit(0);
+    }
+    echo substr($lines[count($lines) - 1], 0, 300);
+  ' "$UPGRADE_LOG_FILE" 2>/dev/null || true
+}
+
+run_certctl_rehash() {
+  if command -v certctl >/dev/null 2>&1; then
+    certctl rehash >/dev/null 2>&1 || true
+    return 0
+  fi
+  return 1
+}
+
+pkg_static_bin() {
+  if [ -x /usr/local/sbin/pkg-static ]; then
+    printf '%s' /usr/local/sbin/pkg-static
+    return
+  fi
+  command -v pkg-static 2>/dev/null || true
 }
 
 pfsense_upgrade_in_progress() {
@@ -274,32 +359,84 @@ pfsense_upgrade_in_progress() {
     fi
   done
 
+  if pkg_process_busy; then
+    return 0
+  fi
+
   return 1
+}
+
+summarize_cmd_failure() {
+  log_file="$1"
+  default_msg="$2"
+  exit_code="$3"
+  first="$(first_output_line "$log_file")"
+  if [ -n "$first" ]; then
+    printf '%s' "$first"
+    return
+  fi
+  if [ "$exit_code" -eq 124 ]; then
+    printf '%s timed out' "$default_msg"
+    return
+  fi
+  printf '%s' "$default_msg"
+}
+
+run_pfsense_upgrade_cmd() {
+  ipv4_only="$1"
+  mode="$2"
+  out_file="$3"
+  limit="$4"
+  if [ "$ipv4_only" = "1" ]; then
+    run_timed "$limit" pfSense-upgrade -4 -d "$mode" >"$out_file" 2>&1
+    return $?
+  fi
+  run_timed "$limit" pfSense-upgrade -d "$mode" >"$out_file" 2>&1
 }
 
 refresh_pkg_repositories() {
   refresh_log="$(mktemp)"
   set +e
-  run_timed "$REPO_REFRESH_TIMEOUT_SEC" pfSense-upgrade -d -u >"$refresh_log" 2>&1
+  run_pfsense_upgrade_cmd 0 -u "$refresh_log" "$REPO_REFRESH_TIMEOUT_SEC"
   refresh_code=$?
   set -e
 
-  if [ "$refresh_code" -ne 0 ]; then
-    first="$(first_output_line "$refresh_log")"
+  if [ "$refresh_code" -eq 0 ]; then
     rm -f "$refresh_log" 2>/dev/null || true
-    if [ -z "$first" ]; then
-      if [ "$refresh_code" -eq 124 ]; then
-        first="pfSense-upgrade -u timed out"
-      else
-        first="pfSense-upgrade -u failed"
-      fi
+    return 0
+  fi
+
+  first="$(summarize_cmd_failure "$refresh_log" "pfSense-upgrade -u failed" "$refresh_code")"
+
+  if looks_like_tls_error "$first" || looks_like_tls_error "$(cat "$refresh_log" 2>/dev/null || true)"; then
+    run_certctl_rehash || true
+    set +e
+    run_pfsense_upgrade_cmd 0 -u "$refresh_log" "$REPO_REFRESH_TIMEOUT_SEC"
+    refresh_code=$?
+    set -e
+    if [ "$refresh_code" -eq 0 ]; then
+      rm -f "$refresh_log" 2>/dev/null || true
+      return 0
     fi
-    printf '%s' "$first"
-    return 1
+    first="$(summarize_cmd_failure "$refresh_log" "pfSense-upgrade -u failed after certctl rehash" "$refresh_code")"
+  fi
+
+  if looks_like_timeout_or_route "$first" || looks_like_timeout_or_route "$(cat "$refresh_log" 2>/dev/null || true)"; then
+    set +e
+    run_pfsense_upgrade_cmd 1 -u "$refresh_log" "$REPO_REFRESH_TIMEOUT_SEC"
+    refresh_code=$?
+    set -e
+    if [ "$refresh_code" -eq 0 ]; then
+      PFSENSE_UPGRADE_IPV4=1
+      rm -f "$refresh_log" 2>/dev/null || true
+      return 0
+    fi
+    first="$(summarize_cmd_failure "$refresh_log" "pfSense-upgrade -4 -u failed" "$refresh_code")"
   fi
 
   rm -f "$refresh_log" 2>/dev/null || true
-  return 0
+  printf '%s' "$first"
+  return 1
 }
 
 detect_ha_detected() {
@@ -328,6 +465,8 @@ write_state() {
   target_version="$2"
   check_error="$3"
   ha_detected="$4"
+  error_class="${5:-}"
+  log_snippet="${6:-}"
   checked_at="$(iso_now)"
 
   ensure_state_dir
@@ -346,6 +485,13 @@ write_state() {
     ha_json='false'
   fi
 
+  if [ -z "$error_class" ] && [ -n "$check_error" ]; then
+    error_class="$(classify_check_error "$check_error")"
+  fi
+  if [ -z "$log_snippet" ] && [ -n "$check_error" ]; then
+    log_snippet="$(upgrade_log_snippet || true)"
+  fi
+
   cat >"$STATE_FILE" <<EOF
 {
   "cache_version": $CACHE_VERSION,
@@ -353,40 +499,46 @@ write_state() {
   "target_version": "$(json_escape "$target_version")",
   "checked_at": "$(json_escape "$checked_at")",
   "check_error": "$(json_escape "$check_error")",
+  "error_class": "$(json_escape "$error_class")",
+  "log_snippet": "$(json_escape "$log_snippet")",
   "ha_detected": $ha_json
 }
 EOF
 }
 
+fail_check() {
+  check_error="$1"
+  error_class="${2:-}"
+  write_state "" "" "$check_error" "$ha_detected" "$error_class" "$(upgrade_log_snippet || true)"
+  return 1
+}
+
 run_check() {
-  checked_at="$(iso_now)"
   target_version=""
   check_error=""
   available=""
   ha_detected="false"
+  PFSENSE_UPGRADE_IPV4=0
 
   if detect_ha_detected; then
     ha_detected="true"
   fi
 
   if ! command -v pfSense-upgrade >/dev/null 2>&1; then
-    check_error="pfSense-upgrade not found"
-    write_state "" "" "$check_error" "$ha_detected"
+    fail_check "pfSense-upgrade not found" "unknown"
     return 1
   fi
 
   clear_stale_pfsense_upgrade_locks
 
   if pfsense_upgrade_in_progress; then
-    check_error="pfSense-upgrade already running"
-    write_state "" "" "$check_error" "$ha_detected"
+    fail_check "pfSense-upgrade already running" "lock"
     return 1
   fi
 
   refresh_error="$(refresh_pkg_repositories || true)"
   if [ -n "$refresh_error" ]; then
-    check_error="$refresh_error"
-    write_state "" "" "$check_error" "$ha_detected"
+    fail_check "$refresh_error"
     return 1
   fi
 
@@ -394,7 +546,7 @@ run_check() {
   trap 'rm -f "$output_file"' EXIT INT TERM
 
   set +e
-  run_timed "$CHECK_TIMEOUT_SEC" pfSense-upgrade -d -c >"$output_file" 2>&1
+  run_pfsense_upgrade_cmd "$PFSENSE_UPGRADE_IPV4" -c "$output_file" "$CHECK_TIMEOUT_SEC"
   exit_code=$?
   set -e
 
@@ -414,13 +566,80 @@ run_check() {
           check_error="Unable to parse pfSense-upgrade output"
         fi
       fi
-      write_state "" "" "$check_error" "$ha_detected"
+      fail_check "$check_error"
       return 1
       ;;
   esac
 
-  write_state "$available" "$target_version" "" "$ha_detected"
+  write_state "$available" "$target_version" "" "$ha_detected" "" ""
   return 0
+}
+
+run_repair_repo() {
+  ha_detected="false"
+  if detect_ha_detected; then
+    ha_detected="true"
+  fi
+
+  clear_stale_pfsense_upgrade_locks
+
+  if pfsense_upgrade_in_progress; then
+    fail_check "pfSense-upgrade already running" "lock"
+    return 1
+  fi
+
+  run_certctl_rehash || true
+
+  pkgbin="$(pkg_static_bin)"
+  if [ -z "$pkgbin" ]; then
+    fail_check "pkg-static not found" "unknown"
+    return 1
+  fi
+
+  repair_log="$(mktemp)"
+  trap 'rm -f "$repair_log" "$output_file"' EXIT INT TERM
+
+  set +e
+  run_timed "$REPAIR_TIMEOUT_SEC" "$pkgbin" clean -ay >"$repair_log" 2>&1
+  clean_code=$?
+  set -e
+  if [ "$clean_code" -ne 0 ]; then
+    fail_check "$(summarize_cmd_failure "$repair_log" "pkg-static clean failed" "$clean_code")"
+    return 1
+  fi
+
+  set +e
+  run_timed "$REPAIR_TIMEOUT_SEC" "$pkgbin" install -fy pkg >"$repair_log" 2>&1
+  pkg_code=$?
+  set -e
+  if [ "$pkg_code" -ne 0 ]; then
+    first="$(summarize_cmd_failure "$repair_log" "pkg-static install pkg failed" "$pkg_code")"
+    if looks_like_metadata_error "$first"; then
+      set +e
+      run_timed "$REPAIR_TIMEOUT_SEC" env ASSUME_ALWAYS_YES=yes "$pkgbin" bootstrap -f >"$repair_log" 2>&1
+      boot_code=$?
+      set -e
+      if [ "$boot_code" -ne 0 ]; then
+        fail_check "$(summarize_cmd_failure "$repair_log" "pkg-static bootstrap failed" "$boot_code")" "metadata"
+        return 1
+      fi
+    else
+      fail_check "$first"
+      return 1
+    fi
+  fi
+
+  set +e
+  run_timed "$REPAIR_TIMEOUT_SEC" "$pkgbin" install -xfy pfSense-repo pfSense-upgrade >"$repair_log" 2>&1
+  repo_code=$?
+  set -e
+  if [ "$repo_code" -ne 0 ]; then
+    fail_check "$(summarize_cmd_failure "$repair_log" "pkg-static install pfSense-repo/upgrade failed" "$repo_code")"
+    return 1
+  fi
+
+  invalidate_state_cache
+  run_check || true
 }
 
 print_cached_state() {
@@ -446,6 +665,10 @@ main() {
       run_check || true
       print_cached_state
       ;;
+    repair-repo)
+      run_repair_repo || true
+      print_cached_state
+      ;;
     needed)
       if should_run_check 0; then
         exit 0
@@ -456,7 +679,7 @@ main() {
       print_cached_state
       ;;
     *)
-      echo "usage: $0 [check|force-check|needed|cache]" >&2
+      echo "usage: $0 [check|force-check|repair-repo|needed|cache]" >&2
       exit 1
       ;;
   esac

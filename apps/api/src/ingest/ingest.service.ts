@@ -91,6 +91,7 @@ export class IngestService {
       payload?: Record<string, unknown>;
     }>;
     force_update_check?: boolean;
+    force_repo_repair?: boolean;
   }> {
     const receivedAt = new Date();
     this.assertPayloadSize(request.rawBody);
@@ -195,7 +196,9 @@ export class IngestService {
     const updateCheckProvided =
       request.body.pfsense_update_checked_at != null ||
       request.body.pfsense_update_available !== undefined ||
-      request.body.pfsense_update_check_error != null;
+      request.body.pfsense_update_check_error != null ||
+      request.body.pfsense_update_error_class != null ||
+      request.body.pfsense_update_log_snippet != null;
 
     const haDetectedProvided = request.body.ha_detected !== undefined;
     const configBackupProvided = request.body.config_backup != null;
@@ -279,6 +282,10 @@ export class IngestService {
                   : sentAt,
                 pfsenseUpdateCheckError:
                   request.body.pfsense_update_check_error?.trim() || null,
+                pfsenseUpdateErrorClass:
+                  request.body.pfsense_update_error_class?.trim() || null,
+                pfsenseUpdateLogSnippet:
+                  request.body.pfsense_update_log_snippet?.trim() || null,
               }
             : {}),
           ...(haDetectedProvided
@@ -483,14 +490,15 @@ export class IngestService {
     await this.backupsCommandService.reconcileSucceededCommands(node.id);
     const commands =
       await this.nodeCommandsService.getPendingCommandsForNode(node.id);
-    const forceUpdateCheck = await this.shouldSendForceUpdateCheck(node.id);
+    const forceFlags = await this.resolvePfsenseUpdateForceFlags(node.id);
 
     return {
       ok: true,
       server_time: receivedAt.toISOString(),
       node_status: nodeStatus,
       ...(commands.length > 0 ? { commands } : {}),
-      ...(forceUpdateCheck ? { force_update_check: true } : {}),
+      ...(forceFlags.forceRepoRepair ? { force_repo_repair: true } : {}),
+      ...(forceFlags.forceUpdateCheck ? { force_update_check: true } : {}),
     };
   }
 
@@ -559,19 +567,33 @@ export class IngestService {
     };
   }
 
-  private async shouldSendForceUpdateCheck(nodeId: string): Promise<boolean> {
+  private async resolvePfsenseUpdateForceFlags(nodeId: string): Promise<{
+    forceUpdateCheck: boolean;
+    forceRepoRepair: boolean;
+  }> {
     const row = await this.prisma.node.findUnique({
       where: { id: nodeId },
       select: {
         pfsenseUpdateForceCheckAt: true,
+        pfsenseRepoRepairRequestedAt: true,
         pfsenseUpdateCheckedAt: true,
       },
     });
 
-    return isPfsenseForceCheckPending(
-      row?.pfsenseUpdateForceCheckAt,
+    const forceRepoRepair = isPfsenseForceCheckPending(
+      row?.pfsenseRepoRepairRequestedAt,
       row?.pfsenseUpdateCheckedAt,
     );
+
+    return {
+      forceRepoRepair,
+      forceUpdateCheck:
+        !forceRepoRepair &&
+        isPfsenseForceCheckPending(
+          row?.pfsenseUpdateForceCheckAt,
+          row?.pfsenseUpdateCheckedAt,
+        ),
+    };
   }
 
   private assertPayloadSize(rawBody: Buffer): void {

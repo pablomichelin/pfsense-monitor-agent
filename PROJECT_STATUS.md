@@ -8,8 +8,8 @@ Ultima atualizacao: **2026-08-23**
 
 | Campo | Valor |
 |---|---|
-| API | `0.10.10` |
-| Painel web | `1.11.4` |
-| Package pfSense | `0.5.12` |
-| Última entrega | Check do OS com refresh de repos pkg (`docs/173`) |
-| Próximo passo | Upgrade remoto da frota para package **0.5.12**; nos 2.7/2.8.0 usar Atualizar verificação; reprovisionar `erick` após 0.5.11+; investigar offline Lageado/Ronnau |
+| API | `0.10.11` |
+| Painel web | `1.11.5` |
+| Package pfSense | `0.5.13` |
+| Última entrega | Reparo do repo de update pfSense (`docs/174`) |
+| Próximo passo | Upgrade remoto da frota para package **0.5.13**; nos boxes presos usar Atualizar verificação e, se falhar, Reparar repositório |

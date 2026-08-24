@@ -359,6 +359,16 @@ export class HeartbeatDto {
   pfsense_update_check_error?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  pfsense_update_error_class?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  pfsense_update_log_snippet?: string;
+
+  @IsOptional()
   @ValidateIf((_, value) => value !== null)
   @IsBoolean()
   ha_detected?: boolean;

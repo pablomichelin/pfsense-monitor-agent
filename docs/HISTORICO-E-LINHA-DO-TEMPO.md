@@ -6,6 +6,12 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-23 — Reparo do repositório de update (API 0.10.11, painel 1.11.5, package 0.5.13)
+
+- Check do OS trata lock órfão, `certctl rehash` e fallback IPv4; classifica o erro e manda o log oficial.
+- Portal ganha **Reparar repositório** (receita Netgate de `pkg` / `pfSense-repo` / `pfSense-upgrade`), sem mexer em firmware branch.
+- Ver `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md`.
+
 ### 2026-08-23 — Check do OS com repositório pkg fresco (API 0.10.10, painel 1.11.4, package 0.5.12)
 
 - O agente passa a rodar `pfSense-upgrade -u` antes do `-c`, fora do HTTP do heartbeat, e invalida o cache v4 (falso “atualizado”).

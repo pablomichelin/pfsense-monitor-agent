@@ -17,8 +17,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { evaluateBackupGate } from './backup-gate.util';
 import {
   isPfsenseForceCheckPending,
+  PFSENSE_REPO_REPAIR_COOLDOWN_MS,
   PFSENSE_UPDATE_FORCE_CHECK_COOLDOWN_MS,
   PFSENSE_UPDATE_REFRESH_MIN_AGENT,
+  PFSENSE_UPDATE_REPAIR_MIN_AGENT,
 } from './pfsense-update-check.util';
 import { isMajorBranchBump } from './pfsense-version.util';
 import { PfsenseUpgradeRequestDto } from './dto/pfsense-upgrade-request.dto';
@@ -53,6 +55,9 @@ export class PfsenseUpgradeService {
         pfsenseUpdateCheckedAt: true,
         pfsenseUpdateCheckError: true,
         pfsenseUpdateForceCheckAt: true,
+        pfsenseUpdateErrorClass: true,
+        pfsenseUpdateLogSnippet: true,
+        pfsenseRepoRepairRequestedAt: true,
       },
     });
 
@@ -108,17 +113,30 @@ export class PfsenseUpgradeService {
       target_version: node.pfsenseUpdateTargetVersion,
       update_checked_at: node.pfsenseUpdateCheckedAt?.toISOString() ?? null,
       update_check_error: node.pfsenseUpdateCheckError,
+      update_error_class: node.pfsenseUpdateErrorClass,
+      update_log_snippet: node.pfsenseUpdateLogSnippet,
       refresh_check_supported: isAgentVersionAtLeast(
         node.agentVersion,
         PFSENSE_UPDATE_REFRESH_MIN_AGENT,
       ),
       refresh_check_min_agent_version: PFSENSE_UPDATE_REFRESH_MIN_AGENT,
+      repair_supported: isAgentVersionAtLeast(
+        node.agentVersion,
+        PFSENSE_UPDATE_REPAIR_MIN_AGENT,
+      ),
+      repair_min_agent_version: PFSENSE_UPDATE_REPAIR_MIN_AGENT,
       force_check_pending: isPfsenseForceCheckPending(
         node.pfsenseUpdateForceCheckAt,
         node.pfsenseUpdateCheckedAt,
       ),
       force_check_requested_at:
         node.pfsenseUpdateForceCheckAt?.toISOString() ?? null,
+      repair_pending: isPfsenseForceCheckPending(
+        node.pfsenseRepoRepairRequestedAt,
+        node.pfsenseUpdateCheckedAt,
+      ),
+      repair_requested_at:
+        node.pfsenseRepoRepairRequestedAt?.toISOString() ?? null,
       last_seen_at: node.lastSeenAt?.toISOString() ?? null,
       maintenance_mode: node.maintenanceMode,
       active_command: activeCommand
@@ -198,6 +216,75 @@ export class PfsenseUpgradeService {
         actorType: 'user',
         actorId: userId,
         action: 'pfsense.upgrade.refresh_check',
+        targetType: 'node',
+        targetId: nodeId,
+        ipAddress,
+        metadataJson: {
+          requested_at: requestedAt.toISOString(),
+          agent_version: node.agentVersion,
+        },
+      },
+    });
+
+    return {
+      ok: true,
+      pending: true,
+      requested_at: requestedAt.toISOString(),
+    };
+  }
+
+  async requestRepoRepair(
+    nodeId: string,
+    userId: string,
+    ipAddress?: string,
+  ) {
+    const node = await this.prisma.node.findUnique({
+      where: { id: nodeId },
+      select: {
+        id: true,
+        agentVersion: true,
+        pfsenseRepoRepairRequestedAt: true,
+        pfsenseUpdateCheckedAt: true,
+      },
+    });
+
+    if (!node) {
+      throw new NotFoundException('node not found');
+    }
+
+    if (
+      !isAgentVersionAtLeast(node.agentVersion, PFSENSE_UPDATE_REPAIR_MIN_AGENT)
+    ) {
+      throw new ConflictException('agent version too old for repo repair');
+    }
+
+    const pending = isPfsenseForceCheckPending(
+      node.pfsenseRepoRepairRequestedAt,
+      node.pfsenseUpdateCheckedAt,
+    );
+    if (
+      pending &&
+      node.pfsenseRepoRepairRequestedAt != null &&
+      Date.now() - node.pfsenseRepoRepairRequestedAt.getTime() <
+        PFSENSE_REPO_REPAIR_COOLDOWN_MS
+    ) {
+      throw new ConflictException('repo repair already requested');
+    }
+
+    const requestedAt = new Date();
+    await this.prisma.node.update({
+      where: { id: nodeId },
+      data: {
+        pfsenseRepoRepairRequestedAt: requestedAt,
+        pfsenseUpdateForceCheckAt: requestedAt,
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorType: 'user',
+        actorId: userId,
+        action: 'pfsense.upgrade.repair_repo',
         targetType: 'node',
         targetId: nodeId,
         ipAddress,

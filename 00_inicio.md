@@ -2,9 +2,11 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-23):** API `0.10.10` · painel `1.11.4` · package pfSense `0.5.12`.
+> **Versoes atuais (2026-08-23):** API `0.10.11` · painel `1.11.5` · package pfSense `0.5.13`.
 >
-> **Ultima entrega (2026-08-23):** check do OS atualiza repositórios pkg antes de decidir se há update; botão Atualizar verificação. Ver `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md`.
+> **Ultima entrega (2026-08-23):** reparo oficial do repo de update (certctl, lock, IPv4, botão Reparar repositório). Ver `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md`.
+>
+> **Entrega anterior (2026-08-23):** check do OS atualiza repositórios pkg antes de decidir se há update; botão Atualizar verificação. Ver `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md`.
 >
 > **Entrega anterior (2026-08-23):** IPsec não degrada o node; create de técnico no 2.7.x; scrub/expire de senha no follow-up. Ver `docs/172-ENTREGA-SAUDE-BOX-VS-IPSEC-E-TECNICO-2.7-2026-08-23.md`.
 >

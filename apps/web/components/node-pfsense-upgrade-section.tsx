@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PfsenseUpgradeStatusResponse } from '@/lib/api';
 import {
   pollPfsenseUpgradeStatusAction,
+  requestPfsenseRepoRepairAction,
   requestPfsenseUpdateRefreshCheckAction,
   requestPfsenseUpgradeAction,
 } from '@/lib/pfsense-upgrade';
@@ -16,6 +17,25 @@ import { Card } from '@/components/ui/card';
 const ACTIVE_STATUSES = new Set(['pending', 'picked_up', 'running']);
 const POLL_INTERVAL_MS = 12_000;
 const REFRESH_POLL_INTERVAL_MS = 8_000;
+
+function errorClassLabel(errorClass: string | null): string | null {
+  switch (errorClass) {
+    case 'tls':
+      return 'O pkg não confia no certificado dos servidores Netgate. O agente 0.5.13+ tenta certctl rehash sozinho; se persistir, use Reparar repositório.';
+    case 'lock':
+      return 'Há um lock de update (às vezes órfão). O agente 0.5.13+ remove lock sem processo vivo. Se voltar, use Reparar repositório.';
+    case 'dns':
+      return 'O firewall não resolve o servidor de update (DNS). Confira DNS e rota de saída no pfSense.';
+    case 'ipv6':
+      return 'Timeout ou rota IPv6. O agente 0.5.13+ tenta de novo forçando IPv4.';
+    case 'metadata':
+      return 'Metadados do pkg incompatíveis. Use Reparar repositório (receita oficial Netgate).';
+    case 'unknown':
+      return 'A checagem falhou. O trecho do log abaixo ajuda a diagnosticar.';
+    default:
+      return null;
+  }
+}
 
 function looksLikeBehindCeTrack(version: string | null): boolean {
   if (!version) {
@@ -170,6 +190,9 @@ export function NodePfsenseUpgradeSection({
   const [submitting, setSubmitting] = useState(false);
   const [refreshingCheck, setRefreshingCheck] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const [repairModalOpen, setRepairModalOpen] = useState(false);
+  const [repairConfirmText, setRepairConfirmText] = useState('');
+  const [repairing, setRepairing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshStatus = useCallback(async () => {
@@ -185,16 +208,23 @@ export function NodePfsenseUpgradeSection({
     const upgradeActive =
       status.active_command != null &&
       ACTIVE_STATUSES.has(status.active_command.status);
-    if (!upgradeActive && !status.force_check_pending) {
+    if (!upgradeActive && !status.force_check_pending && !status.repair_pending) {
       return;
     }
 
     const timer = window.setInterval(() => {
       void refreshStatus();
-    }, status.force_check_pending ? REFRESH_POLL_INTERVAL_MS : POLL_INTERVAL_MS);
+    }, status.force_check_pending || status.repair_pending
+      ? REFRESH_POLL_INTERVAL_MS
+      : POLL_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
-  }, [refreshStatus, status.active_command, status.force_check_pending]);
+  }, [
+    refreshStatus,
+    status.active_command,
+    status.force_check_pending,
+    status.repair_pending,
+  ]);
 
   const blockReason = useMemo(() => {
     if (!status.enabled) {
@@ -241,8 +271,16 @@ export function NodePfsenseUpgradeSection({
     ? 'Sem permissão para disparar upgrade'
     : !status.refresh_check_supported
       ? `Agente ${status.refresh_check_min_agent_version}+ necessário para atualizar os repositórios pkg`
-      : status.force_check_pending || refreshingCheck
+      : status.force_check_pending || status.repair_pending || refreshingCheck
         ? 'Aguardando o agente atualizar os repositórios e rechecar'
+        : undefined;
+
+  const repairTitle = !canRunUpgrade
+    ? 'Sem permissão para disparar upgrade'
+    : !status.repair_supported
+      ? `Agente ${status.repair_min_agent_version}+ necessário para reparar o repositório pkg`
+      : status.repair_pending || repairing
+        ? 'Aguardando o agente executar o reparo oficial do repositório'
         : undefined;
 
   const handleRefreshCheck = async () => {
@@ -296,6 +334,67 @@ export function NodePfsenseUpgradeSection({
       );
     } finally {
       setRefreshingCheck(false);
+    }
+  };
+
+  const handleRepairRepo = async () => {
+    if (!confirmationMatches(status.hostname, repairConfirmText)) {
+      setError('Digite o hostname ou CONFIRMAR para reparar o repositório.');
+      return;
+    }
+
+    setRepairing(true);
+    setRefreshMessage(null);
+    setError(null);
+    const previousCheckedAt = status.update_checked_at;
+    try {
+      const result = await requestPfsenseRepoRepairAction(nodeId);
+      if (!result.ok) {
+        setError(result.error);
+        setRepairing(false);
+        return;
+      }
+
+      setRepairModalOpen(false);
+      setRepairConfirmText('');
+      setRefreshMessage(
+        'Reparo pedido. O agente vai limpar o cache pkg e reinstalar pfSense-repo / pfSense-upgrade no próximo heartbeat.',
+      );
+
+      const deadline = Date.now() + 240_000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, REFRESH_POLL_INTERVAL_MS),
+        );
+        const next = await pollPfsenseUpgradeStatusAction(nodeId);
+        setStatus(next);
+        const checkChanged =
+          next.update_checked_at != null &&
+          next.update_checked_at !== previousCheckedAt;
+        if (checkChanged && !next.repair_pending) {
+          setRefreshMessage(
+            next.update_available === true
+              ? `Reparo concluído. Atualização encontrada: ${next.target_version ?? 'versão nova'}.`
+              : next.update_check_error
+                ? `Reparo concluído com erro: ${next.update_check_error}`
+                : 'Reparo concluído. O pfSense não anunciou atualização nova.',
+          );
+          setRepairing(false);
+          return;
+        }
+      }
+
+      setRefreshMessage(
+        'Ainda aguardando o agente concluir o reparo. O próximo heartbeat deve atualizar o status.',
+      );
+    } catch (repairError) {
+      setError(
+        repairError instanceof Error
+          ? repairError.message
+          : 'Falha ao solicitar reparo do repositório',
+      );
+    } finally {
+      setRepairing(false);
     }
   };
 
@@ -377,6 +476,16 @@ export function NodePfsenseUpgradeSection({
         {status.update_check_error ? (
           <Alert variant="warning">
             Falha ao verificar atualização: {status.update_check_error}
+            {errorClassLabel(status.update_error_class) ? (
+              <span className="mt-2 block text-xs">
+                {errorClassLabel(status.update_error_class)}
+              </span>
+            ) : null}
+            {status.update_log_snippet ? (
+              <span className="mt-2 block font-mono text-xs text-slate-400">
+                Log: {status.update_log_snippet}
+              </span>
+            ) : null}
           </Alert>
         ) : null}
 
@@ -385,12 +494,19 @@ export function NodePfsenseUpgradeSection({
           <Alert variant="warning">
             Este firewall está em {status.pfsense_version}. A checagem do agente
             pode ter lido metadados pkg velhos e reportado “atualizado”. Use
-            Atualizar verificação (package 0.5.12+) para renovar os repositórios
-            e checar de novo.
+            Atualizar verificação (0.5.12+) ou Reparar repositório (0.5.13+)
+            para renovar as ferramentas oficiais de update.
           </Alert>
         ) : null}
 
-        {status.force_check_pending ? (
+        {status.repair_pending ? (
+          <Alert variant="warning">
+            Reparo do repositório pedido — aguardando o agente no próximo
+            heartbeat (pode levar 1–3 min).
+          </Alert>
+        ) : null}
+
+        {status.force_check_pending && !status.repair_pending ? (
           <Alert variant="warning">
             Verificação pedida — aguardando o agente atualizar os repositórios e
             rechecar no próximo heartbeat.
@@ -418,7 +534,9 @@ export function NodePfsenseUpgradeSection({
               !canRunUpgrade ||
               !status.refresh_check_supported ||
               refreshingCheck ||
-              status.force_check_pending
+              repairing ||
+              status.force_check_pending ||
+              status.repair_pending
             }
             title={refreshCheckTitle}
             onClick={() => void handleRefreshCheck()}
@@ -426,6 +544,27 @@ export function NodePfsenseUpgradeSection({
             {refreshingCheck || status.force_check_pending
               ? 'Verificando...'
               : 'Atualizar verificação'}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={
+              !canRunUpgrade ||
+              !status.repair_supported ||
+              repairing ||
+              refreshingCheck ||
+              status.repair_pending
+            }
+            title={repairTitle}
+            onClick={() => {
+              setError(null);
+              setRepairModalOpen(true);
+            }}
+          >
+            {repairing || status.repair_pending
+              ? 'Reparando...'
+              : 'Reparar repositório'}
           </Button>
           <Button
             type="button"
@@ -533,6 +672,66 @@ export function NodePfsenseUpgradeSection({
                 className="rounded-lg border border-amber-500/60 bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-200 hover:bg-amber-500/30 disabled:opacity-50"
               >
                 {submitting ? 'Processando...' : 'Confirmar upgrade'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {repairModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center theme-overlay"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="mx-4 w-full max-w-lg rounded-xl border border-slate-600 bg-slate-900 p-6 shadow-xl">
+            <h2 className="font-display text-lg text-slate-100">
+              Reparar repositório de update
+            </h2>
+            <div className="mt-3 space-y-3 text-sm text-slate-300">
+              <p>
+                No firewall <strong>{status.hostname}</strong> o agente vai
+                executar a receita oficial da Netgate: <code>certctl rehash</code>
+                , <code>pkg-static clean -ay</code>, reinstalar{' '}
+                <code>pkg</code>, <code>pfSense-repo</code> e{' '}
+                <code>pfSense-upgrade</code>, e depois checar o OS de novo.
+              </p>
+              <p className="text-slate-400">
+                Não altera a versão do pfSense nem o firmware branch. Não
+                reinstala todos os packages do sistema.
+              </p>
+              <label className="block">
+                <span className="text-slate-400">
+                  Digite o hostname <code>{status.hostname}</code> ou CONFIRMAR:
+                </span>
+                <input
+                  type="text"
+                  value={repairConfirmText}
+                  onChange={(event) => setRepairConfirmText(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100"
+                />
+              </label>
+              {error ? <Alert variant="error">{error}</Alert> : null}
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={repairing}
+                onClick={() => setRepairModalOpen(false)}
+                className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={
+                  repairing ||
+                  !confirmationMatches(status.hostname, repairConfirmText)
+                }
+                onClick={() => void handleRepairRepo()}
+                className="rounded-lg border border-slate-500 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700 disabled:opacity-50"
+              >
+                {repairing ? 'Processando...' : 'Confirmar reparo'}
               </button>
             </div>
           </div>

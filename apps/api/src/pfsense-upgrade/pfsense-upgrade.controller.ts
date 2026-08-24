@@ -60,6 +60,21 @@ export class PfsenseUpgradeController {
     );
   }
 
+  @Post('repair-repo')
+  @RequirePermissions('pfsense.upgrade.run')
+  async requestRepoRepair(
+    @Param('id') nodeId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessPolicy.assertNodeAccess(getAccessActor(request), nodeId);
+
+    return this.upgradeService.requestRepoRepair(
+      nodeId,
+      request.auth!.userId,
+      resolveClientIp(request),
+    );
+  }
+
   @Post('request')
   @RequirePermissions('pfsense.upgrade.run')
   async requestUpgrade(

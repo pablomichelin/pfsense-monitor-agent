@@ -10,13 +10,15 @@ Leia este arquivo primeiro.
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.10.10` | `apps/api/package.json` |
-| Painel web | `1.11.4` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.5.12` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| API | `0.10.11` | `apps/api/package.json` |
+| Painel web | `1.11.5` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.5.13` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
-**Release (config local):** publicar package **`0.5.12`** (`scripts/release-pfsense-package.sh`) — refresh de repositórios pkg antes de checar atualização do OS.
+**Release (config local):** publicar package **`0.5.13`** (`scripts/release-pfsense-package.sh`) — certctl/lock/IPv4 no check + reparo oficial do repo.
 
-**Última entrega (2026-08-23):** boxes que “não pegam” update do pfSense — o agente atualiza os repos (`-u`) antes do `-c`; botão Atualizar verificação no portal. API **0.10.10**, painel **1.11.4**, package **0.5.12**. Ver `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md`.
+**Última entrega (2026-08-23):** reparo do repositório de update (lock órfão, `certctl rehash`, fallback IPv4, botão Reparar repositório). API **0.10.11**, painel **1.11.5**, package **0.5.13**. Ver `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md`.
+
+**Entrega anterior (2026-08-23):** boxes que “não pegam” update do pfSense — o agente atualiza os repos (`-u`) antes do `-c`; botão Atualizar verificação no portal. API **0.10.10**, painel **1.11.4**, package **0.5.12**. Ver `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md`.
 
 **Entrega anterior (2026-08-23):** IPsec não degrada o node; create de técnico compatível com CE 2.7.x; scrub da senha no follow-up de backup; expire marca conta `failed`. API **0.10.9**, painel **1.11.3**, package **0.5.11**. Ver `docs/172-ENTREGA-SAUDE-BOX-VS-IPSEC-E-TECNICO-2.7-2026-08-23.md`.
 
