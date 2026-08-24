@@ -11,12 +11,14 @@ Leia este arquivo primeiro.
 | Componente | Versao | Referencia |
 |------------|--------|------------|
 | API | `0.11.0` | `apps/api/package.json` |
-| Painel web | `1.12.0` | `apps/web/package.json` (rodape do layout) |
+| Painel web | `1.12.1` | `apps/web/package.json` (rodape do layout) |
 | Package pfSense | `0.5.14` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
 **Release (config local):** publicar package **`0.5.14`** (`scripts/release-pfsense-package.sh`) — diagnóstico e troca allowlistada do firmware branch.
 
-**Última entrega (2026-08-23):** firmware branch no card de update + botão Apontar branch (Latest / 2.8.1 / 2.9.0). API **0.11.0**, painel **1.12.0**, package **0.5.14**. Ver `docs/175-ENTREGA-FIRMWARE-BRANCH-UPDATE-PFSENSE-2026-08-23.md`.
+**Última entrega (2026-08-23):** hotfix do modal Apontar branch (payload e z-index) — painel **1.12.1**. Ver `docs/175-ENTREGA-FIRMWARE-BRANCH-UPDATE-PFSENSE-2026-08-23.md`.
+
+**Entrega anterior (2026-08-23):** firmware branch no card de update + botão Apontar branch (Latest / 2.8.1 / 2.9.0). API **0.11.0**, painel **1.12.0**, package **0.5.14**. Ver `docs/175-ENTREGA-FIRMWARE-BRANCH-UPDATE-PFSENSE-2026-08-23.md`.
 
 **Entrega anterior (2026-08-23):** reparo do repositório de update (lock órfão, `certctl rehash`, fallback IPv4, botão Reparar repositório). API **0.10.11**, painel **1.11.5**, package **0.5.13**. Ver `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md`.
 

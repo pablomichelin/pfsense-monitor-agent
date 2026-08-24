@@ -863,7 +863,9 @@ async function apiFetch<T>(path: string, options?: ApiFetchOptions): Promise<T> 
     options?.body !== undefined &&
     options?.body !== null;
   const bodyPayload = hasBody
-    ? JSON.stringify(options.body)
+    ? typeof options.body === 'string'
+      ? options.body
+      : JSON.stringify(options.body)
     : method === 'POST'
       ? '{}'
       : undefined;
@@ -1163,7 +1165,7 @@ export async function requestPfsenseSetBranch(
     {
       method: 'POST',
       csrfProtected: true,
-      body: JSON.stringify({ target_branch: targetBranch }),
+      body: { target_branch: targetBranch },
     },
   );
 }

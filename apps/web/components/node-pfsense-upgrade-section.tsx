@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   PfsenseUpdateBranchTarget,
   PfsenseUpgradeStatusResponse,
@@ -87,6 +88,23 @@ type Props = {
 function confirmationMatches(hostname: string, value: string): boolean {
   const trimmed = value.trim();
   return trimmed === hostname || trimmed.toUpperCase() === 'CONFIRMAR';
+}
+
+function OverlayModal({ children }: { children: React.ReactNode }) {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      className="theme-overlay fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto p-4 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+    >
+      {children}
+    </div>,
+    document.body,
+  );
 }
 
 function getUpdateLabel(status: PfsenseUpgradeStatusResponse): string {
@@ -753,12 +771,8 @@ export function NodePfsenseUpgradeSection({
       </div>
 
       {modalOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center theme-overlay"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="mx-4 w-full max-w-lg rounded-xl border border-amber-500/30 bg-slate-900 p-6 shadow-xl">
+        <OverlayModal>
+          <div className="mx-auto my-6 w-full max-w-lg rounded-xl border border-amber-500/30 bg-slate-900 p-6 shadow-xl">
             <h2 className="font-display text-lg text-amber-200">Confirmar upgrade pfSense</h2>
             <div className="mt-3 space-y-3 text-sm text-slate-300">
               <p>
@@ -836,16 +850,12 @@ export function NodePfsenseUpgradeSection({
               </button>
             </div>
           </div>
-        </div>
+        </OverlayModal>
       ) : null}
 
       {repairModalOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center theme-overlay"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="mx-4 w-full max-w-lg rounded-xl border border-slate-600 bg-slate-900 p-6 shadow-xl">
+        <OverlayModal>
+          <div className="mx-auto my-6 w-full max-w-lg rounded-xl border border-slate-600 bg-slate-900 p-6 shadow-xl">
             <h2 className="font-display text-lg text-slate-100">
               Reparar repositório de update
             </h2>
@@ -896,16 +906,12 @@ export function NodePfsenseUpgradeSection({
               </button>
             </div>
           </div>
-        </div>
+        </OverlayModal>
       ) : null}
 
       {branchModalOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center theme-overlay"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="mx-4 w-full max-w-lg rounded-xl border border-slate-600 bg-slate-900 p-6 shadow-xl">
+        <OverlayModal>
+          <div className="mx-auto my-6 w-full max-w-lg rounded-xl border border-slate-600 bg-slate-900 p-6 shadow-xl">
             <h2 className="font-display text-lg text-slate-100">
               Apontar firmware branch
             </h2>
@@ -974,7 +980,7 @@ export function NodePfsenseUpgradeSection({
               </button>
             </div>
           </div>
-        </div>
+        </OverlayModal>
       ) : null}
     </Card>
   );

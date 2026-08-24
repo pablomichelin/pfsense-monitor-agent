@@ -6,6 +6,11 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-23 — Hotfix modal Apontar branch (painel 1.12.1)
+
+- O `apiFetch` não dá mais `JSON.stringify` duas vezes no body (a API recusava `2.9.0` válido).
+- O modal vai para `document.body` com z-index alto — o `backdrop-filter` do card de package não cobre mais os botões.
+
 ### 2026-08-23 — Firmware branch no update (API 0.11.0, painel 1.12.0, package 0.5.14)
 
 - O agente reporta o train atual; o portal deixa de tratar 2.7.2 “atualizado” só como cache velho.

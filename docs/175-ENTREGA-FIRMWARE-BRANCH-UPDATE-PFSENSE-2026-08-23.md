@@ -1,7 +1,7 @@
 # 175 — Firmware branch no check de update do pfSense
 
 **Data:** 2026-08-23  
-**Versões:** API **0.11.0** · painel **1.12.0** · package pfSense **0.5.14**
+**Versões:** API **0.11.0** · painel **1.12.1** · package pfSense **0.5.14**
 
 ## Problema
 
@@ -27,11 +27,12 @@ Fontes: [Upgrade Guide](https://docs.netgate.com/pfsense/en/latest/install/upgra
 - Heartbeat devolve `force_set_update_branch` com prioridade sobre repair/check.
 - `POST /api/v1/nodes/:id/pfsense-upgrade/set-branch`.
 
-### Painel 1.12.0
+### Painel 1.12.1
 
 - Card mostra o firmware branch atual.
 - Aviso de 2.7/2.8 deixa de culpar só “cache velho” quando o branch já é conhecido.
 - Botão **Apontar branch** com CONFIRMAR / hostname.
+- Hotfix: body do POST sem double-`JSON.stringify`; modal em portal (`z-[200]`) para não ficar atrás do card de package.
 
 ## Uso
 

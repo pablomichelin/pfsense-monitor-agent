@@ -66,6 +66,9 @@ function mapUpgradeRequestError(message: string, status?: number): string {
   if (normalized === 'firmware branch change already requested') {
     return 'A troca de branch já foi pedida. Aguarde o próximo heartbeat (~30s).';
   }
+  if (normalized.includes('target_branch must be one of')) {
+    return 'Branch inválido. Escolha Latest stable, 2.8.1 ou 2.9.0.';
+  }
   if (status === 409 && normalized.includes('no_recent_backup')) {
     return 'Backup recente obrigatório. Confirme que aceita prosseguir sem backup recente.';
   }
