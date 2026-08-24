@@ -39,7 +39,7 @@ O agente coleta estado local e envia heartbeat por HTTPS.
 - o heartbeat do agente no MVP e de `30s`
 - o projeto usa um unico dominio no MVP para painel e ingestao
 - a autenticacao humana inicial do MVP fica centralizada no `NestJS`
-- a primeira homologacao oficial do agente mira `pfSense CE 2.8.1`
+- a primeira homologacao oficial do agente mira `pfSense CE 2.8.1`; CE `2.9.0` foi homologado com ressalvas no lab `192.168.100.10` em 2026-08-24 (package `0.5.16`, `docs/177`/`docs/178`) — upgrade remoto de OS continua desligado
 - o projeto usa `Semantic Versioning`
 - o painel deve exibir a versao do sistema e `Desenvolvido por Systemup`
 - backup de `config.xml` do pfSense deve seguir arquitetura `push`, com upload iniciado pelo firewall

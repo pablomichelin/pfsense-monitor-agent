@@ -2,9 +2,15 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-08-23
+**Última atualização:** 2026-08-24
 
 ---
+
+### 2026-08-24 — Homologação CE 2.9.0 no lab 192.168.100.10 (package 0.5.16)
+
+- Package 0.5.16: sem `curl_close`, `gwlb.inc`, DHCP Kea, `ramdisk_dir_names`, match de versão normalizado no finalize.
+- Lab já em 2.9.0 (PHP 8.5.7): heartbeat, backup+dedup e técnico descartável ok. Veredito: homologado com ressalvas (`docs/177`, `docs/178`).
+- Ressalvas: curl do lab não resolve o hostname público; repos Netgate inacessíveis; Kea/IPsec ao vivo não existiam no box.
 
 ### 2026-08-23 — Lote 0.5.15 falhou por SHA do artefato (nenhum box atualizado)
 

@@ -2,11 +2,11 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-23):** API `0.11.0` · painel `1.12.2` · package pfSense `0.5.15`.
+> **Versoes atuais (2026-08-24):** API `0.11.0` · painel `1.12.2` · package pfSense `0.5.16`.
 >
-> **Ultima entrega (2026-08-23):** hotfix helper de firmware branch (0.5.14 sem +x). Package **0.5.15**, painel **1.12.2**. Ver `docs/176`.
+> **Ultima entrega (2026-08-24):** homologação CE 2.9.0 no lab 192.168.100.10 — package **0.5.16**, **homologado com ressalvas**. Ver `docs/177` e `docs/178`.
 >
-> **Entrega anterior (2026-08-23):** reparo oficial do repo de update (certctl, lock, IPv4, botão Reparar repositório). Ver `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md`.
+> **Entrega anterior (2026-08-23):** hotfix helper de firmware branch (0.5.14 sem +x). Package **0.5.15**, painel **1.12.2**. Ver `docs/176`.
 >
 > **Entrega anterior (2026-08-23):** check do OS atualiza repositórios pkg antes de decidir se há update; botão Atualizar verificação. Ver `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md`.
 >

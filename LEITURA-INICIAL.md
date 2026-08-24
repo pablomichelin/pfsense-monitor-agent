@@ -6,17 +6,19 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Versoes atuais do produto (2026-08-23)
+## Versoes atuais do produto (2026-08-24)
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
 | API | `0.11.0` | `apps/api/package.json` |
 | Painel web | `1.12.2` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.5.15` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| Package pfSense | `0.5.16` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
-**Release (config local):** publicar package **`0.5.15`** (`scripts/release-pfsense-package.sh`) — helper de firmware branch executável.
+**Release (config local):** package **`0.5.16`** publicado (`scripts/release-pfsense-package.sh`) — compat CE 2.9.0 (PHP 8.5, `gwlb.inc`, Kea, RAM disk, match de versão).
 
-**Última entrega (2026-08-23):** hotfix `set_pfsense_update_branch.php not found` (helper 644 + check `-x`). Package **0.5.15**, painel **1.12.2**. Ver `docs/176-HOTFIX-HELPER-FIRMWARE-BRANCH-0.5.15-2026-08-23.md`.
+**Última entrega (2026-08-24):** homologação CE 2.9.0 no lab `192.168.100.10` — package **0.5.16**, **homologado com ressalvas**. Ver `docs/177-PLANO-HOMOLOGACAO-PFSENSE-2.9.0-LAB-10-2026-08-24.md` e `docs/178-ENTREGA-HOMOLOGACAO-PFSENSE-2.9.0-PACKAGE-0.5.16-2026-08-24.md`.
+
+**Entrega anterior (2026-08-23):** hotfix `set_pfsense_update_branch.php not found` (helper 644 + check `-x`). Package **0.5.15**, painel **1.12.2**. Ver `docs/176-HOTFIX-HELPER-FIRMWARE-BRANCH-0.5.15-2026-08-23.md`.
 
 **Entrega anterior (2026-08-23):** firmware branch no card de update + botão Apontar branch (Latest / 2.8.1 / 2.9.0). API **0.11.0**, painel **1.12.0**, package **0.5.14**. Ver `docs/175-ENTREGA-FIRMWARE-BRANCH-UPDATE-PFSENSE-2026-08-23.md`.
 
