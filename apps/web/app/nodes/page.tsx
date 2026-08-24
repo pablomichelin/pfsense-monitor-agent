@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { FleetInventorySection } from '@/components/nodes/fleet-inventory-section';
 import { PageHero } from '@/components/page-hero';
@@ -37,6 +38,11 @@ export default async function NodesPage({
       ? (params.criticality as 'critical' | 'standard' | 'lab')
       : undefined;
   const search = typeof params.search === 'string' ? params.search : undefined;
+  const preset =
+    typeof params.preset === 'string' &&
+    ['problem', 'offline', 'degraded', 'backup-late', 'no-backup', 'package-outdated'].includes(params.preset)
+      ? params.preset
+      : undefined;
   const sortBy =
     typeof params.sort_by === 'string' && isInventorySortBy(params.sort_by)
       ? params.sort_by
@@ -53,6 +59,7 @@ export default async function NodesPage({
     group_id: groupId,
     criticality,
     search,
+    preset,
   };
 
   const listLimit = 200;
@@ -148,6 +155,24 @@ export default async function NodesPage({
     tags: node.tags,
   }));
 
+  const displayedInventoryNodes = inventoryNodes.filter((node) => {
+    if (!preset) return true;
+    if (preset === 'offline') return node.effective_status === 'offline';
+    if (preset === 'degraded') return node.effective_status === 'degraded';
+    if (preset === 'backup-late') return node.backup_status === 'late' || node.backup_status === 'failed';
+    if (preset === 'no-backup') return node.backup_status === 'never';
+    if (preset === 'package-outdated') {
+      return Boolean(targetPackageVersion && node.agent_version !== targetPackageVersion);
+    }
+    return (
+      node.effective_status === 'offline' ||
+      node.effective_status === 'degraded' ||
+      node.open_alerts > 0 ||
+      node.backup_status !== 'ok' ||
+      Boolean(targetPackageVersion && node.agent_version !== targetPackageVersion)
+    );
+  });
+
   const statusFilterLabels: Record<string, string> = {
     online: 'Online',
     degraded: 'Degradado',
@@ -188,7 +213,40 @@ export default async function NodesPage({
   if (search) {
     activeFilterChips.push(`“${search.length > 24 ? `${search.slice(0, 24)}…` : search}”`);
   }
+  if (preset) {
+    const presetLabels: Record<string, string> = {
+      problem: 'Com problema',
+      offline: 'Offline',
+      degraded: 'Degradados',
+      'backup-late': 'Backup atrasado',
+      'no-backup': 'Sem backup',
+      'package-outdated': 'Package desatualizado',
+    };
+    activeFilterChips.push(presetLabels[preset]);
+  }
   const hasActiveFilters = activeFilterChips.length > 0;
+  const quickPresetHref = (value?: string) => {
+    const query = new URLSearchParams();
+    for (const [key, item] of Object.entries(inventoryQueryParams)) {
+      if (item && key !== 'status' && key !== 'preset') query.set(key, item);
+    }
+    if (value) query.set('preset', value);
+    const serialized = query.toString();
+    return serialized ? `/nodes?${serialized}` : '/nodes';
+  };
+  const quickPresets = [
+    { label: 'Todos', value: undefined },
+    { label: 'Com problema', value: 'problem' },
+    { label: 'Offline', value: 'offline' },
+    { label: 'Degradados', value: 'degraded' },
+    { label: 'Backup atrasado', value: 'backup-late' },
+    { label: 'Sem backup', value: 'no-backup' },
+    { label: 'Package desatualizado', value: 'package-outdated' },
+  ].map((item) => ({
+    ...item,
+    href: quickPresetHref(item.value),
+    active: item.value ? preset === item.value : !preset && !status,
+  }));
 
   return (
     <div className="space-y-8">
@@ -199,7 +257,7 @@ export default async function NodesPage({
         stats={[
           {
             label: 'Itens exibidos',
-            value: `${nodes.items.length}${nodes.items.length >= listLimit ? ' (máx.)' : ''}`,
+            value: `${displayedInventoryNodes.length}${nodes.items.length >= listLimit ? ' (máx.)' : ''}`,
           },
           {
             label: 'Agente ativo',
@@ -215,15 +273,83 @@ export default async function NodesPage({
         aside={<RealtimeRefresh renderedAt={nodes.generated_at} />}
       />
 
+      <div className="flex flex-wrap items-center gap-2" aria-label="Atalhos de inventário">
+        <span className="mr-1 text-sm font-medium text-fg-muted">Atalhos:</span>
+        {quickPresets.map((preset) => (
+          <Link
+            key={preset.label}
+            href={preset.href}
+            aria-current={preset.active ? 'page' : undefined}
+            className={
+              preset.active
+                ? 'rounded-full border border-primary bg-primary/15 px-3 py-1.5 text-sm font-medium text-primary'
+                : 'rounded-full border border-border bg-surface-soft px-3 py-1.5 text-sm font-medium text-fg-muted transition hover:border-primary/40 hover:text-fg'
+            }
+          >
+            {preset.label}
+          </Link>
+        ))}
+      </div>
+
+      <form className="glass-panel flex flex-col gap-3 rounded-xl p-4 sm:flex-row sm:flex-wrap sm:items-end">
+        <label className="min-w-[12rem] flex-1 text-sm text-fg-muted">
+          Cliente
+          <select
+            name="client_id"
+            defaultValue={clientId ?? ''}
+            className="mt-1 h-11 w-full rounded-lg border border-border bg-surface-soft px-4 text-sm text-fg outline-none"
+          >
+            <option value="">Todos os clientes</option>
+            {filterOptions.clients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name} ({client.node_count})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="min-w-[10rem] flex-1 text-sm text-fg-muted">
+          Status
+          <select
+            name="status"
+            defaultValue={status ?? ''}
+            className="mt-1 h-11 w-full rounded-lg border border-border bg-surface-soft px-4 text-sm text-fg outline-none"
+          >
+            <option value="">Todos os status</option>
+            <option value="online">Online</option>
+            <option value="degraded">Degradado</option>
+            <option value="offline">Offline</option>
+            <option value="maintenance">Manutenção</option>
+            <option value="unknown">Desconhecido</option>
+          </select>
+        </label>
+        <label className="min-w-[16rem] flex-[2] text-sm text-fg-muted">
+          Buscar
+          <input
+            type="search"
+            name="search"
+            defaultValue={search ?? ''}
+            placeholder="Nome, hostname ou cliente"
+            className="mt-1 h-11 w-full rounded-lg border border-border bg-surface-soft px-4 text-sm text-fg outline-none placeholder:text-fg-subtle"
+          />
+        </label>
+        <input type="hidden" name="site_id" value={siteId ?? ''} />
+        <input type="hidden" name="tag_id" value={tagId ?? ''} />
+        <input type="hidden" name="group_id" value={groupId ?? ''} />
+        <input type="hidden" name="criticality" value={criticality ?? ''} />
+        <input type="hidden" name="sort_by" value={sortBy} />
+        <input type="hidden" name="sort_order" value={sortOrder} />
+        <Button type="submit">Filtrar</Button>
+      </form>
+
       <details
         className="glass-panel rounded-xl"
         open={hasActiveFilters ? true : undefined}
       >
         <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm text-slate-200 marker:content-none [&::-webkit-details-marker]:hidden">
           <span className="font-mono text-[10px] uppercase tracking-wider text-cyan-400/90">
-            Filtros
+            Mais filtros
           </span>
-          <span className="font-medium text-white">
+          <span className="font-medium text-fg">
             {hasActiveFilters
               ? `${activeFilterChips.length} ativo${activeFilterChips.length === 1 ? '' : 's'}`
               : 'Nenhum filtro ativo'}
@@ -237,7 +363,7 @@ export default async function NodesPage({
             </span>
           ))}
           <span className="ml-auto text-xs text-slate-500">
-            {hasActiveFilters ? 'Clique para editar' : 'Clique para filtrar'}
+            {hasActiveFilters ? 'Filtros técnicos ativos' : 'Criticidade, tags, grupos e ordenação'}
           </span>
         </summary>
         <div className="border-t border-slate-800 px-4 py-4 sm:px-6">
@@ -344,7 +470,7 @@ export default async function NodesPage({
         </div>
       </details>
 
-      {nodes.items.length === 0 ? (
+      {displayedInventoryNodes.length === 0 ? (
         <PageSection title="Inventário">
           <Card className="overflow-hidden p-0">
             <Alert variant="info" className="m-6">
@@ -354,7 +480,7 @@ export default async function NodesPage({
         </PageSection>
       ) : (
         <FleetInventorySection
-          nodes={inventoryNodes}
+          nodes={displayedInventoryNodes}
           showAlertsColumn={showAlertsColumn}
           targetPackageVersion={targetPackageVersion}
           clientId={clientId}

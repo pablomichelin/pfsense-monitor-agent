@@ -1,14 +1,18 @@
 # Indice operacional do projeto
 
-Data de referencia: `2026-07-31`
+Data de referencia: `2026-08-23`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Versoes atuais (codigo):** API `0.10.8` · painel `1.11.1` · package pfSense `0.5.10` (publicado).
+> **Versoes atuais (codigo):** API `0.10.10` · painel `1.11.4` · package pfSense `0.5.12` (publicar com `scripts/release-pfsense-package.sh`).
 >
-> **Entrega em andamento (2026-08-20):** reorganização visual do painel — painel **1.11.1**. Bump patch obrigatório aplicado antes de continuar o plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`.
+> **Ultima entrega (2026-08-23):** check do OS com refresh de repositórios pkg; botão Atualizar verificação. Ver `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md`.
 >
-> **Ultima entrega (2026-08-20):** package **0.5.10** publicado — órfão Unix + `adopt_orphans` no upgrade da frota. Ver `docs/170-CORRECAO-USUARIO-ORFAO-CREATE-LOCAL-USER-2026-08-20.md`.
+> **Entrega anterior (2026-08-23):** IPsec não degrada o node; create de técnico no 2.7.x; scrub/expire de senha no follow-up. Ver `docs/172-ENTREGA-SAUDE-BOX-VS-IPSEC-E-TECNICO-2.7-2026-08-23.md`.
+>
+> **Entrega anterior (2026-08-20):** reorganização visual do painel concluída — painel **1.11.2**. Ver `docs/171-ENTREGA-REORGANIZACAO-VISUAL-PAINEL-1.11.2-2026-08-20.md` (plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`).
+>
+> **Entrega anterior (2026-08-20):** correção órfão Unix no create de técnico — package **0.5.10**. Ver `docs/170-CORRECAO-USUARIO-ORFAO-CREATE-LOCAL-USER-2026-08-20.md`.
 >
 > **Entrega anterior (2026-08-20):** tema claro completo do painel — painel **1.11.0**. Ver `docs/169-ENTREGA-TEMA-CLARO-PAINEL-2026-08-20.md`.
 >
@@ -216,6 +220,8 @@ Versoes atuais (produto): API `0.6.4`, painel `1.4.5`, package pfSense `0.4.7`. 
 - Entrega P0: `docs/162-ENTREGA-UX-DESPOLUICAO-P0-INVENTARIO-2026-08-01.md` — painel `1.10.8`
 - Entrega backup padrão ligado: `docs/163-ENTREGA-BACKUP-PADRAO-LIGADO-PACKAGE-0.5.8-2026-08-01.md` — package `0.5.8`, painel `1.10.9`
 - Tema claro: `docs/169-ENTREGA-TEMA-CLARO-PAINEL-2026-08-20.md` — painel `1.11.0`; tokens em `docs/SISTEMA-VISUAL-PAINEL.md`
+- Reorganização visual consolidada: plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`; entrega `docs/171-ENTREGA-REORGANIZACAO-VISUAL-PAINEL-1.11.2-2026-08-20.md` — painel `1.11.2`
+- Check do OS com repositório stale: `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md` — API `0.10.10`, painel `1.11.4`, package `0.5.12`
 - **Não reabre** o roadmap UX Fases 0–8 (`docs/88-...`)
 
 #### Roadmap UX front-end — encerramento formal (**plano 24 encerrado**)

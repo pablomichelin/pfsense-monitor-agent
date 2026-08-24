@@ -91,7 +91,7 @@ function SortableColumnHeader({
       <Link
         href={href}
         className={cn(
-          'inline-flex items-center gap-1 rounded-md transition hover:text-white',
+          'inline-flex items-center gap-1 rounded-md transition hover:text-fg',
           active ? 'text-cyan-200' : 'text-inherit',
         )}
       >
@@ -261,7 +261,7 @@ export function NodesInventoryTable({
                   <Link
                     href={`/nodes/${node.id}`}
                     title={node.hostname}
-                    className="min-w-0 truncate text-sm font-medium text-white hover:text-cyan-200"
+                    className="min-w-0 truncate text-sm font-medium text-fg hover:text-cyan-200"
                   >
                     {displayName}
                   </Link>
@@ -327,7 +327,7 @@ export function NodesInventoryTable({
                     aria-label="Abrir acesso remoto"
                     className={cn(
                       'inline-flex h-10 w-10 items-center justify-center rounded-lg border transition',
-                      'border-slate-600/80 bg-panel-soft text-slate-200 hover:border-cyan-400/50 hover:text-white',
+                      'border-slate-600/80 bg-panel-soft text-slate-200 hover:border-cyan-400/50 hover:text-fg',
                     )}
                   >
                     <RemoteAccessIcon className="h-4 w-4" />

@@ -422,6 +422,7 @@ model Node {
   pfsenseUpdateTargetVersion String?  @map("pfsense_update_target_version")
   pfsenseUpdateCheckedAt    DateTime? @map("pfsense_update_checked_at") @db.Timestamptz(6)
   pfsenseUpdateCheckError   String?   @map("pfsense_update_check_error")
+  pfsenseUpdateForceCheckAt DateTime? @map("pfsense_update_force_check_at") @db.Timestamptz(6)
   haDetectedFromAgent       Boolean?  @map("ha_detected_from_agent")
   configBackupPolicyJson    Json?     @map("config_backup_policy_json")
   createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)

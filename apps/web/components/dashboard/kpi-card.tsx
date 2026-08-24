@@ -16,14 +16,14 @@ export function KpiCard({
 }) {
   return (
     <Card className="min-h-28 p-6">
-      <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
+      <p className="font-mono text-xs uppercase tracking-wider text-fg-subtle">
         {label}
       </p>
       <div className="mt-3 flex items-end justify-between gap-3">
-        <span className="font-display text-3xl font-semibold text-white">
+        <span className="font-display text-3xl font-semibold text-fg">
           {value}
           {suffix ? (
-            <span className="ml-1 text-lg font-medium text-slate-400">{suffix}</span>
+            <span className="ml-1 text-lg font-medium text-fg-muted">{suffix}</span>
           ) : null}
         </span>
         {indicator.kind === 'status' ? (

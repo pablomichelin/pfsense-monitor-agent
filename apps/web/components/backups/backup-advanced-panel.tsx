@@ -151,7 +151,7 @@ export function BackupRetentionPolicyForm({
               max={365}
               value={count}
               onChange={(event) => setCount(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-fg"
             />
           </label>
           <label className="text-xs text-slate-400">
@@ -162,7 +162,7 @@ export function BackupRetentionPolicyForm({
               max={1024}
               value={maxMb}
               onChange={(event) => setMaxMb(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-fg"
             />
           </label>
         </div>

@@ -10,6 +10,8 @@ import {
   createTechnicianFleetRevoke,
   deleteTechnicianFromRegistry,
   getCommandBatchStatus,
+  getNodeConfigBackupCommandStatus,
+  getNodeTechnicianAccounts,
   getTechnicians,
   type TechnicianBatchActionResponse,
   type TechnicianBatchRevokeResponse,
@@ -65,6 +67,12 @@ function mapTechnicianError(message: string, fallback: string): string {
   }
   if (normalized.includes('no recent config backup')) {
     return 'Bloqueado: é necessário um backup recente do config.xml antes de alterar usuários locais.';
+  }
+  if (normalized.includes('command expired before backup follow-up')) {
+    return 'O backup expirou antes do provisionamento automático. Tente novamente.';
+  }
+  if (normalized.includes('command expired')) {
+    return 'O comando expirou sem resposta do agente. Verifique o heartbeat do firewall e tente novamente.';
   }
 
   return message.trim() || fallback;
@@ -142,6 +150,7 @@ export async function createTechnicianBatchProvisionAction(input: {
   node_ids: string[];
   password?: string;
   privilege_profile?: 'admin_full';
+  backup_before_provision?: boolean;
   label?: string;
   client_id?: string;
   confirm: 'CONFIRMAR';
@@ -152,6 +161,7 @@ export async function createTechnicianBatchProvisionAction(input: {
       technician_id: input.technician_id,
       node_ids: input.node_ids,
       privilege_profile: input.privilege_profile,
+      backup_before_provision: input.backup_before_provision,
       label: input.label,
       client_id: input.client_id,
       confirm: input.confirm,
@@ -229,4 +239,12 @@ export async function createTechnicianFleetRevokeAction(input: {
 
 export async function pollCommandBatchStatusAction(batchId: string) {
   return getCommandBatchStatus(batchId);
+}
+
+export async function pollBackupCommandStatusAction(nodeId: string, commandId: string) {
+  return getNodeConfigBackupCommandStatus(nodeId, commandId);
+}
+
+export async function pollNodeTechnicianAccountsAction(nodeId: string) {
+  return getNodeTechnicianAccounts(nodeId);
 }

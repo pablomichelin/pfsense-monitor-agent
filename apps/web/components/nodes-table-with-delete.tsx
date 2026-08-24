@@ -153,7 +153,7 @@ export function NodesTableWithDelete({ nodes, canDelete }: Props) {
               <td className="min-w-[10rem] px-4 py-4">
                 <Link
                   href={`/nodes/${node.id}`}
-                  className="font-display text-lg text-white hover:text-cyan-200"
+                  className="font-display text-lg text-fg hover:text-cyan-200"
                 >
                   <span className="block truncate">{node.display_name ?? node.hostname}</span>
                 </Link>
@@ -208,7 +208,7 @@ export function NodesTableWithDelete({ nodes, canDelete }: Props) {
 
       {singleModal ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80"
+          className="fixed inset-0 z-50 flex items-center justify-center theme-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-single-title"
@@ -249,7 +249,7 @@ export function NodesTableWithDelete({ nodes, canDelete }: Props) {
 
       {batchModal && selectedNodes.length > 0 ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80"
+          className="fixed inset-0 z-50 flex items-center justify-center theme-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-batch-title"

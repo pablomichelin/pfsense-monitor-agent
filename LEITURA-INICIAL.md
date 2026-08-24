@@ -6,17 +6,21 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Versoes atuais do produto (2026-08-01)
+## Versoes atuais do produto (2026-08-23)
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.10.8` | `apps/api/package.json` |
-| Painel web | `1.11.1` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.5.10` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| API | `0.10.10` | `apps/api/package.json` |
+| Painel web | `1.11.4` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.5.12` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
-**Release:** package **`0.5.10`** publicado — correção de órfão Unix + reparo automático no upgrade da frota (`adopt_orphans` no `install.sh`). Atualizar o agente em lote em `/nodes`.
+**Release (config local):** publicar package **`0.5.12`** (`scripts/release-pfsense-package.sh`) — refresh de repositórios pkg antes de checar atualização do OS.
 
-**Entrega em andamento (2026-08-20):** reorganização visual do painel — painel **1.11.1**. Bump patch aplicado antes de continuar as fases do plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`; sem alteração de API, banco, RBAC, autenticação, SSE ou package pfSense.
+**Última entrega (2026-08-23):** boxes que “não pegam” update do pfSense — o agente atualiza os repos (`-u`) antes do `-c`; botão Atualizar verificação no portal. API **0.10.10**, painel **1.11.4**, package **0.5.12**. Ver `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md`.
+
+**Entrega anterior (2026-08-23):** IPsec não degrada o node; create de técnico compatível com CE 2.7.x; scrub da senha no follow-up de backup; expire marca conta `failed`. API **0.10.9**, painel **1.11.3**, package **0.5.11**. Ver `docs/172-ENTREGA-SAUDE-BOX-VS-IPSEC-E-TECNICO-2.7-2026-08-23.md`.
+
+**Entrega anterior (2026-08-20):** reorganização visual do painel concluída — painel **1.11.2**. Shell responsivo, menu do usuário, exceções primeiro, presets, paginação e consolidação das telas administrativas; sem alteração de API, banco, RBAC, autenticação, SSE ou package pfSense. Ver `docs/171-ENTREGA-REORGANIZACAO-VISUAL-PAINEL-1.11.2-2026-08-20.md` (plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`).
 
 **Entrega anterior (2026-08-20):** create de técnico não pode mais apagar usuários da GUI (órfão Unix / “reservado pelo sistema”) — package **0.5.10**. Ver `docs/170-CORRECAO-USUARIO-ORFAO-CREATE-LOCAL-USER-2026-08-20.md`.
 

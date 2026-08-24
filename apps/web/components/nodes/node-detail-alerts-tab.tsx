@@ -17,7 +17,7 @@ export function NodeDetailAlertsTab({ node }: { node: Node }) {
           {node.recent_alerts.map((alert) => (
             <Card key={alert.id} className="bg-panel-soft/60">
               <div className="flex items-center justify-between gap-4">
-                <h3 className="font-display text-lg text-white">{alert.title}</h3>
+                <h3 className="font-display text-lg text-fg">{alert.title}</h3>
                 <div className="flex shrink-0 gap-2">
                   <Badge variant="warning">{alert.severity}</Badge>
                   <Badge variant="neutral">{alert.status}</Badge>

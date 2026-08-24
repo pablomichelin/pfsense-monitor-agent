@@ -19,11 +19,11 @@ export default function Error({
 
   return (
     <div className="flex min-h-[50vh] flex-col items-center justify-center gap-6 px-4">
-      <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-6 py-5 text-center max-w-md">
-        <h2 className="font-display text-lg font-semibold text-rose-200">
+      <div className="max-w-md rounded-xl border border-danger-border bg-danger-muted px-6 py-5 text-center">
+        <h2 className="font-display text-lg font-semibold text-danger-fg">
           Algo deu errado
         </h2>
-        <p className="mt-2 text-sm text-slate-300">
+        <p className="mt-2 text-sm text-fg-muted">
           {isTimeout
             ? 'O servidor demorou para responder. Tente novamente em instantes.'
             : error.message || 'Erro inesperado.'}
@@ -31,7 +31,7 @@ export default function Error({
         <button
           type="button"
           onClick={reset}
-          className="mt-4 inline-flex h-10 items-center justify-center rounded-lg border border-cyan-400/50 bg-cyan-400/15 px-4 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/25"
+          className="mt-4 inline-flex h-10 items-center justify-center rounded-lg border border-primary/50 bg-primary/15 px-4 text-sm font-medium text-primary transition hover:bg-primary/25"
         >
           Tentar de novo
         </button>

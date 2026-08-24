@@ -45,6 +45,21 @@ export class PfsenseUpgradeController {
     return this.upgradeService.getStatus(nodeId, canRunUpgrade);
   }
 
+  @Post('refresh-check')
+  @RequirePermissions('pfsense.upgrade.run')
+  async requestRefreshCheck(
+    @Param('id') nodeId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessPolicy.assertNodeAccess(getAccessActor(request), nodeId);
+
+    return this.upgradeService.requestRefreshCheck(
+      nodeId,
+      request.auth!.userId,
+      resolveClientIp(request),
+    );
+  }
+
   @Post('request')
   @RequirePermissions('pfsense.upgrade.run')
   async requestUpgrade(

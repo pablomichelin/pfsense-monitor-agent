@@ -40,6 +40,7 @@ export function PermissionsMatrixEditor({
   const [newLabel, setNewLabel] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showDifferences, setShowDifferences] = useState(false);
 
   const editingRoleMeta = data.roles.find((role) => role.code === editingRole);
 
@@ -195,6 +196,11 @@ export function PermissionsMatrixEditor({
     return savedMatrix[roleCode]?.has(permissionId) ?? false;
   };
 
+  const isDifferentAcrossRoles = (permissionId: string) => {
+    const values = data.roles.map((role) => permissionEnabled(role.code, permissionId));
+    return values.some((value) => value !== values[0]);
+  };
+
   return (
     <div className="space-y-4">
       {canManage ? (
@@ -270,6 +276,16 @@ export function PermissionsMatrixEditor({
       {feedback ? <p className="text-sm text-emerald-300">{feedback}</p> : null}
       {error ? <p className="text-sm text-rose-300">{error}</p> : null}
 
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-soft px-4 py-3">
+        <div>
+          <p className="text-sm font-medium text-fg">Comparação de perfis</p>
+          <p className="text-xs text-fg-muted">O superadministrador permanece imutável; códigos técnicos continuam visíveis.</p>
+        </div>
+        <button type="button" aria-pressed={showDifferences} onClick={() => setShowDifferences((current) => !current)} className={showDifferences ? 'rounded-lg border border-primary bg-primary/15 px-3 py-2 text-sm text-primary' : 'rounded-lg border border-border px-3 py-2 text-sm text-fg-muted hover:text-fg'}>
+          {showDifferences ? 'Mostrando diferenças' : 'Mostrar diferenças'}
+        </button>
+      </div>
+
       <div className="overflow-x-auto rounded-xl border border-slate-800">
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-slate-800 bg-slate-950/50 font-mono text-xs uppercase tracking-wider text-slate-500">
@@ -333,7 +349,7 @@ export function PermissionsMatrixEditor({
                   {group.group}
                 </td>
               </tr>,
-              ...group.items.map((permission) => (
+              ...group.items.filter((permission) => !showDifferences || isDifferentAcrossRoles(permission.id)).map((permission) => (
                 <tr key={permission.id} className="bg-panel-soft/20">
                   <td className="sticky left-0 z-10 bg-panel-soft/95 px-4 py-3">
                     <p className="text-sm text-slate-200">

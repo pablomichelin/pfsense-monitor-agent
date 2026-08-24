@@ -161,7 +161,7 @@ export function FleetBatchPackageUpgradePanel({
   return (
     <Card className="space-y-4 p-4">
       <div>
-        <h3 className="font-display text-base text-white">Atualizar package em lote</h3>
+        <h3 className="font-display text-base text-fg">Atualizar package em lote</h3>
         <p className="mt-1 text-sm text-slate-400">
           Dispara <code className="text-slate-300">package_upgrade</code> para{' '}
           {selectedNodes.length} firewall(s) selecionado(s)

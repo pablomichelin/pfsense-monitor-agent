@@ -102,7 +102,7 @@ function bucketBadge(bucket: BootstrapBucket) {
 }
 
 const secondaryLinkClassName =
-  'inline-flex h-11 min-h-11 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white';
+  'inline-flex h-11 min-h-11 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-fg';
 
 function CommandBlock({ value }: { value: string }) {
   return (
@@ -413,7 +413,7 @@ export default async function BootstrapPage({
       <section className="grid gap-5 md:grid-cols-2">
         <Card className="p-4">
           <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Escolha o firewall</p>
-          <h3 className="mt-1.5 font-display text-xl text-white">Preparar instalação</h3>
+          <h3 className="mt-1.5 font-display text-xl text-fg">Preparar instalação</h3>
 
           <form className="mt-4 space-y-3">
             <select
@@ -523,7 +523,7 @@ export default async function BootstrapPage({
         <section className="grid gap-5 md:grid-cols-2">
           <Card className="p-4">
             <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Resumo</p>
-            <h3 className="mt-1.5 font-display text-xl text-white">Firewall selecionado</h3>
+            <h3 className="mt-1.5 font-display text-xl text-fg">Firewall selecionado</h3>
 
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
@@ -652,7 +652,7 @@ export default async function BootstrapPage({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Escopo atual</p>
-            <h3 className="mt-1 font-display text-lg text-white">{resultSummary}</h3>
+            <h3 className="mt-1 font-display text-lg text-fg">{resultSummary}</h3>
             <p className="mt-2 text-sm text-slate-400">
               {hasActiveFilters
                 ? 'A lista abaixo respeita os filtros aplicados nesta tela.'
@@ -671,7 +671,7 @@ export default async function BootstrapPage({
               className={`rounded-md border px-4 py-2 text-sm transition ${
                 !bucket
                   ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-200'
-                  : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white'
+                  : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-fg'
               }`}
             >
               Todos
@@ -687,7 +687,7 @@ export default async function BootstrapPage({
               className={`rounded-md border px-4 py-2 text-sm transition ${
                 bucket === 'pending'
                   ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-                  : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white'
+                  : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-fg'
               }`}
             >
               Prontos
@@ -703,7 +703,7 @@ export default async function BootstrapPage({
               className={`rounded-md border px-4 py-2 text-sm transition ${
                 bucket === 'active'
                   ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-                  : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white'
+                  : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-fg'
               }`}
             >
               Ativos
@@ -719,7 +719,7 @@ export default async function BootstrapPage({
               className={`rounded-md border px-4 py-2 text-sm transition ${
                 bucket === 'blocked'
                   ? 'border-rose-500/40 bg-rose-500/10 text-rose-200'
-                  : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white'
+                  : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-fg'
               }`}
             >
               Bloqueados
@@ -733,7 +733,7 @@ export default async function BootstrapPage({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Fila de bootstrap</p>
-                <h3 className="mt-1 font-display text-lg text-white">Firewalls prontos para instalar</h3>
+                <h3 className="mt-1 font-display text-lg text-fg">Firewalls prontos para instalar</h3>
               </div>
             <Badge variant="warning">{pending.length} pendentes</Badge>
           </div>
@@ -750,7 +750,7 @@ export default async function BootstrapPage({
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                      <h4 className="font-display text-lg text-white">
+                      <h4 className="font-display text-lg text-fg">
                         {node.display_name ?? node.hostname}
                       </h4>
                       <p className="mt-1 text-sm text-slate-400">
@@ -783,7 +783,7 @@ export default async function BootstrapPage({
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <h4 className="font-display text-lg text-white">
+                      <h4 className="font-display text-lg text-fg">
                         {node.display_name ?? node.hostname}
                       </h4>
                       <p className="text-sm text-slate-500">
@@ -814,7 +814,7 @@ export default async function BootstrapPage({
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <h4 className="font-display text-lg text-white">
+                      <h4 className="font-display text-lg text-fg">
                         {node.display_name ?? node.hostname}
                       </h4>
                       <p className="text-sm text-slate-500">

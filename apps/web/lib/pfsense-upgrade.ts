@@ -5,6 +5,8 @@ import {
   ApiError,
   getPfsenseUpgradeStatus,
   requestPfsenseUpgrade,
+  requestPfsenseUpdateRefreshCheck,
+  type PfsenseUpgradeRefreshCheckResponse,
   type PfsenseUpgradeRequestResponse,
 } from './api';
 
@@ -12,11 +14,15 @@ export type PfsenseUpgradeActionResult =
   | { ok: true; data: PfsenseUpgradeRequestResponse }
   | { ok: false; error: string; status?: number };
 
+export type PfsenseUpgradeRefreshActionResult =
+  | { ok: true; data: PfsenseUpgradeRefreshCheckResponse }
+  | { ok: false; error: string; status?: number };
+
 function mapUpgradeRequestError(message: string, status?: number): string {
   const normalized = message.trim().toLowerCase();
 
   if (normalized === 'no pfsense update available') {
-    return 'O controlador não vê mais atualização disponível para este firewall. Aguarde o próximo heartbeat ou execute upgrade-check --force no pfSense.';
+    return 'O controlador não vê atualização disponível. Use “Atualizar verificação” para renovar os repositórios pkg e checar de novo.';
   }
   if (normalized === 'node heartbeat is not recent') {
     return 'Heartbeat do firewall não está recente. Aguarde o agente reconectar.';
@@ -39,6 +45,12 @@ function mapUpgradeRequestError(message: string, status?: number): string {
   if (normalized === 'pfsense upgrade is disabled') {
     return 'Upgrade remoto desabilitado no controlador.';
   }
+  if (normalized === 'agent version too old for repo refresh check') {
+    return 'Este agente ainda não atualiza os repositórios pkg. Atualize o package SystemUp Monitor para 0.5.12+ e tente de novo.';
+  }
+  if (normalized === 'refresh already requested') {
+    return 'A verificação já foi pedida. Aguarde o próximo heartbeat do firewall (~30s).';
+  }
   if (status === 409 && normalized.includes('no_recent_backup')) {
     return 'Backup recente obrigatório. Confirme que aceita prosseguir sem backup recente.';
   }
@@ -48,6 +60,26 @@ function mapUpgradeRequestError(message: string, status?: number): string {
 
 export async function pollPfsenseUpgradeStatusAction(nodeId: string) {
   return getPfsenseUpgradeStatus(nodeId);
+}
+
+export async function requestPfsenseUpdateRefreshCheckAction(
+  nodeId: string,
+): Promise<PfsenseUpgradeRefreshActionResult> {
+  try {
+    const result = await requestPfsenseUpdateRefreshCheck(nodeId);
+    revalidatePath(`/nodes/${nodeId}`);
+    return { ok: true, data: result };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return {
+        ok: false,
+        error: mapUpgradeRequestError(error.message, error.status),
+        status: error.status,
+      };
+    }
+
+    return { ok: false, error: 'Falha ao solicitar nova verificação' };
+  }
 }
 
 export async function requestPfsenseUpgradeAction(

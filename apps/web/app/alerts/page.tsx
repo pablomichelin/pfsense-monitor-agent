@@ -59,7 +59,7 @@ function SummaryCard({
     <Card className="min-h-28 p-6">
       <p className="font-mono text-xs uppercase tracking-wider text-slate-500">{label}</p>
       <div className="mt-3 flex items-end justify-between gap-3">
-        <span className="font-display text-3xl font-semibold text-white">{value}</span>
+        <span className="font-display text-3xl font-semibold text-fg">{value}</span>
         <span className={cn('status-dot shrink-0', dotClass)} aria-hidden />
       </div>
     </Card>
@@ -131,6 +131,8 @@ export default async function AlertsPage({
   const severity = typeof params.severity === 'string' ? params.severity : undefined;
   const type = typeof params.type === 'string' ? params.type : undefined;
   const search = typeof params.search === 'string' ? params.search : undefined;
+  const page = typeof params.page === 'string' && /^\d+$/.test(params.page) ? Math.max(1, Number(params.page)) : 1;
+  const perPage = typeof params.per_page === 'string' && ['10', '25', '50'].includes(params.per_page) ? Number(params.per_page) : 25;
 
   let alerts;
   let filterOptions;
@@ -187,6 +189,21 @@ export default async function AlertsPage({
   const openCount = alerts.items.filter((item) => item.status === 'open').length;
   const acknowledgedCount = alerts.items.filter((item) => item.status === 'acknowledged').length;
   const criticalCount = alerts.items.filter((item) => item.severity === 'critical').length;
+  const orderedAlerts = [...alerts.items].sort((a, b) => {
+    const severityOrder: Record<string, number> = { critical: 0, warning: 1, info: 2 };
+    const severityDelta = (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3);
+    if (severityDelta !== 0) return severityDelta;
+    return new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime();
+  });
+  const totalPages = Math.max(1, Math.ceil(orderedAlerts.length / perPage));
+  const currentPage = Math.min(page, totalPages);
+  const visibleAlerts = orderedAlerts.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const alertPageHref = (nextPage: number) => {
+    const next = new URLSearchParams(returnToParams);
+    next.set('per_page', String(perPage));
+    next.set('page', String(nextPage));
+    return `/alerts?${next.toString()}`;
+  };
 
   return (
     <div className="space-y-8">
@@ -214,6 +231,12 @@ export default async function AlertsPage({
           </Link>
         }
       >
+        <div className="mb-3 flex flex-wrap gap-2" aria-label="Filtros rápidos de alertas">
+          <Link href="/alerts?status=open" className="rounded-lg border border-danger-border bg-danger-muted px-3 py-2 text-sm text-danger-fg">Abertos</Link>
+          <Link href="/alerts?status=open&severity=critical" className="rounded-lg border border-danger-border px-3 py-2 text-sm text-danger-fg">Críticos</Link>
+          <Link href="/alerts?status=acknowledged" className="rounded-lg border border-warning-border bg-warning-muted px-3 py-2 text-sm text-warning-fg">Reconhecidos</Link>
+          <Link href="/alerts" className="rounded-lg border border-border px-3 py-2 text-sm text-fg-muted">Todos</Link>
+        </div>
         <Card className="p-6">
           <form className="flex flex-col gap-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center xl:gap-4">
@@ -251,6 +274,7 @@ export default async function AlertsPage({
                 className={`${formInputClassName} min-w-[16rem] flex-1`}
               />
               <Button type="submit">Filtrar</Button>
+              <select name="per_page" defaultValue={String(perPage)} className={formSelectClassName} aria-label="Alertas por página"><option value="10">10 por página</option><option value="25">25 por página</option><option value="50">50 por página</option></select>
             </div>
             <AdvancedSection
               title="Filtros de diagnóstico"
@@ -289,16 +313,16 @@ export default async function AlertsPage({
 
       <PageSection
         title="Alertas"
-        description={`${alerts.items.length} registro(s) com os filtros atuais.`}
+        description={`${alerts.items.length} registro(s) com os filtros atuais, críticos e mais antigos primeiro.`}
       >
         {alerts.items.length === 0 ? (
           <Alert variant="info">Nenhum alerta encontrado com os filtros atuais.</Alert>
         ) : (
-          <div className="space-y-4">
-            {alerts.items.map((alert) => (
-              <Card key={alert.id} className="p-6">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="space-y-3">
+          <div className="space-y-2">
+            {visibleAlerts.map((alert) => (
+              <Card key={alert.id} className="p-4">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0 flex-1 space-y-2">
                     <div className="flex flex-wrap gap-2">
                       <Badge variant={statusVariant[alert.status] ?? 'neutral'}>
                         {statusLabel[alert.status] ?? alert.status}
@@ -310,11 +334,11 @@ export default async function AlertsPage({
                     </div>
 
                     <div>
-                      <h3 className="font-display text-xl font-semibold text-white">{alert.title}</h3>
-                      <p className="mt-2 max-w-3xl text-sm text-slate-400">{alert.description}</p>
+                      <h3 className="font-display text-base font-semibold text-fg">{alert.title}</h3>
+                      <p className="mt-1 max-w-3xl text-sm text-fg-muted">{alert.description}</p>
                     </div>
 
-                    <div className="grid gap-3 text-sm text-slate-300 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="grid gap-3 text-sm text-fg-muted md:grid-cols-2 xl:grid-cols-4">
                       <div>
                         <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
                           Firewall
@@ -377,6 +401,13 @@ export default async function AlertsPage({
             ))}
           </div>
         )}
+        <div className="mt-4 flex items-center justify-between gap-3 text-sm text-fg-muted">
+          <span>Página {currentPage} de {totalPages}</span>
+          <div className="flex gap-2">
+            {currentPage > 1 ? <Link href={alertPageHref(currentPage - 1)} className="rounded-lg border border-border px-3 py-2 hover:text-fg">Anterior</Link> : null}
+            {currentPage < totalPages ? <Link href={alertPageHref(currentPage + 1)} className="rounded-lg border border-border px-3 py-2 hover:text-fg">Próxima</Link> : null}
+          </div>
+        </div>
       </PageSection>
     </div>
   );

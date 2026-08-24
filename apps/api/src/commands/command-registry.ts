@@ -102,7 +102,19 @@ export const COMMAND_REGISTRY: Record<NodeCommandType, CommandTypeDefinition> = 
     maxConcurrentPerNode: 1,
     maxConcurrentGlobal: 0,
     auditPrefix: 'backup.config',
-    validatePayload: () => undefined,
+    validatePayload: (payload: unknown) => {
+      if (payload == null) {
+        return undefined;
+      }
+      if (typeof payload !== 'object' || Array.isArray(payload)) {
+        return undefined;
+      }
+      const raw = payload as Record<string, unknown>;
+      if (raw.follow_up_technician_provision != null) {
+        return { follow_up_technician_provision: raw.follow_up_technician_provision };
+      }
+      return undefined;
+    },
   },
   [NodeCommandType.pfsense_upgrade]: {
     permission: 'pfsense.upgrade.run',

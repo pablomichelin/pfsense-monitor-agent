@@ -1,10 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { logoutAction } from '@/lib/auth';
 import { cn } from '@/lib/cn';
 import { getActiveHref } from '@/lib/nav-utils';
 import type { NavGroup } from '@/lib/route-policy';
@@ -75,24 +73,27 @@ function SidebarLink({
   label,
   isActive,
   collapsed,
+  onNavigate,
 }: {
   href: string;
   label: string;
   isActive: boolean;
   collapsed: boolean;
+  onNavigate?: () => void;
 }) {
   const icon = navIcons[href] ?? navIcons['/dashboard'];
 
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       aria-current={isActive ? 'page' : undefined}
       title={collapsed ? label : undefined}
       className={cn(
         'flex items-center gap-3 rounded-lg border-l-2 px-3 py-2.5 text-sm font-medium transition',
         isActive
-          ? 'border-l-cyan-400 bg-cyan-400/10 text-white'
-          : 'border-l-transparent text-slate-300 hover:border-l-cyan-400/30 hover:bg-slate-800/50 hover:text-white',
+          ? 'border-l-primary bg-primary/10 text-fg'
+          : 'border-l-transparent text-fg-muted hover:border-l-primary/30 hover:bg-nav-hover hover:text-fg',
         collapsed && 'justify-center px-2',
       )}
     >
@@ -132,71 +133,125 @@ export function AppSidebar({
   collapsed,
   hydrated,
   onToggle,
+  mobileOpen,
+  onCloseMobile,
 }: {
   groups: NavGroup[];
   collapsed: boolean;
   hydrated: boolean;
   onToggle: () => void;
+  mobileOpen: boolean;
+  onCloseMobile: () => void;
 }) {
   const pathname = usePathname();
   const flatItems = groups.flatMap((group) => group.items);
   const activeHref = getActiveHref(pathname, flatItems);
   const isCollapsed = hydrated ? collapsed : false;
+  const sidebarRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const firstFocusable = sidebarRef.current?.querySelector<HTMLElement>('button, a[href], summary');
+    firstFocusable?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseMobile();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], summary') ?? []);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [mobileOpen, onCloseMobile]);
 
   return (
     <aside
+      ref={sidebarRef}
+      id="app-primary-navigation"
+      aria-label="Navegação principal"
+      aria-modal={mobileOpen || undefined}
+      role={mobileOpen ? 'dialog' : undefined}
       className={cn(
-        'app-sidebar glass-panel flex flex-col border-r border-slate-800/80',
+        'app-sidebar glass-panel flex flex-col border-r border-border',
         isCollapsed && 'app-sidebar--collapsed',
+        mobileOpen && 'app-sidebar--mobile-open',
       )}
     >
-      <div className={cn('flex items-center border-b border-slate-800/80 px-3 py-3', isCollapsed ? 'justify-center' : 'gap-2')}>
+      <div className={cn('flex items-center border-b border-border px-3 py-3', isCollapsed ? 'justify-center' : 'gap-2')}>
         {!isCollapsed ? (
           <div className="min-w-0 flex-1">
-            <p className="font-mono text-[10px] uppercase tracking-wider text-cyan-400/90">
+            <p className="font-mono text-[10px] uppercase tracking-wider text-primary">
               SystemUp NOC
             </p>
-            <p className="truncate font-display text-sm font-semibold text-slate-50">
+            <p className="truncate font-display text-sm font-semibold text-fg">
               Monitor-Pfsense
             </p>
           </div>
         ) : (
-          <span className="font-mono text-[10px] uppercase tracking-wider text-cyan-400/90" title="Monitor-Pfsense">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-primary" title="Monitor-Pfsense">
             MP
           </span>
         )}
       </div>
 
-      <nav className="flex-1 space-y-4 overflow-y-auto overflow-x-hidden p-2">
-        {groups.map((group) => (
-          <div key={group.id} className="space-y-1">
-            {!isCollapsed ? (
-              <p className="px-3 font-mono text-[10px] uppercase tracking-wider text-slate-500">
-                {group.label}
-              </p>
-            ) : (
-              <div className="mx-auto my-2 h-px w-6 bg-slate-700/80" aria-hidden />
-            )}
-            {group.items.map((item, index) => (
-              <SidebarLink
-                key={`${group.id}-${item.href}-${item.label}-${index}`}
-                href={item.href}
-                label={item.label}
-                isActive={item.href === activeHref}
-                collapsed={isCollapsed}
-              />
-            ))}
-          </div>
-        ))}
+      <nav aria-label="Navegação principal" className="flex-1 space-y-4 overflow-y-auto overflow-x-hidden p-2">
+        {groups.filter((group) => group.id !== 'account').map((group) => {
+          const groupHasActiveRoute = group.items.some((item) => item.href === activeHref);
+          const links = group.items.map((item, index) => (
+            <SidebarLink
+              key={`${group.id}-${item.href}-${item.label}-${index}`}
+              href={item.href}
+              label={item.label}
+              isActive={item.href === activeHref}
+              collapsed={isCollapsed}
+              onNavigate={mobileOpen ? onCloseMobile : undefined}
+            />
+          ));
+
+          if (group.id === 'administration' && !isCollapsed) {
+            return (
+              <details key={group.id} className="group space-y-1" open={groupHasActiveRoute}>
+                <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-fg-subtle hover:bg-nav-hover hover:text-fg">
+                  {group.label}
+                  <span className="transition group-open:rotate-180" aria-hidden>⌄</span>
+                </summary>
+                <div className="space-y-1 pt-1">{links}</div>
+              </details>
+            );
+          }
+
+          return (
+            <div key={group.id} className="space-y-1">
+              {!isCollapsed ? (
+                <p className="px-3 font-mono text-[10px] uppercase tracking-wider text-fg-subtle">{group.label}</p>
+              ) : (
+                <div className="mx-auto my-2 h-px w-6 bg-border" aria-hidden />
+              )}
+              {links}
+            </div>
+          );
+        })}
       </nav>
 
-      <div className="space-y-2 border-t border-slate-800/80 p-2">
+      <div className="border-t border-border p-2">
         <button
           type="button"
           onClick={onToggle}
           title={isCollapsed ? 'Expandir menu' : 'Recolher menu'}
           className={cn(
-            'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 transition hover:bg-slate-800/50 hover:text-slate-200',
+            'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-fg-muted transition hover:bg-nav-hover hover:text-fg',
             isCollapsed && 'justify-center px-2',
           )}
         >
@@ -210,20 +265,6 @@ export function AppSidebar({
           {!isCollapsed ? <span>Recolher</span> : null}
         </button>
 
-        <form action={logoutAction} className="w-full">
-          <Button
-            type="submit"
-            variant="ghost"
-            size="sm"
-            className={cn('w-full', isCollapsed && 'px-2')}
-            title={isCollapsed ? 'Sair' : undefined}
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0" aria-hidden>
-              <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" />
-            </svg>
-            {!isCollapsed ? 'Sair' : null}
-          </Button>
-        </form>
       </div>
     </aside>
   );

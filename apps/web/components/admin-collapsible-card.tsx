@@ -23,9 +23,9 @@ export function AdminCollapsibleCard({
 }) {
   return (
     <Card className="p-6" aria-expanded={collapsible ? isExpanded : undefined}>
-      <p className="font-mono text-xs uppercase tracking-wider text-cyan-400/90">Cadastro</p>
-      <h2 className="mt-2 font-display text-2xl text-white">{title}</h2>
-      <p className="mt-2 max-w-2xl text-sm text-slate-400">{description}</p>
+      <p className="font-mono text-xs uppercase tracking-wider text-primary">Cadastro</p>
+      <h2 className="mt-2 font-display text-2xl text-fg">{title}</h2>
+      <p className="mt-2 max-w-2xl text-sm text-fg-muted">{description}</p>
       <div className="mt-5">
         {!collapsible ? (
           children

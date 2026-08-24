@@ -60,7 +60,7 @@ export function NodeDetailTabs({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-1 border-b border-slate-700/80">
+      <div className="flex flex-wrap gap-1 border-b border-border">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -69,8 +69,8 @@ export function NodeDetailTabs({
             className={cn(
               'border-b-2 px-4 py-2.5 text-sm font-medium transition',
               activeTab === tab.id
-                ? 'border-cyan-500 text-cyan-200'
-                : 'border-transparent text-slate-400 hover:text-slate-200',
+                ? 'border-primary text-primary'
+                : 'border-transparent text-fg-muted hover:text-fg',
             )}
           >
             {tab.label}

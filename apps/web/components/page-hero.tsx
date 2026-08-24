@@ -5,10 +5,10 @@ type HeroStat = {
 };
 
 const toneClass: Record<NonNullable<HeroStat['tone']>, string> = {
-  default: 'border-slate-700/80 bg-panel-soft/70 text-slate-200',
-  success: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
-  warning: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
-  danger: 'border-rose-500/30 bg-rose-500/10 text-rose-200',
+  default: 'border-border bg-surface-soft/70 text-fg',
+  success: 'border-success-border bg-success-muted text-success-fg',
+  warning: 'border-warning-border bg-warning-muted text-warning-fg',
+  danger: 'border-danger-border bg-danger-muted text-danger-fg',
 };
 
 export function PageHero({
@@ -25,25 +25,25 @@ export function PageHero({
   aside?: React.ReactNode;
 }) {
   return (
-    <section className="glass-panel overflow-hidden rounded-xl p-5 sm:p-6">
-      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between xl:gap-6">
+    <section className="glass-panel overflow-hidden rounded-xl p-4 sm:p-5">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between xl:gap-5">
         <div className="min-w-0 flex-1 space-y-2">
-          <p className="font-mono text-xs uppercase tracking-wider text-cyan-400/90">
+          <p className="font-mono text-xs uppercase tracking-wider text-primary">
             {eyebrow}
           </p>
-          <h2 className="font-display text-2xl font-semibold text-white sm:text-3xl">
+          <h2 className="font-display text-2xl font-semibold text-fg">
             {title}
           </h2>
-          <p className="max-w-2xl text-sm leading-relaxed text-slate-400">
+          <p className="max-w-2xl text-sm leading-relaxed text-fg-muted">
             {description}
           </p>
 
           {stats.length > 0 ? (
-            <div className="pt-3 flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-2 pt-2">
               {stats.map((stat) => (
                 <div
                   key={`${stat.label}-${stat.value}`}
-                  className={`rounded-lg border px-4 py-2.5 ${toneClass[stat.tone ?? 'default']}`}
+                  className={`rounded-lg border px-3 py-2 ${toneClass[stat.tone ?? 'default']}`}
                 >
                   <p className="font-mono text-[11px] uppercase tracking-wider opacity-90">
                     {stat.label}

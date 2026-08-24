@@ -46,6 +46,7 @@ import {
   normalizeHeartbeatCapabilities,
   syncNodeCapabilities,
 } from '../node-capabilities/capability-sync.util';
+import { isPfsenseForceCheckPending } from '../pfsense-upgrade/pfsense-update-check.util';
 
 interface HeartbeatRequest {
   body: HeartbeatDto;
@@ -89,6 +90,7 @@ export class IngestService {
       expires_at: string;
       payload?: Record<string, unknown>;
     }>;
+    force_update_check?: boolean;
   }> {
     const receivedAt = new Date();
     this.assertPayloadSize(request.rawBody);
@@ -481,12 +483,14 @@ export class IngestService {
     await this.backupsCommandService.reconcileSucceededCommands(node.id);
     const commands =
       await this.nodeCommandsService.getPendingCommandsForNode(node.id);
+    const forceUpdateCheck = await this.shouldSendForceUpdateCheck(node.id);
 
     return {
       ok: true,
       server_time: receivedAt.toISOString(),
       node_status: nodeStatus,
       ...(commands.length > 0 ? { commands } : {}),
+      ...(forceUpdateCheck ? { force_update_check: true } : {}),
     };
   }
 
@@ -553,6 +557,21 @@ export class IngestService {
       node_status: node.status,
       node_uid_status: node.nodeUidStatus,
     };
+  }
+
+  private async shouldSendForceUpdateCheck(nodeId: string): Promise<boolean> {
+    const row = await this.prisma.node.findUnique({
+      where: { id: nodeId },
+      select: {
+        pfsenseUpdateForceCheckAt: true,
+        pfsenseUpdateCheckedAt: true,
+      },
+    });
+
+    return isPfsenseForceCheckPending(
+      row?.pfsenseUpdateForceCheckAt,
+      row?.pfsenseUpdateCheckedAt,
+    );
   }
 
   private assertPayloadSize(rawBody: Buffer): void {

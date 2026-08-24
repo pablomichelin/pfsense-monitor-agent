@@ -399,17 +399,73 @@ function is_denied_service_username(string $username): bool
 function apply_local_user_password(array &$user, string $password): void
 {
     $preserved = $user;
+
+    // 1) pfSense 2.8+ / Plus: local_user_set_password espera wrapper {'item': $user}.
     $wrapper = ['item' => $user];
     local_user_set_password($wrapper, $password);
-    $updated = isset($wrapper['item']) && is_array($wrapper['item']) ? $wrapper['item'] : [];
+    $preserved = copy_password_hashes_from($wrapper['item'] ?? null, $preserved);
+    $preserved = copy_password_hashes_from($wrapper, $preserved);
+    if (password_hashes_usable($preserved, $password)) {
+        $user = $preserved;
+        return;
+    }
 
-    foreach (['bcrypt-hash', 'sha512-hash', 'md5-hash', 'password'] as $key) {
-        if (isset($updated[$key])) {
-            $preserved[$key] = $updated[$key];
-        }
+    // 2) pfSense CE 2.7.x: a função opera no array do usuário, sem wrapper.
+    $direct = $user;
+    local_user_set_password($direct, $password);
+    $preserved = copy_password_hashes_from($direct, $preserved);
+    $preserved = copy_password_hashes_from($direct['item'] ?? null, $preserved);
+    if (password_hashes_usable($preserved, $password)) {
+        $user = $preserved;
+        return;
+    }
+
+    // 3) Fallback: bcrypt local (mesmo algoritmo da GUI moderna).
+    $generated = password_hash($password, PASSWORD_BCRYPT);
+    if (is_string($generated) && $generated !== '') {
+        $preserved['bcrypt-hash'] = $generated;
     }
 
     $user = $preserved;
+}
+
+/**
+ * @param mixed $from
+ * @param array<string, mixed> $into
+ * @return array<string, mixed>
+ */
+function copy_password_hashes_from($from, array $into): array
+{
+    if (!is_array($from)) {
+        return $into;
+    }
+
+    foreach (['bcrypt-hash', 'sha512-hash', 'md5-hash', 'password'] as $key) {
+        if (isset($from[$key]) && (string) $from[$key] !== '') {
+            $into[$key] = $from[$key];
+        }
+    }
+
+    return $into;
+}
+
+/**
+ * @param array<string, mixed> $user
+ */
+function password_hashes_usable(array $user, string $password): bool
+{
+    $bcryptHash = isset($user['bcrypt-hash']) ? (string) $user['bcrypt-hash'] : '';
+    $sha512Hash = isset($user['sha512-hash']) ? (string) $user['sha512-hash'] : '';
+
+    if ($bcryptHash === '' && $sha512Hash === '') {
+        return false;
+    }
+
+    if ($bcryptHash !== '' && !password_verify($password, $bcryptHash)) {
+        return false;
+    }
+
+    return true;
 }
 
 /**

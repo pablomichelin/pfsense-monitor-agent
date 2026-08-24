@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PfsenseUpgradeStatusResponse } from '@/lib/api';
 import {
   pollPfsenseUpgradeStatusAction,
+  requestPfsenseUpdateRefreshCheckAction,
   requestPfsenseUpgradeAction,
 } from '@/lib/pfsense-upgrade';
 import { formatDateTime } from '@/lib/format';
@@ -14,6 +15,15 @@ import { Card } from '@/components/ui/card';
 
 const ACTIVE_STATUSES = new Set(['pending', 'picked_up', 'running']);
 const POLL_INTERVAL_MS = 12_000;
+const REFRESH_POLL_INTERVAL_MS = 8_000;
+
+function looksLikeBehindCeTrack(version: string | null): boolean {
+  if (!version) {
+    return false;
+  }
+  const trimmed = version.trim();
+  return /^2\.7(\.|$)/.test(trimmed) || /^2\.8\.0(\.|$|-)/.test(trimmed);
+}
 
 type Props = {
   nodeId: string;
@@ -41,6 +51,9 @@ function getUpdateLabel(status: PfsenseUpgradeStatusResponse): string {
     return `Atualização disponível: ${status.target_version ?? '—'}`;
   }
   if (status.update_available === false) {
+    if (looksLikeBehindCeTrack(status.pfsense_version)) {
+      return 'pfSense reporta atualizado (cache de repositório pode estar velho)';
+    }
     return 'pfSense atualizado';
   }
   return 'Status de atualização desconhecido';
@@ -155,6 +168,8 @@ export function NodePfsenseUpgradeSection({
   const [enableMaintenance, setEnableMaintenance] = useState(true);
   const [ackNoBackup, setAckNoBackup] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [refreshingCheck, setRefreshingCheck] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refreshStatus = useCallback(async () => {
@@ -167,16 +182,19 @@ export function NodePfsenseUpgradeSection({
   }, [nodeId]);
 
   useEffect(() => {
-    if (!status.active_command || !ACTIVE_STATUSES.has(status.active_command.status)) {
+    const upgradeActive =
+      status.active_command != null &&
+      ACTIVE_STATUSES.has(status.active_command.status);
+    if (!upgradeActive && !status.force_check_pending) {
       return;
     }
 
     const timer = window.setInterval(() => {
       void refreshStatus();
-    }, POLL_INTERVAL_MS);
+    }, status.force_check_pending ? REFRESH_POLL_INTERVAL_MS : POLL_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
-  }, [refreshStatus, status.active_command]);
+  }, [refreshStatus, status.active_command, status.force_check_pending]);
 
   const blockReason = useMemo(() => {
     if (!status.enabled) {
@@ -218,6 +236,68 @@ export function NodePfsenseUpgradeSection({
   const confirmEnabled =
     confirmationMatches(status.hostname, confirmText) &&
     (!needsBackupOverride || ackNoBackup);
+
+  const refreshCheckTitle = !canRunUpgrade
+    ? 'Sem permissão para disparar upgrade'
+    : !status.refresh_check_supported
+      ? `Agente ${status.refresh_check_min_agent_version}+ necessário para atualizar os repositórios pkg`
+      : status.force_check_pending || refreshingCheck
+        ? 'Aguardando o agente atualizar os repositórios e rechecar'
+        : undefined;
+
+  const handleRefreshCheck = async () => {
+    setRefreshingCheck(true);
+    setRefreshMessage(null);
+    setError(null);
+    const previousCheckedAt = status.update_checked_at;
+    try {
+      const result = await requestPfsenseUpdateRefreshCheckAction(nodeId);
+      if (!result.ok) {
+        setError(result.error);
+        setRefreshingCheck(false);
+        return;
+      }
+
+      setRefreshMessage(
+        'Pedido enviado. O agente vai atualizar os repositórios pkg no próximo heartbeat (~30s).',
+      );
+
+      const deadline = Date.now() + 180_000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, REFRESH_POLL_INTERVAL_MS),
+        );
+        const next = await pollPfsenseUpgradeStatusAction(nodeId);
+        setStatus(next);
+        const checkChanged =
+          next.update_checked_at != null &&
+          next.update_checked_at !== previousCheckedAt;
+        if (checkChanged && !next.force_check_pending) {
+          setRefreshMessage(
+            next.update_available === true
+              ? `Atualização encontrada: ${next.target_version ?? 'versão nova'}.`
+              : next.update_check_error
+                ? `Checagem concluída com erro: ${next.update_check_error}`
+                : 'Checagem concluída. O pfSense não anunciou atualização nova.',
+          );
+          setRefreshingCheck(false);
+          return;
+        }
+      }
+
+      setRefreshMessage(
+        'Ainda aguardando o agente. O próximo heartbeat deve concluir a checagem.',
+      );
+    } catch (refreshError) {
+      setError(
+        refreshError instanceof Error
+          ? refreshError.message
+          : 'Falha ao solicitar nova verificação',
+      );
+    } finally {
+      setRefreshingCheck(false);
+    }
+  };
 
   const handleRequest = async () => {
     setSubmitting(true);
@@ -300,15 +380,53 @@ export function NodePfsenseUpgradeSection({
           </Alert>
         ) : null}
 
+        {status.update_available === false &&
+        looksLikeBehindCeTrack(status.pfsense_version) ? (
+          <Alert variant="warning">
+            Este firewall está em {status.pfsense_version}. A checagem do agente
+            pode ter lido metadados pkg velhos e reportado “atualizado”. Use
+            Atualizar verificação (package 0.5.12+) para renovar os repositórios
+            e checar de novo.
+          </Alert>
+        ) : null}
+
+        {status.force_check_pending ? (
+          <Alert variant="warning">
+            Verificação pedida — aguardando o agente atualizar os repositórios e
+            rechecar no próximo heartbeat.
+          </Alert>
+        ) : null}
+
+        {refreshMessage ? <Alert variant="success">{refreshMessage}</Alert> : null}
+
         {lastResultAlert ? (
           <Alert variant={lastResultAlert.variant}>{lastResultAlert.text}</Alert>
         ) : null}
+
+        {error && !modalOpen ? <Alert variant="error">{error}</Alert> : null}
 
         {blockReason && !showUpgradeButton ? (
           <p className="text-xs text-slate-500">{blockReason}</p>
         ) : null}
 
         <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={
+              !canRunUpgrade ||
+              !status.refresh_check_supported ||
+              refreshingCheck ||
+              status.force_check_pending
+            }
+            title={refreshCheckTitle}
+            onClick={() => void handleRefreshCheck()}
+          >
+            {refreshingCheck || status.force_check_pending
+              ? 'Verificando...'
+              : 'Atualizar verificação'}
+          </Button>
           <Button
             type="button"
             variant="primary"
@@ -336,7 +454,7 @@ export function NodePfsenseUpgradeSection({
 
       {modalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80"
+          className="fixed inset-0 z-50 flex items-center justify-center theme-overlay"
           role="dialog"
           aria-modal="true"
         >

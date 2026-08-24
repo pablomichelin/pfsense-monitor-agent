@@ -2,9 +2,29 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-08-20
+**Última atualização:** 2026-08-23
 
 ---
+
+### 2026-08-23 — Check do OS com repositório pkg fresco (API 0.10.10, painel 1.11.4, package 0.5.12)
+
+- O agente passa a rodar `pfSense-upgrade -u` antes do `-c`, fora do HTTP do heartbeat, e invalida o cache v4 (falso “atualizado”).
+- Portal ganha **Atualizar verificação**; o heartbeat devolve `force_update_check` até o agente rechecar.
+- Ver `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md`.
+
+### 2026-08-23 — Saúde do box vs IPsec e técnico no 2.7.x (API 0.10.9, painel 1.11.3, package 0.5.11)
+
+- Túnel IPsec sem SA deixa de degradar o node e o alerta passa a warning; o box deixa de parecer doente por peer/road warrior ocioso.
+- `apply_local_user_password()` tenta wrapper 2.8+, array direto 2.7.x e bcrypt local — corrige `password hash missing after apply` na frota 2.7.
+- Histórico não devolve senha do follow-up de backup; expire marca a conta `failed` e o controlador avisa comando `pending` > 90s.
+- Ver `docs/172-ENTREGA-SAUDE-BOX-VS-IPSEC-E-TECNICO-2.7-2026-08-23.md`.
+
+### 2026-08-20 — Reorganização visual concluída (painel 1.11.2)
+
+- Shell responsivo com drawer mobile, Escape e foco; Administração agrupada; conta, sessões, tema e sair reunidos no menu do usuário.
+- Dashboard com exceções primeiro; inventário com presets; alertas, backups e sessões compactados e paginados; login consolidado; matriz de permissões com modo de diferenças.
+- Rotas, query strings, dados, ações e contratos de RBAC preservados; nenhuma alteração de backend, banco, autenticação, SSE ou package.
+- Ver `docs/171-ENTREGA-REORGANIZACAO-VISUAL-PAINEL-1.11.2-2026-08-20.md` e plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`.
 
 ### 2026-08-20 — Create de técnico deixava usuário órfão no Unix (package 0.5.10)
 

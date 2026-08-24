@@ -11,11 +11,11 @@ type Props = {
 
 export function BackupsFleetTable({ nodes }: Props) {
   return (
-    <div className="overflow-x-auto">
+    <div className="max-h-[70vh] overflow-auto">
       <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-slate-800 bg-slate-950/40 text-slate-400">
+        <thead className="sticky top-0 z-20 border-b border-border bg-table-head text-fg-muted shadow-sm">
           <tr>
-            <th className="min-w-[10rem] px-4 py-4">Firewall</th>
+            <th className="sticky left-0 z-30 min-w-[10rem] bg-table-head px-4 py-4">Firewall</th>
             <th className="min-w-[8rem] px-4 py-4">Local</th>
             <th className="min-w-[8rem] px-4 py-4">Status backup</th>
             <th className="min-w-[9rem] px-4 py-4">Último backup</th>
@@ -29,8 +29,8 @@ export function BackupsFleetTable({ nodes }: Props) {
               key={node.id}
               className="border-b border-slate-900/80 text-slate-200 transition hover:bg-slate-950/20"
             >
-              <td className="min-w-[10rem] px-4 py-4">
-                <p className="font-display text-lg text-white">
+              <td className="sticky left-0 z-10 min-w-[10rem] bg-surface-elevated px-4 py-4">
+                <p className="font-display text-lg text-fg">
                   {node.display_name ?? node.hostname}
                 </p>
                 <p className="mt-1 truncate text-xs text-slate-500">{node.hostname}</p>
@@ -51,7 +51,7 @@ export function BackupsFleetTable({ nodes }: Props) {
               <td className="w-36 min-w-[8rem] px-4 py-4">
                 <Link
                   href={buildNodeDetailsHref({ id: node.id, tab: 'backup' })}
-                  className="inline-flex h-9 items-center rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-xs font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white"
+                  className="inline-flex h-9 items-center rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-xs font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-fg"
                 >
                   Ver backup
                 </Link>

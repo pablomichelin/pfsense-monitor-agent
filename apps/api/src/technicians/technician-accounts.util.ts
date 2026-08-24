@@ -179,9 +179,10 @@ export function validateLocalUserCreatePayload(
     result.account_id = raw.account_id.trim();
   }
 
-  if (typeof raw.password === 'string' && raw.password.length > 0) {
-    result.password = validateTechnicianPassword(raw.password);
+  if (typeof raw.password !== 'string' || raw.password.length === 0) {
+    throw new BadRequestException('local_user_create requires password');
   }
+  result.password = validateTechnicianPassword(raw.password);
 
   return result;
 }
@@ -203,9 +204,10 @@ export function validateLocalUserSetPasswordPayload(
     result.account_id = raw.account_id.trim();
   }
 
-  if (typeof raw.password === 'string' && raw.password.length > 0) {
-    result.password = validateTechnicianPassword(raw.password);
+  if (typeof raw.password !== 'string' || raw.password.length === 0) {
+    throw new BadRequestException('local_user_set_password requires password');
   }
+  result.password = validateTechnicianPassword(raw.password);
 
   return result;
 }
@@ -275,6 +277,124 @@ export function scrubPasswordFromPayload(
   const record = { ...(payload as Record<string, unknown>) };
   if ('password' in record) {
     delete record.password;
+  }
+
+  return record as Prisma.InputJsonValue;
+}
+
+/**
+ * Histórico de comandos (firewalls.view): nunca devolver senha, inclusive a
+ * aninhada em follow_up_technician_provision do config_backup_now.
+ */
+export function scrubSensitiveCommandPayload(
+  payload: Prisma.JsonValue | null,
+): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  const withoutTopLevel = scrubPasswordFromPayload(payload);
+  if (
+    !withoutTopLevel ||
+    typeof withoutTopLevel !== 'object' ||
+    Array.isArray(withoutTopLevel)
+  ) {
+    return withoutTopLevel;
+  }
+
+  const record = { ...(withoutTopLevel as Record<string, unknown>) };
+  const followUp = record.follow_up_technician_provision;
+  if (followUp && typeof followUp === 'object' && !Array.isArray(followUp)) {
+    const nested = { ...(followUp as Record<string, unknown>) };
+    if ('password' in nested) {
+      delete nested.password;
+    }
+    record.follow_up_technician_provision = nested;
+  }
+
+  return record as Prisma.InputJsonValue;
+}
+
+export type FollowUpTechnicianProvision = {
+  action: 'local_user_create' | 'local_user_set_password';
+  technician_id: string;
+  account_id: string;
+  pfsense_username: string;
+  password: string;
+  full_name?: string;
+  privilege_profile?: string;
+  requested_by_user_id: string;
+};
+
+export function buildFollowUpTechnicianProvisionPayload(
+  input: FollowUpTechnicianProvision,
+): Record<string, unknown> {
+  return {
+    follow_up_technician_provision: {
+      action: input.action,
+      technician_id: input.technician_id,
+      account_id: input.account_id,
+      pfsense_username: input.pfsense_username,
+      password: input.password,
+      ...(input.full_name ? { full_name: input.full_name } : {}),
+      ...(input.privilege_profile ? { privilege_profile: input.privilege_profile } : {}),
+      requested_by_user_id: input.requested_by_user_id,
+    },
+  };
+}
+
+export function parseFollowUpTechnicianProvision(
+  payload: Prisma.JsonValue | null,
+): FollowUpTechnicianProvision | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
+  }
+
+  const raw = (payload as Record<string, unknown>).follow_up_technician_provision;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null;
+  }
+
+  const record = raw as Record<string, unknown>;
+  const action = record.action;
+  if (action !== 'local_user_create' && action !== 'local_user_set_password') {
+    return null;
+  }
+
+  const technicianId = typeof record.technician_id === 'string' ? record.technician_id.trim() : '';
+  const accountId = typeof record.account_id === 'string' ? record.account_id.trim() : '';
+  const pfsenseUsername =
+    typeof record.pfsense_username === 'string' ? record.pfsense_username.trim() : '';
+  const password = typeof record.password === 'string' ? record.password : '';
+  const requestedByUserId =
+    typeof record.requested_by_user_id === 'string' ? record.requested_by_user_id.trim() : '';
+
+  if (!technicianId || !accountId || !pfsenseUsername || !password || !requestedByUserId) {
+    return null;
+  }
+
+  return {
+    action,
+    technician_id: technicianId,
+    account_id: accountId,
+    pfsense_username: pfsenseUsername,
+    password,
+    ...(typeof record.full_name === 'string' && record.full_name.trim()
+      ? { full_name: record.full_name.trim() }
+      : {}),
+    ...(typeof record.privilege_profile === 'string' && record.privilege_profile.trim()
+      ? { privilege_profile: record.privilege_profile.trim() }
+      : {}),
+    requested_by_user_id: requestedByUserId,
+  };
+}
+
+export function scrubFollowUpFromBackupPayload(
+  payload: Prisma.JsonValue | null,
+): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return payload as Prisma.InputJsonValue;
+  }
+
+  const record = { ...(payload as Record<string, unknown>) };
+  if ('follow_up_technician_provision' in record) {
+    delete record.follow_up_technician_provision;
   }
 
   return record as Prisma.InputJsonValue;

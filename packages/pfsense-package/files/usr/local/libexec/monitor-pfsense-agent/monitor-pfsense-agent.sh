@@ -1084,7 +1084,8 @@ build_services_json() {
           printf '%s\n' "$tunnel_list" > "$_tunf"
           while IFS='|' read -r tname tstatus tmsg; do
             [ -z "$tname" ] && continue
-            append_service_json first_item "$tname" "$tstatus" "$(truncate_text "${tmsg}" 255)" ""
+            # Túnel sem SA não degrada o node (peer down / road warrior ocioso).
+            append_service_json first_item "$tname" "$tstatus" "$(truncate_text "${tmsg}" 255)" "optional"
           done < "$_tunf"
           rm -f "$_tunf"
         else
@@ -1094,7 +1095,7 @@ build_services_json() {
           if [ "$service_status" = "stopped" ] && ! service_is_enabled_in_rc "$service_name"; then
             service_status="not_installed"
           fi
-          append_service_json first_item "$service_name" "$service_status" "$service_detail" ""
+          append_service_json first_item "$service_name" "$service_status" "$service_detail" "optional"
         fi
         continue
         ;;
@@ -1349,29 +1350,67 @@ append_pfsense_update_json_fields() {
   ' "$state_file" 2>/dev/null || printf ',\n  "ha_detected": false'
 }
 
+# v5+: pfSense-upgrade -u antes do -c. Nao rodar no build_payload — -u pode
+# levar minutos e estourar o HTTP do heartbeat.
+PFSENSE_UPDATE_FORCE_THROTTLE_SEC=600
+
 run_pfsense_update_check() {
+  return 0
+}
+
+pfsense_update_force_stamp() {
+  printf '%s' "$(backup_state_dir)/pfsense-update-force.stamp"
+}
+
+pfsense_update_force_throttled() {
+  stamp="$(pfsense_update_force_stamp)"
+  [ -f "$stamp" ] || return 1
+  last="$(tr -cd '0-9' <"$stamp" | head -c 12)"
+  [ -n "$last" ] || return 1
+  now="$(date -u +%s)"
+  [ $((now - last)) -lt "$PFSENSE_UPDATE_FORCE_THROTTLE_SEC" ]
+}
+
+pfsense_update_mark_force_ran() {
+  mkdir -p "$(backup_state_dir)" 2>/dev/null || true
+  printf '%s\n' "$(date -u +%s)" >"$(pfsense_update_force_stamp)" 2>/dev/null || true
+}
+
+heartbeat_force_update_check_requested() {
+  response_file="$1"
+  command_exists php || return 1
+  [ -f "$response_file" ] || return 1
+  force="$(php -r '
+    $payload = json_decode(@file_get_contents($argv[1]), true);
+    if (!is_array($payload)) {
+      echo "0";
+      exit(0);
+    }
+    echo !empty($payload["force_update_check"]) ? "1" : "0";
+  ' "$response_file" 2>/dev/null || printf '0')"
+  [ "$force" = "1" ]
+}
+
+maybe_run_deferred_pfsense_update_check() {
+  response_file="$1"
   helper="$SCRIPT_DIR/check_pfsense_update_available.sh"
-  if [ ! -x "$helper" ]; then
-    return
-  fi
+  [ -x "$helper" ] || return 0
 
-  state_file="$(backup_state_dir)/pfsense-update-check.json"
-  if [ -f "$state_file" ]; then
-    cache_ok="$(php -r '
-      $data = json_decode(@file_get_contents($argv[1]), true);
-      if (!is_array($data)) {
-        echo "0";
-        exit(0);
-      }
-      echo ((int) ($data["cache_version"] ?? 0) >= 4) ? "1" : "0";
-    ' "$state_file" 2>/dev/null || printf '0')"
-    if [ "$cache_ok" != "1" ]; then
-      "$helper" force-check >/dev/null 2>&1 || true
-      return
+  if heartbeat_force_update_check_requested "$response_file"; then
+    if pfsense_update_force_throttled; then
+      echo "heartbeat: force_update_check throttled" >&2
+      return 0
     fi
+    echo "heartbeat: force_update_check — refreshing pfSense repositories" >&2
+    "$helper" force-check >/dev/null 2>&1 || true
+    pfsense_update_mark_force_ran
+    return 0
   fi
 
-  "$helper" check >/dev/null 2>&1 || true
+  if "$helper" needed >/dev/null 2>&1; then
+    echo "heartbeat: deferred pfSense update check (repo refresh + -c)" >&2
+    "$helper" check >/dev/null 2>&1 || true
+  fi
 }
 
 pfsense_upgrade_state_file() {
@@ -3544,61 +3583,61 @@ process_heartbeat_commands() {
           backup_post_command_failed \
             "$command_id" \
             "config backup disabled on agent" \
-            "$CURL_CMD" >/dev/null 2>&1 || true
+            "$CURL_CMD" || true
         elif ! backup_accepts_remote_requests; then
           backup_post_command_failed \
             "$command_id" \
             "remote backup requests disabled on agent" \
-            "$CURL_CMD" >/dev/null 2>&1 || true
+            "$CURL_CMD" || true
         else
-          backup_config_now "$command_id" >>/dev/null 2>&1 || true
+          backup_config_now "$command_id" || true
         fi
         ;;
       pfsense_upgrade)
-        dispatch_pfsense_upgrade "$command_id" "$target_version" "$CURL_CMD" >>/dev/null 2>&1 || true
+        dispatch_pfsense_upgrade "$command_id" "$target_version" "$CURL_CMD" || true
         ;;
       package_upgrade)
-        dispatch_package_upgrade "$command_id" "$target_version" "$artifact_url" "$sha256" "$CURL_CMD" >>/dev/null 2>&1 || true
+        dispatch_package_upgrade "$command_id" "$target_version" "$artifact_url" "$sha256" "$CURL_CMD" || true
         ;;
       service_restart)
-        dispatch_service_restart "$command_id" "$service_name" "$CURL_CMD" >>/dev/null 2>&1 || true
+        dispatch_service_restart "$command_id" "$service_name" "$CURL_CMD" || true
         ;;
       node_reboot)
-        dispatch_node_reboot "$command_id" "$delay_seconds" "$CURL_CMD" >>/dev/null 2>&1 || true
+        dispatch_node_reboot "$command_id" "$delay_seconds" "$CURL_CMD" || true
         ;;
       local_user_disable)
         resolved_payload="$payload_path"
         if [ -z "$resolved_payload" ]; then
           resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
         fi
-        dispatch_local_user_disable "$command_id" "$resolved_payload" "$CURL_CMD" >>/dev/null 2>&1 || true
+        dispatch_local_user_disable "$command_id" "$resolved_payload" "$CURL_CMD" || true
         ;;
       local_user_delete)
         resolved_payload="$payload_path"
         if [ -z "$resolved_payload" ]; then
           resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
         fi
-        dispatch_local_user_delete "$command_id" "$resolved_payload" "$CURL_CMD" >>/dev/null 2>&1 || true
+        dispatch_local_user_delete "$command_id" "$resolved_payload" "$CURL_CMD" || true
         ;;
       local_user_create)
         resolved_payload="$payload_path"
         if [ -z "$resolved_payload" ]; then
           resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
         fi
-        dispatch_local_user_create "$command_id" "$resolved_payload" "$CURL_CMD" >>/dev/null 2>&1 || true
+        dispatch_local_user_create "$command_id" "$resolved_payload" "$CURL_CMD" || true
         ;;
       local_user_set_password)
         resolved_payload="$payload_path"
         if [ -z "$resolved_payload" ]; then
           resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
         fi
-        dispatch_local_user_set_password "$command_id" "$resolved_payload" "$CURL_CMD" >>/dev/null 2>&1 || true
+        dispatch_local_user_set_password "$command_id" "$resolved_payload" "$CURL_CMD" || true
         ;;
       *)
         agent_post_command_result_failed \
           "$command_id" \
           "unknown command type" \
-          "$CURL_CMD" >/dev/null 2>&1 || true
+          "$CURL_CMD" || true
         ;;
     esac
   done <"$dispatch_file"
@@ -3661,6 +3700,7 @@ heartbeat() {
     rm -f "$(heartbeat_error_path)" 2>/dev/null || true
     light_heartbeat_record_success "$payload_was_light"
     process_heartbeat_commands "$response_file" "$CURL_CMD"
+    maybe_run_deferred_pfsense_update_check "$response_file"
     heartbeat_cleanup_temp
     return 0
   fi

@@ -117,7 +117,7 @@ export function NodeOperationalActionsSection({
         {status.service_restart_enabled && canRestartService ? (
           <Card className="space-y-4 p-4">
             <div>
-              <h3 className="font-display text-base text-white">Reiniciar serviço</h3>
+              <h3 className="font-display text-base text-fg">Reiniciar serviço</h3>
               <p className="mt-1 text-sm text-slate-400">
                 Apenas serviços da allowlist do package. Impacto imediato no serviço
                 selecionado.
@@ -218,7 +218,7 @@ export function NodeOperationalActionsSection({
             ) : (
               <div className="space-y-3 rounded-md border border-rose-900/40 bg-slate-950/40 p-3">
                 <label className="block text-sm text-slate-300">
-                  Digite <span className="font-mono text-white">{hostname}</span> ou CONFIRMAR
+                  Digite <span className="font-mono text-fg">{hostname}</span> ou CONFIRMAR
                   <input
                     className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 font-mono"
                     value={rebootConfirm}

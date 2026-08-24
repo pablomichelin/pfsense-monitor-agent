@@ -30,6 +30,7 @@ import {
   ProvisionTechnicianAccountDto,
 } from './dto/technicians.dto';
 import {
+  buildFollowUpTechnicianProvisionPayload,
   evaluateRecentBackupSkipReason,
   parseLocalUsersSnapshot,
   type LocalUserSnapshotEntry,
@@ -49,7 +50,7 @@ function requireManagedPfsenseUsername(raw: string): string {
 type BatchTechnicianResultItem = {
   node_id: string;
   hostname: string | null;
-  outcome: 'skipped' | 'enqueued' | 'failed';
+  outcome: 'skipped' | 'enqueued' | 'backup_queued' | 'failed';
   reason: string | null;
   command_id: string | null;
   status: string | null;
@@ -650,58 +651,166 @@ export class TechniciansService {
 
     const password = resolveTechnicianPassword(dto.password);
     const privilegeProfile = validatePrivilegeProfile(dto.privilege_profile);
+    const backupBeforeProvision = dto.backup_before_provision !== false;
 
-    const { skipped, eligibleNodeIds, payloadByNode, nodeById } =
-      await this.planBatchProvision(technician, uniqueNodeIds, password, privilegeProfile);
-
-    const { batch, enqueueResults } = await this.enqueueBatchTechnicianCommand({
-      userId,
-      technician,
-      commandType: NodeCommandType.local_user_create,
-      eligibleNodeIds,
-      payloadByNode,
+    const {
+      skipped,
+      createNodeIds,
+      resetNodeIds,
+      createPayloadByNode,
+      resetPayloadByNode,
+      backupQueue,
       nodeById,
-      label: dto.label ?? `technician provision batch`,
-      clientId: dto.client_id,
-      ipAddress,
-      auditTotalNodes: uniqueNodeIds.length,
-      auditAction: 'technician.batch_provision',
-      onEnqueued: async (nodeId, commandId, meta) => {
-        if (!meta?.ok) {
-          return;
-        }
+    } = await this.planBatchProvision(
+      technician,
+      uniqueNodeIds,
+      password,
+      privilegeProfile,
+      userId,
+      { backupBeforeProvision },
+    );
 
-        await this.prisma.technicianNodeAccount.upsert({
-          where: {
-            technicianId_nodeId: {
-              technicianId: technician.id,
-              nodeId,
-            },
-          },
-          create: {
+    const upsertAccountOnEnqueued = async (
+      nodeId: string,
+      commandId: string | null,
+      meta: Record<string, unknown> | undefined,
+      status: TechnicianNodeAccountStatus,
+    ) => {
+      if (!meta?.ok) {
+        return;
+      }
+
+      await this.prisma.technicianNodeAccount.upsert({
+        where: {
+          technicianId_nodeId: {
             technicianId: technician.id,
             nodeId,
-            pfsenseUsername: technician.loginUsername,
-            privilegeProfile,
-            status: TechnicianNodeAccountStatus.pending_create,
-            lastCommandId: String(meta.command_id ?? commandId),
           },
-          update: {
-            pfsenseUsername: technician.loginUsername,
-            privilegeProfile,
-            status: TechnicianNodeAccountStatus.pending_create,
-            lastCommandId: String(meta.command_id ?? commandId),
-            lastError: null,
-          },
-        });
-      },
-    });
+        },
+        create: {
+          technicianId: technician.id,
+          nodeId,
+          pfsenseUsername: technician.loginUsername,
+          privilegeProfile,
+          status,
+          lastCommandId: String(meta.command_id ?? commandId),
+        },
+        update: {
+          pfsenseUsername: technician.loginUsername,
+          privilegeProfile,
+          status,
+          lastCommandId: String(meta.command_id ?? commandId),
+          lastError: null,
+        },
+      });
+    };
 
-    const results = [...skipped, ...enqueueResults];
+    const createBatch =
+      createNodeIds.length > 0
+        ? await this.enqueueBatchTechnicianCommand({
+            userId,
+            technician,
+            commandType: NodeCommandType.local_user_create,
+            eligibleNodeIds: createNodeIds,
+            payloadByNode: createPayloadByNode,
+            nodeById,
+            label: dto.label ?? `technician provision batch`,
+            clientId: dto.client_id,
+            ipAddress,
+            auditTotalNodes: uniqueNodeIds.length,
+            auditAction: 'technician.batch_provision',
+            onEnqueued: async (nodeId, commandId, meta) => {
+              await upsertAccountOnEnqueued(
+                nodeId,
+                commandId,
+                meta,
+                TechnicianNodeAccountStatus.pending_create,
+              );
+            },
+          })
+        : { batch: null, enqueueResults: [] as BatchTechnicianResultItem[] };
+
+    const resetBatch =
+      resetNodeIds.length > 0
+        ? await this.enqueueBatchTechnicianCommand({
+            userId,
+            technician,
+            commandType: NodeCommandType.local_user_set_password,
+            eligibleNodeIds: resetNodeIds,
+            payloadByNode: resetPayloadByNode,
+            nodeById,
+            label: dto.label ?? `technician provision password sync batch`,
+            clientId: dto.client_id,
+            ipAddress,
+            auditTotalNodes: uniqueNodeIds.length,
+            auditAction: 'technician.batch_provision_password_sync',
+            onEnqueued: async (nodeId, commandId, meta) => {
+              await upsertAccountOnEnqueued(
+                nodeId,
+                commandId,
+                meta,
+                TechnicianNodeAccountStatus.password_reset_pending,
+              );
+            },
+          })
+        : { batch: null, enqueueResults: [] as BatchTechnicianResultItem[] };
+
+    const backupResults: BatchTechnicianResultItem[] = [];
+    if (backupQueue.length > 0) {
+      for (const item of backupQueue) {
+        try {
+          const backupCommand = await this.orchestrator.enqueueCommand({
+            nodeId: item.node_id,
+            type: NodeCommandType.config_backup_now,
+            requestedByUserId: userId,
+            payloadJson: buildFollowUpTechnicianProvisionPayload(
+              item.follow_up,
+            ) as Prisma.InputJsonValue,
+          });
+
+          await this.prisma.technicianNodeAccount.update({
+            where: { id: item.follow_up.account_id },
+            data: {
+              lastCommandId: backupCommand.id,
+              lastError: null,
+            },
+          });
+
+          backupResults.push({
+            node_id: item.node_id,
+            hostname: nodeById.get(item.node_id)?.hostname ?? null,
+            outcome: 'backup_queued',
+            reason: 'backup queued before provision',
+            command_id: backupCommand.id,
+            status: backupCommand.status,
+          });
+        } catch (error) {
+          backupResults.push({
+            node_id: item.node_id,
+            hostname: nodeById.get(item.node_id)?.hostname ?? null,
+            outcome: 'failed',
+            reason: error instanceof Error ? error.message : 'backup enqueue failed',
+            command_id: null,
+            status: null,
+          });
+        }
+      }
+    }
+
+    const results = [
+      ...skipped,
+      ...backupResults,
+      ...createBatch.enqueueResults,
+      ...resetBatch.enqueueResults,
+    ];
 
     return {
       generated_at: new Date().toISOString(),
-      batch: batch?.batch ?? null,
+      batch: createBatch.batch?.batch ?? resetBatch.batch?.batch ?? null,
+      batches:
+        createBatch.batch?.batch && resetBatch.batch?.batch
+          ? [createBatch.batch.batch, resetBatch.batch.batch]
+          : undefined,
       technician: {
         id: technician.id,
         login_username: technician.loginUsername,
@@ -712,6 +821,7 @@ export class TechniciansService {
       summary: {
         total: uniqueNodeIds.length,
         enqueued: results.filter((item) => item.outcome === 'enqueued').length,
+        backup_queued: results.filter((item) => item.outcome === 'backup_queued').length,
         skipped: results.filter((item) => item.outcome === 'skipped').length,
         failed: results.filter((item) => item.outcome === 'failed').length,
       },
@@ -818,6 +928,8 @@ export class TechniciansService {
     uniqueNodeIds: string[],
     password: string,
     privilegeProfile: string,
+    requestedByUserId: string,
+    options: { backupBeforeProvision: boolean },
   ) {
     const pfsenseUsername = requireManagedPfsenseUsername(technician.loginUsername);
     const nodes = await this.prisma.node.findMany({
@@ -834,8 +946,14 @@ export class TechniciansService {
     const backupByNode = await this.fetchLatestBackupAtByNode(uniqueNodeIds);
 
     const skipped: BatchTechnicianResultItem[] = [];
-    const eligibleNodeIds: string[] = [];
-    const payloadByNode: Record<string, Record<string, unknown>> = {};
+    const createNodeIds: string[] = [];
+    const resetNodeIds: string[] = [];
+    const createPayloadByNode: Record<string, Record<string, unknown>> = {};
+    const resetPayloadByNode: Record<string, Record<string, unknown>> = {};
+    const backupQueue: Array<{
+      node_id: string;
+      follow_up: Parameters<typeof buildFollowUpTechnicianProvisionPayload>[0];
+    }> = [];
 
     for (const nodeId of uniqueNodeIds) {
       const node = nodeById.get(nodeId);
@@ -851,10 +969,16 @@ export class TechniciansService {
         continue;
       }
 
-      const skipReason = this.getProvisionSkipReason(
+      const latestBackupAt = backupByNode.get(nodeId) ?? null;
+      const needsBackup =
+        options.backupBeforeProvision &&
+        this.getBackupSkipReason(latestBackupAt) != null;
+
+      const skipReason = this.getNodeEligibilitySkipReason(
         node,
-        pfsenseUsername,
-        backupByNode.get(nodeId) ?? null,
+        true,
+        latestBackupAt,
+        { ignoreBackupGate: needsBackup },
       );
       if (skipReason) {
         skipped.push({
@@ -868,17 +992,82 @@ export class TechniciansService {
         continue;
       }
 
-      eligibleNodeIds.push(nodeId);
-      payloadByNode[nodeId] = {
+      const snapshot = parseLocalUsersSnapshot(node.localUsersSnapshotJson);
+      const userExists = userAlreadyActiveInSnapshot(snapshot, pfsenseUsername);
+
+      const account = await this.prisma.technicianNodeAccount.upsert({
+        where: {
+          technicianId_nodeId: {
+            technicianId: technician.id,
+            nodeId,
+          },
+        },
+        create: {
+          technicianId: technician.id,
+          nodeId,
+          pfsenseUsername,
+          privilegeProfile,
+          status: userExists
+            ? TechnicianNodeAccountStatus.password_reset_pending
+            : TechnicianNodeAccountStatus.pending_create,
+        },
+        update: {
+          pfsenseUsername,
+          privilegeProfile,
+          lastError: null,
+        },
+      });
+
+      const basePayload = {
         technician_id: technician.id,
+        account_id: account.id,
         pfsense_username: pfsenseUsername,
-        full_name: technician.fullName,
-        privilege_profile: privilegeProfile,
         password,
       };
+
+      if (needsBackup) {
+        backupQueue.push({
+          node_id: nodeId,
+          follow_up: {
+            action: userExists ? 'local_user_set_password' : 'local_user_create',
+            technician_id: technician.id,
+            account_id: account.id,
+            pfsense_username: pfsenseUsername,
+            password,
+            requested_by_user_id: requestedByUserId,
+            ...(userExists
+              ? {}
+              : {
+                  full_name: technician.fullName,
+                  privilege_profile: privilegeProfile,
+                }),
+          },
+        });
+        continue;
+      }
+
+      if (userExists) {
+        resetNodeIds.push(nodeId);
+        resetPayloadByNode[nodeId] = basePayload;
+      } else {
+        createNodeIds.push(nodeId);
+        createPayloadByNode[nodeId] = {
+          ...basePayload,
+          full_name: technician.fullName,
+          privilege_profile: privilegeProfile,
+        };
+      }
     }
 
-    return { skipped, eligibleNodeIds, payloadByNode, nodeById };
+    return {
+      skipped,
+      createNodeIds,
+      resetNodeIds,
+      createPayloadByNode,
+      resetPayloadByNode,
+      backupQueue,
+      nodeById,
+    };
   }
 
   private async planBatchPasswordReset(
@@ -936,8 +1125,30 @@ export class TechniciansService {
       }
 
       eligibleNodeIds.push(nodeId);
+
+      const account = await this.prisma.technicianNodeAccount.upsert({
+        where: {
+          technicianId_nodeId: {
+            technicianId: technician.id,
+            nodeId,
+          },
+        },
+        create: {
+          technicianId: technician.id,
+          nodeId,
+          pfsenseUsername,
+          privilegeProfile: 'admin_full',
+          status: TechnicianNodeAccountStatus.password_reset_pending,
+        },
+        update: {
+          pfsenseUsername,
+          lastError: null,
+        },
+      });
+
       payloadByNode[nodeId] = {
         technician_id: technician.id,
+        account_id: account.id,
         pfsense_username: pfsenseUsername,
         password,
       };
@@ -1060,6 +1271,7 @@ export class TechniciansService {
     },
     requireSnapshot: boolean,
     latestBackupAt: Date | null,
+    options?: { ignoreBackupGate?: boolean },
   ): string | null {
     const heartbeatRecent =
       node.lastSeenAt != null && Date.now() - node.lastSeenAt.getTime() < 5 * 60_000;
@@ -1077,9 +1289,11 @@ export class TechniciansService {
       return `agent version below minimum ${appConfig.technicianAccounts.minAgentVersion}`;
     }
 
-    const backupSkipReason = this.getBackupSkipReason(latestBackupAt);
-    if (backupSkipReason) {
-      return backupSkipReason;
+    if (!options?.ignoreBackupGate) {
+      const backupSkipReason = this.getBackupSkipReason(latestBackupAt);
+      if (backupSkipReason) {
+        return backupSkipReason;
+      }
     }
 
     const snapshot = parseLocalUsersSnapshot(node.localUsersSnapshotJson);

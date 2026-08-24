@@ -2,11 +2,15 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-20):** API `0.10.8` · painel `1.11.1` · package pfSense `0.5.10` (publicado).
+> **Versoes atuais (2026-08-23):** API `0.10.10` · painel `1.11.4` · package pfSense `0.5.12`.
 >
-> **Entrega em andamento (2026-08-20):** reorganização visual do painel — painel **1.11.1** (bump obrigatório antes de continuar as fases do plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`).
+> **Ultima entrega (2026-08-23):** check do OS atualiza repositórios pkg antes de decidir se há update; botão Atualizar verificação. Ver `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md`.
 >
-> **Ultima entrega (2026-08-20):** correção órfão Unix no create de técnico — package **0.5.10**. Ver `docs/170-...md`.
+> **Entrega anterior (2026-08-23):** IPsec não degrada o node; create de técnico no 2.7.x; scrub/expire de senha no follow-up. Ver `docs/172-ENTREGA-SAUDE-BOX-VS-IPSEC-E-TECNICO-2.7-2026-08-23.md`.
+>
+> **Entrega anterior (2026-08-20):** reorganização visual do painel concluída — painel **1.11.2**. Ver `docs/171-ENTREGA-REORGANIZACAO-VISUAL-PAINEL-1.11.2-2026-08-20.md` (plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`).
+>
+> **Entrega anterior (2026-08-20):** correção órfão Unix no create de técnico — package **0.5.10**. Ver `docs/170-...md`.
 >
 > **Entrega anterior (2026-08-20):** tema claro completo do painel — painel **1.11.0**. Ver `docs/169-ENTREGA-TEMA-CLARO-PAINEL-2026-08-20.md`.
 >

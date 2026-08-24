@@ -17,16 +17,16 @@ type ConfirmDialogProps = {
 
 const toneStyles = {
   danger: {
-    border: 'border-rose-500/30',
-    title: 'text-rose-200',
+    border: 'border-danger-border',
+    title: 'text-danger-fg',
     confirm:
-      'border-rose-500/60 bg-rose-500/20 text-rose-200 hover:bg-rose-500/30',
+      'border-danger/60 bg-danger-muted text-danger-fg hover:bg-danger/20',
   },
   warning: {
-    border: 'border-amber-500/30',
-    title: 'text-amber-200',
+    border: 'border-warning-border',
+    title: 'text-warning-fg',
     confirm:
-      'border-amber-500/60 bg-amber-500/20 text-amber-200 hover:bg-amber-500/30',
+      'border-warning/60 bg-warning-muted text-warning-fg hover:bg-warning/20',
   },
 };
 
@@ -70,24 +70,24 @@ export function ConfirmDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80"
+      className="theme-overlay fixed inset-0 z-[100] flex items-center justify-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
     >
       <div
-        className={`mx-4 w-full max-w-md rounded-xl border bg-slate-900 p-6 shadow-xl ${styles.border}`}
+        className={`mx-4 w-full max-w-md rounded-xl border bg-surface-elevated p-6 shadow-panel ${styles.border}`}
       >
         <h2 id={titleId} className={`font-display text-lg ${styles.title}`}>
           {title}
         </h2>
-        <div className="mt-3 text-sm text-slate-300">{description}</div>
+        <div className="mt-3 text-sm text-fg-muted">{description}</div>
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"
             onClick={onCancel}
             disabled={loading}
-            className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 disabled:opacity-50"
+            className="rounded-lg border border-border px-4 py-2 text-sm text-fg-muted transition hover:bg-nav-hover disabled:opacity-50"
           >
             {cancelLabel}
           </button>

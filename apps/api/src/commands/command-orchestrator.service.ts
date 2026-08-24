@@ -22,12 +22,7 @@ import {
 import {
   normalizeCommandHistoryLimit,
 } from './command-registry.util';
-import { scrubPasswordFromPayload } from '../technicians/technician-accounts.util';
-
-const PASSWORD_BEARING_COMMAND_TYPES: NodeCommandType[] = [
-  NodeCommandType.local_user_create,
-  NodeCommandType.local_user_set_password,
-];
+import { scrubSensitiveCommandPayload } from '../technicians/technician-accounts.util';
 
 const ACTIVE_STATUSES: NodeCommandStatus[] = [
   NodeCommandStatus.pending,
@@ -83,9 +78,7 @@ export class CommandOrchestratorService {
     // registro persistido (janela entre enfileirar e o agente confirmar "picked_up"),
     // nunca serializar texto claro em respostas de leitura (historico/lote), que sao
     // acessiveis com permissao mais ampla (firewalls.view) do que a gestao de tecnicos.
-    const payloadForResponse = PASSWORD_BEARING_COMMAND_TYPES.includes(command.type)
-      ? scrubPasswordFromPayload(command.payloadJson)
-      : command.payloadJson;
+    const payloadForResponse = scrubSensitiveCommandPayload(command.payloadJson);
 
     return {
       command_id: command.id,

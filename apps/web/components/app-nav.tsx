@@ -28,8 +28,8 @@ function NavLink({
       aria-current={isActive ? 'page' : undefined}
       className={`inline-flex h-10 min-w-[5.5rem] shrink-0 items-center justify-center rounded-lg border px-4 text-sm font-medium transition ${
         isActive
-          ? 'border-cyan-400/50 bg-cyan-400/15 text-white'
-          : 'border-slate-600/80 bg-panel-soft text-slate-200 hover:border-cyan-400/50 hover:text-white'
+          ? 'border-primary/50 bg-primary/15 text-fg'
+          : 'border-border bg-surface-soft text-fg hover:border-primary/50 hover:text-fg'
       }`}
     >
       {item.label}
@@ -49,11 +49,11 @@ export function AppNav({ groups }: { groups: NavGroup[] }) {
         <div key={group.id} className="flex flex-wrap items-center gap-2">
           {index > 0 ? (
             <span
-              className="hidden h-6 w-px bg-slate-700/80 sm:block"
+              className="hidden h-6 w-px bg-border sm:block"
               aria-hidden
             />
           ) : null}
-          <span className="hidden font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500 sm:inline">
+          <span className="hidden font-mono text-[10px] uppercase tracking-[0.2em] text-fg-subtle sm:inline">
             {group.label}
           </span>
           {group.items.map((item) => (

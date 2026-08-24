@@ -163,7 +163,7 @@ export function FleetInventorySection({
       {selectedCount > 0 ? (
         <div className="sticky top-0 z-20 space-y-3 rounded-xl border border-slate-700/70 bg-panel/95 p-3 shadow-lg backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-medium text-white">
+            <p className="text-sm font-medium text-fg">
               {selectedCount} selecionado(s)
             </p>
             <div className="flex flex-wrap items-center gap-2">

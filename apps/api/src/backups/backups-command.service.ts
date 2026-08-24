@@ -220,7 +220,7 @@ export class BackupsCommandService {
     }
 
     const completedAt = new Date();
-    await this.prisma.nodeCommand.update({
+    const updated = await this.prisma.nodeCommand.update({
       where: {
         id: command.id,
       },
@@ -249,6 +249,8 @@ export class BackupsCommandService {
         },
       },
     });
+
+    await this.nodeCommandsService.handleBackupCommandSucceeded(updated);
   }
 
   async reconcileSucceededCommands(nodeId: string): Promise<void> {

@@ -92,19 +92,19 @@ export function Breadcrumbs() {
           return (
             <li key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-1.5">
               {index > 0 ? (
-                <span className="text-slate-500" aria-hidden>
+                <span className="text-fg-subtle" aria-hidden>
                   ›
                 </span>
               ) : null}
               {crumb.href && !isLast ? (
                 <Link
                   href={crumb.href}
-                  className="truncate text-slate-400 transition hover:text-cyan-300"
+                  className="truncate text-fg-muted transition hover:text-primary"
                 >
                   {crumb.label}
                 </Link>
               ) : (
-                <span className={isLast ? 'truncate font-medium text-slate-200' : 'truncate text-slate-400'}>
+                <span className={isLast ? 'truncate font-medium text-fg' : 'truncate text-fg-muted'}>
                   {crumb.label}
                 </span>
               )}

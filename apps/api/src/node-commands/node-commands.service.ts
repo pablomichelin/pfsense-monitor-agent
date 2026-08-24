@@ -1,11 +1,13 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  forwardRef,
 } from '@nestjs/common';
 import {
   NodeCommand,
@@ -19,8 +21,11 @@ import { getCommandDefinition } from '../commands/command-registry';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  parseFollowUpTechnicianProvision,
   scrubPasswordFromPayload,
+  scrubSensitiveCommandPayload,
 } from '../technicians/technician-accounts.util';
+import { TechnicianBackupFollowUpService } from '../technicians/technician-backup-followup.service';
 
 export interface PendingCommandPayload {
   id: string;
@@ -162,14 +167,21 @@ export interface UpgradePayloadJson {
 export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(NodeCommandsService.name);
   private timer?: NodeJS.Timeout;
+  private readonly warnedStuckCommandIds = new Set<string>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => TechnicianBackupFollowUpService))
+    private readonly technicianBackupFollowUp: TechnicianBackupFollowUpService,
+  ) {}
 
   onModuleInit(): void {
     void this.expireStaleCommands('startup');
+    void this.warnStuckPendingCommands();
 
     this.timer = setInterval(() => {
       void this.expireStaleCommands('interval');
+      void this.warnStuckPendingCommands();
     }, 60_000);
     this.timer.unref?.();
   }
@@ -215,16 +227,35 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
     // Não reentregar comandos em `running`: o agente já confirmou execução
     // (ack running) e não possui dedup — a reentrega colide com o lock local
     // e gera falso "another package upgrade is running" (doc 140).
+    //
+    // local_user_create/set_password: após picked_up o controlador remove a
+    // senha do payload_json — reentregar picked_up sobrescreveria o arquivo
+    // 0600 do agente sem senha (doc 155 / correcao 0.5.9).
     const commands = await this.prisma.nodeCommand.findMany({
       where: {
         nodeId,
-        status: {
-          in: [NodeCommandStatus.pending, NodeCommandStatus.picked_up],
-        },
         expiresAt: {
           gt: now,
         },
-        OR: [{ nextRetryAt: null }, { nextRetryAt: { lte: now } }],
+        AND: [
+          {
+            OR: [{ nextRetryAt: null }, { nextRetryAt: { lte: now } }],
+          },
+          {
+            OR: [
+              { status: NodeCommandStatus.pending },
+              {
+                status: NodeCommandStatus.picked_up,
+                type: {
+                  notIn: [
+                    NodeCommandType.local_user_create,
+                    NodeCommandType.local_user_set_password,
+                  ],
+                },
+              },
+            ],
+          },
+        ],
       },
       orderBy: {
         requestedAt: 'asc',
@@ -510,6 +541,10 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
 
     await this.reconcileTechnicianNodeAccount(command, input.status, input.errorMessage);
 
+    if (command.type === NodeCommandType.config_backup_now) {
+      await this.handleBackupCommandSucceeded(updated);
+    }
+
     return {
       ok: true,
       command_id: updated.id,
@@ -561,13 +596,22 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
 
     const accountId =
       typeof payload?.account_id === 'string' ? payload.account_id : null;
-    if (!accountId) {
+    const technicianId =
+      typeof payload?.technician_id === 'string' ? payload.technician_id.trim() : null;
+
+    const accountWhere = accountId
+      ? { id: accountId }
+      : technicianId
+        ? { technicianId, nodeId: command.nodeId }
+        : null;
+
+    if (!accountWhere) {
       return;
     }
 
     if (status === 'succeeded') {
       await this.prisma.technicianNodeAccount.updateMany({
-        where: { id: accountId },
+        where: accountWhere,
         data: {
           status: TechnicianNodeAccountStatus.active,
           lastSyncedAt: new Date(),
@@ -579,7 +623,7 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
 
     const truncatedError = (errorMessage ?? 'command failed').trim().slice(0, 500);
     await this.prisma.technicianNodeAccount.updateMany({
-      where: { id: accountId },
+      where: accountWhere,
       data: {
         status: TechnicianNodeAccountStatus.failed,
         lastError: truncatedError,
@@ -940,6 +984,89 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       await this.reconcileBatchStatus(batchId);
     }
 
+    for (const command of expired) {
+      await this.reconcileExpiredTechnicianSideEffects(command);
+    }
+
     this.logger.log(`expired ${expired.length} node commands reason=${reason}`);
+  }
+
+  private async reconcileExpiredTechnicianSideEffects(
+    command: NodeCommand,
+  ): Promise<void> {
+    await this.reconcileTechnicianNodeAccount(
+      command,
+      'failed',
+      'command expired',
+    );
+
+    if (command.type !== NodeCommandType.config_backup_now) {
+      return;
+    }
+
+    const followUp = parseFollowUpTechnicianProvision(command.payloadJson);
+    if (followUp) {
+      await this.prisma.technicianNodeAccount.updateMany({
+        where: { id: followUp.account_id },
+        data: {
+          status: TechnicianNodeAccountStatus.failed,
+          lastError: 'command expired before backup follow-up',
+        },
+      });
+    }
+
+    const scrubbed = scrubSensitiveCommandPayload(command.payloadJson);
+    if (scrubbed !== command.payloadJson) {
+      await this.prisma.nodeCommand.update({
+        where: { id: command.id },
+        data: {
+          payloadJson: scrubbed as Prisma.InputJsonValue,
+        },
+      });
+    }
+  }
+
+  private async warnStuckPendingCommands(): Promise<void> {
+    const pendingSince = new Date(Date.now() - 90_000);
+    const stuck = await this.prisma.nodeCommand.findMany({
+      where: {
+        status: NodeCommandStatus.pending,
+        requestedAt: { lte: pendingSince },
+        expiresAt: { gt: new Date() },
+      },
+      select: {
+        id: true,
+        nodeId: true,
+        type: true,
+        requestedAt: true,
+      },
+      take: 50,
+    });
+
+    for (const command of stuck) {
+      if (this.warnedStuckCommandIds.has(command.id)) {
+        continue;
+      }
+
+      this.warnedStuckCommandIds.add(command.id);
+      const ageSeconds = Math.floor(
+        (Date.now() - command.requestedAt.getTime()) / 1000,
+      );
+      this.logger.warn(
+        `command still pending after ${ageSeconds}s command=${command.id} node=${command.nodeId} type=${command.type}`,
+      );
+    }
+  }
+
+  /** Dispara follow-up de provisionamento após config_backup_now succeeded. */
+  async handleBackupCommandSucceeded(command: NodeCommand): Promise<void> {
+    if (
+      command.type !== NodeCommandType.config_backup_now ||
+      command.status !== NodeCommandStatus.succeeded
+    ) {
+      return;
+    }
+
+    await this.technicianBackupFollowUp.processAfterBackupSuccess(command);
   }
 }

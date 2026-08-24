@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { BackupsFleetTable } from '@/components/backups/backups-fleet-table';
 import { PageHero } from '@/components/page-hero';
@@ -37,6 +38,8 @@ export default async function BackupsPage({
     typeof params.sort_order === 'string' && ['asc', 'desc'].includes(params.sort_order)
       ? (params.sort_order as 'asc' | 'desc')
       : 'asc';
+  const page = typeof params.page === 'string' && /^\d+$/.test(params.page) ? Math.max(1, Number(params.page)) : 1;
+  const perPage = typeof params.per_page === 'string' && ['10', '25', '50'].includes(params.per_page) ? Number(params.per_page) : 25;
 
   let filterOptions;
   let nodes;
@@ -76,6 +79,21 @@ export default async function BackupsPage({
 
   const filteredNodes = filterByBackupStatus(fleetNodes, backupStatus);
   const sortedNodes = sortBackupFleetNodes(filteredNodes, sortBy, sortOrder);
+  const totalPages = Math.max(1, Math.ceil(sortedNodes.length / perPage));
+  const currentPage = Math.min(page, totalPages);
+  const visibleNodes = sortedNodes.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const backupPageHref = (nextPage: number) => {
+    const next = new URLSearchParams();
+    if (clientId) next.set('client_id', clientId);
+    if (siteId) next.set('site_id', siteId);
+    if (backupStatus) next.set('backup_status', backupStatus);
+    if (search) next.set('search', search);
+    next.set('sort_by', sortBy);
+    next.set('sort_order', sortOrder);
+    next.set('per_page', String(perPage));
+    next.set('page', String(nextPage));
+    return `/backups?${next.toString()}`;
+  };
   const summary = computeBackupFleetSummary(fleetNodes);
 
   return (
@@ -114,9 +132,15 @@ export default async function BackupsPage({
       />
 
       <PageSection
-        title="Filtros"
-        description="Refine por cliente, site, status de backup ou busca textual."
+        title="Prioridade de backup"
+        description="Use um atalho para focar a exceção; todos os filtros continuam disponíveis abaixo."
       >
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Link href="/backups?backup_status=failed" className="rounded-lg border border-danger-border bg-danger-muted px-3 py-2 text-sm font-medium text-danger-fg">Falharam ({summary.failed})</Link>
+          <Link href="/backups?backup_status=late" className="rounded-lg border border-warning-border bg-warning-muted px-3 py-2 text-sm font-medium text-warning-fg">Atrasados ({summary.late})</Link>
+          <Link href="/backups?backup_status=never" className="rounded-lg border border-border bg-surface-soft px-3 py-2 text-sm font-medium text-fg">Nunca enviados ({summary.never})</Link>
+          <Link href="/backups?backup_status=ok" className="rounded-lg border border-success-border bg-success-muted px-3 py-2 text-sm font-medium text-success-fg">Em dia ({summary.ok})</Link>
+        </div>
         <Card className="p-6">
           <form className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end xl:gap-4">
             <select
@@ -179,6 +203,7 @@ export default async function BackupsPage({
               <option value="desc">Decrescente</option>
             </select>
             <Button type="submit">Aplicar filtros</Button>
+            <select name="per_page" defaultValue={String(perPage)} className="h-11 rounded-lg border border-border bg-surface-soft px-3 text-sm text-fg" aria-label="Backups por página"><option value="10">10 por página</option><option value="25">25 por página</option><option value="50">50 por página</option></select>
           </form>
         </Card>
       </PageSection>
@@ -192,12 +217,12 @@ export default async function BackupsPage({
         }
       >
         <Card className="overflow-hidden p-0">
-          {sortedNodes.length === 0 ? (
+          {visibleNodes.length === 0 ? (
             <Alert variant="info" className="m-6">
               Nenhum firewall encontrado com os filtros atuais.
             </Alert>
           ) : (
-            <BackupsFleetTable nodes={sortedNodes} />
+            <BackupsFleetTable nodes={visibleNodes} />
           )}
         </Card>
         {fleetNodes.length >= listLimit ? (
@@ -205,6 +230,13 @@ export default async function BackupsPage({
             Exibindo até {listLimit} firewalls. Refine os filtros para reduzir o volume.
           </p>
         ) : null}
+        <div className="mt-4 flex items-center justify-between gap-3 text-sm text-fg-muted">
+          <span>{sortedNodes.length} firewall(s) · página {currentPage} de {totalPages}</span>
+          <div className="flex gap-2">
+            {currentPage > 1 ? <Link href={backupPageHref(currentPage - 1)} className="rounded-lg border border-border px-3 py-2 hover:text-fg">Anterior</Link> : null}
+            {currentPage < totalPages ? <Link href={backupPageHref(currentPage + 1)} className="rounded-lg border border-border px-3 py-2 hover:text-fg">Próxima</Link> : null}
+          </div>
+        </div>
       </PageSection>
     </div>
   );

@@ -75,7 +75,7 @@ export function HotZoneExpandableList({ nodes }: { nodes: NodeItem[] }) {
             >
               <div className="flex min-w-0 items-center gap-3">
                 <StatusBadge status={toStatusBadge(node.effective_status)} />
-                <span className="truncate font-medium text-white">
+                <span className="truncate font-medium text-fg">
                   {node.display_name ?? node.hostname}
                 </span>
               </div>

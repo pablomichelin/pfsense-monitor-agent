@@ -477,7 +477,7 @@ export const appConfig = Object.freeze({
       'TECHNICIAN_ACCOUNT_COMMAND_EXPIRE_MINUTES',
     ),
     minAgentVersion:
-      process.env.TECHNICIAN_ACCOUNT_MIN_AGENT_VERSION?.trim() || '0.5.0',
+      process.env.TECHNICIAN_ACCOUNT_MIN_AGENT_VERSION?.trim() || '0.5.4',
     batchMaxSize: parseNumber(
       process.env.TECHNICIAN_ACCOUNT_BATCH_MAX_SIZE,
       100,

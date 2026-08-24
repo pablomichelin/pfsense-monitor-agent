@@ -47,34 +47,13 @@ export default async function DashboardPage() {
       />
 
       <PageSection
-        title="Indicadores"
-        description={
-          isClientProfile
-            ? 'Resumo do status da sua frota monitorada.'
-            : 'Totais consolidados de status, backup e package da frota.'
-        }
-      >
-        <DashboardKpiGrid fleet={fleet} isClientProfile={isClientProfile} />
-      </PageSection>
-
-      <PageSection
-        title="Matriz de versões"
-        description="Distribuição de pfSense OS e package monitor no escopo atual."
-      >
-        <FleetVersionMatrix
-          matrix={fleet.version_matrix}
-          packageTargetVersion={fleet.compliance.package_target_version}
-        />
-      </PageSection>
-
-      <PageSection
-        title="Zona quente"
-        description="Firewalls offline ou degradados que exigem atenção agora."
+        title="Precisa de atenção"
+        description="Firewalls offline ou degradados que exigem atenção agora. Os indicadores consolidados continuam logo abaixo."
         actions={
           <Link
             href="/nodes?status=offline"
             className={cn(
-              'inline-flex h-10 min-h-10 shrink-0 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white',
+              'inline-flex h-10 min-h-10 shrink-0 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-fg',
             )}
           >
             Ver inventário
@@ -99,9 +78,30 @@ export default async function DashboardPage() {
         )}
       </PageSection>
 
+      <PageSection
+        title="Saúde da frota"
+        description={
+          isClientProfile
+            ? 'Resumo do status da sua frota monitorada.'
+            : 'Totais consolidados de status, backup e package da frota.'
+        }
+      >
+        <DashboardKpiGrid fleet={fleet} isClientProfile={isClientProfile} />
+      </PageSection>
+
+      <PageSection
+        title="Versões e indicadores informativos"
+        description="Distribuição de pfSense OS e package monitor no escopo atual."
+      >
+        <FleetVersionMatrix
+          matrix={fleet.version_matrix}
+          packageTargetVersion={fleet.compliance.package_target_version}
+        />
+      </PageSection>
+
       <Card className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 space-y-1">
-          <h2 className="font-display text-lg font-semibold text-white">
+          <h2 className="font-display text-lg font-semibold text-fg">
             Inventário completo
           </h2>
           <p className="text-sm text-slate-400">

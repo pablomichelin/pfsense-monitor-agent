@@ -21,7 +21,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui';
 
 const POLL_INTERVAL_MS = 12_000;
-const MIN_AGENT_VERSION = '0.5.1';
+const MIN_AGENT_VERSION = '0.5.4';
 
 type RevokeMode = 'filter' | 'selection' | 'fleet';
 
@@ -233,7 +233,7 @@ export function FleetBatchTechnicianRevokePanel({
   return (
     <Card className="space-y-4 p-4">
       <div>
-        <h3 className="font-display text-base text-white">Desligamento de técnico</h3>
+        <h3 className="font-display text-base text-fg">Desligamento de técnico</h3>
         <p className="mt-1 text-sm text-slate-400">
           Cadastre o login pfSense do ex-funcionário e revogue o acesso em toda a frota ou só nos
           firewalls selecionados. Requer agente {MIN_AGENT_VERSION}+ com gestão de técnicos habilitada
@@ -465,11 +465,11 @@ export function FleetBatchTechnicianRevokePanel({
         <div className="space-y-3">
           <p className="text-sm text-slate-300">
             Confirma {action === 'delete' ? 'remoção' : 'desativação'} do técnico{' '}
-            <strong className="text-white">
+            <strong className="text-fg">
               {selectedTechnician?.full_name ?? technicianId}
             </strong>
             {pendingRevokeMode === 'fleet' ? (
-              <> em <strong className="text-white">toda a frota</strong> acessível?</>
+              <> em <strong className="text-fg">toda a frota</strong> acessível?</>
             ) : (
               <> em {nodeIds.length} firewall(s)?</>
             )}{' '}

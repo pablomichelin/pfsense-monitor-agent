@@ -291,7 +291,7 @@ export function NodeConfigBackupsSection({
           {auditHref ? (
             <Link
               href={auditHref}
-              className="rounded-lg border border-slate-700 bg-slate-900/60 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+              className="rounded-lg border border-slate-700 bg-slate-900/60 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-fg"
             >
               Auditoria
             </Link>
@@ -334,7 +334,7 @@ export function NodeConfigBackupsSection({
           <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
             Ultimo backup
           </p>
-          <p className="mt-2 text-sm text-white">
+          <p className="mt-2 text-sm text-fg">
             {formatDateTime(
               latestStored?.received_at ??
                 initialBackups.summary.latest_received_at,
@@ -345,7 +345,7 @@ export function NodeConfigBackupsSection({
           <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
             Idade
           </p>
-          <p className="mt-2 text-sm text-white">
+          <p className="mt-2 text-sm text-fg">
             {formatBackupAge(
               latestStored?.received_at ??
                 initialBackups.summary.latest_received_at,
@@ -356,7 +356,7 @@ export function NodeConfigBackupsSection({
           <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
             Tamanho
           </p>
-          <p className="mt-2 text-sm text-white">
+          <p className="mt-2 text-sm text-fg">
             {formatBytes(latestStored?.size_bytes ?? null)}
           </p>
         </div>

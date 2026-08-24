@@ -385,6 +385,10 @@ export type PfsenseUpgradeStatusResponse = {
   target_version: string | null;
   update_checked_at: string | null;
   update_check_error: string | null;
+  refresh_check_supported: boolean;
+  refresh_check_min_agent_version: string;
+  force_check_pending: boolean;
+  force_check_requested_at: string | null;
   last_seen_at: string | null;
   maintenance_mode: boolean;
   active_command: {
@@ -417,6 +421,12 @@ export type PfsenseUpgradeStatusResponse = {
     error_message: string | null;
   } | null;
   backup_gate: PfsenseUpgradeBackupGate;
+};
+
+export type PfsenseUpgradeRefreshCheckResponse = {
+  ok: true;
+  pending: boolean;
+  requested_at: string;
 };
 
 export type PfsenseUpgradeRequestResponse = {
@@ -1099,6 +1109,18 @@ export async function getPfsenseUpgradeStatus(
 ): Promise<PfsenseUpgradeStatusResponse> {
   return apiFetch<PfsenseUpgradeStatusResponse>(
     `/api/v1/nodes/${nodeId}/pfsense-upgrade/status`,
+  );
+}
+
+export async function requestPfsenseUpdateRefreshCheck(
+  nodeId: string,
+): Promise<PfsenseUpgradeRefreshCheckResponse> {
+  return apiFetch<PfsenseUpgradeRefreshCheckResponse>(
+    `/api/v1/nodes/${nodeId}/pfsense-upgrade/refresh-check`,
+    {
+      method: 'POST',
+      csrfProtected: true,
+    },
   );
 }
 
@@ -2150,7 +2172,7 @@ export async function createBackupBatch(input: {
 export type PackageUpgradeBatchResultItem = {
   node_id: string;
   hostname: string | null;
-  outcome: 'skipped' | 'enqueued' | 'failed';
+  outcome: 'skipped' | 'enqueued' | 'backup_queued' | 'failed';
   reason: string | null;
   command_id: string | null;
   status: string | null;
@@ -2329,7 +2351,7 @@ export type TechniciansListResponse = {
 export type TechnicianBatchRevokeResultItem = {
   node_id: string;
   hostname: string | null;
-  outcome: 'skipped' | 'enqueued' | 'failed';
+  outcome: 'skipped' | 'enqueued' | 'backup_queued' | 'failed';
   reason: string | null;
   command_id: string | null;
   status: string | null;
@@ -2453,6 +2475,7 @@ export type TechnicianBatchActionResponse = {
   summary: {
     total: number;
     enqueued: number;
+    backup_queued?: number;
     skipped: number;
     failed: number;
   };
@@ -2463,6 +2486,7 @@ export async function createTechnicianBatchProvision(input: {
   node_ids: string[];
   password?: string;
   privilege_profile?: 'admin_full';
+  backup_before_provision?: boolean;
   label?: string;
   client_id?: string;
   confirm: 'CONFIRMAR';

@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { PageHero } from '@/components/page-hero';
 import { Alert, Badge, Button, DataTable, PageSection, dataTableHeadClassName, dataTableRowClassName } from '@/components/ui';
 import { ApiError, getAuthSessions, getSession } from '@/lib/api';
@@ -35,6 +36,14 @@ export default async function SessionsPage({
   const params = (await searchParams) ?? {};
   const status = typeof params.status === 'string' ? params.status : undefined;
   const message = typeof params.message === 'string' ? params.message : undefined;
+  const view = typeof params.view === 'string' && ['active', 'history', 'all'].includes(params.view)
+    ? params.view
+    : 'active';
+  const query = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const page = typeof params.page === 'string' && /^\d+$/.test(params.page) ? Math.max(1, Number(params.page)) : 1;
+  const perPage = typeof params.per_page === 'string' && ['10', '25', '50'].includes(params.per_page)
+    ? Number(params.per_page)
+    : 25;
 
   let session;
   let sessions;
@@ -49,6 +58,29 @@ export default async function SessionsPage({
     throw error;
   }
   const activeCount = sessions.items.filter((item) => !item.revoked_at).length;
+  const filteredSessions = sessions.items
+    .filter((item) => {
+      const state = sessionState(item);
+      if (view === 'active' && state.label !== 'Atual' && state.label !== 'Ativa') return false;
+      if (view === 'history' && state.label !== 'Revogada' && state.label !== 'Expirada') return false;
+      if (!query) return true;
+      return `${item.ip_address ?? ''} ${item.user_agent ?? ''}`.toLowerCase().includes(query);
+    })
+    .sort((a, b) => {
+      if (a.current !== b.current) return a.current ? -1 : 1;
+      return new Date(b.last_seen_at ?? b.created_at).getTime() - new Date(a.last_seen_at ?? a.created_at).getTime();
+    });
+  const totalPages = Math.max(1, Math.ceil(filteredSessions.length / perPage));
+  const currentPage = Math.min(page, totalPages);
+  const visibleSessions = filteredSessions.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const pageHref = (nextPage: number) => {
+    const next = new URLSearchParams();
+    next.set('view', view);
+    if (query) next.set('q', query);
+    next.set('per_page', String(perPage));
+    next.set('page', String(nextPage));
+    return `/sessions?${next.toString()}`;
+  };
 
   return (
     <div className="space-y-4">
@@ -70,8 +102,25 @@ export default async function SessionsPage({
         title="Sessões registradas"
         description="Revogue sessões em outros dispositivos. A sessão atual deve ser encerrada com Sair."
       >
+        <div className="mb-3 flex flex-col gap-3 rounded-xl border border-border bg-surface-soft p-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-wrap gap-2" aria-label="Filtrar sessões por estado">
+            {[
+              ['active', 'Ativas'],
+              ['history', 'Expiradas/revogadas'],
+              ['all', 'Todas'],
+            ].map(([value, label]) => (
+              <Link key={value} href={`/sessions?view=${value}&per_page=${perPage}`} aria-current={view === value ? 'page' : undefined} className={view === value ? 'rounded-lg border border-primary bg-primary/15 px-3 py-2 text-sm text-primary' : 'rounded-lg border border-border px-3 py-2 text-sm text-fg-muted hover:text-fg'}>{label}</Link>
+            ))}
+          </div>
+          <form className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="view" value={view} />
+            <label className="text-xs text-fg-muted">Buscar por IP ou agente<input name="q" defaultValue={query} className="mt-1 block h-10 min-w-[16rem] rounded-lg border border-border bg-surface px-3 text-sm text-fg" /></label>
+            <label className="text-xs text-fg-muted">Por página<select name="per_page" defaultValue={String(perPage)} className="mt-1 block h-10 rounded-lg border border-border bg-surface px-3 text-sm text-fg"><option value="10">10</option><option value="25">25</option><option value="50">50</option></select></label>
+            <Button type="submit" size="sm">Aplicar</Button>
+          </form>
+        </div>
         <DataTable
-          empty={sessions.items.length === 0}
+          empty={visibleSessions.length === 0}
           emptyMessage="Nenhuma sessão registrada."
         >
           <thead className={dataTableHeadClassName}>
@@ -86,7 +135,7 @@ export default async function SessionsPage({
             </tr>
           </thead>
           <tbody>
-            {sessions.items.map((item) => {
+            {visibleSessions.map((item) => {
               const state = sessionState(item);
               return (
                 <tr key={item.id} className={dataTableRowClassName}>
@@ -134,6 +183,13 @@ export default async function SessionsPage({
             })}
           </tbody>
         </DataTable>
+        <div className="mt-3 flex items-center justify-between gap-3 text-sm text-fg-muted">
+          <span>{filteredSessions.length} sessão(ões) · página {currentPage} de {totalPages}</span>
+          <div className="flex gap-2">
+            {currentPage > 1 ? <Link href={pageHref(currentPage - 1)} className="rounded-lg border border-border px-3 py-2 hover:text-fg">Anterior</Link> : null}
+            {currentPage < totalPages ? <Link href={pageHref(currentPage + 1)} className="rounded-lg border border-border px-3 py-2 hover:text-fg">Próxima</Link> : null}
+          </div>
+        </div>
       </PageSection>
     </div>
   );

@@ -38,7 +38,7 @@ export function FleetBatchBackupPanel({
   return (
     <Card className="space-y-3 p-4">
       <div>
-        <h3 className="font-display text-base text-white">Backup em lote</h3>
+        <h3 className="font-display text-base text-fg">Backup em lote</h3>
         <p className="mt-1 text-sm text-slate-400">
           Enfileira <code className="text-slate-300">config_backup_now</code> para {targetLabel}
           {usingSelection &&

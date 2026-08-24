@@ -51,7 +51,7 @@ function VersionTable({
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1">
-          <h3 className="font-display text-base font-semibold text-white">{title}</h3>
+          <h3 className="font-display text-base font-semibold text-fg">{title}</h3>
           <p className="text-sm text-slate-400">{description}</p>
         </div>
         <Link

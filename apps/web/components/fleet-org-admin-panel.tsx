@@ -197,7 +197,7 @@ export function FleetOrgAdminPanel({
       <div className="grid gap-6 xl:grid-cols-2">
         <Card className="space-y-4 p-6">
           <div>
-            <h3 className="font-display text-lg text-white">Tags por cliente</h3>
+            <h3 className="font-display text-lg text-fg">Tags por cliente</h3>
             <p className="mt-1 text-sm text-slate-400">
               Etiquetas livres para filtros no inventário. Não substituem RBAC.
             </p>
@@ -266,7 +266,7 @@ export function FleetOrgAdminPanel({
 
         <Card className="space-y-4 p-6">
           <div>
-            <h3 className="font-display text-lg text-white">Grupos ad-hoc</h3>
+            <h3 className="font-display text-lg text-fg">Grupos ad-hoc</h3>
             <p className="mt-1 text-sm text-slate-400">
               Conjuntos nomeados de firewalls para filtros e operações futuras em lote.
             </p>
@@ -352,7 +352,7 @@ export function FleetOrgAdminPanel({
       {canManageGroups && selectedGroup ? (
         <Card className="space-y-4 p-6">
           <div>
-            <h3 className="font-display text-lg text-white">
+            <h3 className="font-display text-lg text-fg">
               Membros — {selectedGroup.name}
             </h3>
             <p className="mt-1 text-sm text-slate-400">

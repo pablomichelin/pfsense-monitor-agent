@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsIn,
   IsOptional,
   IsString,
@@ -103,6 +104,11 @@ export class BatchProvisionTechnicianDto {
   @IsOptional()
   @IsUUID()
   client_id?: string;
+
+  /** Default true no painel: enfileira backup antes do provisionamento se necessário. */
+  @IsOptional()
+  @IsBoolean()
+  backup_before_provision?: boolean;
 
   @IsString()
   @IsIn(['CONFIRMAR'])

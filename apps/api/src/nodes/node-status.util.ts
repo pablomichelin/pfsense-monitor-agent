@@ -10,8 +10,10 @@ import {
   HeartbeatServiceDto,
 } from '../ingest/dto/heartbeat.dto';
 
-const CRITICAL_SERVICES = new Set(['openvpn', 'ipsec', 'wireguard']);
-const WARNING_SERVICES = new Set(['unbound', 'dhcpd', 'ntpd']);
+const CRITICAL_SERVICES = new Set(['openvpn', 'wireguard']);
+const WARNING_SERVICES = new Set(['unbound', 'dhcpd', 'ntpd', 'ipsec']);
+/** Túnel IPsec sem SA não doente o box — peer morto, road warrior ocioso ou Phase 1 sem tráfego. */
+const NODE_STATUS_OPTIONAL_SERVICE_TYPES = new Set(['ipsec']);
 const DEGRADED_SERVICE_STATUSES = new Set<ServiceStatus>([
   'stopped',
   'degraded',
@@ -100,8 +102,18 @@ export const isGatewayProblem = (gateway: HeartbeatGatewayDto): boolean => {
 };
 
 /** Servicos com impact_on_status === 'optional' nao degradam o node. Omitido = critical. */
-export const serviceCountsForDegraded = (service: HeartbeatServiceDto): boolean =>
-  isServiceProblem(service) && (service.impact_on_status ?? 'critical') !== 'optional';
+export const serviceCountsForDegraded = (
+  service: HeartbeatServiceDto,
+): boolean => {
+  if (NODE_STATUS_OPTIONAL_SERVICE_TYPES.has(getServiceType(service.name))) {
+    return false;
+  }
+
+  return (
+    isServiceProblem(service) &&
+    (service.impact_on_status ?? 'critical') !== 'optional'
+  );
+};
 
 export const calculateNodeStatus = (input: {
   maintenanceMode: boolean;

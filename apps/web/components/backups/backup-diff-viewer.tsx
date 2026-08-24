@@ -87,7 +87,7 @@ export function BackupDiffViewer({ nodeId, items, enabled }: Props) {
             <select
               value={fromId}
               onChange={(event) => setFromId(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-fg"
             >
               {storedItems.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -101,7 +101,7 @@ export function BackupDiffViewer({ nodeId, items, enabled }: Props) {
             <select
               value={toId}
               onChange={(event) => setToId(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-fg"
             >
               {storedItems.map((item) => (
                 <option key={item.id} value={item.id}>

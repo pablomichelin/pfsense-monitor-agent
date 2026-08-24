@@ -1,5 +1,21 @@
 import type { Config } from 'tailwindcss';
 
+const channel = (token: string) => `rgb(var(${token}) / <alpha-value>)`;
+
+const palette = (name: string) => ({
+  50: channel(`--${name}-50`),
+  100: channel(`--${name}-100`),
+  200: channel(`--${name}-200`),
+  300: channel(`--${name}-300`),
+  400: channel(`--${name}-400`),
+  500: channel(`--${name}-500`),
+  600: channel(`--${name}-600`),
+  700: channel(`--${name}-700`),
+  800: channel(`--${name}-800`),
+  900: channel(`--${name}-900`),
+  950: channel(`--${name}-950`),
+});
+
 const config: Config = {
   content: [
     './app/**/*.{ts,tsx}',
@@ -9,22 +25,85 @@ const config: Config = {
   theme: {
     extend: {
       maxWidth: {
-        'app': 'var(--app-max-w)',
+        app: 'var(--app-max-w)',
       },
       spacing: {
-        'section': 'var(--section-gap)',
-        'card': 'var(--card-padding)',
-        'gutter': 'var(--app-gutter)',
+        section: 'var(--section-gap)',
+        card: 'var(--card-padding)',
+        gutter: 'var(--app-gutter)',
       },
       borderRadius: {
-        'card': 'var(--card-radius)',
+        card: 'var(--card-radius)',
       },
       colors: {
+        slate: palette('slate'),
+        cyan: palette('cyan'),
+        emerald: palette('emerald'),
+        amber: palette('amber'),
+        rose: palette('rose'),
+        canvas: channel('--color-canvas'),
+        fg: {
+          DEFAULT: channel('--color-fg'),
+          muted: channel('--color-fg-muted'),
+          subtle: channel('--color-fg-subtle'),
+        },
+        surface: {
+          DEFAULT: channel('--color-surface'),
+          soft: channel('--color-surface-soft'),
+          elevated: channel('--color-surface-elevated'),
+        },
+        border: {
+          DEFAULT: channel('--color-border'),
+          strong: channel('--color-border-strong'),
+        },
+        primary: {
+          DEFAULT: channel('--color-primary'),
+          hover: channel('--color-primary-hover'),
+        },
+        'on-primary': channel('--color-on-primary'),
+        focus: channel('--color-focus-ring'),
+        'table-head': channel('--color-table-head'),
+        'table-row': channel('--color-table-row'),
+        'table-hover': channel('--color-table-hover'),
+        sidebar: channel('--color-sidebar'),
+        header: channel('--color-header'),
+        'nav-hover': channel('--color-nav-hover'),
+        success: {
+          DEFAULT: channel('--color-success'),
+          fg: channel('--color-success-fg'),
+          muted: 'var(--color-success-bg)',
+          border: 'var(--color-success-border)',
+        },
+        warning: {
+          DEFAULT: channel('--color-warning'),
+          fg: channel('--color-warning-fg'),
+          muted: 'var(--color-warning-bg)',
+          border: 'var(--color-warning-border)',
+        },
+        danger: {
+          DEFAULT: channel('--color-danger'),
+          fg: channel('--color-danger-fg'),
+          muted: 'var(--color-danger-bg)',
+          border: 'var(--color-danger-border)',
+        },
+        info: {
+          DEFAULT: channel('--color-info'),
+          fg: channel('--color-info-fg'),
+          muted: 'var(--color-info-bg)',
+          border: 'var(--color-info-border)',
+        },
+        neutral: {
+          DEFAULT: channel('--color-neutral'),
+          fg: channel('--color-neutral-fg'),
+          muted: 'var(--color-neutral-bg)',
+          border: 'var(--color-neutral-border)',
+        },
         panel: {
-          bg: '#08111f',
-          card: '#0c1728',
-          line: '#1b2a41',
-          soft: '#132138',
+          DEFAULT: channel('--panel-card'),
+          bg: channel('--panel-bg'),
+          card: channel('--panel-card'),
+          line: channel('--panel-line'),
+          soft: channel('--panel-soft'),
         },
         signal: {
           online: '#22c55e',
@@ -35,11 +114,10 @@ const config: Config = {
         },
       },
       boxShadow: {
-        panel: '0 24px 80px rgba(0, 0, 0, 0.45)',
+        panel: 'var(--shadow-surface)',
       },
       backgroundImage: {
-        grid:
-          'linear-gradient(rgba(148,163,184,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.08) 1px, transparent 1px)',
+        grid: 'var(--bg-grid)',
       },
       fontFamily: {
         display: ['var(--font-space-grotesk)'],

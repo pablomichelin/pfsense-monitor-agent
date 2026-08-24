@@ -1,19 +1,49 @@
 # Sistema visual do painel Monitor-Pfsense
 
-**Versão:** 0.1.3 (2026-08-01)  
+**Versão:** 0.2.0 (2026-08-20)  
 **Referência:** Este documento define o padrão visual a ser mantido em novas telas e componentes.
 
 ---
 
 ## Princípio
 
-O painel segue tema **dark navy/blue tech**, com aparência **premium, limpa e operacional**. Novos componentes devem respeitar o sistema abaixo para manter coesão visual.
+O painel é um NOC operacional SystemUp, **premium, limpo e técnico**. Há dois temas visuais equivalentes em hierarquia, densidade e semântica:
+
+| Tema | Direção |
+|------|---------|
+| **Escuro** (padrão) | Navy/blue tech — o visual original do produto. Deve permanecer equivalente após qualquer refatoração. |
+| **Claro** | Cinza-azulado sóbrio — não infantil, sem branco puro em toda a tela, sem excesso de sombra. |
+
+A fonte de verdade do tema resolvido é o atributo `data-theme="dark" | "light"` no `<html>`. Não espalhar classes `dark:` pela base.
 
 ---
 
-## Tokens base
+## Preferência Claro / Escuro / Sistema
 
-Definidos em `apps/web/app/globals.css`:
+Controle acessível no header (área do usuário) e no header público do login.
+
+| Modo | Comportamento |
+|------|----------------|
+| **Claro** | Força `data-theme="light"` |
+| **Escuro** | Força `data-theme="dark"` |
+| **Sistema** | Segue `prefers-color-scheme` e reage a mudanças do SO |
+
+- Persistência: somente `localStorage` na chave `mp-theme-preference` (`light` \| `dark` \| `system`).
+- Não altera autenticação, cookies de sessão, `sidebar-collapsed` nem dados de tela.
+- Sem preferência gravada, o padrão é **escuro** (preserva o visual atual da frota).
+- Script mínimo no `<head>` (`THEME_INIT_SCRIPT` em `apps/web/lib/theme.ts`) aplica o tema **antes da pintura**, evitando flash do tema incorreto.
+- `ThemeProvider` hidrata o seletor sem mismatch; o `<html>` usa `suppressHydrationWarning`.
+- `prefers-reduced-motion` continua desligando transições e `scroll-behavior`.
+
+O seletor é um `radiogroup` com `aria-label="Tema da interface"`, `aria-checked` visível, Tab no item selecionado e setas / Home / End.
+
+---
+
+## Tokens semânticos
+
+Definidos em `apps/web/app/globals.css` e mapeados em `apps/web/tailwind.config.ts`.
+
+### Layout (independentes de tema)
 
 | Token | Valor | Uso |
 |-------|-------|-----|
@@ -28,6 +58,58 @@ Definidos em `apps/web/app/globals.css`:
 | `--input-h` | `2.75rem` | Altura de input/select/botão |
 | `--nav-h` | `2.5rem` | Altura dos itens de navegação |
 | `--label-tracking` | `0.08em` | Tracking dos labels |
+| `--header-height` | `3.5rem` | Altura do header |
+
+### Cor (canais RGB ou valor completo)
+
+| Token / utility | Uso |
+|-----------------|-----|
+| `--color-canvas` / `bg-canvas` | Fundo da aplicação |
+| `--html-bg`, `--body-bg`, `--body-glow`, `--bg-grid` | Decoração (gradiente + grid) |
+| `--color-surface` / `bg-surface` | Superfície padrão |
+| `--color-surface-soft` / `bg-surface-soft` | Inputs, chips, hover suave |
+| `--color-surface-elevated` / `bg-surface-elevated` | Modal, diálogo |
+| `--surface-glass` | `.glass-panel` |
+| `--color-border` / `border-border` | Borda padrão |
+| `--color-border-strong` / `border-border-strong` | Borda mais marcada |
+| `--color-fg` / `text-fg` | Texto principal |
+| `--color-fg-muted` / `text-fg-muted` | Texto secundário |
+| `--color-fg-subtle` / `text-fg-subtle` | Labels, placeholders |
+| `--color-primary` / `bg-primary` `text-primary` | Acento SystemUp (ciano) |
+| `--color-primary-hover` / `bg-primary-hover` | Hover do acento |
+| `--color-on-primary` / `text-on-primary` | Texto sobre botão primário |
+| `--color-focus-ring` | Anel de foco |
+| `--color-table-head` / `bg-table-head` | Cabeçalho de tabela |
+| `--color-table-row` / `bg-table-row` | Linha |
+| `--color-table-hover` / `bg-table-hover` | Hover de linha |
+| `--color-sidebar` / `--color-header` | Chrome do shell |
+| `--color-nav-hover` / `bg-nav-hover` | Hover de navegação |
+| `success` / `warning` / `danger` / `info` / `neutral` | Semântica (`-fg`, `-muted`, `-border`) |
+| `--overlay-scrim` / `.theme-overlay` | Scrim de modal (não usar `bg-slate-950/80`) |
+
+Paletas `slate`, `cyan`, `emerald`, `amber`, `rose` e `panel` também são canais CSS: no escuro coincidem com o Tailwind original; no claro, tons estruturais (slate alto = superfície clara; `*-100/200/300` de status = texto escuro com contraste AA).
+
+**Não** remapear `white`/`black` globais: `bg-white` permanece branco real (ex.: QR de MFA). Títulos usam `text-fg`.
+
+---
+
+## Contraste e acessibilidade
+
+- Texto e controles devem atingir **WCAG AA** nos dois temas.
+- Primária no claro é ciano mais escuro (`#0e7490`) com `on-primary` claro.
+- Estados semânticos **não dependem só da cor**: badge + rótulo + (quando couber) `status-dot`.
+- Foco visível: anel ciano em `button`/`a`/`input`/`select`/`textarea` (`:focus-visible`).
+- Inputs desabilitados: `opacity` + `cursor-not-allowed`.
+
+### Semântica de estado (inequívoca nos dois temas)
+
+| Estado | Cor |
+|--------|-----|
+| online / sucesso | verde (`success`, `signal-online`) |
+| degradado / alerta | âmbar (`warning`, `signal-degraded`) |
+| offline / erro / perigo | vermelho/rose (`danger`, `signal-offline`) |
+| manutenção / info | azul/ciano (`info`, `signal-maintenance`) |
+| desconhecido / neutro | cinza (`neutral`, `signal-unknown`) |
 
 ---
 
@@ -40,7 +122,7 @@ O shell autenticado **não** usa mais `max-w-7xl` + nav horizontal como containe
 | Shell | `.app-shell` — `width: var(--app-shell-width)`, `padding-inline: var(--app-gutter)` |
 | Página | `.app-page` — largura total da área de conteúdo (ao lado da sidebar) |
 | Sidebar | `15rem` expandida / `4rem` colapsada |
-| Header | breadcrumbs + ações do usuário (não é mais a nav horizontal antiga) |
+| Header | breadcrumbs + seletor de tema + ações do usuário |
 | Gap entre seções | `space-y-8` |
 | Grid de conteúdo | `grid gap-6` (ou `gap-4` para KPIs) |
 | Container login | `max-w-4xl mx-auto` |
@@ -55,9 +137,10 @@ Em viewport de 1440px, após sidebar + gutters, restam ~1152px de conteúdo úti
 |----------|---------------|
 | Header | `glass-panel` / barra do shell com breadcrumbs |
 | Branding | Sidebar / identidade SystemUp NOC · Monitor-Pfsense |
-| Eyebrow | `font-mono text-[10px] uppercase tracking-wider text-cyan-400/90` |
-| Botão secundário | `h-10 rounded-lg border border-slate-600/80` |
+| Eyebrow | `font-mono text-[10px] uppercase tracking-wider text-primary` |
+| Botão secundário | `h-10 rounded-lg border border-border` |
 | Email usuário | `max-w-[12rem] truncate rounded-lg` |
+| Tema | `ThemeToggle` à esquerda do email |
 
 ---
 
@@ -67,8 +150,8 @@ Em viewport de 1440px, após sidebar + gutters, restam ~1152px de conteúdo úti
 |------|---------|
 | Card genérico | `glass-panel rounded-xl p-6` |
 | KPI card | `glass-panel min-h-28 rounded-xl p-6` |
-| Label do KPI | `font-mono text-xs uppercase tracking-wider text-slate-500` |
-| Valor do KPI | `font-display text-3xl font-semibold text-white` |
+| Label do KPI | `font-mono text-xs uppercase tracking-wider text-fg-subtle` |
+| Valor do KPI | `font-display text-3xl font-semibold text-fg` |
 
 ---
 
@@ -76,11 +159,11 @@ Em viewport de 1440px, após sidebar + gutters, restam ~1152px de conteúdo úti
 
 | Elemento | Classes |
 |----------|---------|
-| Input | `h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-4` |
-| Select | `h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-4` |
-| Botão primário | `h-11 rounded-lg bg-cyan-500 px-5` |
-| Botão secundário | `h-11 rounded-lg border border-slate-600/80 px-5` |
-| Label | `text-sm font-medium text-slate-300` |
+| Input | `h-11 rounded-lg border border-border bg-surface-soft px-4` (`formInputClassName`) |
+| Select | `h-11 rounded-lg border border-border bg-surface-soft px-4` |
+| Botão primário | `Button` variant `primary` — `bg-primary text-on-primary` |
+| Botão secundário | `Button` variant `secondary` — `border-border bg-surface-soft` |
+| Label | `text-sm font-medium text-fg-muted` |
 
 ---
 
@@ -89,7 +172,7 @@ Em viewport de 1440px, após sidebar + gutters, restam ~1152px de conteúdo úti
 | Tipo | Classes |
 |------|---------|
 | Badge padrão | `rounded-md border px-2.5 py-0.5 font-mono text-xs` |
-| Tones | `border-*-500/30 bg-*-500/10 text-*-200` (emerald, amber, rose, cyan) |
+| Tones | `Badge` variants `success` / `warning` / `danger` / `info` / `neutral` (tokens `-muted` / `-border` / `-fg`) |
 
 **Não usar** `rounded-full` em badges; preferir `rounded-md`.
 
@@ -110,19 +193,19 @@ Qualquer outro chip/badge de status ou toggle deve usar `rounded-md` ou `rounded
 | Elemento | Classes |
 |----------|---------|
 | Container | `glass-panel rounded-xl px-6 py-5 sm:py-6` |
-| Eyebrow | `font-mono text-xs uppercase tracking-wider text-cyan-400/90` |
-| Título | `font-display text-2xl sm:text-3xl font-semibold text-white` |
-| Descrição | `text-sm leading-relaxed text-slate-400` |
-| Stats | `rounded-lg border px-4 py-2.5` + toneClass |
+| Eyebrow | `font-mono text-xs uppercase tracking-wider text-primary` |
+| Título | `font-display text-2xl sm:text-3xl font-semibold text-fg` |
+| Descrição | `text-sm leading-relaxed text-fg-muted` |
+| Stats | `rounded-lg border px-4 py-2.5` + toneClass semântico |
 
 ---
 
 ## Filtros
 
 - Inventário (`/nodes`): barra compacta em `<details>` nativo; `open` por padrão só com filtro na URL; summary com contagem e chips curtos.
-- Inputs/selects: `h-11 rounded-lg border border-slate-600/80`
+- Inputs/selects: `h-11 rounded-lg border border-border`
 - Gap entre campos: `xl:gap-4`
-- Botão "Aplicar/Filtrar": `h-11 rounded-lg bg-cyan-500`
+- Botão "Aplicar/Filtrar": `Button` primário (`h-11`)
 
 ---
 
@@ -130,10 +213,11 @@ Qualquer outro chip/badge de status ou toggle deve usar `rounded-md` ou `rounded
 
 - Primitivo: `DataTable` (`apps/web/components/ui/data-table.tsx`) com `dataTableHeadClassName` / `dataTableRowClassName`
 - Container: `Card` + `overflow-x-auto` (via `DataTable`)
-- Header: `border-b border-slate-800 bg-slate-950/40 text-slate-400`
+- Header: `border-b border-border bg-table-head/70 text-fg-muted`
 - Células (densidade inventário P0): `px-3 py-2.5` (th e td)
-- Nome de firewall (inventário): `text-sm font-medium text-white`
-- Linhas: `border-b border-slate-900/80 hover:bg-slate-950/20`
+- Nome de firewall (inventário): `text-sm font-medium text-fg`
+- Linhas: `border-b border-border/80 hover:bg-table-hover/60`
+- Scroll horizontal preservado; cabeçalho distinguível nos dois temas.
 
 ### Colunas canônicas do inventário (`/nodes`)
 
@@ -169,6 +253,7 @@ Sem bind mount; o container usa a imagem rebuildada. Ver também `.cursor/rules/
 
 ## Referências
 
+- Entrega tema claro: `docs/169-ENTREGA-TEMA-CLARO-PAINEL-2026-08-20.md`
 - Entrega despoluição P0: `docs/162-ENTREGA-UX-DESPOLUICAO-P0-INVENTARIO-2026-08-01.md`
 - Plano UX 161: `docs/161-PLANO-UX-DESPOLUICAO-PAINEL-OPERADOR-2026-08-01.md`
 - Entrega refatoração: `docs/29-entrega-refatoracao-visual-2026-03-14.md`

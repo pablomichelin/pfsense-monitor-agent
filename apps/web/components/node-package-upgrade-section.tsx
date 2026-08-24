@@ -187,7 +187,7 @@ export function NodePackageUpgradeSection({
 
       {modalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80"
+          className="fixed inset-0 z-50 flex items-center justify-center theme-overlay"
           role="dialog"
           aria-modal="true"
         >

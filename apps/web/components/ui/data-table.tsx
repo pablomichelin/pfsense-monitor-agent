@@ -2,10 +2,10 @@ import { cn } from '@/lib/cn';
 import { Card } from './card';
 
 export const dataTableHeadClassName =
-  'border-b border-slate-800 bg-slate-950/40 text-slate-400';
+  'sticky top-0 z-20 border-b border-border bg-table-head text-fg-muted shadow-sm';
 
 export const dataTableRowClassName =
-  'border-b border-slate-900/80 text-slate-200 transition hover:bg-slate-950/20';
+  'border-b border-border/80 text-fg transition hover:bg-table-hover/60';
 
 export function DataTable({
   toolbar,
@@ -23,15 +23,15 @@ export function DataTable({
   return (
     <Card className={cn('overflow-hidden p-0', className)}>
       {toolbar ? (
-        <div className="flex flex-wrap items-center gap-4 border-b border-slate-800 bg-slate-950/40 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-4 border-b border-border bg-table-head/70 px-4 py-3">
           {toolbar}
         </div>
       ) : null}
-      <div className="overflow-x-auto">
+      <div className="max-h-[70vh] overflow-auto">
         <table className="min-w-full text-left text-sm">{children}</table>
       </div>
       {empty && emptyMessage ? (
-        <div className="px-5 py-10 text-center text-sm text-slate-500">{emptyMessage}</div>
+        <div className="px-5 py-10 text-center text-sm text-fg-subtle">{emptyMessage}</div>
       ) : null}
     </Card>
   );

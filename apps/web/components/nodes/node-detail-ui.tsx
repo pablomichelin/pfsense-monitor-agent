@@ -2,7 +2,7 @@ export function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4">
       <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">{label}</p>
-      <p className="mt-2 font-display text-2xl text-white">{value}</p>
+      <p className="mt-2 font-display text-2xl text-fg">{value}</p>
     </div>
   );
 }

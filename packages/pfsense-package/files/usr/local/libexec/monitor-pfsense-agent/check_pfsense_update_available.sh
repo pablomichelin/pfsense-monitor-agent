@@ -20,7 +20,11 @@ STATE_DIR="${MONITOR_AGENT_CONFIG_BACKUP_STATE_DIR:-/var/db/monitor-pfsense-agen
 STATE_FILE="$STATE_DIR/pfsense-update-check.json"
 INTERVAL_HOURS="${MONITOR_AGENT_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS:-6}"
 # Bump quando o formato do cache ou o parser mudar (invalida resultado antigo).
-CACHE_VERSION=4
+# v5: refresh de repositórios (pfSense-upgrade -u) antes do -c.
+CACHE_VERSION=5
+REPO_REFRESH_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_REPO_REFRESH_TIMEOUT_SEC:-180}"
+CHECK_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_UPDATE_CHECK_TIMEOUT_SEC:-120}"
+STALE_LOCK_WITHOUT_PID_SEC=1800
 
 json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -186,6 +190,118 @@ should_run_check() {
   return 1
 }
 
+run_timed() {
+  limit="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$limit" "$@"
+    return $?
+  fi
+  "$@"
+}
+
+extract_lock_pid() {
+  if [ ! -f "$1" ]; then
+    return 0
+  fi
+  php -r '
+    $t = @file_get_contents($argv[1]);
+    if ($t === false) {
+      exit(0);
+    }
+    if (preg_match("/pid\s*=\s*(\d+)/i", $t, $matches)) {
+      echo $matches[1];
+      exit(0);
+    }
+    if (preg_match("/\b(\d{2,7})\b/", $t, $matches)) {
+      echo $matches[1];
+    }
+  ' "$1" 2>/dev/null || true
+}
+
+is_pid_alive() {
+  [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null
+}
+
+file_age_sec() {
+  file="$1"
+  now="$(date -u +%s)"
+  mtime="$(stat -f %m "$file" 2>/dev/null || stat -c %Y "$file" 2>/dev/null || printf '0')"
+  if [ -z "$mtime" ] || [ "$mtime" = "0" ]; then
+    printf '0'
+    return
+  fi
+  printf '%s' $((now - mtime))
+}
+
+clear_stale_pfsense_upgrade_locks() {
+  for lock in \
+    /tmp/pfSense-upgrade.lock \
+    /var/run/pfSense-upgrade.lock \
+    /var/run/pfSense-upgrade.pid
+  do
+    [ -e "$lock" ] || continue
+    pid="$(extract_lock_pid "$lock")"
+    if is_pid_alive "$pid"; then
+      continue
+    fi
+    age="$(file_age_sec "$lock")"
+    if [ -z "$pid" ] && [ "$age" -lt "$STALE_LOCK_WITHOUT_PID_SEC" ]; then
+      continue
+    fi
+    rm -f "$lock" 2>/dev/null || true
+  done
+}
+
+pfsense_upgrade_in_progress() {
+  agent_lock="/var/run/monitor-pfsense-agent-upgrade.lock"
+  if [ -f "$agent_lock" ]; then
+    pid="$(extract_lock_pid "$agent_lock")"
+    if is_pid_alive "$pid"; then
+      return 0
+    fi
+  fi
+
+  for lock in \
+    /tmp/pfSense-upgrade.lock \
+    /var/run/pfSense-upgrade.lock \
+    /var/run/pfSense-upgrade.pid
+  do
+    [ -e "$lock" ] || continue
+    pid="$(extract_lock_pid "$lock")"
+    if is_pid_alive "$pid"; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+refresh_pkg_repositories() {
+  refresh_log="$(mktemp)"
+  set +e
+  run_timed "$REPO_REFRESH_TIMEOUT_SEC" pfSense-upgrade -d -u >"$refresh_log" 2>&1
+  refresh_code=$?
+  set -e
+
+  if [ "$refresh_code" -ne 0 ]; then
+    first="$(first_output_line "$refresh_log")"
+    rm -f "$refresh_log" 2>/dev/null || true
+    if [ -z "$first" ]; then
+      if [ "$refresh_code" -eq 124 ]; then
+        first="pfSense-upgrade -u timed out"
+      else
+        first="pfSense-upgrade -u failed"
+      fi
+    fi
+    printf '%s' "$first"
+    return 1
+  fi
+
+  rm -f "$refresh_log" 2>/dev/null || true
+  return 0
+}
+
 detect_ha_detected() {
   config_path="${MONITOR_AGENT_PFSENSE_CONFIG_XML:-/conf/config.xml}"
   if [ ! -f "$config_path" ]; then
@@ -259,11 +375,26 @@ run_check() {
     return 1
   fi
 
+  clear_stale_pfsense_upgrade_locks
+
+  if pfsense_upgrade_in_progress; then
+    check_error="pfSense-upgrade already running"
+    write_state "" "" "$check_error" "$ha_detected"
+    return 1
+  fi
+
+  refresh_error="$(refresh_pkg_repositories || true)"
+  if [ -n "$refresh_error" ]; then
+    check_error="$refresh_error"
+    write_state "" "" "$check_error" "$ha_detected"
+    return 1
+  fi
+
   output_file="$(mktemp)"
   trap 'rm -f "$output_file"' EXIT INT TERM
 
   set +e
-  pfSense-upgrade -d -c >"$output_file" 2>&1
+  run_timed "$CHECK_TIMEOUT_SEC" pfSense-upgrade -d -c >"$output_file" 2>&1
   exit_code=$?
   set -e
 
@@ -315,11 +446,17 @@ main() {
       run_check || true
       print_cached_state
       ;;
+    needed)
+      if should_run_check 0; then
+        exit 0
+      fi
+      exit 1
+      ;;
     cache)
       print_cached_state
       ;;
     *)
-      echo "usage: $0 [check|force-check|cache]" >&2
+      echo "usage: $0 [check|force-check|needed|cache]" >&2
       exit 1
       ;;
   esac
