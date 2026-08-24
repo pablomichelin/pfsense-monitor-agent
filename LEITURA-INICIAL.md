@@ -11,12 +11,12 @@ Leia este arquivo primeiro.
 | Componente | Versao | Referencia |
 |------------|--------|------------|
 | API | `0.11.0` | `apps/api/package.json` |
-| Painel web | `1.12.1` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.5.14` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| Painel web | `1.12.2` | `apps/web/package.json` (rodape do layout) |
+| Package pfSense | `0.5.15` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
-**Release (config local):** publicar package **`0.5.14`** (`scripts/release-pfsense-package.sh`) — diagnóstico e troca allowlistada do firmware branch.
+**Release (config local):** publicar package **`0.5.15`** (`scripts/release-pfsense-package.sh`) — helper de firmware branch executável.
 
-**Última entrega (2026-08-23):** hotfix do modal Apontar branch (payload e z-index) — painel **1.12.1**. Ver `docs/175-ENTREGA-FIRMWARE-BRANCH-UPDATE-PFSENSE-2026-08-23.md`.
+**Última entrega (2026-08-23):** hotfix `set_pfsense_update_branch.php not found` (helper 644 + check `-x`). Package **0.5.15**, painel **1.12.2**. Ver `docs/176-HOTFIX-HELPER-FIRMWARE-BRANCH-0.5.15-2026-08-23.md`.
 
 **Entrega anterior (2026-08-23):** firmware branch no card de update + botão Apontar branch (Latest / 2.8.1 / 2.9.0). API **0.11.0**, painel **1.12.0**, package **0.5.14**. Ver `docs/175-ENTREGA-FIRMWARE-BRANCH-UPDATE-PFSENSE-2026-08-23.md`.
 

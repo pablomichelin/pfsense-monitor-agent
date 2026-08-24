@@ -6,6 +6,7 @@ libexec/monitor-pfsense-agent/collect_gateways.php
 libexec/monitor-pfsense-agent/collect_config_snapshot.php
 libexec/monitor-pfsense-agent/collect_local_users.php
 libexec/monitor-pfsense-agent/manage_local_user.php
+libexec/monitor-pfsense-agent/set_pfsense_update_branch.php
 libexec/monitor-pfsense-agent/run_pfsense_upgrade.sh
 libexec/monitor-pfsense-agent/run_package_upgrade.sh
 libexec/monitor-pfsense-agent/run_node_reboot.sh

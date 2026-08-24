@@ -69,6 +69,9 @@ function mapUpgradeRequestError(message: string, status?: number): string {
   if (normalized.includes('target_branch must be one of')) {
     return 'Branch inválido. Escolha Latest stable, 2.8.1 ou 2.9.0.';
   }
+  if (normalized.includes('set_pfsense_update_branch.php')) {
+    return 'O helper de firmware branch do 0.5.14 ficou sem permissão de execução. Atualize o package SystemUp Monitor para 0.5.15+ e tente de novo.';
+  }
   if (status === 409 && normalized.includes('no_recent_backup')) {
     return 'Backup recente obrigatório. Confirme que aceita prosseguir sem backup recente.';
   }

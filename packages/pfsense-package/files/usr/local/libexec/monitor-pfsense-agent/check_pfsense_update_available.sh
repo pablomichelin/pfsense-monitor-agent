@@ -462,7 +462,7 @@ detect_ha_detected() {
 
 read_firmware_branch_fields() {
   helper="$SCRIPT_DIR/set_pfsense_update_branch.php"
-  if [ ! -x "$helper" ]; then
+  if [ ! -f "$helper" ]; then
     printf '%s\n' "" "" ""
     return
   fi
@@ -698,10 +698,11 @@ run_set_branch() {
   fi
 
   helper="$SCRIPT_DIR/set_pfsense_update_branch.php"
-  if [ ! -x "$helper" ]; then
+  if [ ! -f "$helper" ]; then
     fail_check "set_pfsense_update_branch.php not found" "branch"
     return 1
   fi
+  chmod 0755 "$helper" 2>/dev/null || true
 
   set_log="$(mktemp)"
   trap 'rm -f "$set_log" "$repair_log" "$output_file"' EXIT INT TERM

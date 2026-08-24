@@ -6,6 +6,11 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-23 — Hotfix helper firmware branch (package 0.5.15, painel 1.12.2)
+
+- O 0.5.14 copiava `set_pfsense_update_branch.php` em modo 644; o check usava `-x` e reportava “not found”.
+- O 0.5.15 dá `chmod 0755`, lista o arquivo no `pkg-plist` e aceita o helper só por existir (`-f`).
+
 ### 2026-08-23 — Hotfix modal Apontar branch (painel 1.12.1)
 
 - O `apiFetch` não dá mais `JSON.stringify` duas vezes no body (a API recusava `2.9.0` válido).

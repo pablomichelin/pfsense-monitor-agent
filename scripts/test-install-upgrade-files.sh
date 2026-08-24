@@ -28,4 +28,8 @@ INSTALL_ROOT="$FROOT" "$EXTRACT/pfsense-package/bootstrap/install.sh" >/dev/null
 after="$(grep 'define("SYSTEMUP_MONITOR_AGENT_VERSION"' "$FROOT/usr/local/pkg/systemup_monitor.inc" | sed 's/.*"\([^"]*\)".*/\1/')"
 [[ "$after" == "$VERSION" ]] || { echo "FAIL: expected $VERSION after install, got $after"; exit 1; }
 
+helper="$FROOT/usr/local/libexec/monitor-pfsense-agent/set_pfsense_update_branch.php"
+[[ -f "$helper" ]] || { echo "FAIL: set_pfsense_update_branch.php missing after install"; exit 1; }
+[[ -x "$helper" ]] || { echo "FAIL: set_pfsense_update_branch.php not executable after install"; exit 1; }
+
 echo "OK: install.sh upgraded systemup_monitor.inc $before -> $after"

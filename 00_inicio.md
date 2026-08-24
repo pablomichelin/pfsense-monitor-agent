@@ -2,9 +2,9 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-23):** API `0.11.0` · painel `1.12.1` · package pfSense `0.5.14`.
+> **Versoes atuais (2026-08-23):** API `0.11.0` · painel `1.12.2` · package pfSense `0.5.15`.
 >
-> **Ultima entrega (2026-08-23):** hotfix do modal Apontar branch (payload + z-index) — painel **1.12.1**. Ver `docs/175`.
+> **Ultima entrega (2026-08-23):** hotfix helper de firmware branch (0.5.14 sem +x). Package **0.5.15**, painel **1.12.2**. Ver `docs/176`.
 >
 > **Entrega anterior (2026-08-23):** reparo oficial do repo de update (certctl, lock, IPv4, botão Reparar repositório). Ver `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md`.
 >

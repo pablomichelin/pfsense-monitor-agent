@@ -23,7 +23,13 @@ const ACTIVE_STATUSES = new Set(['pending', 'picked_up', 'running']);
 const POLL_INTERVAL_MS = 12_000;
 const REFRESH_POLL_INTERVAL_MS = 8_000;
 
-function errorClassLabel(errorClass: string | null): string | null {
+function errorClassLabel(
+  errorClass: string | null,
+  checkError?: string | null,
+): string | null {
+  if (checkError?.includes('set_pfsense_update_branch.php')) {
+    return 'O helper de branch do 0.5.14 ficou sem permissão de execução. Atualize o package SystemUp Monitor para 0.5.15+ e tente de novo.';
+  }
   switch (errorClass) {
     case 'tls':
       return 'O pkg não confia no certificado dos servidores Netgate. O agente 0.5.13+ tenta certctl rehash sozinho; se persistir, use Reparar repositório.';
@@ -629,9 +635,9 @@ export function NodePfsenseUpgradeSection({
         {status.update_check_error ? (
           <Alert variant="warning">
             Falha ao verificar atualização: {status.update_check_error}
-            {errorClassLabel(status.update_error_class) ? (
+            {errorClassLabel(status.update_error_class, status.update_check_error) ? (
               <span className="mt-2 block text-xs">
-                {errorClassLabel(status.update_error_class)}
+                {errorClassLabel(status.update_error_class, status.update_check_error)}
               </span>
             ) : null}
             {status.update_log_snippet ? (
