@@ -2,9 +2,11 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-23):** API `0.10.11` · painel `1.11.5` · package pfSense `0.5.13`.
+> **Versoes atuais (2026-08-23):** API `0.11.0` · painel `1.12.0` · package pfSense `0.5.14`.
 >
-> **Ultima entrega (2026-08-23):** reparo oficial do repo de update (certctl, lock, IPv4, botão Reparar repositório). Ver `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md`.
+> **Ultima entrega (2026-08-23):** firmware branch no check de update + botão Apontar branch. Ver `docs/175-ENTREGA-FIRMWARE-BRANCH-UPDATE-PFSENSE-2026-08-23.md`.
+>
+> **Entrega anterior (2026-08-23):** reparo oficial do repo de update (certctl, lock, IPv4, botão Reparar repositório). Ver `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md`.
 >
 > **Entrega anterior (2026-08-23):** check do OS atualiza repositórios pkg antes de decidir se há update; botão Atualizar verificação. Ver `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md`.
 >

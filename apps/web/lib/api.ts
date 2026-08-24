@@ -395,6 +395,15 @@ export type PfsenseUpgradeStatusResponse = {
   force_check_requested_at: string | null;
   repair_pending: boolean;
   repair_requested_at: string | null;
+  firmware_branch: string | null;
+  firmware_branch_descr: string | null;
+  update_branches: string[];
+  allowed_branch_targets: Array<'latest' | '2.8.1' | '2.9.0'>;
+  set_branch_supported: boolean;
+  set_branch_min_agent_version: string;
+  set_branch_pending: boolean;
+  set_branch_requested_at: string | null;
+  set_branch_target: string | null;
   last_seen_at: string | null;
   maintenance_mode: boolean;
   active_command: {
@@ -433,7 +442,10 @@ export type PfsenseUpgradeRefreshCheckResponse = {
   ok: true;
   pending: boolean;
   requested_at: string;
+  target_branch?: string;
 };
+
+export type PfsenseUpdateBranchTarget = 'latest' | '2.8.1' | '2.9.0';
 
 export type PfsenseUpgradeRequestResponse = {
   command_id: string;
@@ -1138,6 +1150,20 @@ export async function requestPfsenseRepoRepair(
     {
       method: 'POST',
       csrfProtected: true,
+    },
+  );
+}
+
+export async function requestPfsenseSetBranch(
+  nodeId: string,
+  targetBranch: PfsenseUpdateBranchTarget,
+): Promise<PfsenseUpgradeRefreshCheckResponse> {
+  return apiFetch<PfsenseUpgradeRefreshCheckResponse>(
+    `/api/v1/nodes/${nodeId}/pfsense-upgrade/set-branch`,
+    {
+      method: 'POST',
+      csrfProtected: true,
+      body: JSON.stringify({ target_branch: targetBranch }),
     },
   );
 }

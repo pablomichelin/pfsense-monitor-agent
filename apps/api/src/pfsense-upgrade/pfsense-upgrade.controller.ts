@@ -17,6 +17,7 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
 import { resolveClientIp } from '../common/client-ip';
 import { PermissionsService } from '../auth/permissions.service';
+import { PfsenseSetBranchDto } from './dto/pfsense-set-branch.dto';
 import { PfsenseUpgradeRequestDto } from './dto/pfsense-upgrade-request.dto';
 import { PfsenseUpgradeService } from './pfsense-upgrade.service';
 
@@ -56,6 +57,23 @@ export class PfsenseUpgradeController {
     return this.upgradeService.requestRefreshCheck(
       nodeId,
       request.auth!.userId,
+      resolveClientIp(request),
+    );
+  }
+
+  @Post('set-branch')
+  @RequirePermissions('pfsense.upgrade.run')
+  async requestSetBranch(
+    @Param('id') nodeId: string,
+    @Body() body: PfsenseSetBranchDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessPolicy.assertNodeAccess(getAccessActor(request), nodeId);
+
+    return this.upgradeService.requestSetBranch(
+      nodeId,
+      request.auth!.userId,
+      body.target_branch,
       resolveClientIp(request),
     );
   }

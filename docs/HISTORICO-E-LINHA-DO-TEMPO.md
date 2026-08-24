@@ -6,6 +6,12 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-23 — Firmware branch no update (API 0.11.0, painel 1.12.0, package 0.5.14)
+
+- O agente reporta o train atual; o portal deixa de tratar 2.7.2 “atualizado” só como cache velho.
+- **Apontar branch** (allowlist Latest / 2.8.1 / 2.9.0) usa as mesmas APIs da GUI (`pkg_repo_conf_path` + `pkg_switch_repo`), sem devel/snapshot.
+- Ver `docs/175-ENTREGA-FIRMWARE-BRANCH-UPDATE-PFSENSE-2026-08-23.md`.
+
 ### 2026-08-23 — Reparo do repositório de update (API 0.10.11, painel 1.11.5, package 0.5.13)
 
 - Check do OS trata lock órfão, `certctl rehash` e fallback IPv4; classifica o erro e manda o log oficial.

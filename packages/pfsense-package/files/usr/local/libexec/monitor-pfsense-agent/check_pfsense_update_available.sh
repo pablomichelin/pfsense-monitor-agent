@@ -20,8 +20,8 @@ STATE_DIR="${MONITOR_AGENT_CONFIG_BACKUP_STATE_DIR:-/var/db/monitor-pfsense-agen
 STATE_FILE="$STATE_DIR/pfsense-update-check.json"
 INTERVAL_HOURS="${MONITOR_AGENT_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS:-6}"
 # Bump quando o formato do cache ou o parser mudar (invalida resultado antigo).
-# v6: certctl rehash, lock órfão agressivo, fallback IPv4, classificação, repair-repo.
-CACHE_VERSION=6
+# v7: firmware branch no cache + ação set-branch (allowlist).
+CACHE_VERSION=7
 REPO_REFRESH_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_REPO_REFRESH_TIMEOUT_SEC:-180}"
 CHECK_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_UPDATE_CHECK_TIMEOUT_SEC:-120}"
 REPAIR_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_REPO_REPAIR_TIMEOUT_SEC:-180}"
@@ -460,6 +460,29 @@ detect_ha_detected() {
   return 1
 }
 
+read_firmware_branch_fields() {
+  helper="$SCRIPT_DIR/set_pfsense_update_branch.php"
+  if [ ! -x "$helper" ]; then
+    printf '%s\n' "" "" ""
+    return
+  fi
+  php -r '
+    $data = json_decode(shell_exec(escapeshellarg($argv[1]) . " list 2>/dev/null"), true);
+    if (!is_array($data)) {
+      echo "\n\n\n";
+      exit(0);
+    }
+    $name = substr(trim((string) ($data["current_name"] ?? "")), 0, 64);
+    $descr = substr(trim((string) ($data["current_descr"] ?? "")), 0, 160);
+    $branches = $data["branches"] ?? [];
+    if (!is_array($branches)) {
+      $branches = [];
+    }
+    $branches = array_slice(array_values(array_filter(array_map("strval", $branches))), 0, 12);
+    echo $name . "\n" . $descr . "\n" . implode(",", $branches) . "\n";
+  ' "$helper" 2>/dev/null || printf '%s\n' "" "" ""
+}
+
 write_state() {
   available="$1"
   target_version="$2"
@@ -492,6 +515,16 @@ write_state() {
     log_snippet="$(upgrade_log_snippet || true)"
   fi
 
+  branch_name=""
+  branch_descr=""
+  branch_list=""
+  branch_fields="$(read_firmware_branch_fields || true)"
+  if [ -n "$branch_fields" ]; then
+    branch_name="$(printf '%s\n' "$branch_fields" | sed -n '1p' | tr -d '\r')"
+    branch_descr="$(printf '%s\n' "$branch_fields" | sed -n '2p' | tr -d '\r')"
+    branch_list="$(printf '%s\n' "$branch_fields" | sed -n '3p' | tr -d '\r')"
+  fi
+
   cat >"$STATE_FILE" <<EOF
 {
   "cache_version": $CACHE_VERSION,
@@ -501,6 +534,9 @@ write_state() {
   "check_error": "$(json_escape "$check_error")",
   "error_class": "$(json_escape "$error_class")",
   "log_snippet": "$(json_escape "$log_snippet")",
+  "firmware_branch": "$(json_escape "$branch_name")",
+  "firmware_branch_descr": "$(json_escape "$branch_descr")",
+  "firmware_branches": "$(json_escape "$branch_list")",
   "ha_detected": $ha_json
 }
 EOF
@@ -642,6 +678,57 @@ run_repair_repo() {
   run_check || true
 }
 
+run_set_branch() {
+  target="$1"
+  case "$target" in
+    latest|2.8.1|2.9.0)
+      ;;
+    *)
+      ha_detected="false"
+      if detect_ha_detected; then
+        ha_detected="true"
+      fi
+      fail_check "invalid firmware branch target" "branch"
+      return 1
+      ;;
+  esac
+  ha_detected="false"
+  if detect_ha_detected; then
+    ha_detected="true"
+  fi
+
+  helper="$SCRIPT_DIR/set_pfsense_update_branch.php"
+  if [ ! -x "$helper" ]; then
+    fail_check "set_pfsense_update_branch.php not found" "branch"
+    return 1
+  fi
+
+  set_log="$(mktemp)"
+  trap 'rm -f "$set_log" "$repair_log" "$output_file"' EXIT INT TERM
+  set +e
+  php "$helper" set "$target" >"$set_log" 2>&1
+  set_code=$?
+  set -e
+
+  if [ "$set_code" -ne 0 ]; then
+    first="$(php -r '
+      $raw = @file_get_contents($argv[1]);
+      $data = json_decode((string) $raw, true);
+      if (is_array($data) && trim((string) ($data["error"] ?? "")) !== "") {
+        echo substr(trim((string) $data["error"]), 0, 300);
+        exit(0);
+      }
+      $line = trim((string) strtok((string) $raw, "\n"));
+      echo $line !== "" ? substr($line, 0, 300) : "firmware branch switch failed";
+    ' "$set_log" 2>/dev/null || printf 'firmware branch switch failed')"
+    fail_check "$first" "branch"
+    return 1
+  fi
+
+  invalidate_state_cache
+  run_check || true
+}
+
 print_cached_state() {
   if [ ! -f "$STATE_FILE" ]; then
     printf '{}'
@@ -669,6 +756,10 @@ main() {
       run_repair_repo || true
       print_cached_state
       ;;
+    set-branch)
+      run_set_branch "${2:-}" || true
+      print_cached_state
+      ;;
     needed)
       if should_run_check 0; then
         exit 0
@@ -679,7 +770,7 @@ main() {
       print_cached_state
       ;;
     *)
-      echo "usage: $0 [check|force-check|repair-repo|needed|cache]" >&2
+      echo "usage: $0 [check|force-check|repair-repo|set-branch <target>|needed|cache]" >&2
       exit 1
       ;;
   esac

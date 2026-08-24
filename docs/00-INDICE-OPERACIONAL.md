@@ -4,9 +4,11 @@ Data de referencia: `2026-08-23`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Versoes atuais (codigo):** API `0.10.11` · painel `1.11.5` · package pfSense `0.5.13` (publicar com `scripts/release-pfsense-package.sh`).
+> **Versoes atuais (codigo):** API `0.11.0` · painel `1.12.0` · package pfSense `0.5.14` (publicar com `scripts/release-pfsense-package.sh`).
 >
-> **Ultima entrega (2026-08-23):** reparo oficial do repo de update (certctl, lock, IPv4). Ver `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md`.
+> **Ultima entrega (2026-08-23):** firmware branch + Apontar branch (Latest / 2.8.1 / 2.9.0). Ver `docs/175-ENTREGA-FIRMWARE-BRANCH-UPDATE-PFSENSE-2026-08-23.md`.
+>
+> **Entrega anterior (2026-08-23):** reparo oficial do repo de update (certctl, lock, IPv4). Ver `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md`.
 >
 > **Entrega anterior (2026-08-23):** check do OS com refresh de repositórios pkg; botão Atualizar verificação. Ver `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md`.
 >
@@ -224,6 +226,7 @@ Versoes atuais (produto): API `0.6.4`, painel `1.4.5`, package pfSense `0.4.7`. 
 - Tema claro: `docs/169-ENTREGA-TEMA-CLARO-PAINEL-2026-08-20.md` — painel `1.11.0`; tokens em `docs/SISTEMA-VISUAL-PAINEL.md`
 - Reorganização visual consolidada: plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`; entrega `docs/171-ENTREGA-REORGANIZACAO-VISUAL-PAINEL-1.11.2-2026-08-20.md` — painel `1.11.2`
 - Check do OS com repositório stale: `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md` — API `0.10.10`, painel `1.11.4`, package `0.5.12`
+- Firmware branch + Apontar branch: `docs/175-ENTREGA-FIRMWARE-BRANCH-UPDATE-PFSENSE-2026-08-23.md` — API `0.11.0`, painel `1.12.0`, package `0.5.14`
 - Reparo do repo de update: `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md` — API `0.10.11`, painel `1.11.5`, package `0.5.13`
 - **Não reabre** o roadmap UX Fases 0–8 (`docs/88-...`)
 

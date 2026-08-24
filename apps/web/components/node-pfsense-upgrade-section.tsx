@@ -2,10 +2,14 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { PfsenseUpgradeStatusResponse } from '@/lib/api';
+import type {
+  PfsenseUpdateBranchTarget,
+  PfsenseUpgradeStatusResponse,
+} from '@/lib/api';
 import {
   pollPfsenseUpgradeStatusAction,
   requestPfsenseRepoRepairAction,
+  requestPfsenseSetBranchAction,
   requestPfsenseUpdateRefreshCheckAction,
   requestPfsenseUpgradeAction,
 } from '@/lib/pfsense-upgrade';
@@ -32,8 +36,36 @@ function errorClassLabel(errorClass: string | null): string | null {
       return 'Metadados do pkg incompatíveis. Use Reparar repositório (receita oficial Netgate).';
     case 'unknown':
       return 'A checagem falhou. O trecho do log abaixo ajuda a diagnosticar.';
+    case 'branch':
+      return 'A troca do firmware branch falhou ou o branch pedido ainda não é oferecido neste firewall.';
     default:
       return null;
+  }
+}
+
+function defaultBranchTarget(
+  status: PfsenseUpgradeStatusResponse,
+): PfsenseUpdateBranchTarget {
+  const version = status.pfsense_version ?? '';
+  if (/^2\.7(\.|$)/.test(version)) {
+    return '2.8.1';
+  }
+  if (/^2\.8(\.|$)/.test(version)) {
+    return '2.9.0';
+  }
+  return 'latest';
+}
+
+function branchTargetLabel(target: string): string {
+  switch (target) {
+    case '2.8.1':
+      return '2.8.1 (intermediário CE)';
+    case '2.9.0':
+      return '2.9.0 (CE atual)';
+    case 'latest':
+      return 'Latest stable (default Netgate)';
+    default:
+      return target;
   }
 }
 
@@ -193,6 +225,12 @@ export function NodePfsenseUpgradeSection({
   const [repairModalOpen, setRepairModalOpen] = useState(false);
   const [repairConfirmText, setRepairConfirmText] = useState('');
   const [repairing, setRepairing] = useState(false);
+  const [branchModalOpen, setBranchModalOpen] = useState(false);
+  const [branchConfirmText, setBranchConfirmText] = useState('');
+  const [branchTarget, setBranchTarget] = useState<PfsenseUpdateBranchTarget>(
+    defaultBranchTarget(initialStatus),
+  );
+  const [settingBranch, setSettingBranch] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshStatus = useCallback(async () => {
@@ -208,13 +246,20 @@ export function NodePfsenseUpgradeSection({
     const upgradeActive =
       status.active_command != null &&
       ACTIVE_STATUSES.has(status.active_command.status);
-    if (!upgradeActive && !status.force_check_pending && !status.repair_pending) {
+    if (
+      !upgradeActive &&
+      !status.force_check_pending &&
+      !status.repair_pending &&
+      !status.set_branch_pending
+    ) {
       return;
     }
 
     const timer = window.setInterval(() => {
       void refreshStatus();
-    }, status.force_check_pending || status.repair_pending
+    }, status.force_check_pending ||
+      status.repair_pending ||
+      status.set_branch_pending
       ? REFRESH_POLL_INTERVAL_MS
       : POLL_INTERVAL_MS);
 
@@ -224,6 +269,7 @@ export function NodePfsenseUpgradeSection({
     status.active_command,
     status.force_check_pending,
     status.repair_pending,
+    status.set_branch_pending,
   ]);
 
   const blockReason = useMemo(() => {
@@ -271,7 +317,10 @@ export function NodePfsenseUpgradeSection({
     ? 'Sem permissão para disparar upgrade'
     : !status.refresh_check_supported
       ? `Agente ${status.refresh_check_min_agent_version}+ necessário para atualizar os repositórios pkg`
-      : status.force_check_pending || status.repair_pending || refreshingCheck
+      : status.force_check_pending ||
+          status.repair_pending ||
+          status.set_branch_pending ||
+          refreshingCheck
         ? 'Aguardando o agente atualizar os repositórios e rechecar'
         : undefined;
 
@@ -282,6 +331,22 @@ export function NodePfsenseUpgradeSection({
       : status.repair_pending || repairing
         ? 'Aguardando o agente executar o reparo oficial do repositório'
         : undefined;
+
+  const setBranchTitle = !canRunUpgrade
+    ? 'Sem permissão para disparar upgrade'
+    : !status.set_branch_supported
+      ? `Agente ${status.set_branch_min_agent_version}+ necessário para apontar o firmware branch`
+      : status.set_branch_pending || settingBranch
+        ? 'Aguardando o agente apontar o branch e rechecar'
+        : undefined;
+
+  const busyUpdateAction =
+    refreshingCheck ||
+    repairing ||
+    settingBranch ||
+    status.force_check_pending ||
+    status.repair_pending ||
+    status.set_branch_pending;
 
   const handleRefreshCheck = async () => {
     setRefreshingCheck(true);
@@ -398,6 +463,67 @@ export function NodePfsenseUpgradeSection({
     }
   };
 
+  const handleSetBranch = async () => {
+    if (!confirmationMatches(status.hostname, branchConfirmText)) {
+      setError('Digite o hostname ou CONFIRMAR para apontar o firmware branch.');
+      return;
+    }
+
+    setSettingBranch(true);
+    setRefreshMessage(null);
+    setError(null);
+    const previousCheckedAt = status.update_checked_at;
+    try {
+      const result = await requestPfsenseSetBranchAction(nodeId, branchTarget);
+      if (!result.ok) {
+        setError(result.error);
+        setSettingBranch(false);
+        return;
+      }
+
+      setBranchModalOpen(false);
+      setBranchConfirmText('');
+      setRefreshMessage(
+        `Pedido enviado. O agente vai apontar o branch para ${branchTargetLabel(branchTarget)} e rechecar no próximo heartbeat.`,
+      );
+
+      const deadline = Date.now() + 240_000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, REFRESH_POLL_INTERVAL_MS),
+        );
+        const next = await pollPfsenseUpgradeStatusAction(nodeId);
+        setStatus(next);
+        const checkChanged =
+          next.update_checked_at != null &&
+          next.update_checked_at !== previousCheckedAt;
+        if (checkChanged && !next.set_branch_pending) {
+          setRefreshMessage(
+            next.update_available === true
+              ? `Branch apontado. Atualização encontrada: ${next.target_version ?? 'versão nova'}.`
+              : next.update_check_error
+                ? `Branch apontado com erro: ${next.update_check_error}`
+                : `Branch atual: ${next.firmware_branch ?? branchTarget}. O pfSense ainda não anunciou atualização neste train.`,
+          );
+          setSettingBranch(false);
+          return;
+        }
+      }
+
+      setRefreshMessage(
+        'Ainda aguardando o agente apontar o branch. O próximo heartbeat deve atualizar o status.',
+      );
+    } catch (branchError) {
+      setError(
+        branchError instanceof Error
+          ? branchError.message
+          : 'Falha ao solicitar troca do firmware branch',
+      );
+    } finally {
+      setSettingBranch(false);
+    }
+  };
+
   const handleRequest = async () => {
     setSubmitting(true);
     setError(null);
@@ -467,6 +593,15 @@ export function NodePfsenseUpgradeSection({
               {formatDateTime(status.update_checked_at)}
             </p>
           ) : null}
+          {status.firmware_branch || status.firmware_branch_descr ? (
+            <p>
+              <span className="text-slate-500">Firmware branch:</span>{' '}
+              {status.firmware_branch ?? '—'}
+              {status.firmware_branch_descr
+                ? ` — ${status.firmware_branch_descr}`
+                : ''}
+            </p>
+          ) : null}
         </div>
 
         {activeLabel ? (
@@ -492,10 +627,29 @@ export function NodePfsenseUpgradeSection({
         {status.update_available === false &&
         looksLikeBehindCeTrack(status.pfsense_version) ? (
           <Alert variant="warning">
-            Este firewall está em {status.pfsense_version}. A checagem do agente
-            pode ter lido metadados pkg velhos e reportado “atualizado”. Use
-            Atualizar verificação (0.5.12+) ou Reparar repositório (0.5.13+)
-            para renovar as ferramentas oficiais de update.
+            {status.firmware_branch ? (
+              <>
+                Este firewall está em {status.pfsense_version} no branch{' '}
+                <strong>{status.firmware_branch}</strong>. O check oficial
+                pode estar correto neste train — 2.9.0 fica em outro branch.
+                Use <strong>Apontar branch</strong> (0.5.14+) para Latest
+                stable / 2.8.1 / 2.9.0, sem mudar a versão do OS ainda.
+              </>
+            ) : (
+              <>
+                Este firewall está em {status.pfsense_version}. A checagem do
+                agente pode ter lido metadados pkg velhos e reportado
+                “atualizado”. Use Atualizar verificação (0.5.12+), Reparar
+                repositório (0.5.13+) ou Apontar branch (0.5.14+).
+              </>
+            )}
+          </Alert>
+        ) : null}
+
+        {status.set_branch_pending ? (
+          <Alert variant="warning">
+            Troca de firmware branch pedida ({status.set_branch_target ?? '…'})
+            — aguardando o agente no próximo heartbeat (pode levar 1–3 min).
           </Alert>
         ) : null}
 
@@ -506,7 +660,9 @@ export function NodePfsenseUpgradeSection({
           </Alert>
         ) : null}
 
-        {status.force_check_pending && !status.repair_pending ? (
+        {status.force_check_pending &&
+        !status.repair_pending &&
+        !status.set_branch_pending ? (
           <Alert variant="warning">
             Verificação pedida — aguardando o agente atualizar os repositórios e
             rechecar no próximo heartbeat.
@@ -519,7 +675,9 @@ export function NodePfsenseUpgradeSection({
           <Alert variant={lastResultAlert.variant}>{lastResultAlert.text}</Alert>
         ) : null}
 
-        {error && !modalOpen ? <Alert variant="error">{error}</Alert> : null}
+        {error && !modalOpen && !repairModalOpen && !branchModalOpen ? (
+          <Alert variant="error">{error}</Alert>
+        ) : null}
 
         {blockReason && !showUpgradeButton ? (
           <p className="text-xs text-slate-500">{blockReason}</p>
@@ -530,14 +688,7 @@ export function NodePfsenseUpgradeSection({
             type="button"
             variant="secondary"
             size="sm"
-            disabled={
-              !canRunUpgrade ||
-              !status.refresh_check_supported ||
-              refreshingCheck ||
-              repairing ||
-              status.force_check_pending ||
-              status.repair_pending
-            }
+            disabled={!canRunUpgrade || !status.refresh_check_supported || busyUpdateAction}
             title={refreshCheckTitle}
             onClick={() => void handleRefreshCheck()}
           >
@@ -549,13 +700,7 @@ export function NodePfsenseUpgradeSection({
             type="button"
             variant="secondary"
             size="sm"
-            disabled={
-              !canRunUpgrade ||
-              !status.repair_supported ||
-              repairing ||
-              refreshingCheck ||
-              status.repair_pending
-            }
+            disabled={!canRunUpgrade || !status.repair_supported || busyUpdateAction}
             title={repairTitle}
             onClick={() => {
               setError(null);
@@ -565,6 +710,22 @@ export function NodePfsenseUpgradeSection({
             {repairing || status.repair_pending
               ? 'Reparando...'
               : 'Reparar repositório'}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={!canRunUpgrade || !status.set_branch_supported || busyUpdateAction}
+            title={setBranchTitle}
+            onClick={() => {
+              setError(null);
+              setBranchTarget(defaultBranchTarget(status));
+              setBranchModalOpen(true);
+            }}
+          >
+            {settingBranch || status.set_branch_pending
+              ? 'Apontando branch...'
+              : 'Apontar branch'}
           </Button>
           <Button
             type="button"
@@ -732,6 +893,84 @@ export function NodePfsenseUpgradeSection({
                 className="rounded-lg border border-slate-500 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700 disabled:opacity-50"
               >
                 {repairing ? 'Processando...' : 'Confirmar reparo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {branchModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center theme-overlay"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="mx-4 w-full max-w-lg rounded-xl border border-slate-600 bg-slate-900 p-6 shadow-xl">
+            <h2 className="font-display text-lg text-slate-100">
+              Apontar firmware branch
+            </h2>
+            <div className="mt-3 space-y-3 text-sm text-slate-300">
+              <p>
+                No firewall <strong>{status.hostname}</strong> o agente vai
+                gravar o mesmo campo da GUI (
+                <code>system/pkg_repo_conf_path</code>) e chamar{' '}
+                <code>pkg_switch_repo()</code>, depois rechecar o OS.
+              </p>
+              <p className="text-slate-400">
+                Não atualiza o pfSense agora. Só muda o train de update
+                (allowlist: Latest stable, 2.8.1, 2.9.0). Devel, snapshot e
+                Plus upgrade estão bloqueados.
+              </p>
+              <label className="block">
+                <span className="text-slate-400">Branch alvo</span>
+                <select
+                  value={branchTarget}
+                  onChange={(event) =>
+                    setBranchTarget(
+                      event.target.value as PfsenseUpdateBranchTarget,
+                    )
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100"
+                >
+                  {status.allowed_branch_targets.map((target) => (
+                    <option key={target} value={target}>
+                      {branchTargetLabel(target)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-slate-400">
+                  Digite o hostname <code>{status.hostname}</code> ou CONFIRMAR:
+                </span>
+                <input
+                  type="text"
+                  value={branchConfirmText}
+                  onChange={(event) => setBranchConfirmText(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100"
+                />
+              </label>
+              {error ? <Alert variant="error">{error}</Alert> : null}
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={settingBranch}
+                onClick={() => setBranchModalOpen(false)}
+                className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={
+                  settingBranch ||
+                  !confirmationMatches(status.hostname, branchConfirmText)
+                }
+                onClick={() => void handleSetBranch()}
+                className="rounded-lg border border-slate-500 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700 disabled:opacity-50"
+              >
+                {settingBranch ? 'Processando...' : 'Confirmar branch'}
               </button>
             </div>
           </div>

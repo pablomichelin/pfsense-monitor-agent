@@ -18,9 +18,13 @@ import { evaluateBackupGate } from './backup-gate.util';
 import {
   isPfsenseForceCheckPending,
   PFSENSE_REPO_REPAIR_COOLDOWN_MS,
+  PFSENSE_UPDATE_BRANCH_COOLDOWN_MS,
+  PFSENSE_UPDATE_BRANCH_MIN_AGENT,
+  PFSENSE_UPDATE_BRANCH_TARGETS,
   PFSENSE_UPDATE_FORCE_CHECK_COOLDOWN_MS,
   PFSENSE_UPDATE_REFRESH_MIN_AGENT,
   PFSENSE_UPDATE_REPAIR_MIN_AGENT,
+  type PfsenseUpdateBranchTarget,
 } from './pfsense-update-check.util';
 import { isMajorBranchBump } from './pfsense-version.util';
 import { PfsenseUpgradeRequestDto } from './dto/pfsense-upgrade-request.dto';
@@ -58,6 +62,11 @@ export class PfsenseUpgradeService {
         pfsenseUpdateErrorClass: true,
         pfsenseUpdateLogSnippet: true,
         pfsenseRepoRepairRequestedAt: true,
+        pfsenseFirmwareBranch: true,
+        pfsenseFirmwareBranchDescr: true,
+        pfsenseUpdateBranches: true,
+        pfsenseUpdateBranchRequestedAt: true,
+        pfsenseUpdateBranchTarget: true,
       },
     });
 
@@ -137,6 +146,25 @@ export class PfsenseUpgradeService {
       ),
       repair_requested_at:
         node.pfsenseRepoRepairRequestedAt?.toISOString() ?? null,
+      firmware_branch: node.pfsenseFirmwareBranch,
+      firmware_branch_descr: node.pfsenseFirmwareBranchDescr,
+      update_branches: (node.pfsenseUpdateBranches ?? '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item !== ''),
+      allowed_branch_targets: [...PFSENSE_UPDATE_BRANCH_TARGETS],
+      set_branch_supported: isAgentVersionAtLeast(
+        node.agentVersion,
+        PFSENSE_UPDATE_BRANCH_MIN_AGENT,
+      ),
+      set_branch_min_agent_version: PFSENSE_UPDATE_BRANCH_MIN_AGENT,
+      set_branch_pending: isPfsenseForceCheckPending(
+        node.pfsenseUpdateBranchRequestedAt,
+        node.pfsenseUpdateCheckedAt,
+      ),
+      set_branch_requested_at:
+        node.pfsenseUpdateBranchRequestedAt?.toISOString() ?? null,
+      set_branch_target: node.pfsenseUpdateBranchTarget,
       last_seen_at: node.lastSeenAt?.toISOString() ?? null,
       maintenance_mode: node.maintenanceMode,
       active_command: activeCommand
@@ -298,6 +326,79 @@ export class PfsenseUpgradeService {
     return {
       ok: true,
       pending: true,
+      requested_at: requestedAt.toISOString(),
+    };
+  }
+
+  async requestSetBranch(
+    nodeId: string,
+    userId: string,
+    targetBranch: PfsenseUpdateBranchTarget,
+    ipAddress?: string,
+  ) {
+    const node = await this.prisma.node.findUnique({
+      where: { id: nodeId },
+      select: {
+        id: true,
+        agentVersion: true,
+        pfsenseUpdateBranchRequestedAt: true,
+        pfsenseUpdateCheckedAt: true,
+      },
+    });
+
+    if (!node) {
+      throw new NotFoundException('node not found');
+    }
+
+    if (
+      !isAgentVersionAtLeast(node.agentVersion, PFSENSE_UPDATE_BRANCH_MIN_AGENT)
+    ) {
+      throw new ConflictException('agent version too old for firmware branch');
+    }
+
+    const pending = isPfsenseForceCheckPending(
+      node.pfsenseUpdateBranchRequestedAt,
+      node.pfsenseUpdateCheckedAt,
+    );
+    if (
+      pending &&
+      node.pfsenseUpdateBranchRequestedAt != null &&
+      Date.now() - node.pfsenseUpdateBranchRequestedAt.getTime() <
+        PFSENSE_UPDATE_BRANCH_COOLDOWN_MS
+    ) {
+      throw new ConflictException('firmware branch change already requested');
+    }
+
+    const requestedAt = new Date();
+    await this.prisma.node.update({
+      where: { id: nodeId },
+      data: {
+        pfsenseUpdateBranchRequestedAt: requestedAt,
+        pfsenseUpdateBranchTarget: targetBranch,
+        pfsenseUpdateForceCheckAt: requestedAt,
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorType: 'user',
+        actorId: userId,
+        action: 'pfsense.upgrade.set_branch',
+        targetType: 'node',
+        targetId: nodeId,
+        ipAddress,
+        metadataJson: {
+          requested_at: requestedAt.toISOString(),
+          target_branch: targetBranch,
+          agent_version: node.agentVersion,
+        },
+      },
+    });
+
+    return {
+      ok: true,
+      pending: true,
+      target_branch: targetBranch,
       requested_at: requestedAt.toISOString(),
     };
   }

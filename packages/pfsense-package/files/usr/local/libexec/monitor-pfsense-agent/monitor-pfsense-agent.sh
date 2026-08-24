@@ -1337,6 +1337,9 @@ append_pfsense_update_json_fields() {
     $error = substr(trim((string) ($data["check_error"] ?? "")), 0, 500);
     $errorClass = substr(trim((string) ($data["error_class"] ?? "")), 0, 32);
     $logSnippet = substr(trim((string) ($data["log_snippet"] ?? "")), 0, 400);
+    $branch = substr(trim((string) ($data["firmware_branch"] ?? "")), 0, 64);
+    $branchDescr = substr(trim((string) ($data["firmware_branch_descr"] ?? "")), 0, 160);
+    $branches = substr(trim((string) ($data["firmware_branches"] ?? "")), 0, 200);
     $ha = !empty($data["ha_detected"]);
     echo ",\n  \"pfsense_update_available\": " . $availableJson;
     if ($target !== "") {
@@ -1354,6 +1357,15 @@ append_pfsense_update_json_fields() {
     if ($logSnippet !== "") {
       echo ",\n  \"pfsense_update_log_snippet\": \"" . addslashes($logSnippet) . "\"";
     }
+    if ($branch !== "") {
+      echo ",\n  \"pfsense_firmware_branch\": \"" . addslashes($branch) . "\"";
+    }
+    if ($branchDescr !== "") {
+      echo ",\n  \"pfsense_firmware_branch_descr\": \"" . addslashes($branchDescr) . "\"";
+    }
+    if ($branches !== "") {
+      echo ",\n  \"pfsense_update_branches\": \"" . addslashes($branches) . "\"";
+    }
     echo ",\n  \"ha_detected\": " . ($ha ? "true" : "false");
   ' "$state_file" 2>/dev/null || printf ',\n  "ha_detected": false'
 }
@@ -1362,6 +1374,7 @@ append_pfsense_update_json_fields() {
 # levar minutos e estourar o HTTP do heartbeat.
 PFSENSE_UPDATE_FORCE_THROTTLE_SEC=600
 PFSENSE_REPO_REPAIR_THROTTLE_SEC=900
+PFSENSE_UPDATE_BRANCH_THROTTLE_SEC=900
 
 run_pfsense_update_check() {
   return 0
@@ -1401,6 +1414,23 @@ heartbeat_json_flag() {
   [ "$force" = "1" ]
 }
 
+heartbeat_json_string() {
+  response_file="$1"
+  key="$2"
+  command_exists php || return 0
+  [ -f "$response_file" ] || return 0
+  php -r '
+    $payload = json_decode(@file_get_contents($argv[1]), true);
+    if (!is_array($payload)) {
+      exit(0);
+    }
+    $value = $payload[$argv[2]] ?? "";
+    if (is_string($value) || is_numeric($value)) {
+      echo trim((string) $value);
+    }
+  ' "$response_file" "$key" 2>/dev/null || true
+}
+
 pfsense_repo_repair_stamp() {
   printf '%s' "$(backup_state_dir)/pfsense-repo-repair.stamp"
 }
@@ -1419,10 +1449,43 @@ pfsense_repo_repair_mark_ran() {
   printf '%s\n' "$(date -u +%s)" >"$(pfsense_repo_repair_stamp)" 2>/dev/null || true
 }
 
+pfsense_update_branch_stamp() {
+  printf '%s' "$(backup_state_dir)/pfsense-update-branch.stamp"
+}
+
+pfsense_update_branch_throttled() {
+  stamp="$(pfsense_update_branch_stamp)"
+  [ -f "$stamp" ] || return 1
+  last="$(tr -cd '0-9' <"$stamp" | head -c 12)"
+  [ -n "$last" ] || return 1
+  now="$(date -u +%s)"
+  [ $((now - last)) -lt "$PFSENSE_UPDATE_BRANCH_THROTTLE_SEC" ]
+}
+
+pfsense_update_branch_mark_ran() {
+  mkdir -p "$(backup_state_dir)" 2>/dev/null || true
+  printf '%s\n' "$(date -u +%s)" >"$(pfsense_update_branch_stamp)" 2>/dev/null || true
+}
+
 maybe_run_deferred_pfsense_update_check() {
   response_file="$1"
   helper="$SCRIPT_DIR/check_pfsense_update_available.sh"
   [ -x "$helper" ] || return 0
+
+  branch_target="$(heartbeat_json_string "$response_file" force_set_update_branch || true)"
+  case "$branch_target" in
+    latest|2.8.1|2.9.0)
+      if pfsense_update_branch_throttled; then
+        echo "heartbeat: force_set_update_branch throttled" >&2
+        return 0
+      fi
+      echo "heartbeat: force_set_update_branch=$branch_target" >&2
+      "$helper" set-branch "$branch_target" >/dev/null 2>&1 || true
+      pfsense_update_branch_mark_ran
+      pfsense_update_mark_force_ran
+      return 0
+      ;;
+  esac
 
   if heartbeat_json_flag "$response_file" force_repo_repair; then
     if pfsense_repo_repair_throttled; then

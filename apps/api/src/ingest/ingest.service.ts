@@ -46,7 +46,10 @@ import {
   normalizeHeartbeatCapabilities,
   syncNodeCapabilities,
 } from '../node-capabilities/capability-sync.util';
-import { isPfsenseForceCheckPending } from '../pfsense-upgrade/pfsense-update-check.util';
+import {
+  isPfsenseForceCheckPending,
+  isPfsenseUpdateBranchTarget,
+} from '../pfsense-upgrade/pfsense-update-check.util';
 
 interface HeartbeatRequest {
   body: HeartbeatDto;
@@ -92,6 +95,7 @@ export class IngestService {
     }>;
     force_update_check?: boolean;
     force_repo_repair?: boolean;
+    force_set_update_branch?: string;
   }> {
     const receivedAt = new Date();
     this.assertPayloadSize(request.rawBody);
@@ -198,7 +202,8 @@ export class IngestService {
       request.body.pfsense_update_available !== undefined ||
       request.body.pfsense_update_check_error != null ||
       request.body.pfsense_update_error_class != null ||
-      request.body.pfsense_update_log_snippet != null;
+      request.body.pfsense_update_log_snippet != null ||
+      request.body.pfsense_firmware_branch != null;
 
     const haDetectedProvided = request.body.ha_detected !== undefined;
     const configBackupProvided = request.body.config_backup != null;
@@ -286,6 +291,12 @@ export class IngestService {
                   request.body.pfsense_update_error_class?.trim() || null,
                 pfsenseUpdateLogSnippet:
                   request.body.pfsense_update_log_snippet?.trim() || null,
+                pfsenseFirmwareBranch:
+                  request.body.pfsense_firmware_branch?.trim() || null,
+                pfsenseFirmwareBranchDescr:
+                  request.body.pfsense_firmware_branch_descr?.trim() || null,
+                pfsenseUpdateBranches:
+                  request.body.pfsense_update_branches?.trim() || null,
               }
             : {}),
           ...(haDetectedProvided
@@ -497,6 +508,9 @@ export class IngestService {
       server_time: receivedAt.toISOString(),
       node_status: nodeStatus,
       ...(commands.length > 0 ? { commands } : {}),
+      ...(forceFlags.forceSetUpdateBranch
+        ? { force_set_update_branch: forceFlags.forceSetUpdateBranch }
+        : {}),
       ...(forceFlags.forceRepoRepair ? { force_repo_repair: true } : {}),
       ...(forceFlags.forceUpdateCheck ? { force_update_check: true } : {}),
     };
@@ -570,24 +584,41 @@ export class IngestService {
   private async resolvePfsenseUpdateForceFlags(nodeId: string): Promise<{
     forceUpdateCheck: boolean;
     forceRepoRepair: boolean;
+    forceSetUpdateBranch: string | null;
   }> {
     const row = await this.prisma.node.findUnique({
       where: { id: nodeId },
       select: {
         pfsenseUpdateForceCheckAt: true,
         pfsenseRepoRepairRequestedAt: true,
+        pfsenseUpdateBranchRequestedAt: true,
+        pfsenseUpdateBranchTarget: true,
         pfsenseUpdateCheckedAt: true,
       },
     });
 
-    const forceRepoRepair = isPfsenseForceCheckPending(
-      row?.pfsenseRepoRepairRequestedAt,
+    const branchPending = isPfsenseForceCheckPending(
+      row?.pfsenseUpdateBranchRequestedAt,
       row?.pfsenseUpdateCheckedAt,
     );
+    const forceSetUpdateBranch =
+      branchPending &&
+      isPfsenseUpdateBranchTarget(row?.pfsenseUpdateBranchTarget)
+        ? row.pfsenseUpdateBranchTarget
+        : null;
+
+    const forceRepoRepair =
+      !forceSetUpdateBranch &&
+      isPfsenseForceCheckPending(
+        row?.pfsenseRepoRepairRequestedAt,
+        row?.pfsenseUpdateCheckedAt,
+      );
 
     return {
+      forceSetUpdateBranch,
       forceRepoRepair,
       forceUpdateCheck:
+        !forceSetUpdateBranch &&
         !forceRepoRepair &&
         isPfsenseForceCheckPending(
           row?.pfsenseUpdateForceCheckAt,

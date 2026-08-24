@@ -7,8 +7,10 @@ import {
   requestPfsenseUpgrade,
   requestPfsenseUpdateRefreshCheck,
   requestPfsenseRepoRepair,
+  requestPfsenseSetBranch,
   type PfsenseUpgradeRefreshCheckResponse,
   type PfsenseUpgradeRequestResponse,
+  type PfsenseUpdateBranchTarget,
 } from './api';
 
 export type PfsenseUpgradeActionResult =
@@ -58,6 +60,12 @@ function mapUpgradeRequestError(message: string, status?: number): string {
   if (normalized === 'repo repair already requested') {
     return 'O reparo do repositório já foi pedido. Aguarde o próximo heartbeat (~30s).';
   }
+  if (normalized === 'agent version too old for firmware branch') {
+    return 'Este agente ainda não troca o firmware branch. Atualize o package SystemUp Monitor para 0.5.14+ e tente de novo.';
+  }
+  if (normalized === 'firmware branch change already requested') {
+    return 'A troca de branch já foi pedida. Aguarde o próximo heartbeat (~30s).';
+  }
   if (status === 409 && normalized.includes('no_recent_backup')) {
     return 'Backup recente obrigatório. Confirme que aceita prosseguir sem backup recente.';
   }
@@ -106,6 +114,27 @@ export async function requestPfsenseRepoRepairAction(
     }
 
     return { ok: false, error: 'Falha ao solicitar reparo do repositório' };
+  }
+}
+
+export async function requestPfsenseSetBranchAction(
+  nodeId: string,
+  targetBranch: PfsenseUpdateBranchTarget,
+): Promise<PfsenseUpgradeRefreshActionResult> {
+  try {
+    const result = await requestPfsenseSetBranch(nodeId, targetBranch);
+    revalidatePath(`/nodes/${nodeId}`);
+    return { ok: true, data: result };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return {
+        ok: false,
+        error: mapUpgradeRequestError(error.message, error.status),
+        status: error.status,
+      };
+    }
+
+    return { ok: false, error: 'Falha ao solicitar troca do firmware branch' };
   }
 }
 

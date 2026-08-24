@@ -8,8 +8,8 @@ Ultima atualizacao: **2026-08-23**
 
 | Campo | Valor |
 |---|---|
-| API | `0.10.11` |
-| Painel web | `1.11.5` |
-| Package pfSense | `0.5.13` |
-| Última entrega | Reparo do repo de update pfSense (`docs/174`) |
-| Próximo passo | Upgrade remoto da frota para package **0.5.13**; nos boxes presos usar Atualizar verificação e, se falhar, Reparar repositório |
+| API | `0.11.0` |
+| Painel web | `1.12.0` |
+| Package pfSense | `0.5.14` |
+| Última entrega | Firmware branch + Apontar branch (`docs/175`) |
+| Próximo passo | Upgrade da frota para package **0.5.14**; no Acrel Chapeco e demais 2.7.x usar **Apontar branch** (2.8.1 ou 2.9.0) e rechecar |
