@@ -17,7 +17,7 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.5.15");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.5.16");
 }
 if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
     define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
@@ -1892,7 +1892,7 @@ function systemup_monitor_http_get($url, $timeoutSeconds = 20, &$diagnostic = nu
             $diagnostic['error'] = 'HTTP ' . $diagnostic['http_code'];
         }
 
-        curl_close($ch);
+        // PHP 8.5: curl_close() é no-op e emite E_DEPRECATED; o handle fecha no unset.
 
         if ($body !== false && $diagnostic['http_code'] >= 200 && $diagnostic['http_code'] < 300) {
             return (string) $body;

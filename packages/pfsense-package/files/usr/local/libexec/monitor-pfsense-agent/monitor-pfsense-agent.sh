@@ -611,7 +611,7 @@ detect_cpu_percent() {
 service_process_pattern() {
   case "$1" in
     unbound) printf '%s' '(^|/)(unbound)$' ;;
-    dhcpd) printf '%s' '(^|/)(dhcpd)$' ;;
+    dhcpd) printf '%s' '(^|/)(dhcpd|kea-dhcp4)$' ;;
     openvpn) printf '%s' '(^|/)(openvpn)$' ;;
     ipsec) printf '%s' 'charon|starter|pluto' ;;
     wireguard) printf '%s' 'wireguard-go|boringtun|wg-quick' ;;
@@ -650,6 +650,11 @@ service_status_from_service_cmd() {
   fi
 
   if service_output="$(service "$service_name" onestatus 2>&1)"; then
+    printf 'running|%s\n' "$service_output"
+    return
+  fi
+
+  if [ "$service_name" = "dhcpd" ] && service_output="$(service kea-dhcp4 onestatus 2>&1)"; then
     printf 'running|%s\n' "$service_output"
     return
   fi
@@ -702,7 +707,15 @@ service_is_enabled_in_rc() {
   if ! command_exists service; then
     return 0
   fi
-  service "$service_name" enabled 2>/dev/null
+  if service "$service_name" enabled 2>/dev/null; then
+    return 0
+  fi
+  # CE 2.8+/2.9: DHCP pode ser Kea (kea-dhcp4) em vez de ISC dhcpd.
+  if [ "$service_name" = "dhcpd" ]; then
+    service kea-dhcp4 enabled 2>/dev/null && return 0
+    service kea enabled 2>/dev/null && return 0
+  fi
+  return 1
 }
 
 # Serviços que podem estar ok com 0 clientes (ex.: OpenVPN server). Se a mensagem indicar "sem clientes", tratamos como running.
@@ -972,7 +985,30 @@ service_should_be_monitored() {
         $shouldMonitor = isset($config->dnsresolver) && (string) ($config->dnsresolver->enable ?? "") !== "";
         break;
       case "dhcpd":
-        $shouldMonitor = isset($config->dhcpd) && $hasEnabledChild($config->dhcpd);
+        $keaActive = false;
+        $backend = strtolower((string) ($config->system->dhcpbackend ?? ""));
+        if ($backend === "kea" || $backend === "kea-dhcp4") {
+          $keaActive = true;
+        }
+        if (isset($config->{'kea-dhcp4'})) {
+          $keaActive = true;
+        }
+        if (isset($config->kea)) {
+          $kea = $config->kea;
+          if (
+            (string) ($kea->enable ?? "") !== "" ||
+            (string) ($kea->dhcp4enable ?? "") !== "" ||
+            (string) ($kea->{'dhcp4-enable'} ?? "") !== "" ||
+            isset($kea->dhcp4) ||
+            $hasEnabledChild($kea) ||
+            $hasActiveChild($kea)
+          ) {
+            $keaActive = true;
+          }
+        }
+        $shouldMonitor =
+          (isset($config->dhcpd) && $hasEnabledChild($config->dhcpd)) ||
+          $keaActive;
         break;
       case "openvpn":
         $shouldMonitor = isset($config->openvpn) && $hasActiveChild($config->openvpn, [
@@ -1959,8 +1995,15 @@ finalize_pfsense_upgrade_if_pending() {
     return 0
   fi
 
+  # 2.9.0 ≡ 2.9.0-RELEASE (igualdade estrita falhava no finalize pós-upgrade).
+  normalize_pfsense_version() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -e 's/[[:space:]]//g' -e 's/-release$//' -e 's/_release$//'
+  }
+
   upgrade_version_matches_target() {
-    [ -n "$state_target_version" ] && [ -n "$new_version" ] && [ "$new_version" = "$state_target_version" ]
+    left="$(normalize_pfsense_version "$new_version")"
+    right="$(normalize_pfsense_version "$state_target_version")"
+    [ -n "$left" ] && [ -n "$right" ] && [ "$left" = "$right" ]
   }
 
   if upgrade_version_matches_target; then
@@ -1988,7 +2031,7 @@ finalize_pfsense_upgrade_if_pending() {
       ;;
   esac
 
-  if [ -f "$log_file" ] && [ -n "$state_target_version" ] && [ "$new_version" != "$state_target_version" ]; then
+  if [ -f "$log_file" ] && [ -n "$state_target_version" ] && ! upgrade_version_matches_target; then
     agent_post_command_result_failed "$parsed" \
       "upgrade finished but version is ${new_version:-unknown} (expected ${state_target_version})" \
       "$CURL_CMD" >/dev/null 2>&1 || true

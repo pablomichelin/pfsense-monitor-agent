@@ -5,6 +5,8 @@
   <version>%%PKGVERSION%%</version>
   <title>Services: SystemUp Monitor</title>
   <include_file>/usr/local/pkg/systemup_monitor.inc</include_file>
+  <!-- Ticket #16624: nomes em /var/db/ persistidos quando RAM disk está ligado. Sem isso o reboot apaga node_secret. -->
+  <ramdisk_dir_names>monitor-pfsense-agent</ramdisk_dir_names>
   <menu>
     <name>SystemUp Monitor</name>
     <section>Services</section>
@@ -95,7 +97,7 @@
     <field>
       <fielddescr>Monitor DHCP Server</fielddescr>
       <fieldname>service_dhcpd</fieldname>
-      <description>Inclui o dhcpd no calculo de saude deste firewall.</description>
+      <description>Inclui o DHCP (ISC dhcpd ou Kea) no calculo de saude deste firewall. O heartbeat continua com name dhcpd.</description>
       <type>checkbox</type>
     </field>
     <field>

@@ -3,7 +3,8 @@
 /**
  * Coleta status runtime de gateways monitorados (dpinger) via APIs pfSense.
  * Saida: JSON array conforme contrato heartbeat (name, status, latency_ms, loss_percent).
- * Em ambiente sem gwlib/config retorna [] (exit 0).
+ * Em ambiente sem gwlb/config retorna [] (exit 0).
+ * Include canônico: /etc/inc/gwlb.inc (CE 2.x / Plus). Fallback: gwlib.inc.
  */
 
 declare(strict_types=1);
@@ -102,14 +103,27 @@ try {
         exit(0);
     }
 
-    if (!is_readable('/etc/inc/config.inc') || !is_readable('/etc/inc/gwlib.inc')) {
-        monitor_gw_log('includes do pfSense indisponiveis (config.inc/gwlib.inc); retornando lista vazia');
+    if (!is_readable('/etc/inc/config.inc')) {
+        monitor_gw_log('includes do pfSense indisponiveis (config.inc); retornando lista vazia');
+        echo "[]\n";
+        exit(0);
+    }
+
+    $gatewayInc = null;
+    foreach (['/etc/inc/gwlb.inc', '/etc/inc/gwlib.inc'] as $candidate) {
+        if (is_readable($candidate)) {
+            $gatewayInc = $candidate;
+            break;
+        }
+    }
+    if ($gatewayInc === null) {
+        monitor_gw_log('includes de gateway indisponiveis (gwlb.inc/gwlib.inc); retornando lista vazia');
         echo "[]\n";
         exit(0);
     }
 
     require_once '/etc/inc/config.inc';
-    require_once '/etc/inc/gwlib.inc';
+    require_once $gatewayInc;
 
     if (!function_exists('return_gateways_status') || !function_exists('get_gateways')) {
         monitor_gw_log('APIs de gateway indisponiveis (return_gateways_status/get_gateways ausentes); retornando lista vazia');
