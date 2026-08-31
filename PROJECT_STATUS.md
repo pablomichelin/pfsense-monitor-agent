@@ -10,6 +10,6 @@ Ultima atualizacao: **2026-08-31**
 |---|---|
 | API | `0.11.1` |
 | Painel web | `1.12.6` |
-| Package pfSense | `0.5.18` |
-| Última entrega | Técnico com User Manager (exceto admin/root) — package `0.5.18` (`docs/182`) |
-| Próximo passo | Frota já em **0.5.18** (57/57). Retry das contas Erick `failed` se ainda precisar; **não** ligar upgrade remoto de OS |
+| Package pfSense | `0.5.19` |
+| Última entrega | Hotfix quoting `kea-dhcp4` no `php -r` — package `0.5.19` (`docs/183`) |
+| Próximo passo | Frota em **0.5.19**; Crash Reporter 2.9.0 sem novas ocorrências `Undefined constant kea`; **não** ligar upgrade remoto de OS |

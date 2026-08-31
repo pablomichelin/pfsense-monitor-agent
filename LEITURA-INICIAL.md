@@ -12,11 +12,13 @@ Leia este arquivo primeiro.
 |------------|--------|------------|
 | API | `0.11.1` | `apps/api/package.json` |
 | Painel web | `1.12.6` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.5.18` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| Package pfSense | `0.5.19` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
-**Release (config local):** package **`0.5.18`** — técnico com User Manager (exceto admin/root) para criar usuários de OpenVPN.
+**Release (config local):** package **`0.5.19`** — hotfix `php -r`/`kea-dhcp4` (Fatal `Undefined constant kea` no CE 2.9.0).
 
-**Última entrega (2026-08-31):** técnico provisionado pode criar/editar/excluir usuários no pfSense (OpenVPN); `admin` e `root` continuam bloqueados. Package **0.5.18**. Ver `docs/182-ENTREGA-TECNICO-USER-MANAGER-EXCETO-ADMIN-2026-08-31.md`.
+**Última entrega (2026-08-31):** quoting do detector DHCP Kea no agente. Package **0.5.19**. Ver `docs/183-HOTFIX-PHP-R-KEA-DHCP4-QUOTING-0.5.19-2026-08-31.md`.
+
+**Entrega anterior (2026-08-31):** técnico provisionado pode criar/editar/excluir usuários no pfSense (OpenVPN); `admin` e `root` continuam bloqueados. Package **0.5.18**. Ver `docs/182-ENTREGA-TECNICO-USER-MANAGER-EXCETO-ADMIN-2026-08-31.md`.
 
 **Entrega anterior (2026-08-31):** correção do lote de bugs (saúde, backup, técnico, nginx, dpinger, preset). API **0.11.1**, painel **1.12.6**, package **0.5.17**. Ver `docs/181-ENTREGA-CORRECAO-LOTE-BUGS-SAUDE-BACKUP-TECNICO-2026-08-31.md`.
 

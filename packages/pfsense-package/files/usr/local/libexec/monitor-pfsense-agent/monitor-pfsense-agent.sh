@@ -990,7 +990,7 @@ service_should_be_monitored() {
         if ($backend === "kea" || $backend === "kea-dhcp4") {
           $keaActive = true;
         }
-        if (isset($config->{'kea-dhcp4'})) {
+        if (isset($config->{"kea-dhcp4"})) {
           $keaActive = true;
         }
         if (isset($config->kea)) {
@@ -998,7 +998,7 @@ service_should_be_monitored() {
           if (
             (string) ($kea->enable ?? "") !== "" ||
             (string) ($kea->dhcp4enable ?? "") !== "" ||
-            (string) ($kea->{'dhcp4-enable'} ?? "") !== "" ||
+            (string) ($kea->{"dhcp4-enable"} ?? "") !== "" ||
             isset($kea->dhcp4) ||
             $hasEnabledChild($kea) ||
             $hasActiveChild($kea)
