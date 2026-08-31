@@ -4,9 +4,11 @@ Data de referencia: `2026-08-31`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Versoes atuais (codigo):** API `0.11.1` · painel `1.12.6` · package pfSense `0.5.19` (publicar com `scripts/release-pfsense-package.sh`).
+> **Versoes atuais (codigo):** API `0.11.1` · painel `1.12.6` · package pfSense `0.5.20` (publicar com `scripts/release-pfsense-package.sh`).
 >
-> **Ultima entrega (2026-08-31):** hotfix quoting `kea-dhcp4` no agente (Fatal PHP 8). Package `0.5.19`. Ver `docs/183-HOTFIX-PHP-R-KEA-DHCP4-QUOTING-0.5.19-2026-08-31.md`.
+> **Ultima entrega (2026-08-31):** hotfix 50x ao Save no User Manager (técnico / `getUserGroups` by-ref). Package `0.5.20`. Ver `docs/184-HOTFIX-TECNICO-USER-MANAGER-SAVE-50X-0.5.20-2026-08-31.md`.
+>
+> **Entrega anterior (2026-08-31):** hotfix quoting `kea-dhcp4` no agente (Fatal PHP 8). Package `0.5.19`. Ver `docs/183-HOTFIX-PHP-R-KEA-DHCP4-QUOTING-0.5.19-2026-08-31.md`.
 >
 > **Entrega anterior (2026-08-31):** técnico com User Manager (exceto admin/root) para usuários OpenVPN. Package `0.5.18`. Ver `docs/182-ENTREGA-TECNICO-USER-MANAGER-EXCETO-ADMIN-2026-08-31.md`.
 >
@@ -237,6 +239,7 @@ Versoes atuais (produto): API `0.6.4`, painel `1.4.5`, package pfSense `0.4.7`. 
 - Reorganização visual consolidada: plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`; entrega `docs/171-ENTREGA-REORGANIZACAO-VISUAL-PAINEL-1.11.2-2026-08-20.md` — painel `1.11.2`
 - Check do OS com repositório stale: `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md` — API `0.10.10`, painel `1.11.4`, package `0.5.12`
 - Firmware branch + Apontar branch: `docs/175-ENTREGA-FIRMWARE-BRANCH-UPDATE-PFSENSE-2026-08-23.md` — API `0.11.0`, painel `1.12.1`, package `0.5.14`
+- Hotfix 50x ao Save no User Manager (técnico): `docs/184-HOTFIX-TECNICO-USER-MANAGER-SAVE-50X-0.5.20-2026-08-31.md` — package `0.5.20`
 - Hotfix `php -r` / `kea-dhcp4` (PHP 8): `docs/183-HOTFIX-PHP-R-KEA-DHCP4-QUOTING-0.5.19-2026-08-31.md` — package `0.5.19`
 - Técnico User Manager (exceto admin/root): `docs/182-ENTREGA-TECNICO-USER-MANAGER-EXCETO-ADMIN-2026-08-31.md` — package `0.5.18`
 - Lote de bugs (saúde, backup, técnico, nginx, dpinger, preset): `docs/181-ENTREGA-CORRECAO-LOTE-BUGS-SAUDE-BACKUP-TECNICO-2026-08-31.md` — API `0.11.1`, painel `1.12.6`, package `0.5.17`

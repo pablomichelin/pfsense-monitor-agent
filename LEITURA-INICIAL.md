@@ -12,11 +12,13 @@ Leia este arquivo primeiro.
 |------------|--------|------------|
 | API | `0.11.1` | `apps/api/package.json` |
 | Painel web | `1.12.6` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.5.19` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| Package pfSense | `0.5.20` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
-**Release (config local):** package **`0.5.19`** — hotfix `php -r`/`kea-dhcp4` (Fatal `Undefined constant kea` no CE 2.9.0).
+**Release (config local):** package **`0.5.20`** — hotfix 50x ao Save no User Manager (técnico / `getUserGroups` by-ref).
 
-**Última entrega (2026-08-31):** quoting do detector DHCP Kea no agente. Package **0.5.19**. Ver `docs/183-HOTFIX-PHP-R-KEA-DHCP4-QUOTING-0.5.19-2026-08-31.md`.
+**Última entrega (2026-08-31):** técnico consegue salvar usuário no User Manager (sem 50x). Package **0.5.20**. Ver `docs/184-HOTFIX-TECNICO-USER-MANAGER-SAVE-50X-0.5.20-2026-08-31.md`.
+
+**Entrega anterior (2026-08-31):** quoting do detector DHCP Kea no agente. Package **0.5.19**. Ver `docs/183-HOTFIX-PHP-R-KEA-DHCP4-QUOTING-0.5.19-2026-08-31.md`.
 
 **Entrega anterior (2026-08-31):** técnico provisionado pode criar/editar/excluir usuários no pfSense (OpenVPN); `admin` e `root` continuam bloqueados. Package **0.5.18**. Ver `docs/182-ENTREGA-TECNICO-USER-MANAGER-EXCETO-ADMIN-2026-08-31.md`.
 

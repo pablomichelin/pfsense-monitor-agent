@@ -5,6 +5,11 @@
  *
  * Nao chama get_user_privileges() — este ficheiro e incluido a partir de
  * priv/systemup_technician.inc, que o pfSense carrega ao resolver privilegios.
+ *
+ * Em POST o CSRF ja abriu a sessao antes deste include: o guard roda de
+ * verdade. getUserGroups() exige o 3o argumento por referencia — passar
+ * `$_SESSION[...] ?? null` e Fatal (50x ao Salvar). Admin nao explode porque
+ * sai antes (page-all / uid 0).
  */
 
 function systemup_usermanager_guard_unwrap_user($entry)
@@ -59,6 +64,41 @@ function systemup_usermanager_guard_user_by_id($userid)
     return systemup_usermanager_guard_unwrap_user($users[$userid]);
 }
 
+function systemup_usermanager_guard_session_in_admins($user, $username)
+{
+    if (function_exists('local_user_get_groups')) {
+        $groups = local_user_get_groups($user, true);
+        if (is_array($groups) && in_array('admins', $groups, true)) {
+            return true;
+        }
+    }
+
+    if (!function_exists('getUserGroups')) {
+        return false;
+    }
+
+    $authcfg = null;
+    if (function_exists('auth_get_authserver') && function_exists('config_get_path')) {
+        $authmode = config_get_path('system/webgui/authmode');
+        if (is_string($authmode) && $authmode !== '') {
+            $authcfg = auth_get_authserver($authmode);
+        }
+    }
+
+    $radiusAttributes = [];
+    if (isset($_SESSION['user_radius_attributes']) && is_array($_SESSION['user_radius_attributes'])) {
+        $radiusAttributes = $_SESSION['user_radius_attributes'];
+    }
+
+    $groups = getUserGroups(
+        (string) ($user['name'] ?? $username),
+        $authcfg,
+        $radiusAttributes,
+    );
+
+    return is_array($groups) && in_array('admins', $groups, true);
+}
+
 function systemup_usermanager_guard_session_is_technician()
 {
     $username = (string) ($_SESSION['Username'] ?? '');
@@ -84,18 +124,14 @@ function systemup_usermanager_guard_session_is_technician()
     if (in_array('page-all', $privs, true)) {
         return false;
     }
-
-    if (function_exists('getUserGroups')) {
-        $authcfg = function_exists('auth_get_authserver') && function_exists('config_get_path')
-            ? auth_get_authserver(config_get_path('system/webgui/authmode'))
-            : null;
-        $groups = getUserGroups($user['name'] ?? $username, $authcfg, $_SESSION['user_radius_attributes'] ?? null);
-        if (is_array($groups) && in_array('admins', $groups, true)) {
-            return false;
-        }
+    if (!in_array('page-systemup-technician-admin', $privs, true)) {
+        return false;
+    }
+    if (systemup_usermanager_guard_session_in_admins($user, $username)) {
+        return false;
     }
 
-    return in_array('page-systemup-technician-admin', $privs, true);
+    return true;
 }
 
 function systemup_usermanager_guard_deny()
@@ -109,15 +145,9 @@ function systemup_usermanager_guard_deny()
     exit;
 }
 
-function systemup_usermanager_guard_target_is_reserved()
+function systemup_usermanager_guard_posted_reserved_name()
 {
-    $userid = $_REQUEST['userid'] ?? $_POST['userid'] ?? null;
-    $user = systemup_usermanager_guard_user_by_id($userid);
-    if (systemup_usermanager_guard_user_is_reserved($user)) {
-        return true;
-    }
-
-    foreach (['username', 'oldusername'] as $field) {
+    foreach (['usernamefld', 'username', 'oldusername'] as $field) {
         if (isset($_POST[$field]) && systemup_usermanager_guard_is_reserved_name($_POST[$field])) {
             return true;
         }
@@ -126,7 +156,18 @@ function systemup_usermanager_guard_target_is_reserved()
     return false;
 }
 
-function systemup_usermanager_guard_enforce()
+function systemup_usermanager_guard_target_is_reserved()
+{
+    $userid = $_REQUEST['userid'] ?? $_POST['userid'] ?? null;
+    $user = systemup_usermanager_guard_user_by_id($userid);
+    if (systemup_usermanager_guard_user_is_reserved($user)) {
+        return true;
+    }
+
+    return systemup_usermanager_guard_posted_reserved_name();
+}
+
+function systemup_usermanager_guard_enforce_inner()
 {
     static $ran = false;
     if ($ran || PHP_SAPI === 'cli') {
@@ -165,8 +206,15 @@ function systemup_usermanager_guard_enforce()
     if ($method === 'POST' && systemup_usermanager_guard_target_is_reserved()) {
         systemup_usermanager_guard_deny();
     }
+}
 
-    if ($method === 'POST' && systemup_usermanager_guard_is_reserved_name($_POST['username'] ?? '')) {
-        systemup_usermanager_guard_deny();
+function systemup_usermanager_guard_enforce()
+{
+    try {
+        systemup_usermanager_guard_enforce_inner();
+    } catch (Throwable $e) {
+        if (function_exists('log_error')) {
+            log_error('SystemUp Monitor: usermanager guard error: ' . $e->getMessage());
+        }
     }
 }

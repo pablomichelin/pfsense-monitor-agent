@@ -6,6 +6,11 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-31 — Hotfix 50x ao salvar usuário no User Manager (package 0.5.20)
+
+- Técnico no Save: Fatal `getUserGroups(): Argument #3 could not be passed by reference` (`?? null` no 3º argumento).
+- Ver `docs/184-HOTFIX-TECNICO-USER-MANAGER-SAVE-50X-0.5.20-2026-08-31.md`.
+
 ### 2026-08-31 — Hotfix quoting kea-dhcp4 no php -r (package 0.5.19)
 
 - Aspas simples em `$config->{'kea-dhcp4'}` quebravam o `php -r` e geravam Fatal `Undefined constant "kea"` no CE 2.9.0 a cada heartbeat.

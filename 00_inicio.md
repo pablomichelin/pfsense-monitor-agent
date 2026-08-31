@@ -2,9 +2,11 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-31):** API `0.11.1` · painel `1.12.6` · package pfSense `0.5.19`.
+> **Versoes atuais (2026-08-31):** API `0.11.1` · painel `1.12.6` · package pfSense `0.5.20`.
 >
-> **Ultima entrega (2026-08-31):** hotfix `kea-dhcp4` no `php -r` (Fatal PHP 8 / CE 2.9.0). Package **0.5.19**. Ver `docs/183`.
+> **Ultima entrega (2026-08-31):** hotfix 50x ao Save no User Manager (técnico). Package **0.5.20**. Ver `docs/184`.
+>
+> **Entrega anterior (2026-08-31):** hotfix `kea-dhcp4` no `php -r` (Fatal PHP 8 / CE 2.9.0). Package **0.5.19**. Ver `docs/183`.
 >
 > **Entrega anterior (2026-08-31):** técnico com User Manager no pfSense (exceto admin/root) para usuários OpenVPN. Package **0.5.18**. Ver `docs/182`.
 >
