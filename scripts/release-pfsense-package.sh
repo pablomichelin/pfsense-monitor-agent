@@ -5,8 +5,9 @@
 #
 # Uso: ./scripts/release-pfsense-package.sh [--no-push]
 #
-# - Lê PORTVERSION do Makefile do package (a versão deve ser incrementada manualmente
-#   no Makefile quando houver alteração real no código do agente/package)
+# - Lê PORTVERSION do Makefile do package (a versão DEVE ser incrementada
+#   manualmente no Makefile + SYSTEMUP_MONITOR_AGENT_VERSION no .inc antes
+#   de republicar: a frota que já está nessa versão não reinstala)
 # - Roda build-pfsense-package-artifact.sh
 # - Atualiza config/package-release.env (PACKAGE_RELEASE_VERSION, PACKAGE_RELEASE_SHA256, PACKAGE_RELEASE_REPO_RAW_BASE)
 # - Faz commit e push (a menos que --no-push)

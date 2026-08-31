@@ -41,6 +41,7 @@ O agente coleta estado local e envia heartbeat por HTTPS.
 - a autenticacao humana inicial do MVP fica centralizada no `NestJS`
 - a primeira homologacao oficial do agente mira `pfSense CE 2.8.1`; CE `2.9.0` foi homologado com ressalvas no lab `192.168.100.10` em 2026-08-24 (package `0.5.16`, `docs/177`/`docs/178`) — upgrade remoto de OS continua desligado
 - o projeto usa `Semantic Versioning`
+- **package pfSense:** qualquer mudança que precise reinstalar o agente nos firewalls exige **versão nova** (`PORTVERSION` + `SYSTEMUP_MONITOR_AGENT_VERSION`) + artefato + upgrade remoto na frota. Reusar a mesma versão não atualiza quem já está nela — o lote ignora “already at target version”
 - o painel deve exibir a versao do sistema e `Desenvolvido por Systemup`
 - backup de `config.xml` do pfSense deve seguir arquitetura `push`, com upload iniciado pelo firewall
 - backup de `config.xml` deve ser armazenado criptografado em repouso e auditado
@@ -57,6 +58,7 @@ O agente coleta estado local e envia heartbeat por HTTPS.
 - publicar portas do ecossistema Zabbix para o Monitor-Pfsense
 - salvar `config.xml` puro no PostgreSQL ou em disco persistente
 - liberar download de backup sem RBAC e auditoria
+- alterar o package/agente e republicar o **mesmo** `PORTVERSION` (a frota que já tem essa versão não reinstala)
 
 ## Norma principal do ambiente
 

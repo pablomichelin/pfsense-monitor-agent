@@ -13,6 +13,7 @@ Toda entrega que altere `apps/api` ou `apps/web` **deve** atualizar a versão an
 |------------|------------------|---------------------|
 | API | `apps/api/package.json` → `version` | `/healthz`, dashboard summary (`SYSTEM_VERSION` em `.env.api` se alterar contrato global) |
 | Painel web | `apps/web/package.json` → `version` | Rodapé em `apps/web/app/layout.tsx` |
+| Package pfSense | `packages/pfsense-package/Makefile` (`PORTVERSION`) **e** `SYSTEMUP_MONITOR_AGENT_VERSION` em `systemup_monitor.inc` | Heartbeat `agent_version`; upgrade remoto compara com essa versão |
 
 ## Regra de semver (prático)
 
@@ -28,9 +29,22 @@ Toda entrega que altere `apps/api` ou `apps/web` **deve** atualizar a versão an
 4. Se entrega fechada: doc `docs/NN-ENTREGA-...md` com versões finais.
 5. Build + `docker compose up -d --build` (regra `build-and-deploy.mdc`).
 
+## Package pfSense — bump obrigatório a cada reinstalação
+
+O agente **não reinstala** se a versão publicada for a mesma que o box já reporta. `package_upgrade` em lote ignora “already at target version”.
+
+**Regra:** qualquer mudança em `packages/pfsense-package/` que precise chegar nos firewalls exige **pacote novo**:
+
+1. Incrementar `PORTVERSION` no Makefile e `SYSTEMUP_MONITOR_AGENT_VERSION` no `.inc` (mesmo número).
+2. `./scripts/release-pfsense-package.sh` (artefato + SHA em `config/package-release.env`).
+3. Enfileirar upgrade remoto na frota (`POST /api/v1/package-upgrade/batch` ou painel). Sem o passo 3, só o controlador fica com a release — os boxes continuam na versão antiga.
+
+Reusar a mesma versão (rebuild do tarball 0.5.18 sem bump) **não** atualiza quem já está em 0.5.18.
+
 ## Não esquecer
 
 - Não encerrar tarefa com `apps/web` ou `apps/api` modificados e versão antiga no `package.json`.
+- Não encerrar alteração do agente/package sem **versão nova** + artefato + envio à frota.
 - Scripts em `scripts/` sem mudança de API: bump só do painel se houver UI; senão documentar no histórico sem bump de API.
 - Trilhas encerradas (`docs/76`): versão **atual** do produto fica nos índices; docs de fase mantêm versão histórica da fase.
 

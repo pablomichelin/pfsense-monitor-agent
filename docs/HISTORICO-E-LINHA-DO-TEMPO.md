@@ -6,6 +6,11 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-31 — Regra: mudança no package exige versão nova + envio à frota
+
+- O agente só reinstala se `target_version` for diferente da que o box já reporta.
+- Alterar código em `packages/pfsense-package/` e republicar o mesmo `PORTVERSION` deixa a frota na cópia antiga.
+
 ### 2026-08-31 — Técnico com User Manager exceto admin/root (package 0.5.18)
 
 - Técnicos passam a criar/editar/excluir usuários locais no pfSense (OpenVPN com usuários do sistema).

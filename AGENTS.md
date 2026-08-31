@@ -31,5 +31,6 @@ Ao final de cada iteração relevante (regra já definida em `CORTEX.md`):
 
 1. Atualizar `LEITURA-INICIAL.md` (versões, última entrega, próximo passo).
 2. Ajustar `12-roadmap-de-fases.md` se a fase mudou.
-3. Commit e push para `origin main` — este host é o servidor do projeto, o GitHub deve ficar sempre atualizado.
-4. Após o push, executar `git pull origin main` neste host (não delegar ao usuário).
+3. Se o package/agente mudou e precisa chegar nos firewalls: **bumpar versão** (não reusar a que a frota já tem), gerar artefato e **enfileirar upgrade remoto**. Sem versão nova o box não reinstala.
+4. Commit e push para `origin main` — este host é o servidor do projeto, o GitHub deve ficar sempre atualizado.
+5. Após o push, executar `git pull origin main` neste host (não delegar ao usuário).
