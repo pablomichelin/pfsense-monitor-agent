@@ -116,6 +116,17 @@ export class HeartbeatConfigBackupDto {
   @Min(1)
   @Max(28)
   schedule_dom?: number;
+
+  /** SHA-256 atual do config.xml no box (evidência de “sem mudança”). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  config_sha256?: string;
+
+  /** Última verificação local do XML, mesmo sem upload (ISO-8601). */
+  @IsOptional()
+  @IsISO8601()
+  last_checked_at?: string;
 }
 
 export class HeartbeatCertificateDto {
@@ -203,6 +214,11 @@ export class HeartbeatGatewayDto {
   @Min(0)
   @Max(100)
   loss_percent?: number;
+
+  /** Se omitido, critical. optional (IPv6/VPN) não degrada o node. */
+  @IsOptional()
+  @IsIn(HEARTBEAT_SERVICE_IMPACT)
+  impact_on_status?: (typeof HEARTBEAT_SERVICE_IMPACT)[number];
 }
 
 export class HeartbeatLocalUserDto {

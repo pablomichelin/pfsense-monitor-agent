@@ -1,6 +1,6 @@
 # Sistema visual do painel Monitor-Pfsense
 
-**Versão:** 0.2.0 (2026-08-20)  
+**Versão:** 0.2.1 (2026-08-31)  
 **Referência:** Este documento define o padrão visual a ser mantido em novas telas e componentes.
 
 ---
@@ -52,7 +52,7 @@ Definidos em `apps/web/app/globals.css` e mapeados em `apps/web/tailwind.config.
 | `--sidebar-width` | `15rem` | Largura da sidebar expandida |
 | `--sidebar-width-collapsed` | `4rem` | Largura da sidebar colapsada |
 | `--app-max-w` | `80rem` | Token legado / superfícies que ainda referenciam max-width |
-| `--section-gap` | `2rem` | Espaço vertical entre seções |
+| `--section-gap` | `0.75rem` | Espaço vertical entre seções |
 | `--card-radius` | `1rem` | Border radius dos cards |
 | `--card-padding` | `1.5rem` | Padding interno dos cards |
 | `--input-h` | `2.75rem` | Altura de input/select/botão |
@@ -123,7 +123,7 @@ O shell autenticado **não** usa mais `max-w-7xl` + nav horizontal como containe
 | Página | `.app-page` — largura total da área de conteúdo (ao lado da sidebar) |
 | Sidebar | `15rem` expandida / `4rem` colapsada |
 | Header | breadcrumbs + seletor de tema + ações do usuário |
-| Gap entre seções | `space-y-8` |
+| Gap entre seções | `space-y-section` (`--section-gap` = `0.75rem`) |
 | Grid de conteúdo | `grid gap-6` (ou `gap-4` para KPIs) |
 | Container login | `max-w-4xl mx-auto` |
 
@@ -192,7 +192,7 @@ Qualquer outro chip/badge de status ou toggle deve usar `rounded-md` ou `rounded
 
 | Elemento | Classes |
 |----------|---------|
-| Container | `glass-panel rounded-xl px-6 py-5 sm:py-6` |
+| Container | `glass-panel rounded-xl p-3 sm:p-4` |
 | Eyebrow | `font-mono text-xs uppercase tracking-wider text-primary` |
 | Título | `font-display text-2xl sm:text-3xl font-semibold text-fg` |
 | Descrição | `text-sm leading-relaxed text-fg-muted` |

@@ -79,7 +79,7 @@ export default async function AdminUsuariosPage({
   const totalSessions = Array.from(userSessionsByUserId.values()).reduce((acc, s) => acc + s.length, 0);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageHero
         eyebrow="Administração"
         title="Usuários"

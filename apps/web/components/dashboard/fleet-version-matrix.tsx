@@ -116,7 +116,7 @@ export function FleetVersionMatrix({
   packageTargetVersion,
 }: FleetVersionMatrixProps) {
   return (
-    <div className="grid gap-8 xl:grid-cols-2">
+    <div className="grid gap-section xl:grid-cols-2">
       <VersionTable
         title="pfSense OS"
         description="Distribuição de versões do sistema operacional na frota visível."

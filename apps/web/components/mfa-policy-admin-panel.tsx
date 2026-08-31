@@ -44,7 +44,7 @@ export function MfaPolicyAdminPanel({ policy: initialPolicy, canManage }: Props)
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section">
       {message ? (
         <div className="rounded-lg border border-emerald-700/60 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-200">
           {message}

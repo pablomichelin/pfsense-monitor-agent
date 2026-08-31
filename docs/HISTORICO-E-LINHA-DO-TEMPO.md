@@ -2,9 +2,26 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-08-24
+**Última atualização:** 2026-08-31
 
 ---
+
+### 2026-08-31 — Lote de bugs saúde/backup/técnico (API 0.11.1, painel 1.12.6, package 0.5.17)
+
+- Gateways IPv6/VPN não degradam o node; gate de backup alinha `stored`+`duplicate` e SHA confirmado no heartbeat.
+- Re-provision de técnico reseta status; late result aceita `local_user_*`; nginx re-resolve api/web; dpinger `pgrep` corrigido.
+- Ver `docs/181-ENTREGA-CORRECAO-LOTE-BUGS-SAUDE-BACKUP-TECNICO-2026-08-31.md`.
+
+### 2026-08-31 — Densidade do painel (painel 1.12.5)
+
+- `--section-gap` de 2rem para 0.75rem; páginas usam `space-y-section`.
+- Menos ar entre hero, filtros, atalhos e tabelas em todas as telas autenticadas.
+
+### 2026-08-31 — Resultado do lote de técnicos após backup automático (painel 1.12.3)
+
+- O provisionamento no Recon concluía no backend, mas a tela ficava em “Backup enfileirado” com alerta amarelo.
+- O detalhe e o resumo agora acompanham o pipeline (backup → usuário aplicado / falha).
+- Ver `docs/179-ENTREGA-UX-RESULTADO-BACKUP-PROVISION-TECNICO-2026-08-31.md`.
 
 ### 2026-08-24 — Homologação CE 2.9.0 no lab 192.168.100.10 (package 0.5.16)
 

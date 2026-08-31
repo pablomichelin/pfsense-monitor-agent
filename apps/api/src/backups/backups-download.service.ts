@@ -107,8 +107,8 @@ export class BackupsDownloadService {
       (backup) => backup.status === ConfigBackupStatus.stored,
     );
     const latestStoredBackup = storedBackups[0] ?? null;
-    const latestBackupReceivedAt =
-      latestStoredBackup?.receivedAt ?? backups[0]?.receivedAt ?? null;
+    const latestBackup = latestStoredBackup ?? backups[0] ?? null;
+    const latestBackupReceivedAt = latestBackup?.receivedAt ?? null;
     const latestFailedCommand = node.nodeCommands[0];
     const latestFailedCommandAt =
       latestFailedCommand?.completedAt ??
@@ -141,6 +141,7 @@ export class BackupsDownloadService {
       },
       visual_status: deriveBackupVisualStatus({
         latestBackupReceivedAt,
+        latestBackupSha256: latestBackup?.configSha256 ?? null,
         latestFailedCommandAt,
         backupPolicyJson: node.configBackupPolicyJson,
         timeZone: node.site.timezone,

@@ -59,7 +59,7 @@ export function NodeDetailTabs({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section">
       <div className="flex flex-wrap gap-1 border-b border-border">
         {tabs.map((tab) => (
           <button

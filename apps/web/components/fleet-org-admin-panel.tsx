@@ -190,7 +190,7 @@ export function FleetOrgAdminPanel({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       {message ? <Alert variant="success">{message}</Alert> : null}
       {error ? <Alert variant="error">{error}</Alert> : null}
 

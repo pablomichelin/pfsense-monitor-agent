@@ -16,7 +16,7 @@ Ao alterar ou criar componentes de UI no painel:
    - Inputs/botões: `h-11 rounded-lg border-slate-600/80`
    - Nav: `h-10 rounded-lg`
    - Labels: `tracking-wider`, não tracking-[0.2em]
-   - Section gap: `space-y-8`
+   - Section gap: `space-y-section` (`--section-gap` = `0.75rem`)
 
 3. **Tema:** dark navy/blue. Cores: panel-*, signal-*, slate, cyan, emerald, amber, rose.
 

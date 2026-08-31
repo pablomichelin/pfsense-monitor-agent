@@ -241,7 +241,7 @@ export default async function NodeDetailsPage({
     const statusBadge = toOperationalStatusBadge(node.effective_status);
 
     return (
-      <div className="space-y-6">
+      <div className="space-y-section">
         {created ? (
           <Alert variant="success">
             Firewall criado com sucesso. Use a aba Configuração para instalar o agente.

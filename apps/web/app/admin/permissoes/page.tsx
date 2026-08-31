@@ -33,7 +33,7 @@ export default async function AdminPermissoesPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageHero
         eyebrow="Administração"
         title="Matriz de permissões"

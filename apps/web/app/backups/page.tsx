@@ -97,7 +97,7 @@ export default async function BackupsPage({
   const summary = computeBackupFleetSummary(fleetNodes);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageHero
         eyebrow="Operação de backup"
         title="Backups da frota"

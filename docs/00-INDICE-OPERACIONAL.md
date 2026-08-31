@@ -1,12 +1,18 @@
 # Indice operacional do projeto
 
-Data de referencia: `2026-08-24`
+Data de referencia: `2026-08-31`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Versoes atuais (codigo):** API `0.11.0` · painel `1.12.2` · package pfSense `0.5.16` (publicar com `scripts/release-pfsense-package.sh`).
+> **Versoes atuais (codigo):** API `0.11.1` · painel `1.12.6` · package pfSense `0.5.17` (publicar com `scripts/release-pfsense-package.sh`).
 >
-> **Ultima entrega (2026-08-24):** homologação CE 2.9.0 no lab `.10` — package `0.5.16`, homologado com ressalvas. Ver `docs/177-PLANO-HOMOLOGACAO-PFSENSE-2.9.0-LAB-10-2026-08-24.md` e `docs/178-ENTREGA-HOMOLOGACAO-PFSENSE-2.9.0-PACKAGE-0.5.16-2026-08-24.md`.
+> **Ultima entrega (2026-08-31):** correção do lote de bugs (saúde IPv6/VPN, gate de backup, técnico, nginx 502, dpinger, preset). API `0.11.1`, painel `1.12.6`, package `0.5.17`. Ver `docs/181-ENTREGA-CORRECAO-LOTE-BUGS-SAUDE-BACKUP-TECNICO-2026-08-31.md`.
+>
+> **Entrega anterior (2026-08-31):** densidade do painel — `--section-gap` 0.75rem. Painel `1.12.5`. Ver `docs/180-ENTREGA-DENSIDADE-ESPACAMENTO-PAINEL-2026-08-31.md`.
+>
+> **Entrega anterior (2026-08-31):** resultado do lote de técnicos atualiza após backup automático. Painel `1.12.3`. Ver `docs/179-ENTREGA-UX-RESULTADO-BACKUP-PROVISION-TECNICO-2026-08-31.md`.
+>
+> **Entrega anterior (2026-08-24):** homologação CE 2.9.0 no lab `.10` — package `0.5.16`, homologado com ressalvas. Ver `docs/177-PLANO-HOMOLOGACAO-PFSENSE-2.9.0-LAB-10-2026-08-24.md` e `docs/178-ENTREGA-HOMOLOGACAO-PFSENSE-2.9.0-PACKAGE-0.5.16-2026-08-24.md`.
 >
 > **Entrega anterior (2026-08-23):** reparo oficial do repo de update (certctl, lock, IPv4). Ver `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md`.
 >
@@ -227,6 +233,9 @@ Versoes atuais (produto): API `0.6.4`, painel `1.4.5`, package pfSense `0.4.7`. 
 - Reorganização visual consolidada: plano `docs/170-PLANO-REORGANIZACAO-VISUAL-PAINEL-2026-08-20.md`; entrega `docs/171-ENTREGA-REORGANIZACAO-VISUAL-PAINEL-1.11.2-2026-08-20.md` — painel `1.11.2`
 - Check do OS com repositório stale: `docs/173-ENTREGA-CHECK-OS-REPOSITORIO-STALE-2026-08-23.md` — API `0.10.10`, painel `1.11.4`, package `0.5.12`
 - Firmware branch + Apontar branch: `docs/175-ENTREGA-FIRMWARE-BRANCH-UPDATE-PFSENSE-2026-08-23.md` — API `0.11.0`, painel `1.12.1`, package `0.5.14`
+- Lote de bugs (saúde, backup, técnico, nginx, dpinger, preset): `docs/181-ENTREGA-CORRECAO-LOTE-BUGS-SAUDE-BACKUP-TECNICO-2026-08-31.md` — API `0.11.1`, painel `1.12.6`, package `0.5.17`
+- Densidade / espaçamento do painel: `docs/180-ENTREGA-DENSIDADE-ESPACAMENTO-PAINEL-2026-08-31.md` — painel `1.12.5`
+- Resultado do lote de técnicos após backup: `docs/179-ENTREGA-UX-RESULTADO-BACKUP-PROVISION-TECNICO-2026-08-31.md` — painel `1.12.3`
 - Homologação CE 2.9.0 (lab `.10`): `docs/177-PLANO-HOMOLOGACAO-PFSENSE-2.9.0-LAB-10-2026-08-24.md` + `docs/178-ENTREGA-HOMOLOGACAO-PFSENSE-2.9.0-PACKAGE-0.5.16-2026-08-24.md` — package `0.5.16`
 - Hotfix helper firmware branch: `docs/176-HOTFIX-HELPER-FIRMWARE-BRANCH-0.5.15-2026-08-23.md` — painel `1.12.2`, package `0.5.15`
 - Reparo do repo de update: `docs/174-ENTREGA-REPARO-REPO-UPDATE-PFSENSE-2026-08-23.md` — API `0.10.11`, painel `1.11.5`, package `0.5.13`

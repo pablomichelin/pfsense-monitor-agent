@@ -346,7 +346,7 @@ export default async function BootstrapPage({
     : null;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageHero
         eyebrow="Instalação"
         title="Instalar agente"
@@ -628,7 +628,7 @@ export default async function BootstrapPage({
             )}
           </Card>
 
-          <div className="space-y-8">
+          <div className="space-y-section">
             <AdvancedSection
               title="Detalhes tecnicos da rodada"
               description="Pre-check no pfSense e bloco de evidencia para homologacao."
@@ -771,7 +771,7 @@ export default async function BootstrapPage({
           </div>
         </Card>
 
-        <div className="space-y-8">
+        <div className="space-y-section">
           <Card className="p-4">
             <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Agentes ativos</p>
             <div className="mt-4 space-y-3">

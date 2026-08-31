@@ -57,7 +57,7 @@ export function NodeDetailConfigTab({
     : '';
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageSection
         title="Organização da frota"
         description="Criticidade/SLA e tags operacionais. Tags não substituem escopo RBAC por cliente."

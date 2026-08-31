@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 
 function AppFooter() {
   return (
-    <footer className="mt-6 flex flex-col gap-2 border-t border-border px-1 pt-4 text-sm text-fg-muted sm:flex-row sm:items-center sm:justify-between">
+    <footer className="mt-3 flex flex-col gap-2 border-t border-border px-1 pt-2 text-sm text-fg-muted sm:flex-row sm:items-center sm:justify-between">
       <span>Monitor-Pfsense v{packageJson.version}</span>
       <a
         href="https://www.systemup.inf.br"
@@ -73,7 +73,7 @@ export default async function RootLayout({
               </AppShellLayout>
             ) : (
               <div className="app-shell">
-                <header className="glass-panel mb-8 rounded-xl px-6 py-3">
+                <header className="glass-panel mb-4 rounded-xl px-6 py-3">
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="flex min-w-0 shrink-0 items-center gap-4">
                       <div className="flex items-baseline gap-2">

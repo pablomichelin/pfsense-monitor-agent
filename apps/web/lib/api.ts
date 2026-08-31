@@ -981,6 +981,7 @@ export async function getNodesList(query?: {
     | 'last_seen';
   sort_order?: 'asc' | 'desc';
   limit?: number;
+  preset?: string;
 }): Promise<NodesListResponse> {
   const params = new URLSearchParams();
   if (query?.client_id) {
@@ -1012,6 +1013,9 @@ export async function getNodesList(query?: {
   }
   if (query?.limit != null) {
     params.set('limit', String(query.limit));
+  }
+  if (query?.preset) {
+    params.set('preset', query.preset);
   }
 
   const suffix = params.toString() ? `?${params.toString()}` : '';

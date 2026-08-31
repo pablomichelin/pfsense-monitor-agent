@@ -25,7 +25,7 @@ export function PageHero({
   aside?: React.ReactNode;
 }) {
   return (
-    <section className="glass-panel overflow-hidden rounded-xl p-4 sm:p-5">
+    <section className="glass-panel overflow-hidden rounded-xl p-3 sm:p-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between xl:gap-5">
         <div className="min-w-0 flex-1 space-y-2">
           <p className="font-mono text-xs uppercase tracking-wider text-primary">
@@ -39,7 +39,7 @@ export function PageHero({
           </p>
 
           {stats.length > 0 ? (
-            <div className="flex flex-wrap gap-2 pt-2">
+            <div className="flex flex-wrap gap-2 pt-1">
               {stats.map((stat) => (
                 <div
                   key={`${stat.label}-${stat.value}`}

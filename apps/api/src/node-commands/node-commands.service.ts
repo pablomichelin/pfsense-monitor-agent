@@ -34,6 +34,15 @@ export interface PendingCommandPayload {
   payload?: Record<string, unknown>;
 }
 
+const LATE_RESULT_COMMAND_TYPES: NodeCommandType[] = [
+  NodeCommandType.pfsense_upgrade,
+  NodeCommandType.local_user_create,
+  NodeCommandType.local_user_set_password,
+  NodeCommandType.local_user_disable,
+  NodeCommandType.local_user_delete,
+  NodeCommandType.config_backup_now,
+];
+
 const ACTIVE_STATUSES: NodeCommandStatus[] = [
   NodeCommandStatus.pending,
   NodeCommandStatus.picked_up,
@@ -766,7 +775,7 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
     },
     command: NodeCommand,
   ): Promise<{ ok: true; command_id: string; status: NodeCommandStatus }> {
-    if (command.type !== NodeCommandType.pfsense_upgrade) {
+    if (!LATE_RESULT_COMMAND_TYPES.includes(command.type)) {
       throw new ConflictException('late result not accepted for this command type');
     }
 
@@ -825,16 +834,37 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       data: {
         actorType: 'node_credential',
         actorId: input.credentialId,
-        action: 'pfsense.upgrade.late_result_reconciled',
+        action:
+          command.type === NodeCommandType.pfsense_upgrade
+            ? 'pfsense.upgrade.late_result_reconciled'
+            : 'node_command.late_result_reconciled',
         targetType: 'node_command',
         targetId: command.id,
         ipAddress: input.clientIp,
         metadataJson: {
           node_id: input.nodeId,
           status: nextStatus,
+          command_type: command.type,
         },
       },
     });
+
+    await this.reconcileTechnicianNodeAccount(
+      updated,
+      input.status,
+      input.errorMessage,
+    );
+
+    if (command.batchId) {
+      await this.reconcileBatchStatus(command.batchId);
+    }
+
+    if (
+      command.type === NodeCommandType.config_backup_now &&
+      nextStatus === NodeCommandStatus.succeeded
+    ) {
+      await this.handleBackupCommandSucceeded(updated);
+    }
 
     return {
       ok: true,

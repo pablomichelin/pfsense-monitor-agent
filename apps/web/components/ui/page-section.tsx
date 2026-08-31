@@ -14,7 +14,7 @@ export function PageSection({
   children?: React.ReactNode;
 }) {
   return (
-    <section className={cn('space-y-4', className)}>
+    <section className={cn('space-y-2', className)}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
           <h2 className="font-display text-xl font-semibold text-fg">{title}</h2>

@@ -29,7 +29,7 @@ export default async function ContaPage({
   const profileLabel = roleLabel(session.user.role);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section">
       <PageHero
         eyebrow="Conta"
         title="Minha conta"

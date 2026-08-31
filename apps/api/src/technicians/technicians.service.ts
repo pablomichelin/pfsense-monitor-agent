@@ -18,6 +18,10 @@ import { AccessPolicyService } from '../auth/access-policy.service';
 import { isAgentVersionAtLeast } from '../common/agent-version';
 import { appConfig } from '../config/app-config';
 import { CommandOrchestratorService } from '../commands/command-orchestrator.service';
+import {
+  parseStoredBackupPolicy,
+  resolveBackupFreshnessAt,
+} from '../nodes/backup-policy.util';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   BatchPasswordResetTechnicianDto,
@@ -101,28 +105,65 @@ export class TechniciansService {
   }
 
   /**
-   * Data do backup de config.xml mais recente (status `stored`) por node.
-   * Uma unica query para toda a lista, usada tanto por checagens individuais
-   * (lista de 1) quanto por lote — evita N queries em loops.
+   * Data efetiva do backup mais recente por node (`stored` ou `duplicate`).
+   * Se o heartbeat confirma o mesmo SHA, last_checked_at conta como frescura
+   * (o controlador já tem o XML atual).
    */
   private async fetchLatestBackupAtByNode(nodeIds: string[]): Promise<Map<string, Date>> {
     if (nodeIds.length === 0) {
       return new Map();
     }
 
-    const rows = await this.prisma.nodeConfigBackup.findMany({
-      where: {
-        nodeId: { in: nodeIds },
-        status: ConfigBackupStatus.stored,
-      },
-      orderBy: { receivedAt: 'desc' },
-      select: { nodeId: true, receivedAt: true },
-    });
+    const [rows, nodes] = await Promise.all([
+      this.prisma.nodeConfigBackup.findMany({
+        where: {
+          nodeId: { in: nodeIds },
+          status: {
+            in: [ConfigBackupStatus.stored, ConfigBackupStatus.duplicate],
+          },
+        },
+        orderBy: { receivedAt: 'desc' },
+        select: { nodeId: true, receivedAt: true, configSha256: true },
+      }),
+      this.prisma.node.findMany({
+        where: { id: { in: nodeIds } },
+        select: { id: true, configBackupPolicyJson: true },
+      }),
+    ]);
+
+    const latestByNode = new Map<
+      string,
+      { receivedAt: Date; configSha256: string }
+    >();
+    for (const row of rows) {
+      if (!latestByNode.has(row.nodeId)) {
+        latestByNode.set(row.nodeId, {
+          receivedAt: row.receivedAt,
+          configSha256: row.configSha256,
+        });
+      }
+    }
+
+    const policyByNode = new Map(
+      nodes.map((node) => [
+        node.id,
+        parseStoredBackupPolicy(node.configBackupPolicyJson),
+      ]),
+    );
 
     const map = new Map<string, Date>();
-    for (const row of rows) {
-      if (!map.has(row.nodeId)) {
-        map.set(row.nodeId, row.receivedAt);
+    for (const nodeId of nodeIds) {
+      const latest = latestByNode.get(nodeId);
+      if (!latest) {
+        continue;
+      }
+      const freshness = resolveBackupFreshnessAt({
+        latestBackupReceivedAt: latest.receivedAt,
+        latestBackupSha256: latest.configSha256,
+        policy: policyByNode.get(nodeId) ?? null,
+      });
+      if (freshness) {
+        map.set(nodeId, freshness);
       }
     }
     return map;
@@ -1015,6 +1056,9 @@ export class TechniciansService {
           pfsenseUsername,
           privilegeProfile,
           lastError: null,
+          status: userExists
+            ? TechnicianNodeAccountStatus.password_reset_pending
+            : TechnicianNodeAccountStatus.pending_create,
         },
       });
 
@@ -1143,6 +1187,7 @@ export class TechniciansService {
         update: {
           pfsenseUsername,
           lastError: null,
+          status: TechnicianNodeAccountStatus.password_reset_pending,
         },
       });
 

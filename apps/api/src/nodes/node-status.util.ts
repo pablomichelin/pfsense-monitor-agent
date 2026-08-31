@@ -14,6 +14,14 @@ const CRITICAL_SERVICES = new Set(['openvpn', 'wireguard']);
 const WARNING_SERVICES = new Set(['unbound', 'dhcpd', 'ntpd', 'ipsec']);
 /** Túnel IPsec sem SA não doente o box — peer morto, road warrior ocioso ou Phase 1 sem tráfego. */
 const NODE_STATUS_OPTIONAL_SERVICE_TYPES = new Set(['ipsec']);
+
+/**
+ * Gateways IPv6 (DHCP6/SLAAC) e VPN não devem degradar o node:
+ * perda 100% nesses alvos é comum (peer IPv6 ausente, túnel ocioso).
+ * WANGW IPv4 e default IPv4 continuam críticos.
+ */
+const OPTIONAL_GATEWAY_NAME_PATTERN =
+  /dhcp6|slaac|(^|_)v6(_|$)|ipv6|\bip6\b|(^|_)vpn|ovpnc|wg_/i;
 const DEGRADED_SERVICE_STATUSES = new Set<ServiceStatus>([
   'stopped',
   'degraded',
@@ -79,6 +87,9 @@ export const isServiceProblem = (service: HeartbeatServiceDto): boolean => {
   return true;
 };
 
+export const isOptionalGatewayName = (name: string): boolean =>
+  OPTIONAL_GATEWAY_NAME_PATTERN.test(name.trim());
+
 export const isGatewayProblem = (gateway: HeartbeatGatewayDto): boolean => {
   if (mapGatewayStatus(gateway.status) !== GatewayStatus.online) {
     return true;
@@ -115,6 +126,19 @@ export const serviceCountsForDegraded = (
   );
 };
 
+/** IPv6/VPN (nome ou impact_on_status=optional) não entram no cálculo de degraded. */
+export const gatewayCountsForDegraded = (
+  gateway: HeartbeatGatewayDto,
+): boolean => {
+  if (isOptionalGatewayName(gateway.name)) {
+    return false;
+  }
+  if ((gateway.impact_on_status ?? 'critical') === 'optional') {
+    return false;
+  }
+  return isGatewayProblem(gateway);
+};
+
 export const calculateNodeStatus = (input: {
   maintenanceMode: boolean;
   services: HeartbeatServiceDto[];
@@ -126,7 +150,7 @@ export const calculateNodeStatus = (input: {
 
   if (
     input.services.some((service) => serviceCountsForDegraded(service)) ||
-    input.gateways.some((gateway) => isGatewayProblem(gateway))
+    input.gateways.some((gateway) => gatewayCountsForDegraded(gateway))
   ) {
     return NodeStatus.degraded;
   }
@@ -209,8 +233,13 @@ export const buildGatewayAlert = (
     return null;
   }
 
+  const optional =
+    isOptionalGatewayName(gateway.name) ||
+    (gateway.impact_on_status ?? 'critical') === 'optional';
   const severity =
-    gateway.status === 'down' ? AlertSeverity.critical : AlertSeverity.warning;
+    optional || gateway.status !== 'down'
+      ? AlertSeverity.warning
+      : AlertSeverity.critical;
 
   const metrics = [
     gateway.latency_ms !== undefined

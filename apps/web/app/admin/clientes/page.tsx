@@ -52,7 +52,7 @@ export default async function AdminClientesPage({
   const inactiveCount = filterOptions.inactive_client_count ?? 0;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageHero
         eyebrow="Administração"
         title="Clientes"

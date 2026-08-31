@@ -610,13 +610,13 @@ detect_cpu_percent() {
 
 service_process_pattern() {
   case "$1" in
-    unbound) printf '%s' '(^|/)(unbound)$' ;;
-    dhcpd) printf '%s' '(^|/)(dhcpd|kea-dhcp4)$' ;;
-    openvpn) printf '%s' '(^|/)(openvpn)$' ;;
+    unbound) printf '%s' '(^|/)unbound([ /]|$)' ;;
+    dhcpd) printf '%s' '(^|/)(dhcpd|kea-dhcp4)([ /]|$)' ;;
+    openvpn) printf '%s' '(^|/)openvpn([ /]|$)' ;;
     ipsec) printf '%s' 'charon|starter|pluto' ;;
     wireguard) printf '%s' 'wireguard-go|boringtun|wg-quick' ;;
-    ntpd) printf '%s' '(^|/)(ntpd)$' ;;
-    dpinger) printf '%s' '(^|/)(dpinger)$' ;;
+    ntpd) printf '%s' '(^|/)ntpd([ /]|$)' ;;
+    dpinger) printf '%s' '(^|/)dpinger([ /]|$)' ;;
     *) return 1 ;;
   esac
 }
@@ -2257,7 +2257,30 @@ build_config_backup_json_fields() {
     schedule_time="${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_TIME:-03:00}"
     schedule_dow="${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_DOW:-1}"
     schedule_dom="${MONITOR_AGENT_CONFIG_BACKUP_SCHEDULE_DOM:-1}"
-    printf ',
+    config_path="$(backup_config_xml_path 2>/dev/null || printf '%s' '/conf/config.xml')"
+    config_sha256="$(sha256_file "$config_path" 2>/dev/null || true)"
+    last_checked_at="$(iso_now)"
+    if [ -n "${config_sha256:-}" ]; then
+      printf ',
+  "config_backup": {
+    "enabled": true,
+    "schedule_mode": "%s",
+    "interval_hours": %s,
+    "schedule_time": "%s",
+    "schedule_dow": %s,
+    "schedule_dom": %s,
+    "config_sha256": "%s",
+    "last_checked_at": "%s"
+  }' \
+        "$(json_escape "$mode")" \
+        "$(json_escape "$interval_hours")" \
+        "$(json_escape "$schedule_time")" \
+        "$(json_escape "$schedule_dow")" \
+        "$(json_escape "$schedule_dom")" \
+        "$(json_escape "$config_sha256")" \
+        "$(json_escape "$last_checked_at")"
+    else
+      printf ',
   "config_backup": {
     "enabled": true,
     "schedule_mode": "%s",
@@ -2266,11 +2289,12 @@ build_config_backup_json_fields() {
     "schedule_dow": %s,
     "schedule_dom": %s
   }' \
-      "$(json_escape "$mode")" \
-      "$(json_escape "$interval_hours")" \
-      "$(json_escape "$schedule_time")" \
-      "$(json_escape "$schedule_dow")" \
-      "$(json_escape "$schedule_dom")"
+        "$(json_escape "$mode")" \
+        "$(json_escape "$interval_hours")" \
+        "$(json_escape "$schedule_time")" \
+        "$(json_escape "$schedule_dow")" \
+        "$(json_escape "$schedule_dom")"
+    fi
     return 0
   fi
 

@@ -69,7 +69,7 @@ export function AppShellLayout({
           userEmail={userEmail}
           breadcrumbs={<Breadcrumbs />}
         />
-        <div className="flex min-h-0 flex-1 flex-col px-gutter pb-6 pt-4">
+        <div className="flex min-h-0 flex-1 flex-col px-gutter pb-3 pt-2">
           <main key={pathname} className="app-page flex-1">
             {children}
           </main>

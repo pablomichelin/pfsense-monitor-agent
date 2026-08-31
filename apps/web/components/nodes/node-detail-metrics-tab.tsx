@@ -24,7 +24,7 @@ export function NodeDetailMetricsTab({
   metricsPeriod: MetricsHistoryPeriod;
 }) {
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageSection
         title="Métricas"
         description="Último heartbeat recebido do agente neste firewall."

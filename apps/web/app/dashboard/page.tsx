@@ -34,7 +34,7 @@ export default async function DashboardPage() {
     .slice(0, 6);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageHero
         eyebrow={isClientProfile ? 'Portal do cliente' : 'Visão operacional'}
         title={isClientProfile ? 'Seus firewalls' : 'Resumo dos firewalls'}

@@ -123,7 +123,7 @@ export default async function AuditPage({
     : undefined;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageHero
         eyebrow="Governança"
         title="Auditoria"

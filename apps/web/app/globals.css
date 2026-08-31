@@ -7,7 +7,7 @@
   --app-max-w: 80rem;
   --app-shell-width: min(96vw, 1280px);
   --app-gutter: 1.5rem;
-  --section-gap: 2rem;
+  --section-gap: 0.75rem;
   --card-radius: 1rem;
   --card-padding: 1.5rem;
   --input-h: 2.75rem;

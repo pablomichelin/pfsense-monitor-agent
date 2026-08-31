@@ -3,6 +3,14 @@ import { Type } from 'class-transformer';
 
 const DEFAULT_LIMIT = 500;
 const MAX_LIMIT = 1000;
+const LIST_PRESETS = [
+  'problem',
+  'offline',
+  'degraded',
+  'backup-late',
+  'no-backup',
+  'package-outdated',
+] as const;
 
 export class ListNodesQueryDto {
   @IsOptional()
@@ -68,6 +76,12 @@ export class ListNodesQueryDto {
   @Min(1)
   @Max(MAX_LIMIT)
   limit?: number;
+
+  /** Preset operacional (aplica-se após derivar status/backup, sem cortar a 200 primeiras linhas). */
+  @IsOptional()
+  @IsString()
+  @IsIn(LIST_PRESETS)
+  preset?: (typeof LIST_PRESETS)[number];
 }
 
 export const LIST_NODES_DEFAULT_LIMIT = DEFAULT_LIMIT;

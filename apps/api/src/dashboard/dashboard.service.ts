@@ -191,6 +191,7 @@ export class DashboardService {
             select: {
               receivedAt: true,
               status: true,
+              configSha256: true,
             },
           },
           nodeCommands: {
@@ -223,10 +224,9 @@ export class DashboardService {
         const latestStoredBackup = node.configBackups.find(
           (backup) => backup.status === ConfigBackupStatus.stored,
         );
-        const latestBackupReceivedAt =
-          latestStoredBackup?.receivedAt ??
-          node.configBackups[0]?.receivedAt ??
-          null;
+        const latestBackup =
+          latestStoredBackup ?? node.configBackups[0] ?? null;
+        const latestBackupReceivedAt = latestBackup?.receivedAt ?? null;
         const latestFailedCommand = node.nodeCommands[0];
         const latestFailedCommandAt =
           latestFailedCommand?.completedAt ??
@@ -237,6 +237,7 @@ export class DashboardService {
           effectiveStatus,
           backupStatus: deriveBackupVisualStatus({
             latestBackupReceivedAt,
+            latestBackupSha256: latestBackup?.configSha256 ?? null,
             latestFailedCommandAt,
             backupPolicyJson: node.configBackupPolicyJson,
             timeZone: node.site.timezone,

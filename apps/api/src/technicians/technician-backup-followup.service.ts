@@ -59,6 +59,42 @@ export class TechnicianBackupFollowUpService implements OnModuleInit {
   }
 
   /**
+   * Claim atômico do follow-up (FOR UPDATE) para não enfileirar create/senha
+   * duas vezes se a API reiniciar no meio do processAfterBackupSuccess.
+   */
+  private async claimFollowUp(
+    commandId: string,
+  ): Promise<ReturnType<typeof parseFollowUpTechnicianProvision>> {
+    return this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ payload_json: Prisma.JsonValue }>>(
+        Prisma.sql`SELECT payload_json FROM node_commands WHERE id = ${commandId}::uuid FOR UPDATE`,
+      );
+      const followUp = parseFollowUpTechnicianProvision(
+        rows[0]?.payload_json ?? null,
+      );
+      if (!followUp) {
+        return null;
+      }
+
+      const scrubbed = scrubFollowUpFromBackupPayload(rows[0]?.payload_json ?? null);
+      const claimed =
+        scrubbed && typeof scrubbed === 'object' && !Array.isArray(scrubbed)
+          ? {
+              ...(scrubbed as Record<string, unknown>),
+              follow_up_claimed_at: new Date().toISOString(),
+            }
+          : { follow_up_claimed_at: new Date().toISOString() };
+
+      await tx.nodeCommand.update({
+        where: { id: commandId },
+        data: { payloadJson: claimed as Prisma.InputJsonValue },
+      });
+
+      return followUp;
+    });
+  }
+
+  /**
    * Após config_backup_now succeeded: enfileira create/set_password pendente
    * armazenado em payload_json.follow_up_technician_provision.
    */
@@ -67,7 +103,7 @@ export class TechnicianBackupFollowUpService implements OnModuleInit {
       return;
     }
 
-    const followUp = parseFollowUpTechnicianProvision(command.payloadJson);
+    const followUp = await this.claimFollowUp(command.id);
     if (!followUp) {
       return;
     }
@@ -140,16 +176,6 @@ export class TechnicianBackupFollowUpService implements OnModuleInit {
           lastError: 'provision after backup failed to enqueue',
         },
       });
-    } finally {
-      const scrubbed = scrubFollowUpFromBackupPayload(command.payloadJson);
-      if (scrubbed !== command.payloadJson) {
-        await this.prisma.nodeCommand.update({
-          where: { id: command.id },
-          data: {
-            payloadJson: scrubbed as Prisma.InputJsonValue,
-          },
-        });
-      }
     }
   }
 }

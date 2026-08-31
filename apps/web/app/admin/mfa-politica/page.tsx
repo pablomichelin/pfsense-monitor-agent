@@ -34,7 +34,7 @@ export default async function AdminMfaPoliticaPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageHero
         eyebrow="Administração"
         title="Política MFA"

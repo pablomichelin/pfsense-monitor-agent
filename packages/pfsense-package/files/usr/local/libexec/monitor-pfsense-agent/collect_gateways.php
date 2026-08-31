@@ -31,9 +31,30 @@ function monitor_gw_log(string $reason, array $context = []): void
 }
 
 /**
- * @return list<array{name: string, status: string, latency_ms?: int, loss_percent?: float}>
+ * @return list<array{name: string, status: string, latency_ms?: int, loss_percent?: float, impact_on_status?: string}>
  */
-function monitor_map_gateway_status(string $name, array $gwStatus): array
+function monitor_gateway_impact_on_status(string $name, ?array $configGw): string
+{
+    $ipproto = is_array($configGw)
+        ? strtolower(trim((string) ($configGw['ipprotocol'] ?? '')))
+        : '';
+    if ($ipproto === 'inet6') {
+        return 'optional';
+    }
+    if (preg_match('/dhcp6|slaac|(^|_)v6(_|$)|ipv6|\\bip6\\b/i', $name)) {
+        return 'optional';
+    }
+    if (preg_match('/(^|_)vpn|ovpnc|wg_/i', $name)) {
+        return 'optional';
+    }
+
+    return 'critical';
+}
+
+/**
+ * @return array{name: string, status: string, latency_ms?: int, loss_percent?: float, impact_on_status: string}
+ */
+function monitor_map_gateway_status(string $name, array $gwStatus, ?array $configGw = null): array
 {
     $status = strtolower(trim((string) ($gwStatus['status'] ?? '')));
     $substatus = strtolower(trim((string) ($gwStatus['substatus'] ?? 'none')));
@@ -63,6 +84,7 @@ function monitor_map_gateway_status(string $name, array $gwStatus): array
     $entry = [
         'name' => $name,
         'status' => $mapped,
+        'impact_on_status' => monitor_gateway_impact_on_status($name, $configGw),
     ];
     if ($latencyMs !== null) {
         $entry['latency_ms'] = $latencyMs;
@@ -152,7 +174,11 @@ try {
             continue;
         }
 
-        $result[] = monitor_map_gateway_status($name, $gwStatus);
+        $result[] = monitor_map_gateway_status(
+            $name,
+            $gwStatus,
+            is_array($configGw) ? $configGw : null,
+        );
     }
 
     echo json_encode($result, JSON_UNESCAPED_SLASHES) . "\n";

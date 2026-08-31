@@ -54,7 +54,7 @@ export default async function AdminNotificacoesPage() {
   const activeClients = filterOptions.clients.filter((client) => client.status === 'active');
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageHero
         eyebrow="Administração"
         title="Notificações externas"

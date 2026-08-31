@@ -1,6 +1,6 @@
 # PROJECT STATUS — Monitor pfSense (pfs-monitor)
 
-Ultima atualizacao: **2026-08-24**
+Ultima atualizacao: **2026-08-31**
 
 > **Fonte de verdade das versões e entregas:** `LEITURA-INICIAL.md`.
 
@@ -8,8 +8,8 @@ Ultima atualizacao: **2026-08-24**
 
 | Campo | Valor |
 |---|---|
-| API | `0.11.0` |
-| Painel web | `1.12.2` |
-| Package pfSense | `0.5.16` |
-| Última entrega | Homologação CE 2.9.0 no lab `.10` — package `0.5.16` (`docs/177`, `docs/178`) |
-| Próximo passo | Publicar 0.5.16 na frota quando couber; **não** ligar upgrade remoto de OS; Celeron J / Kea / IPsec ao vivo continuam ressalvas |
+| API | `0.11.1` |
+| Painel web | `1.12.6` |
+| Package pfSense | `0.5.17` |
+| Última entrega | Lote de bugs saúde/backup/técnico/nginx/dpinger — API `0.11.1`, painel `1.12.6`, package `0.5.17` (`docs/181`) |
+| Próximo passo | Publicar **0.5.17** na frota (dpinger + evidência de backup); retry das contas Erick `failed`; **não** ligar upgrade remoto de OS |

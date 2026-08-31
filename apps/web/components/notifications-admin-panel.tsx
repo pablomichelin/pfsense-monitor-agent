@@ -251,7 +251,7 @@ export function NotificationsAdminPanel({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section">
       <Card className="p-4">
         <div className="grid gap-3 md:grid-cols-4">
           <div>

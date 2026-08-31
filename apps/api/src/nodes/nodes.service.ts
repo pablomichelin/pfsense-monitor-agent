@@ -18,7 +18,12 @@ import {
   sortListNodesItems,
   type ListNodesSortBy,
 } from './list-nodes-sort.util';
-import { LIST_NODES_DEFAULT_LIMIT, ListNodesQueryDto } from './dto/list-nodes-query.dto';
+import { appConfig } from '../config/app-config';
+import {
+  LIST_NODES_DEFAULT_LIMIT,
+  LIST_NODES_MAX_LIMIT,
+  ListNodesQueryDto,
+} from './dto/list-nodes-query.dto';
 
 const FILTERS_CACHE_TTL_MS = 120_000;
 
@@ -398,7 +403,8 @@ export class NodesService {
     };
     const where = await this.accessPolicy.mergeNodeWhere(actor, baseWhere);
 
-    const limit = Math.min(query.limit ?? LIST_NODES_DEFAULT_LIMIT, 1000);
+    const limit = Math.min(query.limit ?? LIST_NODES_DEFAULT_LIMIT, LIST_NODES_MAX_LIMIT);
+    const targetPackageVersion = appConfig.packageRelease.version.trim() || null;
     const sortOrder = query.sort_order ?? 'asc';
     const sortBy: ListNodesSortBy =
       query.sort_by &&
@@ -414,7 +420,7 @@ export class NodesService {
         { displayName: { sort: 'asc', nulls: 'last' } },
         { hostname: 'asc' },
       ],
-      take: limit,
+      take: query.preset ? LIST_NODES_MAX_LIMIT : limit,
       include: {
         site: {
           include: {
@@ -457,6 +463,7 @@ export class NodesService {
           select: {
             receivedAt: true,
             status: true,
+            configSha256: true,
           },
         },
         nodeCommands: {
@@ -482,10 +489,9 @@ export class NodesService {
         const latestStoredBackup = node.configBackups.find(
           (backup) => backup.status === ConfigBackupStatus.stored,
         );
-        const latestBackupReceivedAt =
-          latestStoredBackup?.receivedAt ??
-          node.configBackups[0]?.receivedAt ??
-          null;
+        const latestBackup =
+          latestStoredBackup ?? node.configBackups[0] ?? null;
+        const latestBackupReceivedAt = latestBackup?.receivedAt ?? null;
         const latestFailedCommand = node.nodeCommands[0];
         const latestFailedCommandAt =
           latestFailedCommand?.completedAt ??
@@ -493,6 +499,7 @@ export class NodesService {
           null;
         const backupStatus = deriveBackupVisualStatus({
           latestBackupReceivedAt,
+          latestBackupSha256: latestBackup?.configSha256 ?? null,
           latestFailedCommandAt,
           backupPolicyJson: node.configBackupPolicyJson,
           timeZone: node.site.timezone,
@@ -542,10 +549,39 @@ export class NodesService {
           })),
         };
       })
-      .filter((node) => (query.status ? node.effective_status === query.status : true));
+      .filter((node) => (query.status ? node.effective_status === query.status : true))
+      .filter((node) => {
+        if (!query.preset) {
+          return true;
+        }
+        if (query.preset === 'offline') {
+          return node.effective_status === 'offline';
+        }
+        if (query.preset === 'degraded') {
+          return node.effective_status === 'degraded';
+        }
+        if (query.preset === 'backup-late') {
+          return node.backup_status === 'late' || node.backup_status === 'failed';
+        }
+        if (query.preset === 'no-backup') {
+          return node.backup_status === 'never';
+        }
+        if (query.preset === 'package-outdated') {
+          return Boolean(
+            targetPackageVersion && node.agent_version !== targetPackageVersion,
+          );
+        }
+        return (
+          node.effective_status === 'offline' ||
+          node.effective_status === 'degraded' ||
+          node.open_alerts > 0 ||
+          node.backup_status !== 'ok' ||
+          Boolean(targetPackageVersion && node.agent_version !== targetPackageVersion)
+        );
+      });
 
     return {
-      items: sortListNodesItems(items, sortBy, sortOrder),
+      items: sortListNodesItems(items, sortBy, sortOrder).slice(0, limit),
       generated_at: now.toISOString(),
     };
   }

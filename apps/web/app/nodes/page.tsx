@@ -62,7 +62,7 @@ export default async function NodesPage({
     preset,
   };
 
-  const listLimit = 200;
+  const listLimit = 1000;
   let filterOptions;
   let nodes;
   let session;
@@ -82,6 +82,7 @@ export default async function NodesPage({
         sort_by: sortBy,
         sort_order: sortOrder,
         limit: listLimit,
+        preset: preset || undefined,
       }),
       getSession(),
       getPackageRelease()
@@ -249,7 +250,7 @@ export default async function NodesPage({
   }));
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageHero
         eyebrow="Inventário central"
         title="Firewalls monitorados"
@@ -291,7 +292,7 @@ export default async function NodesPage({
         ))}
       </div>
 
-      <form className="glass-panel flex flex-col gap-3 rounded-xl p-4 sm:flex-row sm:flex-wrap sm:items-end">
+      <form className="glass-panel flex flex-col gap-2 rounded-xl p-3 sm:flex-row sm:flex-wrap sm:items-end">
         <label className="min-w-[12rem] flex-1 text-sm text-fg-muted">
           Cliente
           <select
@@ -345,7 +346,7 @@ export default async function NodesPage({
         className="glass-panel rounded-xl"
         open={hasActiveFilters ? true : undefined}
       >
-        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm text-slate-200 marker:content-none [&::-webkit-details-marker]:hidden">
+        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-3 py-2 text-sm text-slate-200 marker:content-none [&::-webkit-details-marker]:hidden">
           <span className="font-mono text-[10px] uppercase tracking-wider text-cyan-400/90">
             Mais filtros
           </span>

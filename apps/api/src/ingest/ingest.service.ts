@@ -307,6 +307,11 @@ export class IngestService {
                 configBackupPolicyJson: toStoredBackupPolicyJson(
                   normalizedBackupPolicy,
                   sentAt,
+                  {
+                    last_checked_at:
+                      request.body.config_backup?.last_checked_at,
+                    config_sha256: request.body.config_backup?.config_sha256,
+                  },
                 ),
               }
             : {}),

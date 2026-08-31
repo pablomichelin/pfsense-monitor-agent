@@ -84,7 +84,7 @@ export default async function AdminTecnicosPage() {
   );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section">
       <PageHero
         eyebrow="Administração"
         title="Técnicos"
