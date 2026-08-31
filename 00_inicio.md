@@ -2,9 +2,11 @@
 
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-31):** API `0.11.1` · painel `1.12.6` · package pfSense `0.5.17`.
+> **Versoes atuais (2026-08-31):** API `0.11.1` · painel `1.12.6` · package pfSense `0.5.18`.
 >
-> **Ultima entrega (2026-08-31):** correção do lote de bugs (saúde IPv6/VPN, backup, técnico, nginx, dpinger, preset). API **0.11.1**, painel **1.12.6**, package **0.5.17**. Ver `docs/181`.
+> **Ultima entrega (2026-08-31):** técnico com User Manager no pfSense (exceto admin/root) para usuários OpenVPN. Package **0.5.18**. Ver `docs/182`.
+>
+> **Entrega anterior (2026-08-31):** correção do lote de bugs (saúde IPv6/VPN, backup, técnico, nginx, dpinger, preset). API **0.11.1**, painel **1.12.6**, package **0.5.17**. Ver `docs/181`.
 >
 > **Entrega anterior (2026-08-31):** densidade do painel — gap entre seções 0.75rem. Painel **1.12.5**. Ver `docs/180`.
 >

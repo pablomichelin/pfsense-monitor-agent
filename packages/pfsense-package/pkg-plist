@@ -13,9 +13,11 @@ libexec/monitor-pfsense-agent/run_node_reboot.sh
 pkg/systemup_monitor.inc
 pkg/systemup_monitor.xml
 pkg/priv/systemup_technician.inc
+pkg/systemup_usermanager_guard.inc
 share/pfSense-pkg-systemup-monitor/info.xml
 share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php
 share/pfSense-pkg-systemup-monitor/package-monitor-catalog.json
 www/backup_systemup_monitor.php
+www/systemup_usermanager_denied.php
 www/config_systemup_monitor.php
 www/status_systemup_monitor.php

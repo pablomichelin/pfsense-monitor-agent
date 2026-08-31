@@ -1,7 +1,7 @@
 # $FreeBSD$
 
 PORTNAME=	pfSense-pkg-systemup-monitor
-PORTVERSION=	0.5.17
+PORTVERSION=	0.5.18
 PORTREVISION=	0
 CATEGORIES=	sysutils
 MASTER_SITES=	# empty
@@ -60,6 +60,8 @@ do-install:
 	${MKDIR} ${STAGEDIR}${PREFIX}/pkg/priv
 	${INSTALL_DATA} ${FILESDIR}${PREFIX}/pkg/priv/systemup_technician.inc \
 		${STAGEDIR}${PREFIX}/pkg/priv
+	${INSTALL_DATA} ${FILESDIR}${PREFIX}/pkg/systemup_usermanager_guard.inc \
+		${STAGEDIR}${PREFIX}/pkg
 	${INSTALL_DATA} ${FILESDIR}${PREFIX}/share/pfSense-pkg-systemup-monitor/info.xml \
 		${STAGEDIR}${PREFIX}/share/pfSense-pkg-systemup-monitor
 	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php \
@@ -73,6 +75,8 @@ do-install:
 	${INSTALL_DATA} ${FILESDIR}${PREFIX}/www/status_systemup_monitor.php \
 		${STAGEDIR}${PREFIX}/www
 	${INSTALL_DATA} ${FILESDIR}${PREFIX}/www/backup_systemup_monitor.php \
+		${STAGEDIR}${PREFIX}/www
+	${INSTALL_DATA} ${FILESDIR}${PREFIX}/www/systemup_usermanager_denied.php \
 		${STAGEDIR}${PREFIX}/www
 	@${REINPLACE_CMD} -i '' -e "s|%%PKGVERSION%%|${PKGVERSION}|" \
 		${STAGEDIR}${PREFIX}/pkg/systemup_monitor.xml \

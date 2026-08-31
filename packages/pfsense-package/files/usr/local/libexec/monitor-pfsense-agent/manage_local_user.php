@@ -207,9 +207,9 @@ function handle_create(array $payload, string $username): void
     apply_local_user_password($user, $password);
     assert_password_hash_valid($user, $password);
 
-    // admin_full (controlador) → privilégio SystemUp sem User/Group Manager:
-    // acesso operacional amplo, troca só a própria senha (passwordmg), sem
-    // alterar senha do admin nem auto-escalar via grupos.
+    // admin_full (controlador) → privilégio SystemUp com User Manager:
+    // criar/editar/excluir usuários (OpenVPN); admin/root bloqueados na GUI;
+    // Group Manager continua fora (sem auto-escalar via grupo admins).
     if ($privilegeProfile === 'admin_full') {
         $user['priv'] = ['page-systemup-technician-admin'];
     }

@@ -6,6 +6,12 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ---
 
+### 2026-08-31 — Técnico com User Manager exceto admin/root (package 0.5.18)
+
+- Técnicos passam a criar/editar/excluir usuários locais no pfSense (OpenVPN com usuários do sistema).
+- `admin` e `root` continuam bloqueados na GUI; Group Manager segue fechado.
+- Ver `docs/182-ENTREGA-TECNICO-USER-MANAGER-EXCETO-ADMIN-2026-08-31.md`.
+
 ### 2026-08-31 — Lote de bugs saúde/backup/técnico (API 0.11.1, painel 1.12.6, package 0.5.17)
 
 - Gateways IPv6/VPN não degradam o node; gate de backup alinha `stored`+`duplicate` e SHA confirmado no heartbeat.

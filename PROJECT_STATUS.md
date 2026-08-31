@@ -10,6 +10,6 @@ Ultima atualizacao: **2026-08-31**
 |---|---|
 | API | `0.11.1` |
 | Painel web | `1.12.6` |
-| Package pfSense | `0.5.17` |
-| Última entrega | Lote de bugs saúde/backup/técnico/nginx/dpinger — API `0.11.1`, painel `1.12.6`, package `0.5.17` (`docs/181`) |
-| Próximo passo | Publicar **0.5.17** na frota (dpinger + evidência de backup); retry das contas Erick `failed`; **não** ligar upgrade remoto de OS |
+| Package pfSense | `0.5.18` |
+| Última entrega | Técnico com User Manager (exceto admin/root) — package `0.5.18` (`docs/182`) |
+| Próximo passo | Publicar **0.5.18** na frota (User Manager + dpinger); retry das contas Erick `failed`; **não** ligar upgrade remoto de OS |
