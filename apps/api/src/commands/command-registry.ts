@@ -23,6 +23,56 @@ export {
 
 const SHA256_HEX = /^[a-f0-9]{64}$/i;
 
+const IPV4_RE =
+  /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+const TABLE_NAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+
+function parseIpArg(value: string): string {
+  return value.trim().replace(/^\[|\]$/g, '');
+}
+
+export function validateTableIpPayload(
+  payload: unknown,
+): { ip: string } {
+  if (payload == null || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new BadRequestException('payload must be an object');
+  }
+  const raw = (payload as Record<string, unknown>).ip;
+  if (typeof raw !== 'string' || !raw.trim()) {
+    throw new BadRequestException('ip is required');
+  }
+  const ip = parseIpArg(raw);
+  // IPv4 estrito; IPv6 básico (hex, ':' e opcionalmente zona '%')
+  const isV4 = IPV4_RE.test(ip);
+  const isV6 =
+    /^[0-9a-fA-F:]{2,45}(%[A-Za-z0-9_.-]{1,16})?$/.test(ip) && ip.includes(':');
+  if (!isV4 && !isV6) {
+    throw new BadRequestException('ip must be a valid IPv4 or IPv6 address');
+  }
+  return { ip };
+}
+
+export function validateTablePayload(payload: unknown): { ip: string } {
+  return validateTableIpPayload(payload);
+}
+
+export function validateTableEntryRemovePayload(
+  payload: unknown,
+): { table: string; ip: string } {
+  const base = validateTableIpPayload(payload);
+  const raw = (payload as Record<string, unknown>).table;
+  if (typeof raw !== 'string' || !raw.trim()) {
+    throw new BadRequestException('table is required');
+  }
+  const table = raw.trim();
+  if (!TABLE_NAME_RE.test(table)) {
+    throw new BadRequestException(
+      'table must contain only letters, digits, dot, underscore or dash (max 64 chars)',
+    );
+  }
+  return { table, ip: base.ip };
+}
+
 function validatePfsenseUpgradePayload(
   payload: unknown,
 ): Record<string, unknown> | undefined {
@@ -253,6 +303,28 @@ export const COMMAND_REGISTRY: Record<NodeCommandType, CommandTypeDefinition> = 
         );
       }
     },
+  },
+  [NodeCommandType.table_search]: {
+    permission: 'firewall.table.manage',
+    minAgentVersion: '0.5.21',
+    expireMinutes: appConfig.operationalActions.commandExpireMinutes,
+    maxRetries: 1,
+    retryBackoffMs: [5000],
+    maxConcurrentPerNode: 1,
+    maxConcurrentGlobal: 0,
+    auditPrefix: 'firewall.table.search',
+    validatePayload: validateTablePayload,
+  },
+  [NodeCommandType.table_entry_remove]: {
+    permission: 'firewall.table.manage',
+    minAgentVersion: '0.5.21',
+    expireMinutes: appConfig.operationalActions.commandExpireMinutes,
+    maxRetries: 1,
+    retryBackoffMs: [5000],
+    maxConcurrentPerNode: 1,
+    maxConcurrentGlobal: 0,
+    auditPrefix: 'firewall.table.remove',
+    validatePayload: validateTableEntryRemovePayload,
   },
 };
 

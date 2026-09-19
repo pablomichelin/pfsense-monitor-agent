@@ -156,6 +156,8 @@ enum NodeCommandType {
   local_user_set_password
   local_user_disable
   local_user_delete
+  table_search
+  table_entry_remove
 
   @@map("node_command_type")
 }

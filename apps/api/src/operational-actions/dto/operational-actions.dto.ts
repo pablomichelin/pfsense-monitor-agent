@@ -26,6 +26,19 @@ export class NodeRebootRequestDto {
   acknowledge_ha_risk?: boolean;
 }
 
+export class TableSearchRequestDto {
+  @IsString()
+  ip!: string;
+}
+
+export class TableEntryRemoveRequestDto {
+  @IsString()
+  table!: string;
+
+  @IsString()
+  ip!: string;
+}
+
 export class CreateBackupBatchDto {
   @IsString({ each: true })
   node_ids!: string[];

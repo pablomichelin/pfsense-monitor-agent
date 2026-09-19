@@ -6,6 +6,7 @@ import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 import { NodeCommandHistoryPanel } from '@/components/nodes/node-command-history-panel';
 import { NodeOperationalActionsSection } from '@/components/nodes/node-operational-actions-section';
+import { NodePfTablesSection } from '@/components/nodes/node-pf-tables-section';
 import { NodeDetailAlertsTab } from '@/components/nodes/node-detail-alerts-tab';
 import { NodeDetailBackupTab } from '@/components/nodes/node-detail-backup-tab';
 import { NodeDetailConfigTab } from '@/components/nodes/node-detail-config-tab';
@@ -125,6 +126,7 @@ export default async function NodeDetailsPage({
     const canRunPackageUpgrade = hasPermission(permissions, 'package.upgrade.run');
     const canRestartService = hasPermission(permissions, 'service.restart.run');
     const canRebootNode = hasPermission(permissions, 'node.reboot.run');
+    const canManagePfTables = hasPermission(permissions, 'firewall.table.manage');
     const canViewBootstrap = hasPermission(permissions, 'bootstrap.view');
     const canViewPfsenseApi = hasPermission(permissions, 'pfsense.api.view');
     const canManagePfsenseCredentials = hasPermission(permissions, 'pfsense.credentials.manage');
@@ -341,6 +343,13 @@ export default async function NodeDetailsPage({
                     canRestartService={canRestartService}
                     canReboot={canRebootNode}
                     initialStatus={operationalStatus}
+                  />
+                ) : null}
+                {canManagePfTables && operationalStatus.enabled ? (
+                  <NodePfTablesSection
+                    nodeId={node.id}
+                    hostname={node.hostname}
+                    status={operationalStatus}
                   />
                 ) : null}
                 <NodeCommandHistoryPanel

@@ -15,7 +15,13 @@ import {
   CreateBackupBatchDto,
   NodeRebootRequestDto,
   ServiceRestartRequestDto,
+  TableEntryRemoveRequestDto,
+  TableSearchRequestDto,
 } from './dto/operational-actions.dto';
+import {
+  validateTableIpPayload,
+  validateTableEntryRemovePayload,
+} from '../commands/command-registry';
 import {
   SERVICE_RESTART_ALLOWLIST,
   confirmationMatchesHostname,
@@ -209,6 +215,93 @@ export class OperationalActionsService {
       status: command.status,
       expires_at: command.expiresAt.toISOString(),
       service: payload.service,
+    };
+  }
+
+  async requestTableSearch(
+    nodeId: string,
+    userId: string,
+    dto: TableSearchRequestDto,
+    ipAddress?: string,
+  ) {
+    this.assertOperationalActionsEnabled();
+    const node = await this.assertNodeReady(nodeId);
+    const payload = validateTableIpPayload({ ip: dto.ip });
+
+    const command = await this.orchestrator.enqueueCommand({
+      nodeId,
+      type: NodeCommandType.table_search,
+      requestedByUserId: userId,
+      payloadJson: payload,
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorType: 'user',
+        actorId: userId,
+        action: 'firewall.table.search',
+        targetType: 'node',
+        targetId: nodeId,
+        ipAddress,
+        metadataJson: {
+          command_id: command.id,
+          ip: payload.ip,
+          hostname: node.hostname,
+        },
+      },
+    });
+
+    return {
+      command_id: command.id,
+      status: command.status,
+      expires_at: command.expiresAt.toISOString(),
+      ip: payload.ip,
+    };
+  }
+
+  async requestTableEntryRemove(
+    nodeId: string,
+    userId: string,
+    dto: TableEntryRemoveRequestDto,
+    ipAddress?: string,
+  ) {
+    this.assertOperationalActionsEnabled();
+    const node = await this.assertNodeReady(nodeId);
+    const payload = validateTableEntryRemovePayload({
+      table: dto.table,
+      ip: dto.ip,
+    });
+
+    const command = await this.orchestrator.enqueueCommand({
+      nodeId,
+      type: NodeCommandType.table_entry_remove,
+      requestedByUserId: userId,
+      payloadJson: payload,
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorType: 'user',
+        actorId: userId,
+        action: 'firewall.table.remove',
+        targetType: 'node',
+        targetId: nodeId,
+        ipAddress,
+        metadataJson: {
+          command_id: command.id,
+          table: payload.table,
+          ip: payload.ip,
+          hostname: node.hostname,
+        },
+      },
+    });
+
+    return {
+      command_id: command.id,
+      status: command.status,
+      expires_at: command.expiresAt.toISOString(),
+      table: payload.table,
+      ip: payload.ip,
     };
   }
 

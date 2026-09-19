@@ -19,6 +19,8 @@ import {
   CreateBackupBatchDto,
   NodeRebootRequestDto,
   ServiceRestartRequestDto,
+  TableEntryRemoveRequestDto,
+  TableSearchRequestDto,
 } from './dto/operational-actions.dto';
 import { OperationalActionsService } from './operational-actions.service';
 
@@ -49,6 +51,38 @@ export class OperationalActionsController {
   ) {
     await this.accessPolicy.assertNodeAccess(getAccessActor(request), nodeId);
     return this.actionsService.requestServiceRestart(
+      nodeId,
+      request.auth!.userId,
+      body,
+      resolveClientIp(request),
+    );
+  }
+
+  @Post('table-search')
+  @RequirePermissions('firewall.table.manage')
+  async requestTableSearch(
+    @Param('id') nodeId: string,
+    @Body() body: TableSearchRequestDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessPolicy.assertNodeAccess(getAccessActor(request), nodeId);
+    return this.actionsService.requestTableSearch(
+      nodeId,
+      request.auth!.userId,
+      body,
+      resolveClientIp(request),
+    );
+  }
+
+  @Post('table-entry-remove')
+  @RequirePermissions('firewall.table.manage')
+  async requestTableEntryRemove(
+    @Param('id') nodeId: string,
+    @Body() body: TableEntryRemoveRequestDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessPolicy.assertNodeAccess(getAccessActor(request), nodeId);
+    return this.actionsService.requestTableEntryRemove(
       nodeId,
       request.auth!.userId,
       body,

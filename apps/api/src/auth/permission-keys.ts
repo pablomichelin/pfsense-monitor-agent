@@ -45,6 +45,7 @@ export const PERMISSION_KEYS = [
   'technicians.view',
   'technicians.manage',
   'technicians.password_reset.run',
+  'firewall.table.manage',
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];

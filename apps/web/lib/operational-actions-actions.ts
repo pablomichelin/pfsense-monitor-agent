@@ -6,6 +6,8 @@ import {
   getOperationalActionsStatus,
   requestNodeReboot,
   requestServiceRestart,
+  requestTableSearch,
+  requestTableEntryRemove,
 } from './api';
 
 export async function fetchOperationalActionsStatus(nodeId: string) {
@@ -31,6 +33,22 @@ export async function requestNodeRebootAction(
   },
 ) {
   const result = await requestNodeReboot(nodeId, input);
+  revalidatePath(`/nodes/${nodeId}`);
+  return result;
+}
+
+export async function requestTableSearchAction(nodeId: string, ip: string) {
+  const result = await requestTableSearch(nodeId, { ip });
+  revalidatePath(`/nodes/${nodeId}`);
+  return result;
+}
+
+export async function requestTableEntryRemoveAction(
+  nodeId: string,
+  table: string,
+  ip: string,
+) {
+  const result = await requestTableEntryRemove(nodeId, { table, ip });
   revalidatePath(`/nodes/${nodeId}`);
   return result;
 }

@@ -3543,6 +3543,105 @@ dispatch_node_reboot() {
   return 0
 }
 
+dispatch_table_action() {
+  action="$1"
+  command_id="$2"
+  payload_file="$3"
+  CURL_CMD="$4"
+
+  cleanup_payload() {
+    rm -f "$payload_file" 2>/dev/null || true
+  }
+  trap cleanup_payload EXIT INT TERM
+
+  if ! operational_action_acquire_lock "table_${action}"; then
+    agent_post_command_result_failed \
+      "$command_id" \
+      "another operational action is running" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  agent_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
+  agent_post_command_ack "$command_id" "running" "$CURL_CMD" >/dev/null 2>&1 || true
+
+  helper="$SCRIPT_DIR/manage_pf_tables.php"
+  if [ ! -f "$helper" ]; then
+    operational_action_release_lock
+    agent_post_command_result_failed \
+      "$command_id" \
+      "manage_pf_tables.php missing" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if [ -z "$payload_file" ] || [ ! -r "$payload_file" ]; then
+    fallback_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
+    if [ -r "$fallback_payload" ]; then
+      payload_file="$fallback_payload"
+    else
+      operational_action_release_lock
+      agent_post_command_result_failed \
+        "$command_id" \
+        "table payload file missing" \
+        "$CURL_CMD" >/dev/null 2>&1 || true
+      return 1
+    fi
+  fi
+
+  php_bin="php"
+  if [ -x /usr/local/bin/php ]; then
+    php_bin="/usr/local/bin/php"
+  elif ! command_exists php; then
+    operational_action_release_lock
+    agent_post_command_result_failed \
+      "$command_id" \
+      "php interpreter not found" \
+      "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  stderr_file="$(mktemp)"
+  php_exit=0
+  result_json="$("$php_bin" -f "$helper" "$action" "$payload_file" 2>"$stderr_file")" || php_exit=$?
+
+  operational_action_release_lock
+
+  if [ -n "$result_json" ]; then
+    ok_flag="$(printf '%s' "$result_json" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN), true); echo is_array($d) && !empty($d["ok"]) ? "1" : "0";' 2>/dev/null || echo 0)"
+    if [ "$ok_flag" = "1" ]; then
+      rm -f "$stderr_file" 2>/dev/null || true
+      agent_post_command_result_succeeded "$command_id" "$result_json" "$CURL_CMD" >/dev/null 2>&1 || true
+      return 0
+    fi
+    err_msg="$(printf '%s' "$result_json" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN), true); echo is_array($d) ? (string)($d["message"] ?? "failed") : "failed";' 2>/dev/null || echo failed)"
+    rm -f "$stderr_file" 2>/dev/null || true
+    agent_post_command_result_failed "$command_id" "$err_msg" "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  err_detail="table action failed"
+  if [ -s "$stderr_file" ]; then
+    err_detail="$(head -n 1 "$stderr_file" | tr '\r\n' ' ' | cut -c1-200)"
+  elif [ "$php_exit" -ne 0 ]; then
+    err_detail="table php exited with status ${php_exit}"
+  fi
+  rm -f "$stderr_file" 2>/dev/null || true
+  agent_post_command_result_failed \
+    "$command_id" \
+    "$err_detail" \
+    "$CURL_CMD" >/dev/null 2>&1 || true
+  return 1
+}
+
+dispatch_table_search() {
+  dispatch_table_action "search" "$1" "$2" "$3"
+}
+
+dispatch_table_entry_remove() {
+  dispatch_table_action "entry_remove" "$1" "$2" "$3"
+}
+
 dispatch_local_user_action() {
   action="$1"
   command_id="$2"
@@ -3686,12 +3785,29 @@ process_heartbeat_commands() {
         continue;
       }
       $payloadPath = "";
-      if (strncmp($type, "local_user_", 11) === 0) {
+      $hasTablePayload = ($type === "table_search" || $type === "table_entry_remove");
+      if (strncmp($type, "local_user_", 11) === 0 || $hasTablePayload) {
         $cmdPayload = $command["payload"] ?? null;
         if (!is_array($cmdPayload)) {
           continue;
         }
         $payloadPath = rtrim($payloadDir, "/") . "/cmd-payload-" . $id . ".json";
+        if ($hasTablePayload) {
+          // Table commands: sempre sobrescreve (sem segredo no payload).
+          $encoded = json_encode($cmdPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+          if ($encoded === false) {
+            continue;
+          }
+          $prevUmask = umask(0077);
+          $written = @file_put_contents($payloadPath, $encoded . "\n", LOCK_EX);
+          umask($prevUmask);
+          if ($written === false) {
+            continue;
+          }
+          @chmod($payloadPath, 0600);
+          echo $type . "\t" . $id . "\t\t\t\t\t\t" . $payloadPath . "\n";
+          continue;
+        }
         // Reentrega pos picked_up vem sem password (scrub no controlador). Nao
         // sobrescrever arquivo 0600 que ainda tem a senha para execucao.
         if (is_readable($payloadPath)) {
@@ -3802,6 +3918,20 @@ process_heartbeat_commands() {
           resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
         fi
         dispatch_local_user_set_password "$command_id" "$resolved_payload" "$CURL_CMD" || true
+        ;;
+      table_search)
+        resolved_payload="$payload_path"
+        if [ -z "$resolved_payload" ]; then
+          resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
+        fi
+        dispatch_table_search "$command_id" "$resolved_payload" "$CURL_CMD" || true
+        ;;
+      table_entry_remove)
+        resolved_payload="$payload_path"
+        if [ -z "$resolved_payload" ]; then
+          resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
+        fi
+        dispatch_table_entry_remove "$command_id" "$resolved_payload" "$CURL_CMD" || true
         ;;
       *)
         agent_post_command_result_failed \

@@ -2179,6 +2179,39 @@ export async function requestNodeReboot(
   });
 }
 
+export async function requestTableSearch(
+  nodeId: string,
+  input: { ip: string },
+): Promise<{
+  command_id: string;
+  status: string;
+  expires_at: string;
+  ip: string;
+}> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/operational-actions/table-search`, {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
+export async function requestTableEntryRemove(
+  nodeId: string,
+  input: { table: string; ip: string },
+): Promise<{
+  command_id: string;
+  status: string;
+  expires_at: string;
+  table: string;
+  ip: string;
+}> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/operational-actions/table-entry-remove`, {
+    method: 'POST',
+    body: input,
+    csrfProtected: true,
+  });
+}
+
 export type CommandBatchResponse = {
   generated_at: string;
   batch: {

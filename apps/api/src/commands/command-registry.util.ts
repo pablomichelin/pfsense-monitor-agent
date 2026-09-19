@@ -24,6 +24,8 @@ export type CommandAuditPrefix =
   | 'technician.password_reset'
   | 'technician.disable'
   | 'technician.delete'
+  | 'firewall.table.search'
+  | 'firewall.table.remove'
   | 'commands.batch';
 
 export interface CommandTypeDefinition {
