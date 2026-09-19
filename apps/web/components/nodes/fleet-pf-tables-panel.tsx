@@ -41,7 +41,7 @@ export function FleetPfTablesPanel({ selectedNodes }: { selectedNodes: Node[] })
 
   const selectedIds = useMemo(() => new Set(selectedNodes.map((node) => node.id)), [selectedNodes]);
   const selectedSignature = [...selectedIds].sort().join(',');
-  const unsupported = selectedNodes.filter((node) => !isAgentVersionAtLeast(node.agent_version, '0.5.22'));
+  const unsupported = selectedNodes.filter((node) => !isAgentVersionAtLeast(node.agent_version, '0.5.23'));
   const matches = (querySelection === selectedSignature ? searches : []).flatMap((job) =>
     job.status === 'succeeded' && selectedIds.has(job.nodeId)
       ? job.tables.map((table) => ({ nodeId: job.nodeId, hostname: job.hostname, table }))
@@ -120,10 +120,10 @@ export function FleetPfTablesPanel({ selectedNodes }: { selectedNodes: Node[] })
     <Card className="space-y-3 p-4">
       <div>
         <h3 className="font-display text-base text-fg">Desbloquear IP nos firewalls selecionados</h3>
-        <p className="text-sm text-fg-muted">Consulte o IP, confira as tabelas encontradas e marque as entradas a remover. O agente 0.5.22 ou superior é necessário.</p>
+        <p className="text-sm text-fg-muted">Consulte o IP, confira as tabelas encontradas e marque as entradas a remover. O agente 0.5.23 ou superior é necessário.</p>
       </div>
       {selectedNodes.length > 20 ? <Alert variant="warning">Selecione no máximo 20 firewalls por consulta.</Alert> : null}
-      {unsupported.length > 0 ? <Alert variant="warning">Agente 0.5.22 ou superior necessário em: {unsupported.map((node) => node.display_name || node.hostname).join(', ')}.</Alert> : null}
+      {unsupported.length > 0 ? <Alert variant="warning">Agente 0.5.23 ou superior necessário em: {unsupported.map((node) => node.display_name || node.hostname).join(', ')}.</Alert> : null}
       {searches.length > 0 && querySelection !== selectedSignature ? <Alert variant="warning">A seleção de firewalls mudou. Consulte novamente antes de desbloquear.</Alert> : null}
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-sm text-fg">IP a desbloquear

@@ -113,11 +113,13 @@ function list_tables(): array
 function table_contains_ip(string $table, string $ip): bool
 {
     [$exit, $stdout, $stderr] = run_pfctl(['-t', $table, '-T', 'test', $ip]);
-    if ($exit !== 0) {
-        throw new RuntimeException('pfctl table test failed');
+    // pfctl may return a nonzero status when the address does not match.
+    // Interpret its count first; only an unrecognised response is an error.
+    $output = $stdout . "\n" . $stderr;
+    if (preg_match('/\b([01])\/1 addresses? match\b/i', $output, $match)) {
+        return $match[1] === '1';
     }
-    // pfctl prints the test count on stderr on supported PF versions.
-    return (bool) preg_match('/\b1\/1 addresses match\b/', $stdout . "\n" . $stderr);
+    throw new RuntimeException('pfctl table test failed (exit ' . $exit . '): ' . trim($stderr));
 }
 
 try {
@@ -178,6 +180,6 @@ try {
     ]);
     exit(0);
 } catch (Throwable $e) {
-    emit_result(false, 'operation failed');
+    emit_result(false, 'operation failed: ' . substr($e->getMessage(), 0, 200));
     exit(1);
 }

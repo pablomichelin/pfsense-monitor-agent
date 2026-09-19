@@ -301,7 +301,7 @@ export const COMMAND_REGISTRY: Record<NodeCommandType, CommandTypeDefinition> = 
   },
   [NodeCommandType.table_search]: {
     permission: 'firewall.table.manage',
-    minAgentVersion: '0.5.22',
+    minAgentVersion: '0.5.23',
     expireMinutes: appConfig.operationalActions.commandExpireMinutes,
     maxRetries: 1,
     retryBackoffMs: [5000],
@@ -312,7 +312,7 @@ export const COMMAND_REGISTRY: Record<NodeCommandType, CommandTypeDefinition> = 
   },
   [NodeCommandType.table_entry_remove]: {
     permission: 'firewall.table.manage',
-    minAgentVersion: '0.5.22',
+    minAgentVersion: '0.5.23',
     expireMinutes: appConfig.operationalActions.commandExpireMinutes,
     maxRetries: 1,
     retryBackoffMs: [5000],
