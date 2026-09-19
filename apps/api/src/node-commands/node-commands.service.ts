@@ -89,6 +89,25 @@ export function toAgentCommandPayload(
     };
   }
 
+  if (type === NodeCommandType.table_search) {
+    if (typeof raw.ip !== 'string' || !raw.ip.trim()) {
+      return undefined;
+    }
+
+    return { ip: raw.ip.trim() };
+  }
+
+  if (type === NodeCommandType.table_entry_remove) {
+    if (
+      typeof raw.ip !== 'string' || !raw.ip.trim() ||
+      typeof raw.table !== 'string' || !raw.table.trim()
+    ) {
+      return undefined;
+    }
+
+    return { ip: raw.ip.trim(), table: raw.table.trim() };
+  }
+
   if (type === NodeCommandType.service_restart) {
     const service = raw.service;
     if (typeof service !== 'string' || !service.trim()) {
