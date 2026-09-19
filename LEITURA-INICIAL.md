@@ -6,19 +6,17 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Versões em produção e correção candidata (2026-09-19)
+## Versões em produção (2026-09-19)
 
-**Correção candidata, ainda não publicada:** API `0.11.3`, painel `1.12.8`, package `0.5.22` para desbloqueio de IP nos firewalls selecionados. Diagnóstico, validações e pendências em `docs/186-REVISAO-DESBLOQUEIO-TABELAS-PF-2026-09-19.md`. Não tratar estas versões como implantadas.
+**Entrega atual:** API `0.11.4`, painel `1.12.9` e package publicado `0.5.23`. No inventário `/nodes`, o operador seleciona firewalls, informa o IP, consulta as tabelas correspondentes e escolhe as entradas para desbloquear. Diagnóstico e provas em `docs/186-REVISAO-DESBLOQUEIO-TABELAS-PF-2026-09-19.md`.
 
-**Produção verificada em 2026-09-19:** API `0.11.2`, painel `1.12.7`, package publicado `0.5.21`; 58 agentes reportaram `0.5.21` e um `0.5.20`. O código das tabelas estava na imagem web e na API, porém o fluxo não atendia ao uso em lote. A cópia de código em produção tinha `config/package-release.env` alterado localmente para `0.5.21`.
+**Frota observada após a implantação:** 58 agentes reportaram `0.5.23`; `fw-lages.compasi.local` permaneceu em `0.5.20` e sem heartbeat desde 2026-09-01. Após a orientação do usuário, nenhuma outra ação em firewalls deve ser executada nesta tarefa. A remoção efetiva de IP não foi ensaiada.
 
-| Componente | Versao | Referencia |
+| Componente | Versão | Referência |
 |------------|--------|------------|
-| API | `0.11.2` | imagem em execução no servidor |
-| Painel web | `1.12.7` | imagem em execução no servidor |
-| Package pfSense | `0.5.21` | artefato publicado + `config/package-release.env` em produção |
-
-**Release vigente antes da correção candidata:** package **`0.5.21`** — consulta e remoção de IP em tabelas pf, com defeitos descritos no doc 186.
+| API | `0.11.4` | imagem saudável no servidor 192.168.100.221 |
+| Painel web | `1.12.9` | imagem saudável no servidor 192.168.100.221 |
+| Package pfSense | `0.5.23` | artefato publicado e checksum verificado no endpoint do controlador |
 
 **Última entrega (2026-09-18):** endurecimento de segurança API + web (proteção zip-bomb no ingest de backup, fail-fast de `TRUSTED_PROXY_IPS`, fail-closed 503 no middleware, `MONITOR_API_BASE_URL` obrigatória). API **0.11.2**, painel **1.12.7**, package **0.5.20 sem mudança**. Ver `docs/185-ENTREGA-ENDURECIMENTO-SEGURANCA-API-WEB-2026-09-18.md`.
 
