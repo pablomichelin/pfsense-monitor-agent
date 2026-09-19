@@ -10,13 +10,15 @@ Leia este arquivo primeiro.
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.11.1` | `apps/api/package.json` |
+| API | `0.11.2` | `apps/api/package.json` |
 | Painel web | `1.12.6` | `apps/web/package.json` (rodape do layout) |
 | Package pfSense | `0.5.20` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
 
 **Release (config local):** package **`0.5.20`** — hotfix 50x ao Save no User Manager (técnico / `getUserGroups` by-ref).
 
-**Última entrega (2026-08-31):** técnico consegue salvar usuário no User Manager (sem 50x). Package **0.5.20**. Ver `docs/184-HOTFIX-TECNICO-USER-MANAGER-SAVE-50X-0.5.20-2026-08-31.md`.
+**Última entrega (2026-09-18):** endurecimento de segurança API + web (proteção zip-bomb no ingest de backup, fail-fast de `TRUSTED_PROXY_IPS`, fail-closed 503 no middleware, `MONITOR_API_BASE_URL` obrigatória). API **0.11.2**, painel **1.12.7**, package **0.5.20 sem mudança**. Ver `docs/185-ENTREGA-ENDURECIMENTO-SEGURANCA-API-WEB-2026-09-18.md`.
+
+**Entrega anterior (2026-08-31):** técnico consegue salvar usuário no User Manager (sem 50x). Package **0.5.20**. Ver `docs/184-HOTFIX-TECNICO-USER-MANAGER-SAVE-50X-0.5.20-2026-08-31.md`.
 
 **Entrega anterior (2026-08-31):** quoting do detector DHCP Kea no agente. Package **0.5.19**. Ver `docs/183-HOTFIX-PHP-R-KEA-DHCP4-QUOTING-0.5.19-2026-08-31.md`.
 

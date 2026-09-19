@@ -139,10 +139,19 @@ export class BackupsIngestService {
     const payloadSha256 = this.storage.sha256Hex(request.rawBody);
     let xmlBytes = request.rawBody;
     if (isGzip) {
+      // Zip-bomb protection: reject before decompressing when the declared
+      // size (X-Config-Size) exceeds the configured limit.
+      if (configSize > appConfig.configBackup.maxBytes) {
+        throw new PayloadTooLargeException(
+          `config backup decompressed size exceeds ${appConfig.configBackup.maxBytes} bytes`,
+        );
+      }
       try {
-        xmlBytes = gunzipSync(request.rawBody);
+        xmlBytes = gunzipSync(request.rawBody, {
+          maxOutputLength: appConfig.configBackup.maxBytes,
+        });
       } catch {
-        throw new BadRequestException('invalid gzip payload');
+        throw new BadRequestException('invalid or oversized gzip payload');
       }
     }
 

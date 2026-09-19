@@ -26,16 +26,10 @@ type FetchSessionResult =
 
 function resolveApiBaseUrl(): string {
   const configured = process.env.MONITOR_API_BASE_URL?.trim();
-  if (configured) {
-    return configured.replace(/\/$/, '');
+  if (!configured) {
+    throw new Error('MONITOR_API_BASE_URL is required');
   }
-
-  return 'http://127.0.0.1:8088';
-}
-
-function hasSessionCookie(request: NextRequest): boolean {
-  const cookieHeader = request.headers.get('cookie');
-  return Boolean(cookieHeader?.includes(`${SESSION_COOKIE}=`));
+  return configured.replace(/\/$/, '');
 }
 
 async function fetchSession(request: NextRequest): Promise<FetchSessionResult> {
@@ -100,13 +94,12 @@ export async function middleware(request: NextRequest) {
   const result = await fetchSession(request);
 
   if (result.kind === 'network_error') {
-    if (hasSessionCookie(request)) {
-      return NextResponse.next();
-    }
-
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('next', pathname);
-    return NextResponse.redirect(loginUrl);
+    // Fail-closed: nunca deixar a requisição passar com cookie de sessão
+    // stale quando a API está indisponível (evita shell parcial + 502 difuso).
+    return new NextResponse('Service temporarily unavailable', {
+      status: 503,
+      headers: { 'Retry-After': '30' },
+    });
   }
 
   if (result.kind !== 'ok' || !result.session?.authenticated || !result.session.user?.role) {

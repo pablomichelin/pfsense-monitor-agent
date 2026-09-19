@@ -77,6 +77,18 @@ export const appConfig = Object.freeze({
   systemVersion: process.env.SYSTEM_VERSION?.trim() || '0.1.0',
   trustProxy: parseBoolean(process.env.TRUST_PROXY, false),
   trustedProxyIps: parseList(process.env.TRUSTED_PROXY_IPS),
+  // Fail-fast: TRUSTED_PROXY_IPS só tem efeito com TRUST_PROXY=true;
+  // sem isso o app iniciaria silenciosamente ignorando a allowlist de proxies.
+  proxyGuard: (() => {
+    const trustProxy = parseBoolean(process.env.TRUST_PROXY, false);
+    const ips = parseList(process.env.TRUSTED_PROXY_IPS);
+    if (ips.length > 0 && !trustProxy) {
+      throw new Error(
+        'TRUSTED_PROXY_IPS is set but TRUST_PROXY is false — set TRUST_PROXY=true or remove TRUSTED_PROXY_IPS',
+      );
+    }
+    return true;
+  })(),
   heartbeat: {
     maxPayloadBytes: 64 * 1024,
     maxSkewSeconds: parseNumber(
