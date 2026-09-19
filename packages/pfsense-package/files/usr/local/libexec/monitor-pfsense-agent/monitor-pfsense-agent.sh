@@ -3543,7 +3543,7 @@ dispatch_node_reboot() {
   return 0
 }
 
-dispatch_table_action() {
+dispatch_table_action() (
   action="$1"
   command_id="$2"
   payload_file="$3"
@@ -3555,6 +3555,7 @@ dispatch_table_action() {
   trap cleanup_payload EXIT INT TERM
 
   if ! operational_action_acquire_lock "table_${action}"; then
+    cleanup_payload
     agent_post_command_result_failed \
       "$command_id" \
       "another operational action is running" \
@@ -3568,6 +3569,7 @@ dispatch_table_action() {
   helper="$SCRIPT_DIR/manage_pf_tables.php"
   if [ ! -f "$helper" ]; then
     operational_action_release_lock
+    cleanup_payload
     agent_post_command_result_failed \
       "$command_id" \
       "manage_pf_tables.php missing" \
@@ -3581,6 +3583,7 @@ dispatch_table_action() {
       payload_file="$fallback_payload"
     else
       operational_action_release_lock
+      cleanup_payload
       agent_post_command_result_failed \
         "$command_id" \
         "table payload file missing" \
@@ -3594,6 +3597,7 @@ dispatch_table_action() {
     php_bin="/usr/local/bin/php"
   elif ! command_exists php; then
     operational_action_release_lock
+    cleanup_payload
     agent_post_command_result_failed \
       "$command_id" \
       "php interpreter not found" \
@@ -3606,6 +3610,7 @@ dispatch_table_action() {
   result_json="$("$php_bin" -f "$helper" "$action" "$payload_file" 2>"$stderr_file")" || php_exit=$?
 
   operational_action_release_lock
+  cleanup_payload
 
   if [ -n "$result_json" ]; then
     ok_flag="$(printf '%s' "$result_json" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN), true); echo is_array($d) && !empty($d["ok"]) ? "1" : "0";' 2>/dev/null || echo 0)"
@@ -3632,7 +3637,7 @@ dispatch_table_action() {
     "$err_detail" \
     "$CURL_CMD" >/dev/null 2>&1 || true
   return 1
-}
+)
 
 dispatch_table_search() {
   dispatch_table_action "search" "$1" "$2" "$3"

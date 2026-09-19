@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { FleetBatchBackupPanel } from '@/components/nodes/fleet-batch-backup-panel';
 import { FleetBatchPackageUpgradePanel } from '@/components/nodes/fleet-batch-package-upgrade-panel';
 import { FleetTechnicianManagementPanel } from '@/components/nodes/fleet-technician-management-panel';
+import { FleetPfTablesPanel } from '@/components/nodes/fleet-pf-tables-panel';
 import { NodesInventoryTable } from '@/components/nodes/nodes-inventory-table';
 import { Button, PageSection } from '@/components/ui';
 import type { StatusBadgeStatus } from '@/components/ui/status-badge';
@@ -40,6 +41,7 @@ type Props = {
   queryParams: Record<string, string | undefined>;
   canRequestBackupBatch: boolean;
   canRunPackageUpgrade: boolean;
+  canManagePfTables: boolean;
   canManageTechnicians: boolean;
   canResetTechnicianPassword: boolean;
 };
@@ -54,6 +56,7 @@ export function FleetInventorySection({
   queryParams,
   canRequestBackupBatch,
   canRunPackageUpgrade,
+  canManagePfTables,
   canManageTechnicians,
   canResetTechnicianPassword,
 }: Props) {
@@ -124,6 +127,7 @@ export function FleetInventorySection({
   const showRowSelection =
     canRunPackageUpgrade ||
     canRequestBackupBatch ||
+    canManagePfTables ||
     canManageTechnicians ||
     canResetTechnicianPassword;
 
@@ -180,6 +184,9 @@ export function FleetInventorySection({
           </div>
 
           <div className="space-y-3">
+            {canManagePfTables ? (
+              <FleetPfTablesPanel selectedNodes={selectedNodes} />
+            ) : null}
             {canRunPackageUpgrade ? (
               <FleetBatchPackageUpgradePanel
                 selectedNodes={selectedNodes}

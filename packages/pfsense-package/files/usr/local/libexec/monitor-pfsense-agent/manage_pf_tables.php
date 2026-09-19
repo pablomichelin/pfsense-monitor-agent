@@ -96,9 +96,9 @@ function run_pfctl(array $args): array
 /** Lista todas as tabelas atualmente carregadas no pf. */
 function list_tables(): array
 {
-    [$exit, $stdout] = run_pfctl(['-sT']);
+    [$exit, $stdout, $stderr] = run_pfctl(['-sT']);
     if ($exit !== 0) {
-        return [];
+        throw new RuntimeException('pfctl list tables failed: ' . trim($stderr));
     }
     $tables = [];
     foreach (preg_split('/\r\n|\n/', trim($stdout)) as $line) {
@@ -108,6 +108,16 @@ function list_tables(): array
         }
     }
     return $tables;
+}
+
+function table_contains_ip(string $table, string $ip): bool
+{
+    [$exit, $stdout, $stderr] = run_pfctl(['-t', $table, '-T', 'test', $ip]);
+    if ($exit !== 0) {
+        throw new RuntimeException('pfctl table test failed');
+    }
+    // pfctl prints the test count on stderr on supported PF versions.
+    return (bool) preg_match('/\b1\/1 addresses match\b/', $stdout . "\n" . $stderr);
 }
 
 try {
@@ -131,8 +141,7 @@ try {
         }
 
         // Confirmar que o IP realmente esta na tabela (idempotente).
-        [$testExit, $testOut] = run_pfctl(['-t', $table, '-T', 'test', $ip]);
-        if ($testExit !== 0 || trim($testOut) === '' || strpos($testOut, '0/1') !== false) {
+        if (!table_contains_ip($table, $ip)) {
             emit_result(false, "ip {$ip} not present in table {$table}");
             exit(1);
         }
@@ -140,6 +149,11 @@ try {
         [$rmExit, $rmOut, $rmErr] = run_pfctl(['-t', $table, '-T', 'delete', $ip]);
         if ($rmExit !== 0) {
             emit_result(false, 'pfctl delete failed: ' . trim($rmErr));
+            exit(1);
+        }
+
+        if (table_contains_ip($table, $ip)) {
+            emit_result(false, "ip {$ip} still matches table {$table} after delete");
             exit(1);
         }
 
@@ -153,8 +167,7 @@ try {
     // search: percorre todas as tabelas procurando o IP.
     $matches = [];
     foreach (list_tables() as $table) {
-        [$exit, $out] = run_pfctl(['-t', $table, '-T', 'test', $ip]);
-        if ($exit === 0 && trim($out) !== '' && strpos($out, '0/1') === false) {
+        if (table_contains_ip($table, $ip)) {
             $matches[] = $table;
         }
     }

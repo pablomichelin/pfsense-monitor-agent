@@ -47,8 +47,9 @@ export async function requestTableEntryRemoveAction(
   nodeId: string,
   table: string,
   ip: string,
+  confirmIp: string,
 ) {
-  const result = await requestTableEntryRemove(nodeId, { table, ip });
+  const result = await requestTableEntryRemove(nodeId, { table, ip, confirm_ip: confirmIp });
   revalidatePath(`/nodes/${nodeId}`);
   return result;
 }

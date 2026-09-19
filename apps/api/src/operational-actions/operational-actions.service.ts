@@ -271,6 +271,9 @@ export class OperationalActionsService {
       table: dto.table,
       ip: dto.ip,
     });
+    if (dto.confirm_ip.trim() !== payload.ip) {
+      throw new BadRequestException('confirm_ip must match ip');
+    }
 
     const command = await this.orchestrator.enqueueCommand({
       nodeId,

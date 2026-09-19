@@ -1,10 +1,10 @@
 # Indice operacional do projeto
 
-Data de referencia: `2026-08-31`
+Data de referencia: `2026-09-19`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Versoes atuais (codigo):** API `0.11.1` · painel `1.12.6` · package pfSense `0.5.20` (publicar com `scripts/release-pfsense-package.sh`).
+> **Em produção:** API `0.11.2` · painel `1.12.7` · package pfSense `0.5.21`. **Candidata isolada:** API `0.11.3` · painel `1.12.8` · package `0.5.22`. Ver `docs/186-REVISAO-DESBLOQUEIO-TABELAS-PF-2026-09-19.md` antes de publicar.
 >
 > **Ultima entrega (2026-08-31):** hotfix 50x ao Save no User Manager (técnico / `getUserGroups` by-ref). Package `0.5.20`. Ver `docs/184-HOTFIX-TECNICO-USER-MANAGER-SAVE-50X-0.5.20-2026-08-31.md`.
 >

@@ -37,6 +37,9 @@ export class TableEntryRemoveRequestDto {
 
   @IsString()
   ip!: string;
+
+  @IsString()
+  confirm_ip!: string;
 }
 
 export class CreateBackupBatchDto {

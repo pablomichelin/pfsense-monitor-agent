@@ -100,6 +100,7 @@ export default async function NodesPage({
     session.permissions ?? [],
     'package.upgrade.run',
   );
+  const canManagePfTables = hasPermission(session.permissions ?? [], 'firewall.table.manage');
   const canManageTechnicians = hasPermission(session.permissions ?? [], 'technicians.manage');
   const canResetTechnicianPassword = hasPermission(
     session.permissions ?? [],
@@ -490,6 +491,7 @@ export default async function NodesPage({
           queryParams={inventoryQueryParams}
           canRequestBackupBatch={canRequestBackupBatch}
           canRunPackageUpgrade={canRunPackageUpgrade}
+          canManagePfTables={canManagePfTables}
           canManageTechnicians={canManageTechnicians}
           canResetTechnicianPassword={canResetTechnicianPassword}
         />

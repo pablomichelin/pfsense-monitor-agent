@@ -1,6 +1,6 @@
 # PROJECT STATUS — Monitor pfSense (pfs-monitor)
 
-Ultima atualizacao: **2026-08-31**
+Ultima atualizacao: **2026-09-19**
 
 > **Fonte de verdade das versões e entregas:** `LEITURA-INICIAL.md`.
 
@@ -8,8 +8,8 @@ Ultima atualizacao: **2026-08-31**
 
 | Campo | Valor |
 |---|---|
-| API | `0.11.1` |
-| Painel web | `1.12.6` |
-| Package pfSense | `0.5.20` |
-| Última entrega | Hotfix 50x ao Save no User Manager (técnico) — package `0.5.20` (`docs/184`) |
-| Próximo passo | Frota em **0.5.20**; validar Save de usuário OpenVPN como técnico; **não** ligar upgrade remoto de OS |
+| API em produção | `0.11.2` |
+| Painel web em produção | `1.12.7` |
+| Package publicado | `0.5.21` |
+| Correção candidata isolada | API `0.11.3`, web `1.12.8`, package `0.5.22` — `docs/186` |
+| Próximo passo | Homologar o desbloqueio em pfSense de laboratório; depois decidir publicação e rollout da candidata |

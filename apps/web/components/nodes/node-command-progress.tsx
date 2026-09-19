@@ -102,6 +102,10 @@ export function commandTypeLabel(type: string): string {
       return 'Reinício de serviço';
     case 'node_reboot':
       return 'Reboot do firewall';
+    case 'table_search':
+      return 'Consulta de tabelas pf';
+    case 'table_entry_remove':
+      return 'Desbloqueio em tabela pf';
     default:
       return type;
   }

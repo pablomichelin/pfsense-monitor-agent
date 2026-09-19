@@ -2063,7 +2063,7 @@ export async function updateNodeFleetMetadata(
 export type NodeCommandHistoryItem = {
   command_id: string;
   node_id: string;
-  type: 'config_backup_now' | 'pfsense_upgrade' | 'package_upgrade' | 'service_restart' | 'node_reboot';
+  type: 'config_backup_now' | 'pfsense_upgrade' | 'package_upgrade' | 'service_restart' | 'node_reboot' | 'table_search' | 'table_entry_remove';
   status: string;
   requested_at: string;
   picked_up_at: string | null;
@@ -2097,6 +2097,13 @@ export async function getNodeCommandHistory(
   return apiFetch<NodeCommandHistoryResponse>(
     `/api/v1/nodes/${nodeId}/commands/history?limit=${limit}`,
   );
+}
+
+export async function getNodeCommandDetail(
+  nodeId: string,
+  commandId: string,
+): Promise<{ generated_at: string; command: NodeCommandHistoryItem }> {
+  return apiFetch(`/api/v1/nodes/${nodeId}/commands/${commandId}`);
 }
 
 export async function cancelNodeCommand(
@@ -2197,7 +2204,7 @@ export async function requestTableSearch(
 
 export async function requestTableEntryRemove(
   nodeId: string,
-  input: { table: string; ip: string },
+  input: { table: string; ip: string; confirm_ip: string },
 ): Promise<{
   command_id: string;
   status: string;

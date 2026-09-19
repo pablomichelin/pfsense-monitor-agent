@@ -6,15 +6,19 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Versoes atuais do produto (2026-08-31)
+## Versões em produção e correção candidata (2026-09-19)
+
+**Correção candidata, ainda não publicada:** API `0.11.3`, painel `1.12.8`, package `0.5.22` para desbloqueio de IP nos firewalls selecionados. Diagnóstico, validações e pendências em `docs/186-REVISAO-DESBLOQUEIO-TABELAS-PF-2026-09-19.md`. Não tratar estas versões como implantadas.
+
+**Produção verificada em 2026-09-19:** API `0.11.2`, painel `1.12.7`, package publicado `0.5.21`; 58 agentes reportaram `0.5.21` e um `0.5.20`. O código das tabelas estava na imagem web e na API, porém o fluxo não atendia ao uso em lote. A cópia de código em produção tinha `config/package-release.env` alterado localmente para `0.5.21`.
 
 | Componente | Versao | Referencia |
 |------------|--------|------------|
-| API | `0.11.2` | `apps/api/package.json` |
-| Painel web | `1.12.6` | `apps/web/package.json` (rodape do layout) |
-| Package pfSense | `0.5.20` | `packages/pfsense-package/Makefile` + `config/package-release.env` |
+| API | `0.11.2` | imagem em execução no servidor |
+| Painel web | `1.12.7` | imagem em execução no servidor |
+| Package pfSense | `0.5.21` | artefato publicado + `config/package-release.env` em produção |
 
-**Release (config local):** package **`0.5.20`** — hotfix 50x ao Save no User Manager (técnico / `getUserGroups` by-ref).
+**Release vigente antes da correção candidata:** package **`0.5.21`** — consulta e remoção de IP em tabelas pf, com defeitos descritos no doc 186.
 
 **Última entrega (2026-09-18):** endurecimento de segurança API + web (proteção zip-bomb no ingest de backup, fail-fast de `TRUSTED_PROXY_IPS`, fail-closed 503 no middleware, `MONITOR_API_BASE_URL` obrigatória). API **0.11.2**, painel **1.12.7**, package **0.5.20 sem mudança**. Ver `docs/185-ENTREGA-ENDURECIMENTO-SEGURANCA-API-WEB-2026-09-18.md`.
 

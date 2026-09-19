@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { isIP } from 'node:net';
 import { NodeCommandType } from '@prisma/client';
 import type { PermissionKey } from '../auth/permission-keys';
 import { appConfig } from '../config/app-config';
@@ -23,8 +24,6 @@ export {
 
 const SHA256_HEX = /^[a-f0-9]{64}$/i;
 
-const IPV4_RE =
-  /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
 const TABLE_NAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 
 function parseIpArg(value: string): string {
@@ -42,11 +41,7 @@ export function validateTableIpPayload(
     throw new BadRequestException('ip is required');
   }
   const ip = parseIpArg(raw);
-  // IPv4 estrito; IPv6 básico (hex, ':' e opcionalmente zona '%')
-  const isV4 = IPV4_RE.test(ip);
-  const isV6 =
-    /^[0-9a-fA-F:]{2,45}(%[A-Za-z0-9_.-]{1,16})?$/.test(ip) && ip.includes(':');
-  if (!isV4 && !isV6) {
+  if (isIP(ip) === 0) {
     throw new BadRequestException('ip must be a valid IPv4 or IPv6 address');
   }
   return { ip };
@@ -306,7 +301,7 @@ export const COMMAND_REGISTRY: Record<NodeCommandType, CommandTypeDefinition> = 
   },
   [NodeCommandType.table_search]: {
     permission: 'firewall.table.manage',
-    minAgentVersion: '0.5.21',
+    minAgentVersion: '0.5.22',
     expireMinutes: appConfig.operationalActions.commandExpireMinutes,
     maxRetries: 1,
     retryBackoffMs: [5000],
@@ -317,7 +312,7 @@ export const COMMAND_REGISTRY: Record<NodeCommandType, CommandTypeDefinition> = 
   },
   [NodeCommandType.table_entry_remove]: {
     permission: 'firewall.table.manage',
-    minAgentVersion: '0.5.21',
+    minAgentVersion: '0.5.22',
     expireMinutes: appConfig.operationalActions.commandExpireMinutes,
     maxRetries: 1,
     retryBackoffMs: [5000],

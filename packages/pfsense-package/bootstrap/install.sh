@@ -81,6 +81,7 @@ install_package_files() {
     "$INSTALL_ROOT/usr/local/etc/rc.d/monitor_pfsense_agent" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent-loop.sh" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/manage_pf_tables.php" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/check_pfsense_update_available.sh" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/collect_gateways.php" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/collect_config_snapshot.php" \
