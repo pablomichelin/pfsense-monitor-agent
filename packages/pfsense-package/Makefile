@@ -47,6 +47,8 @@ do-install:
 		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent
 	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/manage_local_user.php \
 		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent
+	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/command_journal.php \
+		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent
 	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/set_pfsense_update_branch.php \
 		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent
 	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/run_pfsense_upgrade.sh \

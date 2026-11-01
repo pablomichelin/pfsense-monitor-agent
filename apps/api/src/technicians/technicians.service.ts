@@ -825,21 +825,22 @@ export class TechniciansService {
     if (backupQueue.length > 0) {
       for (const item of backupQueue) {
         try {
-          const backupCommand = await this.orchestrator.enqueueCommand({
-            nodeId: item.node_id,
-            type: NodeCommandType.config_backup_now,
-            requestedByUserId: userId,
-            payloadJson: buildFollowUpTechnicianProvisionPayload(
-              item.follow_up,
-            ) as Prisma.InputJsonValue,
-          });
-
-          await this.prisma.technicianNodeAccount.update({
-            where: { id: item.follow_up.account_id },
-            data: {
-              lastCommandId: backupCommand.id,
-              lastError: null,
-            },
+          const backupCommand = await this.prisma.$transaction(async (tx) => {
+            const created = await this.orchestrator.enqueueCommand({
+              nodeId: item.node_id,
+              type: NodeCommandType.config_backup_now,
+              requestedByUserId: userId,
+              payloadJson: buildFollowUpTechnicianProvisionPayload(
+                item.follow_up,
+              ) as Prisma.InputJsonValue,
+            }, tx);
+            // The heartbeat must not see the backup until the account is linked:
+            // an immediate upload can otherwise consume a seemingly stale intent.
+            await tx.technicianNodeAccount.update({
+              where: { id: item.follow_up.account_id },
+              data: { lastCommandId: created.id, lastError: null },
+            });
+            return created;
           });
 
           backupResults.push({

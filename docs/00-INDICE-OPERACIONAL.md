@@ -1,14 +1,19 @@
+# Entrega de 01/11/2026
+
+- [Resultado geral e revisão cruzada](198-FECHAMENTO-ESTABILIZACAO-E-RECUPERACAO-2026-11-01.md): API0.13.0, painel1.14.0, recuperação durável, paginação e LAB0.5.26.
+- [Recuperação externa do controlador](197-DR-CONTROLADOR-EXTERNO-2026-10-31.md): conjunto cifrado no220, source/artefato, imagens e ensaio isolado.
+
 # Estabilização de 31/10/2026
 
 - [Resultado e revisão independente](196-ESTABILIZACAO-E-REVISAO-2026-10-31.md): correções do controlador, package candidato sem distribuição, grupos de validação e pendências.
 
 # Indice operacional do projeto
 
-Data de referencia: `2026-09-28`
+Data de referencia: `2026-11-01`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Em produção:** API `0.11.12` · painel `1.12.18` · package pfSense `0.5.25`. Troca de senha de técnico ignora `client_id` vazio do filtro. Ver `docs/195-ENTREGA-SENHA-TECNICO-CLIENT-ID-VAZIO-2026-10-15.md`.
+> **Histórico de 15/10:** API `0.11.12` · painel `1.12.18` · package pfSense `0.5.25`. Troca de senha de técnico ignora `client_id` vazio do filtro. Ver `docs/195-ENTREGA-SENHA-TECNICO-CLIENT-ID-VAZIO-2026-10-15.md`.
 >
 > **Entrega anterior (2026-09-29):** exclusão com técnico vinculado pede confirmação. API `0.11.11`, painel `1.12.17`. Ver `docs/194-ENTREGA-EXCLUSAO-HOST-CONFIRMAR-TECNICO-2026-09-29.md`.
 >

@@ -1,4 +1,5 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsInt, Max, Min, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 const ALERT_STATUSES = ['open', 'acknowledged', 'resolved'] as const;
 const ALERT_SEVERITIES = ['critical', 'warning', 'info'] as const;
@@ -14,6 +15,24 @@ const ALERT_TYPES = [
 ] as const;
 
 export class ListAlertsQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000000)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  limit?: number;
+
+  @IsOptional()
+  @IsIn(['legacy', 'attention'])
+  sort_by?: 'legacy' | 'attention';
+
   @IsOptional()
   @IsString()
   client_id?: string;

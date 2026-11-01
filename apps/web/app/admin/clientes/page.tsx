@@ -40,10 +40,10 @@ export default async function AdminClientesPage({
   try {
     const [filters, nodes] = await Promise.all([
       getNodesFilters(),
-      getNodesList({ limit: 200 }),
+      getNodesList({ limit: 1 }),
     ]);
     filterOptions = filters;
-    nodesCount = nodes.items.length;
+    nodesCount = nodes.total;
   } catch (error) {
     handlePageApiError(error);
   }

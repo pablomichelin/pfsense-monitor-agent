@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily encrypted controller recovery to host 220
+
+[Timer]
+OnCalendar=*-*-* 05:15:00 America/Sao_Paulo
+RandomizedDelaySec=600
+Persistent=true
+Unit=monitor-pfsense-dr.service
+
+[Install]
+WantedBy=timers.target

@@ -1701,6 +1701,8 @@ dispatch_package_upgrade() {
     return 1
   fi
 
+  command_journal delegate "$command_id" "$wrapper_pid" || true
+
   return 0
 }
 
@@ -1824,11 +1826,54 @@ agent_post_command_ack() {
   backup_post_command_ack "$@"
 }
 
-# Both state transitions must be confirmed before any local side effect.
-# A lost ACK response is ambiguous: abort and let the controller expire/reconcile.
+command_journal() {
+  php "$SCRIPT_DIR/command_journal.php" \
+    "${MONITOR_AGENT_COMMAND_JOURNAL_DIR:-/conf/monitor-pfsense-agent/command-journal}" \
+    "${CONTROLLER_URL%/}|$NODE_UID" "$@"
+}
+
+command_delivery_attempt() (
+  attempt="${MONITOR_JOURNAL_DELIVERY_ATTEMPT:-0}"
+  case "$attempt" in ''|*[!0-9]*) return 1 ;; 0) ;; 0*) return 1 ;; esac
+  printf '%s' "$attempt"
+)
+
+agent_journal_ack() (
+  ack_id="$1"
+  ack_status="$2"
+  ack_curl="$3"
+  ack_body="$(mktemp)" || return 1
+  ack_response=""
+  ack_error=""
+  trap 'rm -f "$ack_body" "$ack_response" "$ack_error"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  ack_response="$(mktemp)" || return 1
+  ack_error="$(mktemp)" || return 1
+  attempt="$(command_delivery_attempt)" || return 1
+  printf '{"command_id":"%s","delivery_attempt":%s,"status":"%s"}' "$(json_escape "$ack_id")" "$attempt" "$ack_status" >"$ack_body"
+  ack_code="$(http_post_signed_json /api/v1/ingest/command-ack "$ack_curl" "$ack_response" body "$ack_body" "$ack_error")" || return 1
+  case "$ack_code" in 2[0-9][0-9]) ;; *) return 1 ;; esac
+  [ ! -s "$ack_error" ] || return 1
+  command_journal ack "$ack_id" "$ack_status" "$ack_response"
+)
+
+# Protocol >=0.5.26: only the winning running CAS grants execution permission.
+# running_intent is synced BEFORE the request; a lost reply never grants permission.
 agent_begin_command() (
-  agent_post_command_ack "$1" "picked_up" "$2" >/dev/null 2>&1 || return 1
-  agent_post_command_ack "$1" "running" "$2" >/dev/null 2>&1 || return 1
+  phase="$(command_journal phase "$1")" || return 1
+  case "$phase" in
+    staged) agent_journal_ack "$1" picked_up "$2" || return 1 ;;
+    picked_up|running_intent) ;;
+    executing)
+      # Only this worker may consume a fresh CAS grant recovered before prechecks.
+      [ "${MONITOR_JOURNAL_PERMISSION_ID:-}" = "$1" ] && return 0
+      return 1
+      ;;
+    *) return 1 ;;
+  esac
+  command_journal intent "$1" || return 1
+  agent_journal_ack "$1" running "$2"
 )
 
 agent_post_command_result_failed() {
@@ -1844,15 +1889,43 @@ agent_post_command_result_succeeded() (
   trap 'exit 130' INT
   trap 'exit 143' TERM
   if [ -n "$result_json" ]; then
-    printf '{"command_id":"%s","status":"succeeded","result_json":%s}\n' \
+    printf '{"command_id":"%s","delivery_attempt":%s,"status":"succeeded","result_json":%s}\n' \
       "$(json_escape "$command_id")" \
+      "$(command_delivery_attempt)" \
       "$result_json" >"$body_file"
   else
-    printf '{"command_id":"%s","status":"succeeded"}\n' \
-      "$(json_escape "$command_id")" >"$body_file"
+    printf '{"command_id":"%s","delivery_attempt":%s,"status":"succeeded"}\n' \
+      "$(json_escape "$command_id")" "$(command_delivery_attempt)" >"$body_file"
   fi
   backup_post_signed_json "/api/v1/ingest/command-result" "$body_file" "$CURL_CMD"
 )
+
+agent_journal_flush() (
+  flush_id="$1"
+  flush_curl="$2"
+  flush_body="$(mktemp)" || return 1
+  flush_response=""
+  flush_error=""
+  trap 'rm -f "$flush_body" "$flush_response" "$flush_error"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  command_journal outbox "$flush_id" >"$flush_body" || return 1
+  flush_response="$(mktemp)" || return 1
+  flush_error="$(mktemp)" || return 1
+  flush_code="$(http_post_signed_json /api/v1/ingest/command-result "$flush_curl" "$flush_response" body "$flush_body" "$flush_error")" || return 1
+  case "$flush_code" in 2[0-9][0-9]) ;; *) return 1 ;; esac
+  [ ! -s "$flush_error" ] || return 1
+  command_journal delivered "$flush_id" "$flush_response"
+)
+
+run_command_helper() {
+  if [ "$4" = @journal ]; then
+    [ "${MONITOR_JOURNAL_COMMAND_ID:-}" = "$command_id" ] || return 1
+    command_journal payload "$command_id" | "$1" -f "$2" "$3" /dev/stdin
+  else
+    "$1" -f "$2" "$3" "$4"
+  fi
+}
 
 pfsense_upgrade_ha_detected() {
   state_file="$(backup_state_dir)/pfsense-update-check.json"
@@ -1953,6 +2026,8 @@ dispatch_pfsense_upgrade() {
     agent_release_stale_lock "$(pfsense_upgrade_lock_dir)"
     return 1
   fi
+
+  command_journal delegate "$command_id" "$wrapper_pid" "$state_file" || true
 
   # Semi-manual (default): ack running, state retained until reboot finalize — no immediate failed.
   return 0
@@ -3004,6 +3079,16 @@ backup_post_signed_json() (
   body_file="$2"
   CURL_CMD="$3"
   expected_ack_status="${4:-}"
+  if [ "$endpoint" = /api/v1/ingest/command-result ]; then
+    result_id="$(php -r '$d=json_decode(file_get_contents($argv[1]),true); echo $d["command_id"] ?? "";' "$body_file")" || return 1
+    result_phase="$(command_journal phase "$result_id")" || return 1
+    if [ -n "$result_phase" ]; then
+      command_journal result "$result_id" <"$body_file" || return 1
+      [ "$(command_journal phase "$result_id")" != done ] || return 0
+      agent_journal_flush "$result_id" "$CURL_CMD"
+      return $?
+    fi
+  fi
   response_file="$(mktemp)" || return 1
   err_file=""
   trap 'rm -f "$response_file" "$err_file"' EXIT
@@ -3051,8 +3136,9 @@ backup_post_command_failed() (
   trap 'exit 130' INT
   trap 'exit 143' TERM
   truncated="$(truncate_text "$error_message" 500)"
-  printf '{"command_id":"%s","status":"failed","error_message":"%s"}\n' \
+  printf '{"command_id":"%s","delivery_attempt":%s,"status":"failed","error_message":"%s"}\n' \
     "$(json_escape "$command_id")" \
+    "$(command_delivery_attempt)" \
     "$(json_escape "$truncated")" >"$body_file"
   backup_post_signed_json "/api/v1/ingest/command-result" "$body_file" "$CURL_CMD"
 )
@@ -3127,7 +3213,8 @@ backup_upload_config() {
     set -- "$@" -H "X-Config-Compression: $compression_header"
   fi
   if [ -n "$command_id" ]; then
-    set -- "$@" -H "X-Command-Id: $command_id"
+    set -- "$@" -H "X-Command-Id: $command_id" \
+      -H "X-Command-Delivery-Attempt: $(command_delivery_attempt)"
   fi
   if backup_is_enabled; then
     set -- "$@" \
@@ -3181,6 +3268,12 @@ backup_upload_config() {
   backup_write_state error ""
   backup_backoff_clear
   backup_release_lock
+  if [ -n "$command_id" ]; then
+    # Ingest already checks the command/node/hash before completing the command.
+    # Keep its receipt in the outbox; replay only the result, never the upload.
+    receipt="$(php -r '$d=json_decode(file_get_contents($argv[1]),true); if (($d["ok"] ?? false) !== true) exit(1); echo json_encode(["backup_id"=>$d["backup_id"] ?? null,"sha256"=>$d["sha256"] ?? null]);' "$response_file")" || return 1
+    agent_post_command_result_succeeded "$command_id" "$receipt" "$CURL_CMD" >/dev/null 2>&1 || true
+  fi
   cat "$response_file"
   rm -f "$upload_file" "$response_file"
   return 0
@@ -3213,7 +3306,7 @@ backup_config_now() {
   fi
 
   if [ -n "$command_id" ]; then
-    backup_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || return 1
+    agent_begin_command "$command_id" "$CURL_CMD" >/dev/null 2>&1 || return 1
   fi
 
   backup_upload_config "$command_id" "$CURL_CMD"
@@ -3580,6 +3673,7 @@ dispatch_node_reboot() {
     return 1
   fi
 
+  command_journal delegate "$command_id" "$wrapper_pid" || true
   return 0
 }
 
@@ -3598,7 +3692,7 @@ dispatch_table_action() (
     fi
   }
   cleanup_payload() {
-    rm -f "$payload_file" 2>/dev/null || true
+    [ "$payload_file" = @journal ] || rm -f "$payload_file" 2>/dev/null || true
   }
   cleanup_action() {
     cleanup_payload
@@ -3631,7 +3725,7 @@ dispatch_table_action() (
     return 1
   fi
 
-  if [ -z "$payload_file" ] || [ ! -r "$payload_file" ]; then
+  if [ "$payload_file" != @journal ] && { [ -z "$payload_file" ] || [ ! -r "$payload_file" ]; }; then
     agent_post_command_result_failed "$command_id" "table payload file missing" "$CURL_CMD" >/dev/null 2>&1 || true
     return 1
   fi
@@ -3652,7 +3746,7 @@ dispatch_table_action() (
   stderr_file="$(mktemp)" || return 1
   agent_begin_command "$command_id" "$CURL_CMD" || return 1
   php_exit=0
-  result_json="$("$php_bin" -f "$helper" "$action" "$payload_file" 2>"$stderr_file")" || php_exit=$?
+  result_json="$(run_command_helper "$php_bin" "$helper" "$action" "$payload_file" 2>"$stderr_file")" || php_exit=$?
 
   release_action_lock
   cleanup_payload
@@ -3707,7 +3801,7 @@ dispatch_local_user_action() (
     fi
   }
   cleanup_payload() {
-    rm -f "$payload_file" 2>/dev/null || true
+    [ "$payload_file" = @journal ] || rm -f "$payload_file" 2>/dev/null || true
   }
   cleanup_action() {
     cleanup_payload
@@ -3746,7 +3840,7 @@ dispatch_local_user_action() (
     return 1
   fi
 
-  if [ -z "$payload_file" ] || [ ! -r "$payload_file" ]; then
+  if [ "$payload_file" != @journal ] && { [ -z "$payload_file" ] || [ ! -r "$payload_file" ]; }; then
     agent_post_command_result_failed "$command_id" "local user payload file missing" "$CURL_CMD" >/dev/null 2>&1 || true
     return 1
   fi
@@ -3767,10 +3861,10 @@ dispatch_local_user_action() (
   agent_begin_command "$command_id" "$CURL_CMD" || return 1
   result_json=""
   php_exit=0
-  result_json="$("$php_bin" -f "$helper" "$action" "$payload_file" 2>"$stderr_file")" || php_exit=$?
+  result_json="$(run_command_helper "$php_bin" "$helper" "$action" "$payload_file" 2>"$stderr_file")" || php_exit=$?
 
   release_action_lock
-  rm -f "$payload_file"
+  cleanup_payload
 
   if [ "$php_exit" -eq 0 ] && [ -n "$result_json" ]; then
     ok_flag="$(printf '%s' "$result_json" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN), true); echo is_array($d) && !empty($d["ok"]) ? "1" : "0";' 2>/dev/null || echo 0)"
@@ -3814,11 +3908,17 @@ dispatch_local_user_set_password() {
 }
 
 process_heartbeat_commands() (
+  # The PHP supervisor serializes drains across processes and holds the lease
+  # through the worker. SIGKILL releases flock; durable state decides recovery.
+  command_journal drain "$1" "$2" "$SCRIPT_DIR/monitor-pfsense-agent.sh"
+)
+
+dispatch_heartbeat_commands() (
   response_file="$1"
   CURL_CMD="$2"
 
   command_exists php || return 0
-  [ -f "$response_file" ] || return 0
+  { [ "$response_file" = /dev/stdin ] || [ -f "$response_file" ]; } || return 0
 
   command_batch_dir="$(mktemp -d)" || return 1
   trap 'rm -rf "$command_batch_dir"' EXIT
@@ -3848,7 +3948,9 @@ process_heartbeat_commands() (
         $fields[] = trim($value);
       }
       $payloadPath = "";
-      if (in_array($type, ["local_user_create", "local_user_set_password",
+      if (getenv("MONITOR_JOURNAL_COMMAND_ID") === $id) {
+        $payloadPath = "@journal";
+      } elseif (in_array($type, ["local_user_create", "local_user_set_password",
           "local_user_disable", "local_user_delete", "table_search", "table_entry_remove"], true)) {
         $encoded = json_encode($cmdPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($encoded === false) { continue; }
@@ -3933,6 +4035,7 @@ print_config() {
 }
 
 heartbeat() (
+  umask 077
   require_var CONTROLLER_URL
   require_var NODE_UID
   require_var NODE_SECRET
@@ -3953,13 +4056,19 @@ heartbeat() (
     exit 1
   fi
   CURL_CMD="$(resolve_curl_cmd)"
+  command_journal drain "" "$CURL_CMD" "$SCRIPT_DIR/monitor-pfsense-agent.sh" || true
 
   timestamp="$(iso_now)"
   payload_file=""
   response_file=""
   err_file=""
+  response_pipe_dir=""
+  response_reader=""
   heartbeat_cleanup_temp() {
+    exec 9>&-
     rm -f "$payload_file" "$response_file" "$err_file" 2>/dev/null || true
+    [ -z "$response_reader" ] || kill "$response_reader" 2>/dev/null || true
+    [ -z "$response_pipe_dir" ] || rm -rf "$response_pipe_dir"
   }
   trap heartbeat_cleanup_temp EXIT
   trap 'exit 130' INT
@@ -3967,6 +4076,13 @@ heartbeat() (
   payload_file="$(mktemp)" || return 1
   response_file="$(mktemp)" || return 1
   err_file="$(mktemp)" || return 1
+  response_pipe_dir="$(mktemp -d)" || return 1
+  mkfifo -m 600 "$response_pipe_dir/response" || return 1
+  exec 9<>"$response_pipe_dir/response"
+  # Password-bearing responses go from curl to PHP through a FIFO and are
+  # encrypted before touching persistent storage, including under SIGKILL.
+  command_journal capture 9>&- <"$response_pipe_dir/response" &
+  response_reader=$!
 
   build_payload >"$payload_file" 2>/dev/null
   if [ ! -s "$payload_file" ]; then
@@ -3980,14 +4096,21 @@ heartbeat() (
     payload_was_light="1"
   fi
 
-  http_code="$(http_post_signed_json "/api/v1/ingest/heartbeat" "$CURL_CMD" "$response_file" body "$payload_file" "$err_file")"
+  http_code="$(http_post_signed_json "/api/v1/ingest/heartbeat" "$CURL_CMD" "$response_pipe_dir/response" body "$payload_file" "$err_file")"
+  # Closing our writer also unblocks the reader when curl never opened output.
+  exec 9>&-
+  response_captured=0
+  wait "$response_reader" && response_captured=1
+  response_reader=""
   curl_error="$(cat "$err_file" 2>/dev/null || true)"
 
   if [ -n "$http_code" ] && [ "$http_code" -ge 200 ] 2>/dev/null && [ "$http_code" -lt 300 ] 2>/dev/null; then
+    [ "$response_captured" = 1 ] || return 1
     heartbeat_backoff_clear
     rm -f "$(heartbeat_error_path)" 2>/dev/null || true
     light_heartbeat_record_success "$payload_was_light"
-    process_heartbeat_commands "$response_file" "$CURL_CMD"
+    process_heartbeat_commands @inbox "$CURL_CMD" || return 1
+    command_journal receipt >"$response_file" || return 1
     maybe_run_deferred_pfsense_update_check "$response_file"
     heartbeat_cleanup_temp
     return 0
@@ -4079,6 +4202,26 @@ EOF
 
 command_name="${1:-}"
 case "$command_name" in
+  journal-execute)
+    # Internal worker: stdin is the supervisor pipe, never a persistent payload.
+    MONITOR_JOURNAL_COMMAND_ID="${2:-}"
+    MONITOR_JOURNAL_EXECUTOR_PID=$$
+    MONITOR_JOURNAL_DELIVERY_ATTEMPT="${4:-}"
+    export MONITOR_JOURNAL_COMMAND_ID MONITOR_JOURNAL_EXECUTOR_PID MONITOR_JOURNAL_DELIVERY_ATTEMPT
+    if [ "$(command_journal phase "$MONITOR_JOURNAL_COMMAND_ID")" = running_intent ]; then
+      # Reconcile permission before dispatch preconditions can report an ordinary
+      # failure and accidentally omit the indeterminate recovery marker.
+      agent_journal_ack "$MONITOR_JOURNAL_COMMAND_ID" running "${3:-}" || exit 1
+      MONITOR_JOURNAL_PERMISSION_ID="$MONITOR_JOURNAL_COMMAND_ID"
+      export MONITOR_JOURNAL_PERMISSION_ID
+    fi
+    dispatch_heartbeat_commands /dev/stdin "${3:-}"
+    ;;
+  journal-flush)
+    MONITOR_JOURNAL_DELIVERY_ATTEMPT="${4:-}"
+    export MONITOR_JOURNAL_DELIVERY_ATTEMPT
+    agent_journal_flush "${2:-}" "${3:-}"
+    ;;
   heartbeat)
     heartbeat
     ;;

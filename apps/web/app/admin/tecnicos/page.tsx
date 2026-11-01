@@ -23,7 +23,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-const NODE_LIST_LIMIT = 1000;
+const NODE_LIST_LIMIT = 50;
 
 function countByStatus(nodeAccounts: TechnicianDetailResponse['technician']['node_accounts']) {
   return nodeAccounts.reduce(
@@ -56,7 +56,7 @@ export default async function AdminTecnicosPage() {
   const canResetTechnicianPassword = hasPermission(permissions, 'technicians.password_reset.run');
 
   let technicianDetails: TechnicianDetailResponse['technician'][] = [];
-  let nodeOptions: NodesListResponse['items'] = [];
+  let nodePage: NodesListResponse;
   let batchMaxSize = 0;
 
   try {
@@ -65,7 +65,7 @@ export default async function AdminTecnicosPage() {
       getNodesList({ limit: NODE_LIST_LIMIT }),
     ]);
 
-    nodeOptions = nodesList.items;
+    nodePage = nodesList;
     batchMaxSize = techniciansList.batch_max_size;
 
     const details = await Promise.all(
@@ -96,12 +96,12 @@ export default async function AdminTecnicosPage() {
         stats={[
           { label: 'Técnicos no escopo', value: String(technicianDetails.length) },
           { label: 'Contas ativas no escopo', value: String(totalActiveAccounts) },
-          { label: 'Firewalls no inventário', value: String(nodeOptions.length) },
+          { label: 'Firewalls no inventário', value: String(nodePage.total) },
         ]}
       />
 
       {!canManageRegistry ? <Alert variant="info">O cadastro global de técnicos é reservado a administradores com escopo global. Para o primeiro vínculo de um técnico, procure um administrador global.</Alert> : null}
-      {nodeOptions.length >= NODE_LIST_LIMIT ? <Alert variant="warning">O inventário atingiu o limite de {NODE_LIST_LIMIT} firewalls da API. Para selecionar alvos específicos, use os filtros do inventário.</Alert> : null}
+
       <PageSection title="Navegação">
         <div className="flex flex-wrap gap-3">
           <Link href="/admin" className={adminNavLinkClassName}>
@@ -215,7 +215,8 @@ export default async function AdminTecnicosPage() {
           description="Selecione explicitamente os firewalls do lote abaixo, dentro do limite informado pelo controlador."
         >
           <AdminTechnicianTargets
-            nodes={nodeOptions}
+            nodes={nodePage.items}
+            initialPage={nodePage}
             batchMaxSize={batchMaxSize}
             canManageTechnicians={canManageTechnicians}
             canManageRegistry={canManageRegistry}

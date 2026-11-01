@@ -70,6 +70,25 @@ agent_post_command_ack() {
   printf 'ack:%s\n' "$2" >>"$EVENTS"
   [ "${FAIL_ACK:-}" != "$2" ]
 }
+# This older group isolates parsing/dispatch/cleanup. Durable delivery and the
+# real CAS permission gate are exercised by test-agent-journal-recovery.py.
+agent_begin_command() {
+  agent_post_command_ack "$1" picked_up "$2" && agent_post_command_ack "$1" running "$2"
+}
+command_journal() {
+  case "$1" in
+    capture) cat >"$TEST_DIR/captured-heartbeat.json" ;;
+    receipt) cat "$TEST_DIR/captured-heartbeat.json"; rm -f "$TEST_DIR/captured-heartbeat.json" ;;
+    *) return 0 ;;
+  esac
+}
+process_heartbeat_commands() {
+  if [ "$1" = @inbox ]; then
+    dispatch_heartbeat_commands "$TEST_DIR/captured-heartbeat.json" "$2"
+  else
+    dispatch_heartbeat_commands "$@"
+  fi
+}
 '''
 
     def shell(self, body, *, prelude=None, ok=True):
@@ -228,7 +247,7 @@ dispatch_local_user_create cmd "$TEST_DIR/private.json" fake-curl || :
                 self.events.unlink(missing_ok=True)
                 self.shell(r'''
 resolve_curl_cmd() { echo fake-curl; }
-backup_post_command_ack() { return ''' + ("0" if accepted else "1") + r'''; }
+agent_begin_command() { return ''' + ("0" if accepted else "1") + r'''; }
 backup_upload_config() { echo UPLOAD >>"$EVENTS"; }
 backup_config_now cmd || :
 ''')

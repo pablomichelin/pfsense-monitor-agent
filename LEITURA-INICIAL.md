@@ -6,7 +6,15 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Estabilização — 31/10/2026
+## Entrega — 01/11/2026
+
+Controlador: API **0.13.0**, painel **1.14.0** publicados. Package **0.5.26** validado no LAB10 CE2.9 com journal nativo, backup prévio e ciclo real de conta descartável; transição remota do legado em validação final. Relatório desta rodada: `docs/198-FECHAMENTO-ESTABILIZACAO-E-RECUPERACAO-2026-11-01.md`.
+
+Comandos: recuperação durável com fence por tentativa, CAS e outbox; 60 casos novos e oito casos críticos no PostgreSQL real aprovados. Paginação comprovada com 1.105 equipamentos e alertas; busca, instalação e token no navegador além do milésimo. Backup cifrado externo no220 e agendamento diário; prova final de boot em andamento.
+
+Os oito firewalls persistentemente degradados continuam excluídos. HA/CARP foi retirado desta entrega pelo usuário; não existe ambiente habilitado. Não alterar regras de saúde, Zabbix ou firmware.
+
+## Histórico da estabilização — 31/10/2026
 
 Controlador publicado e saudável: API **0.12.0**, painel **1.13.0**. Package publicado permanece **0.5.25**; fonte corrigida **0.5.26 candidata**, sem envio à frota. Compilação, validação dirigida, navegador sintético e saúde após publicação aprovados. Relatório consolidado: `docs/196-ESTABILIZACAO-E-REVISAO-2026-10-31.md`.
 
@@ -34,9 +42,9 @@ Próximo passo: avaliar destino externo e recuperação completa dos backups, di
 
 | Componente | Versão | Referência |
 |------------|--------|------------|
-| API | `0.11.12` | imagem saudável no servidor 192.168.100.221 |
-| Painel web | `1.12.18` | imagem saudável no servidor 192.168.100.221 |
-| Package pfSense | `0.5.25` | listagem das tabelas de bloqueio |
+| API | `0.13.0` | servidor 192.168.100.221 |
+| Painel web | `1.14.0` | servidor 192.168.100.221 |
+| Package pfSense | `0.5.26` | release validada no LAB; acompanhamento em docs/198 |
 
 **Última entrega (2026-09-18):** endurecimento de segurança API + web (proteção zip-bomb no ingest de backup, fail-fast de `TRUSTED_PROXY_IPS`, fail-closed 503 no middleware, `MONITOR_API_BASE_URL` obrigatória). API **0.11.2**, painel **1.12.7**, package **0.5.20 sem mudança**. Ver `docs/185-ENTREGA-ENDURECIMENTO-SEGURANCA-API-WEB-2026-09-18.md`.
 

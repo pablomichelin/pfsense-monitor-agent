@@ -1,3 +1,4 @@
+import { NodePagination } from '@/components/node-pagination';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AdvancedSection } from '@/components/advanced-section';
@@ -215,6 +216,7 @@ export default async function BootstrapPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = (await searchParams) ?? {};
+  const cursor = typeof params.cursor === 'string' ? params.cursor : undefined;
   const clientId = typeof params.client_id === 'string' ? params.client_id : undefined;
   const siteId = typeof params.site_id === 'string' ? params.site_id : undefined;
   const search = typeof params.search === 'string' ? params.search : undefined;
@@ -240,7 +242,8 @@ export default async function BootstrapPage({
         client_id: clientId,
         site_id: siteId,
         search,
-        limit: 200,
+        limit: 50,
+        cursor,
       }),
       getNodesFilters(),
     ]);
@@ -267,8 +270,8 @@ export default async function BootstrapPage({
   const hasActiveFilters = Boolean(clientId || siteId || search || bucket);
   const resultSummary =
     filteredItems.length === items.length
-      ? `${filteredItems.length} firewalls no escopo atual`
-      : `${filteredItems.length} de ${items.length} firewalls no escopo atual`;
+      ? `${filteredItems.length} firewalls nesta página`
+      : `${filteredItems.length} de ${items.length} firewalls nesta página`;
   const selectedNode =
     items.find((node) => node.id === selectedNodeId) ??
     filteredItems.find((node) => node.bootstrap_bucket === 'pending') ??
@@ -410,6 +413,7 @@ export default async function BootstrapPage({
         </Card>
       </PageSection>
 
+      <NodePagination result={nodes} basePath="/bootstrap" params={{ client_id: clientId, site_id: siteId, search, bucket, release_base_url: releaseBaseUrl, controller_url: controllerUrl, heartbeat_mode: heartbeatMode }} />
       <section className="grid gap-5 md:grid-cols-2">
         <Card className="p-4">
           <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Escolha o firewall</p>

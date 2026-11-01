@@ -85,6 +85,8 @@ test('seletor parte vazio, limita seleção explicitamente e mantém o alvo 101 
   for (const cap of [100, 7]) {
     const hooks = hookHarness();
     const { AdminTechnicianTargets } = sourceLoader({ ...uiMocks, react: hooks.react,
+      '@/lib/use-paged-nodes': { usePagedNodes: () => ({ loading: false, result: { items: Array.from({ length: 101 }, (_, i) => ({ id: `node-${i + 1}`, hostname: `Synthetic ${i + 1}`, client: { name: 'Lab' } })) } }) },
+      '@/components/node-browser-controls': { NodeBrowserControls: 'node-browser' },
       '@/components/nodes/fleet-technician-management-panel': { FleetTechnicianManagementPanel: 'panel' },
     })('components/admin-technician-targets.tsx');
     const props = { nodes: Array.from({ length: 101 }, (_, i) => ({ id: `node-${i + 1}`, hostname: `Synthetic ${i + 1}`, client: { name: 'Lab' } })), batchMaxSize: cap, canManageTechnicians: true, canManageRegistry: true, canResetTechnicianPassword: true };

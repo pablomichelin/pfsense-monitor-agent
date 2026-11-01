@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   AlertStatus,
   ConfigBackupStatus,
@@ -15,7 +15,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { deriveEffectiveNodeStatus } from './node-status.util';
 import {
   LIST_NODES_SORT_FIELDS,
-  sortListNodesItems,
+  compareListNodes,
+  decodeNodeCursor,
+  encodeNodeCursor,
+  nodeListFingerprint,
+  NodePageCollector,
   type ListNodesSortBy,
 } from './list-nodes-sort.util';
 import { appConfig } from '../config/app-config';
@@ -310,9 +314,12 @@ export class NodesService {
       criticality: NodeCriticality;
       tags: Array<{ id: string; name: string }>;
     }>;
+    total: number;
+    limit: number;
+    next_cursor: string | null;
+    previous_cursor: string | null;
     generated_at: string;
   }> {
-    const now = new Date();
     const searchTerm = query.search?.trim();
     await this.accessPolicy.assertRequestedClientFilter(actor, query.client_id);
 
@@ -403,7 +410,10 @@ export class NodesService {
     };
     const where = await this.accessPolicy.mergeNodeWhere(actor, baseWhere);
 
-    const limit = Math.min(query.limit ?? LIST_NODES_DEFAULT_LIMIT, LIST_NODES_MAX_LIMIT);
+    const limit = query.limit ?? LIST_NODES_DEFAULT_LIMIT;
+    if (!Number.isInteger(limit) || limit < 1 || limit > LIST_NODES_MAX_LIMIT) {
+      throw new BadRequestException('limit must be an integer between 1 and 1000');
+    }
     const targetPackageVersion = appConfig.packageRelease.version.trim() || null;
     const sortOrder = query.sort_order ?? 'asc';
     const sortBy: ListNodesSortBy =
@@ -411,16 +421,27 @@ export class NodesService {
       (LIST_NODES_SORT_FIELDS as readonly string[]).includes(query.sort_by)
         ? query.sort_by
         : 'name';
-    // Pré-ordenação no banco; a ordem final (incl. status/backup/alertas) é
-    // aplicada em memória após derivar os campos efetivos.
-    const nodes = await this.prisma.node.findMany({
-      where,
-      orderBy: [
-        { site: { client: { name: 'asc' } } },
-        { displayName: { sort: 'asc', nulls: 'last' } },
-        { hostname: 'asc' },
-      ],
-      take: query.preset ? LIST_NODES_MAX_LIMIT : limit,
+    const fingerprint = nodeListFingerprint([
+      actor.userId, actor.role, query.client_id ?? null, query.site_id ?? null,
+      query.tag_id ?? null, query.group_id ?? null, query.criticality ?? null,
+      searchTerm || null, query.status ?? null, query.preset ?? null,
+      sortBy, sortOrder, targetPackageVersion,
+    ]);
+    const cursor = decodeNodeCursor(query.cursor, fingerprint);
+    const now = new Date();
+    // The classifier remains authoritative. Scan a consistent DB snapshot in small
+    // chunks and retain one sorted page only; no take-before-filter truncation.
+    return this.prisma.$transaction(async (tx) => {
+      const collector = new NodePageCollector<Awaited<ReturnType<NodesService['listNodes']>>['items'][number]>(
+        limit, (a, b) => compareListNodes(a, b, sortBy, sortOrder), cursor,
+      );
+      let lastId: string | undefined;
+      for (;;) {
+        const nodes = await tx.node.findMany({
+          where,
+          orderBy: { id: 'asc' },
+          take: 250,
+          ...(lastId ? { cursor: { id: lastId }, skip: 1 } : {}),
       include: {
         site: {
           include: {
@@ -442,14 +463,7 @@ export class NodesService {
             },
           },
         },
-        alerts: {
-          where: {
-            status: AlertStatus.open,
-          },
-          select: {
-            id: true,
-          },
-        },
+        _count: { select: { alerts: { where: { status: AlertStatus.open } } } },
         configBackups: {
           where: {
             status: {
@@ -535,7 +549,7 @@ export class NodesService {
             node.wanIp,
             node.managementIp,
           ),
-          open_alerts: node.alerts.length,
+          open_alerts: node._count.alerts,
           backup_status: backupStatus,
           latest_backup_received_at: latestBackupReceivedAt?.toISOString() ?? null,
           cpu_percent: node.cpuPercent ?? null,
@@ -580,10 +594,22 @@ export class NodesService {
         );
       });
 
+      for (const item of items) collector.add(item);
+      if (nodes.length < 250) break;
+      lastId = nodes[nodes.length - 1].id;
+    }
+    const { items, total } = collector;
+    const first = items[0] ?? cursor?.anchor;
+    const last = items[items.length - 1] ?? cursor?.anchor;
     return {
-      items: sortListNodesItems(items, sortBy, sortOrder).slice(0, limit),
+      items,
+      total,
+      limit,
+      next_cursor: collector.hasNext && last ? encodeNodeCursor(last, 'after', fingerprint, now.toISOString()) : null,
+      previous_cursor: collector.hasPrevious && first ? encodeNodeCursor(first, 'before', fingerprint, now.toISOString()) : null,
       generated_at: now.toISOString(),
     };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, maxWait: 5000, timeout: 60_000 });
   }
 
   async getNodeById(actor: AccessActor, id: string): Promise<{

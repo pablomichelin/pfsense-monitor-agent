@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { GroupMemberPicker } from './group-member-picker';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Alert, Button, Card } from '@/components/ui';
@@ -9,7 +10,6 @@ import {
   createTagAction,
   deleteGroupAction,
   deleteTagAction,
-  updateGroupMembersAction,
 } from '@/lib/fleet-org-actions';
 import type { FleetGroupItem, FleetTagItem } from '@/lib/api';
 
@@ -18,17 +18,10 @@ type ClientOption = {
   name: string;
 };
 
-type NodeOption = {
-  id: string;
-  label: string;
-  client_id: string;
-};
-
 type Props = {
   tags: FleetTagItem[];
   groups: FleetGroupItem[];
   clients: ClientOption[];
-  nodes: NodeOption[];
   groupMemberIds: Record<string, string[]>;
   canManageTags: boolean;
   canManageGroups: boolean;
@@ -122,7 +115,6 @@ export function FleetOrgAdminPanel({
   tags,
   groups,
   clients,
-  nodes,
   groupMemberIds,
   canManageTags,
   canManageGroups,
@@ -134,15 +126,6 @@ export function FleetOrgAdminPanel({
   const [pending, setPending] = useState(false);
 
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
-  const groupNodes = useMemo(
-    () =>
-      selectedGroup
-        ? nodes.filter((node) => node.client_id === selectedGroup.client_id)
-        : [],
-    [nodes, selectedGroup],
-  );
-  const selectedMemberIds = selectedGroupId ? groupMemberIds[selectedGroupId] ?? [] : [];
-
   async function handleCreateTag(formData: FormData) {
     setPending(true);
     setError(null);
@@ -168,24 +151,6 @@ export function FleetOrgAdminPanel({
       return;
     }
     setMessage('Grupo criado.');
-    router.refresh();
-  }
-
-  async function handleSaveMembers(formData: FormData) {
-    if (!selectedGroupId) {
-      return;
-    }
-
-    setPending(true);
-    setError(null);
-    const nodeIds = formData.getAll('member_node_ids').map((value) => String(value));
-    const result = await updateGroupMembersAction(selectedGroupId, nodeIds);
-    setPending(false);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    setMessage('Membros do grupo atualizados.');
     router.refresh();
   }
 
@@ -360,28 +325,12 @@ export function FleetOrgAdminPanel({
             </p>
           </div>
 
-          <form action={handleSaveMembers} className="space-y-4">
-            <div className="grid max-h-72 gap-2 overflow-y-auto rounded-lg border border-slate-700/80 bg-slate-950/20 p-3 md:grid-cols-2">
-              {groupNodes.map((node) => (
-                <label key={node.id} className="flex items-center gap-2 text-sm text-slate-200">
-                  <input
-                    type="checkbox"
-                    name="member_node_ids"
-                    value={node.id}
-                    defaultChecked={selectedMemberIds.includes(node.id)}
-                    className="rounded border-slate-600 bg-panel-soft"
-                  />
-                  <span className="truncate">{node.label}</span>
-                </label>
-              ))}
-            </div>
-            {groupNodes.length === 0 ? (
-              <p className="text-sm text-slate-500">Nenhum firewall disponível para este cliente.</p>
-            ) : null}
-            <Button type="submit" disabled={pending || groupNodes.length === 0}>
-              Salvar membros
-            </Button>
-          </form>
+          <GroupMemberPicker
+            key={`${selectedGroup.id}:${JSON.stringify(groupMemberIds[selectedGroup.id] ?? [])}`}
+            groupId={selectedGroup.id}
+            clientId={selectedGroup.client_id}
+            memberIds={groupMemberIds[selectedGroup.id] ?? []}
+          />
         </Card>
       ) : null}
     </div>

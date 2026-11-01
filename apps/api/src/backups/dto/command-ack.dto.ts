@@ -1,4 +1,4 @@
-import { IsIn, IsUUID } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
 export class CommandAckDto {
   @IsUUID('4')
@@ -6,4 +6,10 @@ export class CommandAckDto {
 
   @IsIn(['picked_up', 'running'])
   status!: 'picked_up' | 'running';
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(2147483647)
+  delivery_attempt?: number;
 }

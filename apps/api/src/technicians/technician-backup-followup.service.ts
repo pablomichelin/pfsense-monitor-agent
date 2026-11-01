@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import {
   NodeCommand,
   NodeCommandType,
@@ -14,8 +14,11 @@ import {
 } from './technician-accounts.util';
 
 @Injectable()
-export class TechnicianBackupFollowUpService implements OnModuleInit {
+export class TechnicianBackupFollowUpService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TechnicianBackupFollowUpService.name);
+  private timer?: NodeJS.Timeout;
+  private reconciling = false;
+  private afterId?: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -24,158 +27,133 @@ export class TechnicianBackupFollowUpService implements OnModuleInit {
 
   onModuleInit(): void {
     void this.reconcileStuckSucceededBackups();
+    this.timer = setInterval(() => { void this.reconcileStuckSucceededBackups(); }, 60_000);
+    this.timer.unref?.();
   }
 
-  /** Recupera backups já succeeded cujo follow-up não rodou (ex.: via ingest). */
+  onModuleDestroy(): void {
+    if (this.timer) clearInterval(this.timer);
+  }
+
+  /** The succeeded backup and its payload are a durable outbox, not a callback. */
   async reconcileStuckSucceededBackups(): Promise<void> {
-    const candidates = await this.prisma.nodeCommand.findMany({
-      where: {
-        type: NodeCommandType.config_backup_now,
-        status: NodeCommandStatus.succeeded,
-      },
-      orderBy: { completedAt: 'asc' },
-      take: 200,
-    });
-
-    let processed = 0;
-    for (const command of candidates) {
-      if (!parseFollowUpTechnicianProvision(command.payloadJson)) {
-        continue;
-      }
-
-      try {
-        await this.processAfterBackupSuccess(command);
-        processed += 1;
-      } catch (error) {
-        this.logger.warn(
-          `reconcile stuck backup follow-up failed command=${command.id}: ${String(error)}`,
-        );
-      }
-    }
-
-    if (processed > 0) {
-      this.logger.log(`reconciled ${processed} stuck backup follow-up(s)`);
-    }
-  }
-
-  /**
-   * Claim atômico do follow-up (FOR UPDATE) para não enfileirar create/senha
-   * duas vezes se a API reiniciar no meio do processAfterBackupSuccess.
-   */
-  private async claimFollowUp(
-    commandId: string,
-  ): Promise<ReturnType<typeof parseFollowUpTechnicianProvision>> {
-    return this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ payload_json: Prisma.JsonValue }>>(
-        Prisma.sql`SELECT payload_json FROM node_commands WHERE id = ${commandId}::uuid FOR UPDATE`,
-      );
-      const followUp = parseFollowUpTechnicianProvision(
-        rows[0]?.payload_json ?? null,
-      );
-      if (!followUp) {
-        return null;
-      }
-
-      const scrubbed = scrubFollowUpFromBackupPayload(rows[0]?.payload_json ?? null);
-      const claimed =
-        scrubbed && typeof scrubbed === 'object' && !Array.isArray(scrubbed)
-          ? {
-              ...(scrubbed as Record<string, unknown>),
-              follow_up_claimed_at: new Date().toISOString(),
-            }
-          : { follow_up_claimed_at: new Date().toISOString() };
-
-      await tx.nodeCommand.update({
-        where: { id: commandId },
-        data: { payloadJson: claimed as Prisma.InputJsonValue },
-      });
-
-      return followUp;
-    });
-  }
-
-  /**
-   * Após config_backup_now succeeded: enfileira create/set_password pendente
-   * armazenado em payload_json.follow_up_technician_provision.
-   */
-  async processAfterBackupSuccess(command: NodeCommand): Promise<void> {
-    if (command.type !== NodeCommandType.config_backup_now) {
-      return;
-    }
-
-    const followUp = await this.claimFollowUp(command.id);
-    if (!followUp) {
-      return;
-    }
-
-    const commandType =
-      followUp.action === 'local_user_set_password'
-        ? NodeCommandType.local_user_set_password
-        : NodeCommandType.local_user_create;
-
-    const payloadJson: Record<string, unknown> = {
-      technician_id: followUp.technician_id,
-      account_id: followUp.account_id,
-      pfsense_username: followUp.pfsense_username,
-      password: followUp.password,
-    };
-
-    if (followUp.action === 'local_user_create') {
-      if (followUp.full_name) {
-        payloadJson.full_name = followUp.full_name;
-      }
-      if (followUp.privilege_profile) {
-        payloadJson.privilege_profile = followUp.privilege_profile;
-      }
-    }
-
+    if (this.reconciling) return;
+    this.reconciling = true;
     try {
+      const candidates = await this.prisma.nodeCommand.findMany({
+        where: {
+          type: NodeCommandType.config_backup_now,
+          status: NodeCommandStatus.succeeded,
+          payloadJson: { path: ['follow_up_technician_provision'], not: Prisma.AnyNull },
+          ...(this.afterId ? { id: { gt: this.afterId } } : {}),
+        },
+        orderBy: { id: 'asc' },
+        take: 200,
+      });
+      // Advance past failures too, so a blocked node cannot starve later work.
+      this.afterId = candidates.length === 200 ? candidates[candidates.length - 1].id : undefined;
+      for (const command of candidates) {
+        try {
+          await this.processAfterBackupSuccess(command);
+        } catch {
+          // Keep the intent and secret intact for the next reconciliation cycle.
+          this.logger.warn(`backup follow-up pending retry command=${command.id}`);
+        }
+      }
+    } catch {
+      this.logger.warn('backup follow-up reconciliation unavailable; durable intents retained');
+    } finally {
+      this.reconciling = false;
+    }
+  }
+
+  async processAfterBackupSuccess(snapshot: NodeCommand): Promise<void> {
+    if (snapshot.type !== NodeCommandType.config_backup_now) return;
+    await this.prisma.$transaction(async (tx) => {
+      // Same lock order as enqueue: node first, then command. The payload CAS
+      // serializes concurrent dispatchers. No secret is removed before enqueue
+      // and account ownership have committed in this SAME transaction.
+      await tx.$queryRaw`SELECT id FROM nodes WHERE id = ${snapshot.nodeId}::uuid FOR UPDATE`;
+      const command = await tx.nodeCommand.findFirst({
+        where: { id: snapshot.id, nodeId: snapshot.nodeId, type: NodeCommandType.config_backup_now },
+      });
+      if (!command || command.status !== NodeCommandStatus.succeeded) return;
+      const followUp = parseFollowUpTechnicianProvision(command.payloadJson);
+      if (!followUp) return;
+      const scrubbed = scrubFollowUpFromBackupPayload(command.payloadJson);
+      const ledger = scrubbed && typeof scrubbed === 'object' && !Array.isArray(scrubbed)
+        ? scrubbed as Record<string, Prisma.InputJsonValue> : {};
+      const claimed = await tx.nodeCommand.updateMany({
+        where: {
+          id: command.id, status: NodeCommandStatus.succeeded,
+          payloadJson: { equals: command.payloadJson as Prisma.InputJsonValue },
+        },
+        data: { payloadJson: { ...ledger, follow_up_state: 'dispatching' } },
+      });
+      if (!claimed.count) return;
+      // Claim only the account still waiting for THIS backup, never a newer
+      // reset, revocation, or another node/technician's account.
+      const owner = await tx.technicianNodeAccount.updateMany({
+        where: {
+          id: followUp.account_id, nodeId: command.nodeId,
+          technicianId: followUp.technician_id, lastCommandId: command.id,
+        },
+        data: { lastError: null },
+      });
+      if (!owner.count) {
+        await tx.nodeCommand.update({
+          where: { id: command.id },
+          data: { payloadJson: { ...ledger, follow_up_state: 'superseded' } },
+        });
+        return;
+      }
+      const payload: Record<string, string> = {
+        technician_id: followUp.technician_id,
+        account_id: followUp.account_id,
+        pfsense_username: followUp.pfsense_username,
+        password: followUp.password,
+      };
+      if (followUp.action === 'local_user_create') {
+        if (followUp.full_name) payload.full_name = followUp.full_name;
+        if (followUp.privilege_profile) payload.privilege_profile = followUp.privilege_profile;
+      }
       const provisionCommand = await this.orchestrator.enqueueCommand({
         nodeId: command.nodeId,
-        type: commandType,
+        type: followUp.action === 'local_user_set_password'
+          ? NodeCommandType.local_user_set_password : NodeCommandType.local_user_create,
         requestedByUserId: followUp.requested_by_user_id,
-        payloadJson: payloadJson as Prisma.InputJsonValue,
-      });
-
-      await this.prisma.technicianNodeAccount.updateMany({
-        where: { id: followUp.account_id },
+        payloadJson: payload,
+      }, tx);
+      const linked = await tx.technicianNodeAccount.updateMany({
+        where: { id: followUp.account_id, lastCommandId: command.id },
         data: {
           lastCommandId: provisionCommand.id,
-          status:
-            followUp.action === 'local_user_set_password'
-              ? TechnicianNodeAccountStatus.password_reset_pending
-              : TechnicianNodeAccountStatus.pending_create,
+          status: followUp.action === 'local_user_set_password'
+            ? TechnicianNodeAccountStatus.password_reset_pending : TechnicianNodeAccountStatus.pending_create,
           lastError: null,
         },
       });
-
-      await this.prisma.auditLog.create({
+      if (linked.count !== 1) throw new Error('backup follow-up account ownership changed');
+      await tx.nodeCommand.update({
+        where: { id: command.id },
+        data: { payloadJson: {
+          ...ledger,
+          follow_up_state: 'enqueued',
+          follow_up_command_id: provisionCommand.id,
+          follow_up_enqueued_at: new Date().toISOString(),
+        } },
+      });
+      await tx.auditLog.create({
         data: {
-          actorType: 'system',
-          action: 'technician.provision_after_backup',
-          targetType: 'node_command',
-          targetId: provisionCommand.id,
+          actorType: 'system', action: 'technician.provision_after_backup',
+          targetType: 'node_command', targetId: provisionCommand.id,
           metadataJson: {
-            backup_command_id: command.id,
-            node_id: command.nodeId,
-            technician_id: followUp.technician_id,
-            account_id: followUp.account_id,
+            backup_command_id: command.id, node_id: command.nodeId,
+            technician_id: followUp.technician_id, account_id: followUp.account_id,
             follow_up_action: followUp.action,
           },
         },
       });
-    } catch (error) {
-      this.logger.warn(
-        `follow-up provision after backup failed command=${command.id}: ${String(error)}`,
-      );
-
-      await this.prisma.technicianNodeAccount.updateMany({
-        where: { id: followUp.account_id },
-        data: {
-          status: TechnicianNodeAccountStatus.failed,
-          lastError: 'provision after backup failed to enqueue',
-        },
-      });
-    }
+    });
   }
 }

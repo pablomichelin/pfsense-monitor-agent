@@ -4,7 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { NodeCommandStatus, NodeCommandType } from '@prisma/client';
+import { NodeCommandStatus, NodeCommandType, Prisma } from '@prisma/client';
 import { SystemJobLockService } from '../common/system-job-lock.service';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -106,7 +106,6 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
       if (!canRetryCommand(command)) {
         continue;
       }
-
       const result =
         command.resultJson &&
         typeof command.resultJson === 'object' &&
@@ -115,6 +114,37 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
           : {};
 
       if (result.retry_scheduled === true || result.retry_exhausted === true) {
+        continue;
+      }
+
+      // A failed write after execution intent is not proof it is safe to repeat.
+      // Preserve failed status and record the indeterminate recovery explicitly.
+      if (command.runningAt &&
+          command.type !== NodeCommandType.config_backup_now &&
+          command.type !== NodeCommandType.table_search) {
+        await this.prisma.$transaction(async (tx) => {
+          const blocked = await tx.nodeCommand.updateMany({
+            where: {
+              id: command.id, status: NodeCommandStatus.failed,
+              retryCount: command.retryCount, runningAt: command.runningAt,
+              resultJson: { equals: command.resultJson ?? Prisma.JsonNull },
+            },
+            data: { resultJson: {
+              ...result, retry_exhausted: true,
+              execution_recovery_status: 'indeterminate',
+              retry_blocked_reason: 'execution_intent_committed',
+            } },
+          });
+          if (!blocked.count) return;
+          await tx.auditLog.create({
+            data: {
+              actorType: 'system',
+              action: `${getCommandDefinition(command.type).auditPrefix}.request_retry_blocked`,
+              targetType: 'node_command', targetId: command.id,
+              metadataJson: { node_id: command.nodeId, reason: 'execution_intent_committed' },
+            },
+          });
+        });
         continue;
       }
 

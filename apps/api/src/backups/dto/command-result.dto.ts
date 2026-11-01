@@ -1,10 +1,13 @@
 import {
   IsIn,
+  IsInt,
   IsObject,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
+  Max,
+  Min,
   ValidateIf,
 } from 'class-validator';
 
@@ -23,4 +26,10 @@ export class CommandResultDto {
   @IsOptional()
   @IsObject()
   result_json?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(2147483647)
+  delivery_attempt?: number;
 }

@@ -6,7 +6,6 @@ import { PageSection } from '@/components/ui';
 import {
   getFleetGroup,
   getNodesFilters,
-  getNodesList,
   getSession,
   listFleetGroups,
   listFleetTags,
@@ -39,14 +38,12 @@ export default async function AdminGruposPage() {
   let tags;
   let groups;
   let filterOptions;
-  let nodes;
 
   try {
-    [tags, groups, filterOptions, nodes] = await Promise.all([
+    [tags, groups, filterOptions] = await Promise.all([
       canViewTags ? listFleetTags() : Promise.resolve({ items: [], generated_at: '' }),
       canViewGroups ? listFleetGroups() : Promise.resolve({ items: [], generated_at: '' }),
       getNodesFilters(),
-      getNodesList({ limit: 1000 }),
     ]);
   } catch (error) {
     handlePageApiError(error);
@@ -88,11 +85,6 @@ export default async function AdminGruposPage() {
         clients={activeClients.map((client) => ({
           id: client.id,
           name: client.name,
-        }))}
-        nodes={nodes.items.map((node) => ({
-          id: node.id,
-          client_id: node.client.id,
-          label: node.display_name ?? node.hostname,
         }))}
         groupMemberIds={groupMemberIds}
         canManageTags={canManageTags}

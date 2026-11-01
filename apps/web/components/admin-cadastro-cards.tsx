@@ -1,5 +1,7 @@
 'use client';
 
+import type { NodesListResponse } from '@/lib/api';
+
 import { useEffect, useState } from 'react';
 import {
   createClientAction,
@@ -14,13 +16,6 @@ import { RoleScopeFields } from '@/components/role-scope-fields';
 type Client = { id: string; name: string; code: string };
 type RoleOption = { code: string; label: string };
 type Site = { id: string; name: string; code: string; client_id: string; client_name: string };
-type NodeItem = {
-  id: string;
-  node_uid: string;
-  client: { code: string };
-  site: { code: string };
-};
-
 export function AdminCadastroCards({
   filterOptions,
   nodes,
@@ -31,7 +26,7 @@ export function AdminCadastroCards({
   message,
 }: {
   filterOptions: { clients: Client[]; sites: Site[] };
-  nodes: { items: NodeItem[] };
+  nodes: NodesListResponse;
   roles: RoleOption[];
   canManageUsers: boolean;
   activeSection?: string;
@@ -193,7 +188,7 @@ export function AdminCadastroCards({
           status={status}
           message={message}
         />
-        <AgentTokenForm nodes={nodes.items} />
+        <AgentTokenForm nodes={nodes.items} initialPage={nodes} />
       </AdminCollapsibleCard>
     </div>
   );

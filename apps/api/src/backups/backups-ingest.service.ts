@@ -4,10 +4,12 @@ import {
   Logger,
   PayloadTooLargeException,
 } from '@nestjs/common';
-import { ConfigBackupStatus } from '@prisma/client';
+import { ConfigBackupStatus, Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import { isAgentVersionAtLeast } from '../common/agent-version';
 import { gunzipSync } from 'zlib';
 import { appConfig } from '../config/app-config';
-import { NodeRequestAuthService } from '../common/node-request-auth.service';
+import { NodeRequestAuthService, type AuthenticatedNodeRequest } from '../common/node-request-auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BackupsCommandService } from './backups-command.service';
 import { BackupsRetentionService } from './backups-retention.service';
@@ -25,6 +27,43 @@ type ScheduledDuplicateFloodBucket = {
   count: number;
   windowStart: number;
   warned: boolean;
+};
+
+type ConfigBackupRequest = {
+    rawBody: Buffer;
+    headerNodeUid?: string;
+    headerTimestamp?: string;
+    headerSignature?: string;
+    headerConfigSha256?: string;
+    headerConfigSize?: string;
+    headerBackupId?: string;
+    headerCommandId?: string;
+    headerCommandDeliveryAttempt?: string;
+    headerAgentVersion?: string;
+    headerPfsenseVersion?: string;
+    headerConfigCompression?: string;
+    headerBackupScheduleMode?: string;
+    headerBackupIntervalHours?: string;
+    headerBackupScheduleTime?: string;
+    headerBackupScheduleDow?: string;
+    headerBackupScheduleDom?: string;
+    headerBackupEnabled?: string;
+    contentType?: string;
+    clientIp?: string;
+  };
+type BackupIngestResponse = {
+    ok: true;
+    server_time: string;
+    backup_id: string;
+    stored: boolean;
+    duplicate: boolean;
+    sha256: string;
+  };
+type BackupIngestContext = {
+  db: Prisma.TransactionClient;
+  deliveryAttempt?: number;
+  afterCommit: Array<() => Promise<unknown>>;
+  createdPaths: Set<string>;
 };
 
 @Injectable()
@@ -46,39 +85,11 @@ export class BackupsIngestService {
     private readonly driftService: BackupsDriftService,
   ) {}
 
-  async ingestConfigBackup(request: {
-    rawBody: Buffer;
-    headerNodeUid?: string;
-    headerTimestamp?: string;
-    headerSignature?: string;
-    headerConfigSha256?: string;
-    headerConfigSize?: string;
-    headerBackupId?: string;
-    headerCommandId?: string;
-    headerAgentVersion?: string;
-    headerPfsenseVersion?: string;
-    headerConfigCompression?: string;
-    headerBackupScheduleMode?: string;
-    headerBackupIntervalHours?: string;
-    headerBackupScheduleTime?: string;
-    headerBackupScheduleDow?: string;
-    headerBackupScheduleDom?: string;
-    headerBackupEnabled?: string;
-    contentType?: string;
-    clientIp?: string;
-  }): Promise<{
-    ok: true;
-    server_time: string;
-    backup_id: string;
-    stored: boolean;
-    duplicate: boolean;
-    sha256: string;
-  }> {
+  async ingestConfigBackup(request: ConfigBackupRequest): Promise<BackupIngestResponse> {
     const receivedAt = new Date();
     this.assertPayloadSize(request.rawBody);
 
-    const { headerNodeUid, node, credential } =
-      await this.nodeRequestAuth.authenticateNodeRequest({
+    const authenticated = await this.nodeRequestAuth.authenticateNodeRequest({
         headerNodeUid: request.headerNodeUid,
         headerTimestamp: request.headerTimestamp,
         headerSignature: request.headerSignature,
@@ -86,6 +97,81 @@ export class BackupsIngestService {
         receivedAt,
       });
 
+    const context: BackupIngestContext = {
+      db: this.prisma, afterCommit: [], createdPaths: new Set(),
+    };
+    let preparedResponse: BackupIngestResponse | undefined;
+    let callbackReturned = false;
+    let response: BackupIngestResponse;
+    try {
+      if (request.headerCommandId && isAgentVersionAtLeast(authenticated.node.agentVersion, '0.5.26')) {
+        if (!UUID_V4_REGEX.test(request.headerCommandId)) {
+          throw new BadRequestException('X-Command-Id must be a UUID v4');
+        }
+        const rawAttempt = request.headerCommandDeliveryAttempt;
+        if (rawAttempt == null || !/^(0|[1-9][0-9]*)$/.test(rawAttempt) ||
+            Number(rawAttempt) > 2_147_483_647) {
+          throw new BadRequestException('X-Command-Delivery-Attempt must be an integer >= 0');
+        }
+        context.deliveryAttempt = Number(rawAttempt);
+        response = await this.commandService.withBackupDeliveryAttempt({
+          nodeId: authenticated.node.id, commandId: request.headerCommandId,
+          deliveryAttempt: context.deliveryAttempt,
+        }, async (tx) => {
+          context.db = tx;
+          preparedResponse = await this.ingestAuthenticatedBackup(request, authenticated, receivedAt, context);
+          return preparedResponse;
+        }, () => { callbackReturned = true; });
+      } else {
+        response = await this.ingestAuthenticatedBackup(request, authenticated, receivedAt, context);
+      }
+    } catch (error) {
+      // If COMMIT's reply was lost, a prepared response plus the persisted
+      // record proves success. Never delete its file or report a false failure.
+      let committed = false;
+      if (preparedResponse && callbackReturned) {
+        try {
+          committed = !!await this.prisma.nodeConfigBackup.findFirst({
+            where: {
+              nodeId: authenticated.node.id, commandId: request.headerCommandId,
+              attemptId: request.headerBackupId,
+              configSha256: request.headerConfigSha256?.toLowerCase(),
+              metadataJson: { path: ['delivery_attempt'], equals: context.deliveryAttempt },
+            },
+          });
+        } catch { /* Unknown commit outcome: retain encrypted files for recovery. */ }
+      }
+      if (committed && preparedResponse) {
+        response = preparedResponse;
+      } else {
+        // Only files of a rolled-back callback are eligible for removal. Once
+        // prepared, an uncertain COMMIT must leave files intact, never dangling.
+        if (!callbackReturned) {
+          for (const path of context.createdPaths) {
+            try {
+              const referenced = await this.prisma.nodeConfigBackup.findFirst({ where: { storagePath: path } });
+              if (!referenced) await this.storage.removeFile(path);
+            } catch { /* Retain ciphertext if the database cannot prove ownership. */ }
+          }
+        }
+        throw error;
+      }
+    }
+    for (const afterCommit of context.afterCommit) {
+      try { await afterCommit(); }
+      catch { this.logger.warn('committed backup post-processing pending; ingest remains successful'); }
+    }
+    return response;
+  }
+
+  private async ingestAuthenticatedBackup(
+    request: ConfigBackupRequest,
+    { headerNodeUid, node, credential }: AuthenticatedNodeRequest,
+    receivedAt: Date,
+    context: BackupIngestContext,
+  ): Promise<BackupIngestResponse> {
+    const db = context.db;
+    const transactional = context.deliveryAttempt != null;
     const configSha256 = this.requireHeader(
       'X-Config-Sha256',
       request.headerConfigSha256,
@@ -100,7 +186,7 @@ export class BackupsIngestService {
     }
 
     if (!request.headerCommandId) {
-      const latestStoredEarly = await this.prisma.nodeConfigBackup.findFirst({
+      const latestStoredEarly = await db.nodeConfigBackup.findFirst({
         where: {
           nodeId: node.id,
           status: ConfigBackupStatus.stored,
@@ -168,10 +254,14 @@ export class BackupsIngestService {
       receivedAt.getTime() -
         appConfig.configBackup.attemptIdempotencyHours * 60 * 60 * 1000,
     );
-    const priorAttempt = await this.prisma.nodeConfigBackup.findFirst({
+    const priorAttempt = await db.nodeConfigBackup.findFirst({
       where: {
         nodeId: node.id,
         attemptId,
+        ...(transactional ? {
+          commandId: request.headerCommandId,
+          metadataJson: { path: ['delivery_attempt'], equals: context.deliveryAttempt },
+        } : {}),
         configSha256,
         receivedAt: {
           gte: idempotencySince,
@@ -193,10 +283,11 @@ export class BackupsIngestService {
           duplicate: priorAttempt.status === ConfigBackupStatus.duplicate,
           sha256: configSha256,
           backupUid: priorAttempt.backupUid,
-        });
+          deliveryAttempt: context.deliveryAttempt,
+        }, transactional ? db : undefined);
       }
 
-      await this.prisma.nodeCredential.update({
+      await db.nodeCredential.update({
         where: { id: credential.id },
         data: { lastUsedAt: receivedAt },
       });
@@ -211,7 +302,7 @@ export class BackupsIngestService {
       };
     }
 
-    const latestStored = await this.prisma.nodeConfigBackup.findFirst({
+    const latestStored = await db.nodeConfigBackup.findFirst({
       where: {
         nodeId: node.id,
         status: ConfigBackupStatus.stored,
@@ -224,7 +315,9 @@ export class BackupsIngestService {
     const isDuplicate =
       latestStored !== null && latestStored.configSha256 === configSha256;
     const source = request.headerCommandId ? 'manual_request' : 'scheduled';
-    const storedBackupUid = this.buildBackupUid(receivedAt, configSha256);
+    const storageNonce = transactional ? randomUUID() : undefined;
+    const storedBackupUid = this.buildBackupUid(receivedAt, configSha256) +
+      (storageNonce ? `_${storageNonce}` : '');
 
     if (isDuplicate) {
       if (!request.headerCommandId) {
@@ -240,8 +333,9 @@ export class BackupsIngestService {
         });
       }
 
-      const duplicateBackupUid = `cfgbdup_${attemptId.replace(/-/g, '')}`;
-      const duplicateRecord = await this.prisma.nodeConfigBackup.create({
+      const duplicateBackupUid = `cfgbdup_${attemptId.replace(/-/g, '')}` +
+        (transactional ? `_a${context.deliveryAttempt}` : '');
+      const duplicateRecord = await db.nodeConfigBackup.create({
         data: {
           nodeId: node.id,
           commandId: request.headerCommandId ?? null,
@@ -259,11 +353,12 @@ export class BackupsIngestService {
           pfsenseVersion: request.headerPfsenseVersion ?? null,
           metadataJson: {
             duplicate_of: latestStored?.backupUid ?? null,
+            ...(transactional ? { delivery_attempt: context.deliveryAttempt } : {}),
           },
         },
       });
 
-      await this.prisma.auditLog.create({
+      await db.auditLog.create({
         data: {
           actorType: 'node_credential',
           actorId: credential.id,
@@ -288,10 +383,11 @@ export class BackupsIngestService {
           duplicate: true,
           sha256: configSha256,
           backupUid: latestStored?.backupUid,
-        });
+          deliveryAttempt: context.deliveryAttempt,
+        }, transactional ? db : undefined);
       }
 
-      await this.prisma.nodeCredential.update({
+      await db.nodeCredential.update({
         where: { id: credential.id },
         data: { lastUsedAt: receivedAt },
       });
@@ -310,17 +406,24 @@ export class BackupsIngestService {
       };
     }
 
-    const { relativePath, absolutePath } = this.storage.buildStoragePath(
+    const storagePath = this.storage.buildStoragePath(
       headerNodeUid,
       receivedAt,
       configSha256,
     );
 
+    // A fresh nonce avoids overwriting any prior path, even two uploads in the
+    // same second. Cleanup after rollback owns only this newly allocated path.
+    const relativePath = storageNonce
+      ? storagePath.relativePath.replace(/\.enc$/, `.${storageNonce}.enc`) : storagePath.relativePath;
+    const absolutePath = storageNonce
+      ? storagePath.absolutePath.replace(/\.enc$/, `.${storageNonce}.enc`) : storagePath.absolutePath;
+    if (transactional) context.createdPaths.add(absolutePath);
     try {
       await this.storage.encryptToFile(xmlBytes, absolutePath);
     } catch (error) {
       await this.storage.removeFile(absolutePath);
-      await this.prisma.auditLog.create({
+      await db.auditLog.create({
         data: {
           actorType: 'node_credential',
           actorId: credential.id,
@@ -337,7 +440,7 @@ export class BackupsIngestService {
       throw error;
     }
 
-    const storedRecord = await this.prisma.nodeConfigBackup.create({
+    const storedRecord = await db.nodeConfigBackup.create({
       data: {
         nodeId: node.id,
         commandId: request.headerCommandId ?? null,
@@ -355,10 +458,11 @@ export class BackupsIngestService {
         encryptionVersion: appConfig.configBackup.encryptionVersion,
         agentVersion: request.headerAgentVersion ?? null,
         pfsenseVersion: request.headerPfsenseVersion ?? null,
+        ...(transactional ? { metadataJson: { delivery_attempt: context.deliveryAttempt } } : {}),
       },
     });
 
-    await this.prisma.auditLog.create({
+    await db.auditLog.create({
       data: {
         actorType: 'node_credential',
         actorId: credential.id,
@@ -385,10 +489,11 @@ export class BackupsIngestService {
         duplicate: false,
         sha256: configSha256,
         backupUid: storedBackupUid,
-      });
+        deliveryAttempt: context.deliveryAttempt,
+      }, transactional ? db : undefined);
     }
 
-    await this.prisma.nodeCredential.update({
+    await db.nodeCredential.update({
       where: { id: credential.id },
       data: { lastUsedAt: receivedAt },
     });
@@ -402,11 +507,15 @@ export class BackupsIngestService {
       headerBackupScheduleTime: request.headerBackupScheduleTime,
       headerBackupScheduleDow: request.headerBackupScheduleDow,
       headerBackupScheduleDom: request.headerBackupScheduleDom,
-    });
+    }, db);
 
-    await this.retention.enforceRetention(node.id);
-
-    await this.driftService.evaluateStoredBackup(node.id, storedRecord.id);
+    if (transactional) {
+      context.afterCommit.push(() => this.retention.enforceRetention(node.id));
+      context.afterCommit.push(() => this.driftService.evaluateStoredBackup(node.id, storedRecord.id));
+    } else {
+      await this.retention.enforceRetention(node.id);
+      await this.driftService.evaluateStoredBackup(node.id, storedRecord.id);
+    }
 
     this.logger.log(
       `config backup stored node_uid=${headerNodeUid} backup_uid=${storedBackupUid} size=${configSize}`,
@@ -534,7 +643,7 @@ export class BackupsIngestService {
     headerBackupScheduleTime?: string;
     headerBackupScheduleDow?: string;
     headerBackupScheduleDom?: string;
-  }): Promise<void> {
+  }, db: Prisma.TransactionClient = this.prisma): Promise<void> {
     if (
       input.headerBackupScheduleMode == null &&
       input.headerBackupEnabled == null
@@ -555,7 +664,7 @@ export class BackupsIngestService {
       return;
     }
 
-    await this.prisma.node.update({
+    await db.node.update({
       where: { id: input.nodeId },
       data: {
         configBackupPolicyJson: toStoredBackupPolicyJson(

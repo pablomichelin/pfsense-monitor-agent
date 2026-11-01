@@ -20,6 +20,7 @@ import {
 import { restoreCommandMaintenance } from './command-maintenance';
 import { getCommandDefinition } from '../commands/command-registry';
 import { appConfig } from '../config/app-config';
+import { isAgentVersionAtLeast } from '../common/agent-version';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   parseFollowUpTechnicianProvision,
@@ -33,6 +34,34 @@ export interface PendingCommandPayload {
   type: NodeCommandType;
   expires_at: string;
   payload?: Record<string, unknown>;
+  status?: NodeCommandStatus;
+  delivery_state?: CommandDeliveryState;
+  delivery_attempt?: number;
+}
+
+type CommandDeliveryState = 'awaiting_pickup' | 'ready' | 'execution_committed' | 'terminal';
+
+export interface CommandAckResponse {
+  ok: true;
+  command_id: string;
+  status: NodeCommandStatus;
+  terminal?: boolean;
+  delivery_state?: CommandDeliveryState;
+  execute?: boolean;
+  recovery_required?: boolean;
+  delivery_attempt?: number;
+}
+
+export function assertMatchingDeliveryAttempt(
+  command: NodeCommand, attempt: number | undefined, required: boolean,
+): void {
+  if (!required) return;
+  if (!Number.isInteger(attempt) || attempt! < 0 || attempt! > 2_147_483_647) {
+    throw new BadRequestException('delivery_attempt must be an integer >= 0');
+  }
+  if (attempt !== command.retryCount) {
+    throw new ConflictException('delivery attempt does not match current command');
+  }
 }
 
 const LATE_RESULT_COMMAND_TYPES: NodeCommandType[] = [
@@ -256,13 +285,9 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
     nodeId: string,
   ): Promise<PendingCommandPayload[]> {
     const now = new Date();
-    // Não reentregar comandos em `running`: o agente já confirmou execução
-    // (ack running) e não possui dedup — a reentrega colide com o lock local
-    // e gera falso "another package upgrade is running" (doc 140).
-    //
-    // local_user_create/set_password: após picked_up o controlador remove a
-    // senha do payload_json — reentregar picked_up sobrescreveria o arquivo
-    // 0600 do agente sem senha (doc 155 / correcao 0.5.9).
+    const durableDelivery = await this.supportsDurableDelivery(nodeId);
+    // Running is an execution boundary, never a queue for replay. Legacy agents
+    // lose the password at pickup and must never receive a scrubbed redelivery.
     const commands = await this.prisma.nodeCommand.findMany({
       where: {
         nodeId,
@@ -278,12 +303,12 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
               { status: NodeCommandStatus.pending },
               {
                 status: NodeCommandStatus.picked_up,
-                type: {
+                ...(!durableDelivery ? { type: {
                   notIn: [
                     NodeCommandType.local_user_create,
                     NodeCommandType.local_user_set_password,
                   ],
-                },
+                } } : {}),
               },
             ],
           },
@@ -299,7 +324,41 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       type: command.type,
       expires_at: command.expiresAt.toISOString(),
       payload: toAgentCommandPayload(command.type, command.payloadJson),
+      ...(durableDelivery ? {
+        status: command.status,
+        delivery_state: this.deliveryState(command.status),
+        delivery_attempt: command.retryCount,
+      } : {}),
     }));
+  }
+
+  async supportsDurableDelivery(
+    nodeId: string, db: Prisma.TransactionClient = this.prisma,
+  ): Promise<boolean> {
+    const node = await db.node.findUnique({
+      where: { id: nodeId }, select: { agentVersion: true },
+    });
+    return isAgentVersionAtLeast(node?.agentVersion, '0.5.26');
+  }
+
+  private deliveryState(status: NodeCommandStatus): CommandDeliveryState {
+    if (status === 'pending') return 'awaiting_pickup';
+    if (status === 'picked_up') return 'ready';
+    if (status === 'running') return 'execution_committed';
+    return 'terminal';
+  }
+
+  private ackResponse(command: NodeCommand, durable: boolean, execute = false): CommandAckResponse {
+    return {
+      ok: true, command_id: command.id, status: command.status,
+      ...(durable ? {
+        terminal: !ACTIVE_STATUSES.includes(command.status),
+        delivery_state: this.deliveryState(command.status),
+        delivery_attempt: command.retryCount,
+        execute,
+        recovery_required: command.status === 'running' && !execute,
+      } : {}),
+    };
   }
 
   async createCommand(input: {
@@ -353,95 +412,77 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
     credentialId: string;
     commandId: string;
     status: 'picked_up' | 'running';
+    deliveryAttempt?: number;
     clientIp?: string;
-  }): Promise<{ ok: true; command_id: string; status: NodeCommandStatus }> {
+  }): Promise<CommandAckResponse> {
+    const durableDelivery = await this.supportsDurableDelivery(input.nodeId);
     return this.prisma.$transaction(async (tx) => {
-      const command = await this.findActiveCommand(
-        input.nodeId,
-        input.commandId,
-        tx,
-      );
-
-      const nextStatus =
-        input.status === 'running'
-          ? NodeCommandStatus.running
-          : NodeCommandStatus.picked_up;
-
-      if (
-        command.status === NodeCommandStatus.running &&
-        nextStatus === NodeCommandStatus.picked_up
-      ) {
-        throw new BadRequestException('command cannot move back to picked_up');
+      const command = await tx.nodeCommand.findFirst({
+        where: { id: input.commandId, nodeId: input.nodeId },
+      });
+      if (!command) throw new NotFoundException('command not found');
+      assertMatchingDeliveryAttempt(command, input.deliveryAttempt, durableDelivery);
+      if (!ACTIVE_STATUSES.includes(command.status)) {
+        // Legacy agents treat any 2xx as permission to execute, ignoring status.
+        if (!durableDelivery) throw new NotFoundException('active command not found');
+        return this.ackResponse(command, true);
       }
-
       const now = new Date();
-      // C8: update condicional por status esperado (CAS) para evitar corrida de ack.
-      const allowedPriorStatuses =
-        nextStatus === NodeCommandStatus.running
-          ? [
-              NodeCommandStatus.pending,
-              NodeCommandStatus.picked_up,
-              NodeCommandStatus.running,
-            ]
-          : [NodeCommandStatus.pending, NodeCommandStatus.picked_up];
-
-      const updateResult = await tx.nodeCommand.updateMany({
+      if (command.expiresAt.getTime() <= now.getTime()) {
+        // Expiry worker owns terminal side effects; never grant execution while
+        // an active row is waiting for that worker to persist expiry.
+        if (!durableDelivery) throw new BadRequestException('command expired');
+        return { ...this.ackResponse(command, true), execute: false, recovery_required: true };
+      }
+      if (command.status === 'running' && input.status === 'picked_up') {
+        if (!durableDelivery) throw new BadRequestException('command cannot move back to picked_up');
+        return this.ackResponse(command, true);
+      }
+      // Repeated ACK is a read. Only the first running CAS grants execution;
+      // losing its HTTP response requires local reconciliation, never replay.
+      if (command.status === input.status) return this.ackResponse(command, durableDelivery);
+      const changed = await tx.nodeCommand.updateMany({
         where: {
-          id: command.id,
-          status: { in: allowedPriorStatuses },
+          id: command.id, nodeId: input.nodeId, retryCount: command.retryCount,
+          status: { in: input.status === 'running'
+            ? [NodeCommandStatus.pending, NodeCommandStatus.picked_up]
+            : [NodeCommandStatus.pending] },
           expiresAt: { gt: now },
         },
         data: {
-          status: nextStatus,
+          status: input.status,
           pickedUpAt: command.pickedUpAt ?? now,
-          ...(nextStatus === NodeCommandStatus.running && !command.runningAt
-            ? { runningAt: now }
-            : {}),
+          ...(input.status === 'running' ? { runningAt: now } : {}),
         },
       });
-
-      if (updateResult.count === 0) {
-        // Corrida: outro ack/resultado mudou o estado. Devolve o estado atual sem regressao.
-        const current = await tx.nodeCommand.findFirst({
-          where: { id: command.id, nodeId: input.nodeId },
-        });
-        return {
-          ok: true,
-          command_id: command.id,
-          status: current?.status ?? command.status,
-        };
+      const current = await tx.nodeCommand.findFirst({
+        where: { id: command.id, nodeId: input.nodeId },
+      });
+      if (!current) throw new NotFoundException('command not found');
+      if (changed.count === 0) {
+        assertMatchingDeliveryAttempt(current, input.deliveryAttempt, durableDelivery);
+        if (!durableDelivery && !ACTIVE_STATUSES.includes(current.status)) {
+          throw new NotFoundException('active command not found');
+        }
+        if (!durableDelivery && input.status === 'picked_up' && current.status === 'running') {
+          throw new BadRequestException('command cannot move back to picked_up');
+        }
+        return this.ackResponse(current, durableDelivery);
       }
-
-      if (
-        nextStatus === NodeCommandStatus.picked_up &&
-        (command.type === NodeCommandType.local_user_create ||
-          command.type === NodeCommandType.local_user_set_password)
-      ) {
+      if ((durableDelivery ? input.status === 'running' : input.status === 'picked_up') &&
+          (command.type === NodeCommandType.local_user_create ||
+           command.type === NodeCommandType.local_user_set_password)) {
         await this.scrubCommandPassword(command.id, tx);
       }
-
-      const auditPrefix = getCommandDefinition(command.type).auditPrefix;
       await tx.auditLog.create({
         data: {
-          actorType: 'node_credential',
-          actorId: input.credentialId,
-          action: `${auditPrefix}.request_picked_up`,
-          targetType: 'node_command',
-          targetId: command.id,
-          ipAddress: input.clientIp,
-          metadataJson: {
-            node_id: input.nodeId,
-            status: nextStatus,
-            command_type: command.type,
-          },
+          actorType: 'node_credential', actorId: input.credentialId,
+          action: `${getCommandDefinition(command.type).auditPrefix}.request_picked_up`,
+          targetType: 'node_command', targetId: command.id, ipAddress: input.clientIp,
+          metadataJson: { node_id: input.nodeId, status: input.status, command_type: command.type },
         },
       });
-
-      return {
-        ok: true,
-        command_id: command.id,
-        status: nextStatus,
-      };
+      return this.ackResponse(current, durableDelivery, input.status === 'running');
     });
   }
 
@@ -452,8 +493,9 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
     status: 'succeeded' | 'failed';
     errorMessage?: string;
     resultJson?: Record<string, unknown>;
+    deliveryAttempt?: number;
     clientIp?: string;
-  }): Promise<{ ok: true; command_id: string; status: NodeCommandStatus }> {
+  }): Promise<{ ok: true; command_id: string; status: NodeCommandStatus; delivery_attempt?: number }> {
     const { backupCommand, ...response } = await this.prisma.$transaction((tx) =>
       this.reportCommandResultInTransaction(input, tx),
     );
@@ -464,13 +506,16 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
   private async reportCommandResultInTransaction(
     input: Parameters<NodeCommandsService['reportCommandResult']>[0],
     tx: Prisma.TransactionClient,
-  ): Promise<{ ok: true; command_id: string; status: NodeCommandStatus; backupCommand?: NodeCommand }> {
+  ): Promise<{ ok: true; command_id: string; status: NodeCommandStatus; delivery_attempt?: number; backupCommand?: NodeCommand }> {
     const command = await tx.nodeCommand.findFirst({
       where: { id: input.commandId, nodeId: input.nodeId },
     });
     if (!command) throw new NotFoundException('command not found');
+    const durableDelivery = await this.supportsDurableDelivery(input.nodeId, tx);
+    assertMatchingDeliveryAttempt(command, input.deliveryAttempt, durableDelivery);
     if (command.status === 'succeeded' || command.status === 'failed') {
-      return { ok: true, command_id: command.id, status: command.status };
+      return { ok: true, command_id: command.id, status: command.status,
+        ...(durableDelivery ? { delivery_attempt: command.retryCount } : {}) };
     }
     if (command.status === 'expired') return this.reconcileLateResult(input, command, tx);
     if (!ACTIVE_STATUSES.includes(command.status)) {
@@ -499,7 +544,7 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
           : input.resultJson ?? Prisma.JsonNull) as Prisma.InputJsonValue,
       },
     });
-    if (changed.count === 0) return this.currentResultResponse(tx, command);
+    if (changed.count === 0) return this.currentResultResponse(tx, command, input.deliveryAttempt);
 
     // Hold the conditional update's row lock through all terminal side effects.
     const updated = (await tx.nodeCommand.findUnique({ where: { id: command.id } }))!;
@@ -521,21 +566,32 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
     });
     if (command.batchId) await this.reconcileBatchStatus(command.batchId, tx);
     await this.reconcileTechnicianNodeAccount(updated, input.status, error ?? undefined, tx);
+    if (command.type !== NodeCommandType.config_backup_now || input.status === 'failed') {
+      await tx.nodeCommand.update({
+        where: { id: command.id },
+        data: { payloadJson: scrubSensitiveCommandPayload(updated.payloadJson) as Prisma.InputJsonValue },
+      });
+    }
     return {
       ok: true,
       command_id: command.id,
       status: updated.status,
+      ...(input.deliveryAttempt != null ? { delivery_attempt: updated.retryCount } : {}),
       ...(command.type === NodeCommandType.config_backup_now && input.status === 'succeeded'
         ? { backupCommand: updated } : {}),
     };
   }
 
-  private async currentResultResponse(tx: Prisma.TransactionClient, command: NodeCommand) {
+  private async currentResultResponse(
+    tx: Prisma.TransactionClient, command: NodeCommand, expectedAttempt?: number,
+  ) {
     const current = await tx.nodeCommand.findFirst({
       where: { id: command.id, nodeId: command.nodeId },
     });
     if (!current) throw new NotFoundException('command not found');
-    return { ok: true as const, command_id: command.id, status: current.status };
+    assertMatchingDeliveryAttempt(current, expectedAttempt, expectedAttempt != null);
+    return { ok: true as const, command_id: command.id, status: current.status,
+      ...(expectedAttempt != null ? { delivery_attempt: current.retryCount } : {}) };
   }
 
   private async scrubCommandPassword(commandId: string, db: Prisma.TransactionClient): Promise<void> {
@@ -749,11 +805,12 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       status: 'succeeded' | 'failed';
       errorMessage?: string;
       resultJson?: Record<string, unknown>;
+      deliveryAttempt?: number;
       clientIp?: string;
     },
     command: NodeCommand,
     tx: Prisma.TransactionClient,
-  ): Promise<{ ok: true; command_id: string; status: NodeCommandStatus; backupCommand?: NodeCommand }> {
+  ): Promise<{ ok: true; command_id: string; status: NodeCommandStatus; delivery_attempt?: number; backupCommand?: NodeCommand }> {
     if (!LATE_RESULT_COMMAND_TYPES.includes(command.type)) {
       throw new ConflictException('late result not accepted for this command type');
     }
@@ -811,7 +868,7 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    if (changed.count === 0) return this.currentResultResponse(tx, command);
+    if (changed.count === 0) return this.currentResultResponse(tx, command, input.deliveryAttempt);
     const updated = (await tx.nodeCommand.findUnique({ where: { id: command.id } }))!;
 
     await tx.auditLog.create({
@@ -849,6 +906,7 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       ok: true,
       command_id: updated.id,
       status: updated.status,
+      ...(input.deliveryAttempt != null ? { delivery_attempt: updated.retryCount } : {}),
       ...(command.type === NodeCommandType.config_backup_now && nextStatus === 'succeeded'
         ? { backupCommand: updated } : {}),
     };
@@ -939,11 +997,8 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       tx,
     );
 
-    if (command.type !== NodeCommandType.config_backup_now) {
-      return;
-    }
-
-    const followUp = parseFollowUpTechnicianProvision(command.payloadJson);
+    const followUp = command.type === NodeCommandType.config_backup_now
+      ? parseFollowUpTechnicianProvision(command.payloadJson) : null;
     if (followUp) {
       await tx.technicianNodeAccount.updateMany({
         where: { id: followUp.account_id, lastCommandId: command.id },
@@ -1006,6 +1061,12 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    await this.technicianBackupFollowUp.processAfterBackupSuccess(command);
+    try {
+      await this.technicianBackupFollowUp.processAfterBackupSuccess(command);
+    } catch {
+      // The committed backup payload is the durable outbox; its periodic
+      // reconciler retries. An enqueue outage must not invalidate the upload.
+      this.logger.warn(`backup follow-up pending retry command=${command.id}`);
+    }
   }
 }

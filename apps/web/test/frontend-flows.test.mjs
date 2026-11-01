@@ -60,11 +60,13 @@ test('formulário oferece firewall 21/240 e limpa credencial ao ocultar/trocar a
   const token = 'SYNTHETIC_EPHEMERAL';
   const { AgentTokenForm } = sourceLoader({ ...uiMocks, react: harness.react,
     '@/lib/admin': { createAgentTokenAction: async () => ({ ok: true, token, hint: 'fake' }) },
+    '@/lib/use-paged-nodes': { usePagedNodes: () => ({ loading: false, result: { items: Array.from({ length: 240 }, (_, i) => ({ id: `node-${i + 1}`, node_uid: `fw-${i + 1}`, client: { code: 'TEST' } })) } }) },
+    '@/components/node-browser-controls': { NodeBrowserControls: 'node-browser' },
   })('components/agent-token-form.tsx');
   const props = { nodes: Array.from({ length: 240 }, (_, i) => ({ id: `node-${i + 1}`, node_uid: `fw-${i + 1}`, client: { code: 'TEST' } })) };
   let tree = harness.render(AgentTokenForm, props);
   assert.equal(elements(tree).filter((e) => e.type === 'option').length, 241);
-  const submit = () => elements(tree).find((e) => e.type === 'form').props.action(new FormData());
+  const submit = () => { const form = new FormData(); form.set('node_id', 'node-21'); return elements(tree).find((e) => e.type === 'form').props.action(form); };
   await submit();
   tree = harness.render(AgentTokenForm, props);
   assert.ok(textOf(tree).includes(token));
@@ -73,7 +75,7 @@ test('formulário oferece firewall 21/240 e limpa credencial ao ocultar/trocar a
   assert.ok(!textOf(tree).includes(token));
   await submit();
   tree = harness.render(AgentTokenForm, props);
-  elements(tree).find((e) => e.type === 'select').props.onChange();
+  elements(tree).find((e) => e.type === 'select').props.onChange({ target: { value: 'node-22' } });
   assert.ok(!textOf(harness.render(AgentTokenForm, props)).includes(token));
 });
 
@@ -85,7 +87,7 @@ test('alertas mostram somente ações autorizadas e preservam página/filtros', 
   for (const granted of [[], ['alerts.acknowledge'], ['alerts.resolve'], ['alerts.acknowledge', 'alerts.resolve']]) {
     const page = sourceLoader({ ...uiMocks,
       '@/lib/alerts': { acknowledgeAlertAction: () => {}, resolveAlertAction: () => {} },
-      '@/lib/api': { getSession: async () => ({ permissions: ['alerts.view', ...granted] }), getNodesFilters: async () => ({ clients: [], sites: [] }), getAlertsList: async () => ({ generated_at: '2026-10-01', totals: {}, items: Array.from({ length: 30 }, (_, i) => alertFixture(`a-${i}`)) }) },
+      '@/lib/api': { getSession: async () => ({ permissions: ['alerts.view', ...granted] }), getNodesFilters: async () => ({ clients: [], sites: [] }), getAlertsList: async () => ({ generated_at: '2026-10-01', total: 30, page: 2, limit: 25, total_pages: 2, totals: { open: 30, acknowledged: 0, critical: 0 }, items: Array.from({ length: 5 }, (_, i) => alertFixture(`a-${i + 25}`)) }) },
       'next/navigation': { redirect },
     })('app/alerts/page.tsx').default;
     const tree = await page({ searchParams: Promise.resolve({ page: '2', per_page: '25', client_id: 'synthetic-client' }) });
@@ -372,7 +374,7 @@ test('falha do histórico preserva snapshot e serviços na aba de métricas', ()
   assert.ok(!elements(tree).some((e) => e.type === 'trends'));
 });
 
-test('cadastro inicial restringe criação de usuários ao superadmin e pede até 1000 firewalls', async () => {
+test('cadastro inicial restringe criação de usuários ao superadmin e pede uma página de 50 firewalls', async () => {
   for (const role of ['superadmin', 'admin', 'operator']) {
     let query;
     const page = sourceLoader({ ...uiMocks,
@@ -387,7 +389,7 @@ test('cadastro inicial restringe criação de usuários ao superadmin e pede at�
     })('app/admin/page.tsx').default;
     const tree = await page({});
     assert.equal(elements(tree).find((e) => e.type === 'registration-cards').props.canManageUsers, role === 'superadmin');
-    assert.equal(query.limit, 1000);
+    assert.equal(query.limit, 50);
   }
 });
 

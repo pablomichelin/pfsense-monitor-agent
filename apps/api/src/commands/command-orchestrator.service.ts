@@ -195,6 +195,12 @@ export class CommandOrchestratorService {
         throw new ConflictException('command state changed');
       }
 
+      const current = (await tx.nodeCommand.findUnique({ where: { id: command.id } }))!;
+      await tx.nodeCommand.update({
+        where: { id: command.id },
+        data: { payloadJson: scrubSensitiveCommandPayload(current.payloadJson) as Prisma.InputJsonValue },
+      });
+
       await restoreCommandMaintenance(tx, command, now);
 
       await tx.auditLog.create({

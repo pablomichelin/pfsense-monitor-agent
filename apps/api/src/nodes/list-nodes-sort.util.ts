@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { coerce, compare as semverCompare } from 'semver';
 
 export const LIST_NODES_SORT_FIELDS = [
@@ -28,7 +30,8 @@ const BACKUP_RANK: Record<string, number> = {
   ok: 3,
 };
 
-type SortableNode = {
+export type SortableNode = {
+  id: string;
   hostname: string;
   display_name: string | null;
   effective_status: string;
@@ -130,24 +133,89 @@ function compareField(
   }
 }
 
+/** Total order: UUID is the final, direction-independent tie breaker. */
+export function compareListNodes(
+  left: SortableNode, right: SortableNode,
+  sortBy: ListNodesSortBy, sortOrder: ListNodesSortOrder,
+): number {
+  return compareField(left, right, sortBy) * (sortOrder === 'desc' ? -1 : 1)
+    || compareNullableText(left.client.name, right.client.name)
+    || compareNullableText(displayNameOf(left), displayNameOf(right))
+    || left.id.localeCompare(right.id);
+}
+
 export function sortListNodesItems<T extends SortableNode>(
-  items: T[],
-  sortBy: ListNodesSortBy,
-  sortOrder: ListNodesSortOrder,
+  items: T[], sortBy: ListNodesSortBy, sortOrder: ListNodesSortOrder,
 ): T[] {
-  const direction = sortOrder === 'desc' ? -1 : 1;
+  return [...items].sort((a, b) => compareListNodes(a, b, sortBy, sortOrder));
+}
 
-  return [...items].sort((left, right) => {
-    const primary = compareField(left, right, sortBy);
-    if (primary !== 0) {
-      return primary * direction;
+type NodeCursor = { v: 1; filter: string; at: string; direction: 'after' | 'before'; anchor: SortableNode };
+
+export function nodeListFingerprint(filters: unknown): string {
+  return createHash('sha256').update(JSON.stringify(filters)).digest('hex');
+}
+
+// Only sort keys are carried; never serialize the full node or any credential.
+export function encodeNodeCursor(anchor: SortableNode, direction: NodeCursor['direction'], filter: string, at: string): string {
+  const { id, hostname, display_name, effective_status, pfsense_version, agent_version,
+    open_alerts, backup_status, last_seen_at, client } = anchor;
+  return Buffer.from(JSON.stringify({ v: 1, filter, at, direction, anchor: {
+    id, hostname, display_name, effective_status, pfsense_version, agent_version,
+    open_alerts, backup_status, last_seen_at, client: { name: client.name },
+  } })).toString('base64url');
+}
+
+export function decodeNodeCursor(value: string | undefined, filter: string): NodeCursor | null {
+  if (!value) return null;
+  try {
+    if (value.length > 8192 || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error();
+    const c = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+    const a = c.anchor;
+    if (c.v !== 1 || c.filter !== filter || !['after', 'before'].includes(c.direction)
+      || typeof c.at !== 'string' || !Number.isFinite(Date.parse(c.at))
+      || Date.parse(c.at) > Date.now() + 60_000 || !a
+      || !['id', 'hostname', 'effective_status', 'backup_status'].every((k) => typeof a[k] === 'string')
+      || !['display_name', 'pfsense_version', 'agent_version', 'last_seen_at'].every((k) => a[k] === null || typeof a[k] === 'string')
+      || typeof a.client?.name !== 'string' || !Number.isSafeInteger(a.open_alerts) || a.open_alerts < 0) throw new Error();
+    return c as NodeCursor;
+  } catch {
+    throw new BadRequestException('Cursor inválido ou incompatível com os filtros. Reinicie a listagem.');
+  }
+}
+
+/** Streaming top/bottom page: retains at most limit rows, regardless of fleet size. */
+export class NodePageCollector<T extends SortableNode> {
+  readonly items: T[] = [];
+  total = 0;
+  eligible = 0;
+  constructor(private readonly limit: number, private readonly compare: (a: T, b: SortableNode) => number,
+    private readonly cursor: NodeCursor | null) {}
+
+  add(item: T): void {
+    this.total++;
+    if (this.cursor) {
+      const delta = this.compare(item, this.cursor.anchor);
+      if (this.cursor.direction === 'after' ? delta <= 0 : delta >= 0) return;
     }
-
-    const byClient = compareNullableText(left.client.name, right.client.name);
-    if (byClient !== 0) {
-      return byClient;
+    this.eligible++;
+    let low = 0, high = this.items.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (this.compare(this.items[middle], item) < 0) low = middle + 1;
+      else high = middle;
     }
+    this.items.splice(low, 0, item);
+    if (this.items.length > this.limit) {
+      if (this.cursor?.direction === 'before') this.items.shift();
+      else this.items.pop();
+    }
+  }
 
-    return compareNullableText(displayNameOf(left), displayNameOf(right));
-  });
+  get hasPrevious(): boolean {
+    return this.cursor?.direction === 'before' ? this.eligible > this.limit : this.total > this.eligible;
+  }
+  get hasNext(): boolean {
+    return this.cursor?.direction === 'before' ? this.total > this.eligible : this.eligible > this.limit;
+  }
 }

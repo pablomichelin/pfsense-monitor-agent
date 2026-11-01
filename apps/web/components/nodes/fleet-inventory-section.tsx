@@ -170,7 +170,7 @@ export function FleetInventorySection({
         mode="filter"
         totalVisibleCount={nodes.length}
         clientId={clientId}
-        label={`Inventário — backup lote (${nodes.length} nodes)`}
+        label={`Página atual — backup lote (${nodes.length} nodes)`}
       />
     ) : null;
 
@@ -184,8 +184,8 @@ export function FleetInventorySection({
           onClick={() => setShowFilterBackup((open) => !open)}
         >
           {showFilterBackup
-            ? 'Ocultar backup por filtro'
-            : `Usar filtro atual (${nodes.length} firewalls)`}
+            ? 'Ocultar backup da página'
+            : `Usar página atual (${nodes.length} firewalls)`}
         </Button>
       </div>
     ) : null;

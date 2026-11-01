@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 const DEFAULT_LIMIT = 500;
@@ -73,9 +73,16 @@ export class ListNodesQueryDto {
   /** Limite de nodes na resposta (evita lentidão com muitos firewalls). Default 500, max 1000. */
   @IsOptional()
   @Type(() => Number)
+  @IsInt()
   @Min(1)
   @Max(MAX_LIMIT)
   limit?: number;
+
+  /** Opaque continuation, bound to filters and ordering. Omit to restart. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(8192)
+  cursor?: string;
 
   /** Preset operacional (aplica-se após derivar status/backup, sem cortar a 200 primeiras linhas). */
   @IsOptional()

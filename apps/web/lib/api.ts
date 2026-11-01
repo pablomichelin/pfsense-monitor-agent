@@ -74,6 +74,10 @@ export type FleetTagRef = {
 
 export type NodesListResponse = {
   generated_at: string;
+  total: number;
+  limit: number;
+  next_cursor: string | null;
+  previous_cursor: string | null;
   items: Array<{
     id: string;
     node_uid: string;
@@ -756,6 +760,10 @@ export type NodeBootstrapCommandResponse = {
 
 export type AlertsListResponse = {
   generated_at: string;
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
   totals: {
     open: number;
     acknowledged: number;
@@ -990,6 +998,7 @@ export async function getNodesList(query?: {
     | 'last_seen';
   sort_order?: 'asc' | 'desc';
   limit?: number;
+  cursor?: string;
   preset?: string;
 }): Promise<NodesListResponse> {
   const params = new URLSearchParams();
@@ -1026,6 +1035,8 @@ export async function getNodesList(query?: {
   if (query?.preset) {
     params.set('preset', query.preset);
   }
+
+  if (query?.cursor) params.set('cursor', query.cursor);
 
   const suffix = params.toString() ? `?${params.toString()}` : '';
   return apiFetch<NodesListResponse>(`/api/v1/nodes${suffix}`);
@@ -1295,6 +1306,9 @@ export async function getNodeBootstrapCommandIfAllowed(
 }
 
 export async function getAlertsList(query?: {
+  page?: number;
+  limit?: number;
+  sort_by?: 'legacy' | 'attention';
   client_id?: string;
   site_id?: string;
   node_id?: string;
@@ -1325,6 +1339,10 @@ export async function getAlertsList(query?: {
   if (query?.search) {
     params.set('search', query.search);
   }
+
+  if (query?.page != null) params.set('page', String(query.page));
+  if (query?.limit != null) params.set('limit', String(query.limit));
+  if (query?.sort_by) params.set('sort_by', query.sort_by);
 
   const suffix = params.toString() ? `?${params.toString()}` : '';
   return apiFetch<AlertsListResponse>(`/api/v1/alerts${suffix}`);

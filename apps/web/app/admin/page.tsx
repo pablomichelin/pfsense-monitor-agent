@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PageHero } from '@/components/page-hero';
-import { Alert, Badge, Card, PageSection } from '@/components/ui';
+import { Badge, Card, PageSection } from '@/components/ui';
 import { ApiError, getNodesFilters, getNodesList, getRolesList, getSession } from '@/lib/api';
 import { AdminCadastroCards } from '@/components/admin-cadastro-cards';
 import { hasPermission } from '@/lib/authz';
-import { adminNavLinkClassName, adminShortcutLinkClassName } from '@/lib/admin-nav-styles';
+import { adminShortcutLinkClassName } from '@/lib/admin-nav-styles';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +48,7 @@ export default async function AdminPage({
   try {
     const [filterOptionsResult, nodesResult] = await Promise.all([
       getNodesFilters(),
-      getNodesList({ limit: 1000, sort_by: 'name', sort_order: 'asc' }),
+      getNodesList({ limit: 50, sort_by: 'name', sort_order: 'asc' }),
     ]);
     filterOptions = filterOptionsResult;
     nodes = nodesResult;
@@ -75,7 +75,7 @@ export default async function AdminPage({
         description="Novo cliente e novo firewall. Usuários, tokens e permissões nas seções abaixo."
         stats={[
           { label: 'Clientes', value: String(filterOptions.clients.length) },
-          { label: 'Firewalls', value: String(nodes.items.length) },
+          { label: 'Firewalls', value: String(nodes.total) },
         ]}
       />
 
@@ -106,7 +106,7 @@ export default async function AdminPage({
         </Card>
       </PageSection>
 
-      {nodes.items.length >= 1000 ? <Alert variant="warning">O seletor de tokens atingiu o limite de 1.000 firewalls da API. A lista pode estar incompleta.</Alert> : null}
+
       <AdminCadastroCards
         filterOptions={filterOptions}
         nodes={nodes}

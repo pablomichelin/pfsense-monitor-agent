@@ -1,3 +1,4 @@
+import { NodePagination } from '@/components/node-pagination';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { FleetInventorySection } from '@/components/nodes/fleet-inventory-section';
@@ -74,7 +75,8 @@ export default async function NodesPage({
     preset,
   };
 
-  const listLimit = 1000;
+  const listLimit = 50;
+  const cursor = typeof params.cursor === 'string' ? params.cursor : undefined;
   let filterOptions;
   let nodes;
   let session;
@@ -94,6 +96,7 @@ export default async function NodesPage({
         sort_by: sortBy,
         sort_order: sortOrder,
         limit: listLimit,
+        cursor,
         preset: preset || undefined,
       }),
       getSession(),
@@ -170,23 +173,7 @@ export default async function NodesPage({
     tags: node.tags,
   }));
 
-  const displayedInventoryNodes = inventoryNodes.filter((node) => {
-    if (!preset) return true;
-    if (preset === 'offline') return node.effective_status === 'offline';
-    if (preset === 'degraded') return node.effective_status === 'degraded';
-    if (preset === 'backup-late') return node.backup_status === 'late' || node.backup_status === 'failed';
-    if (preset === 'no-backup') return node.backup_status === 'never';
-    if (preset === 'package-outdated') {
-      return Boolean(targetPackageVersion && node.agent_version !== targetPackageVersion);
-    }
-    return (
-      node.effective_status === 'offline' ||
-      node.effective_status === 'degraded' ||
-      node.open_alerts > 0 ||
-      node.backup_status !== 'ok' ||
-      Boolean(targetPackageVersion && node.agent_version !== targetPackageVersion)
-    );
-  });
+  const displayedInventoryNodes = inventoryNodes;
 
   const statusFilterLabels: Record<string, string> = {
     online: 'Online',
@@ -272,7 +259,7 @@ export default async function NodesPage({
         stats={[
           {
             label: 'Itens exibidos',
-            value: `${displayedInventoryNodes.length}${nodes.items.length >= listLimit ? ' (máx.)' : ''}`,
+            value: `${displayedInventoryNodes.length} de ${nodes.total}`,
           },
           {
             label: 'Agente ativo',
@@ -288,7 +275,6 @@ export default async function NodesPage({
         aside={<RealtimeRefresh renderedAt={nodes.generated_at} />}
       />
 
-      {nodes.items.length >= listLimit ? <Alert variant="warning">A listagem atingiu o limite de {listLimit} firewalls da API e pode estar incompleta. Refine os filtros para localizar outros itens.</Alert> : null}
       {deleteError ? <Alert variant="error">{deleteError}</Alert> : null}
       {deleteNotice ? <Alert variant="warning">{deleteNotice}</Alert> : null}
       {deletedNotice ? <Alert variant="success">Host excluído.</Alert> : null}
@@ -355,6 +341,7 @@ export default async function NodesPage({
             className="mt-1 h-11 w-full rounded-lg border border-border bg-surface-soft px-4 text-sm text-fg outline-none placeholder:text-fg-subtle"
           />
         </label>
+        <input type="hidden" name="preset" value={preset ?? ''} />
         <input type="hidden" name="site_id" value={siteId ?? ''} />
         <input type="hidden" name="tag_id" value={tagId ?? ''} />
         <input type="hidden" name="group_id" value={groupId ?? ''} />
@@ -391,6 +378,7 @@ export default async function NodesPage({
         </summary>
         <div className="border-t border-slate-800 px-4 py-4 sm:px-6">
           <form className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end xl:gap-4">
+            <input type="hidden" name="preset" value={preset ?? ''} />
             <select
               name="client_id"
               defaultValue={clientId ?? ''}
@@ -493,6 +481,7 @@ export default async function NodesPage({
         </div>
       </details>
 
+      <NodePagination result={nodes} basePath="/nodes" params={{ ...inventoryQueryParams, sort_by: sortBy, sort_order: sortOrder }} />
       {displayedInventoryNodes.length === 0 ? (
         <PageSection title="Inventário">
           <Card className="overflow-hidden p-0">
@@ -503,6 +492,7 @@ export default async function NodesPage({
         </PageSection>
       ) : (
         <FleetInventorySection
+          key={`${cursor ?? 'first'}:${JSON.stringify(inventoryQueryParams)}:${sortBy}:${sortOrder}`}
           nodes={displayedInventoryNodes}
           showAlertsColumn={showAlertsColumn}
           targetPackageVersion={targetPackageVersion}

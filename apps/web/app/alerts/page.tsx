@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { parsePage, currentAlertPage } from '@/lib/pagination';
+import { parsePage } from '@/lib/pagination';
 import { redirect } from 'next/navigation';
 import { AdvancedSection } from '@/components/advanced-section';
 import { PageHero } from '@/components/page-hero';
@@ -134,7 +134,7 @@ export default async function AlertsPage({
   const severity = typeof params.severity === 'string' ? params.severity : undefined;
   const type = typeof params.type === 'string' ? params.type : undefined;
   const search = typeof params.search === 'string' ? params.search : undefined;
-  const page = parsePage(params.page);
+  const page = Math.min(parsePage(params.page), 1000000);
   const perPage = typeof params.per_page === 'string' && ['10', '25', '50'].includes(params.per_page) ? Number(params.per_page) : 25;
 
   let alerts;
@@ -152,6 +152,7 @@ export default async function AlertsPage({
         severity,
         type,
         search,
+        page, limit: perPage, sort_by: 'attention',
       }),
       getNodesFilters(),
     ]);
@@ -186,22 +187,16 @@ export default async function AlertsPage({
     }
   }
   returnToParams.set('per_page', String(perPage));
-  returnToParams.set('page', String(currentAlertPage(page, alerts.items.length, perPage)));
+  returnToParams.set('page', String(alerts.page));
   const returnTo = returnToParams.toString()
     ? `/alerts?${returnToParams.toString()}`
     : '/alerts';
-  const openCount = alerts.items.filter((item) => item.status === 'open').length;
-  const acknowledgedCount = alerts.items.filter((item) => item.status === 'acknowledged').length;
-  const criticalCount = alerts.items.filter((item) => item.severity === 'critical').length;
-  const orderedAlerts = [...alerts.items].sort((a, b) => {
-    const severityOrder: Record<string, number> = { critical: 0, warning: 1, info: 2 };
-    const severityDelta = (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3);
-    if (severityDelta !== 0) return severityDelta;
-    return new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime();
-  });
-  const totalPages = Math.max(1, Math.ceil(orderedAlerts.length / perPage));
-  const currentPage = currentAlertPage(page, orderedAlerts.length, perPage);
-  const visibleAlerts = orderedAlerts.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const openCount = alerts.totals.open;
+  const acknowledgedCount = alerts.totals.acknowledged;
+  const criticalCount = alerts.totals.critical;
+  const totalPages = alerts.total_pages;
+  const currentPage = alerts.page;
+  const visibleAlerts = alerts.items;
   const alertPageHref = (nextPage: number) => {
     const next = new URLSearchParams(returnToParams);
     next.set('per_page', String(perPage));
@@ -317,7 +312,7 @@ export default async function AlertsPage({
 
       <PageSection
         title="Alertas"
-        description={`${alerts.items.length} registro(s) com os filtros atuais, críticos e mais antigos primeiro.`}
+        description={`${alerts.total} registro(s) com os filtros atuais, críticos e mais antigos primeiro.`}
       >
         {alerts.items.length === 0 ? (
           <Alert variant="info">Nenhum alerta encontrado com os filtros atuais.</Alert>

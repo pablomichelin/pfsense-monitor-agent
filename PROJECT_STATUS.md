@@ -1,8 +1,8 @@
 # PROJECT STATUS — Monitor pfSense (pfs-monitor)
 
-Última atualização: **2026-10-31**
+Última atualização: **2026-11-01**
 
-Estabilização: API `0.12.0` e painel `1.13.0` publicados e saudáveis; package publicado `0.5.25`, fonte candidata `0.5.26` sem distribuição. Relatório canônico: `docs/196-ESTABILIZACAO-E-REVISAO-2026-10-31.md`.
+API `0.13.0` e painel `1.14.0` publicados. Recuperação durável, paginação acima de 1.000 e LAB0.5.26 validados; fechamento operacional em `docs/198-FECHAMENTO-ESTABILIZACAO-E-RECUPERACAO-2026-11-01.md`. Oito degradados excluídos; HA/CARP retirado do escopo pelo usuário.
 
 O snapshot abaixo é histórico de setembro; não representa a frota nesta rodada. Não houve intervenção nos oito degradados.
 

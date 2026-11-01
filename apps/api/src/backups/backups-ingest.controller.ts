@@ -44,6 +44,7 @@ export class BackupsIngestController {
     @Headers('x-config-size') configSize?: string,
     @Headers('x-backup-id') backupId?: string,
     @Headers('x-command-id') commandId?: string,
+    @Headers('x-command-delivery-attempt') commandDeliveryAttempt?: string,
     @Headers('x-agent-version') agentVersion?: string,
     @Headers('x-pfsense-version') pfsenseVersion?: string,
     @Headers('x-config-compression') configCompression?: string,
@@ -64,6 +65,7 @@ export class BackupsIngestController {
       headerConfigSize: configSize,
       headerBackupId: backupId,
       headerCommandId: commandId,
+      headerCommandDeliveryAttempt: commandDeliveryAttempt,
       headerAgentVersion: agentVersion,
       headerPfsenseVersion: pfsenseVersion,
       headerConfigCompression: configCompression,
@@ -101,6 +103,7 @@ export class BackupsIngestController {
       credentialId: credential.id,
       commandId: body.command_id,
       status: body.status,
+      deliveryAttempt: body.delivery_attempt,
       clientIp: resolveClientIp(request),
     });
   }
@@ -128,6 +131,7 @@ export class BackupsIngestController {
       credentialId: credential.id,
       commandId: body.command_id,
       status: body.status,
+      deliveryAttempt: body.delivery_attempt,
       errorMessage: body.error_message,
       resultJson: body.result_json,
       clientIp: resolveClientIp(request),
