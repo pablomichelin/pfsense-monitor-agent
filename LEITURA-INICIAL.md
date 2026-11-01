@@ -6,6 +6,12 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
+## Revisão intensiva — 01/11/2026
+
+Nova revisão da base `1ecb6f8`, sem correções ou alteração de versões: [relatório 199](docs/199-REVISAO-INTENSA-BUGS-E-MELHORIAS-2026-11-01.md). Foram identificados 15 achados sustentados por fonte/provas sintéticas/observação atual (dois P1, doze P2 e um P3), além de dois riscos de concorrência sem prova PostgreSQL. Continuidade de sessões após troca de senha ficou como melhoria de política, fora da contagem. Prioridades: seleção de firewall na instalação e retenção externa condicionada à recuperação; depois permissões e atualização do painel.
+
+Quatro frentes abertas; autenticação e frontend entregaram, backend/durabilidade e package foram bloqueados pela ferramenta e não contam como nova aprovação. Nenhuma suíte anterior foi repetida. Código de execução, banco e appliances permaneceram sem mudanças; oito excluídos e HA/CARP preservados. Próxima ação proposta: desenvolver e validar em blocos os achados do relatório; este pedido autorizou revisão, não iniciou essa implementação.
+
 ## Entrega — 01/11/2026
 
 Controlador: API **0.13.0**, painel **1.14.0** publicados. Package **0.5.26** validado no LAB 10 CE 2.9 com journal nativo, backup prévio e ciclo real de conta descartável; transição remota do legado e canário CE 2.8.1 aprovados; 58 agentes em 0.5.26 e os oito excluídos preservados em 0.5.25. Relatório desta rodada: `docs/198-FECHAMENTO-ESTABILIZACAO-E-RECUPERACAO-2026-11-01.md`.

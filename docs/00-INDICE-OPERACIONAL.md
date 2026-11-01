@@ -1,3 +1,7 @@
+# Revisão intensiva de 01/11/2026
+
+- [Bugs, riscos e melhorias — nova revisão](199-REVISAO-INTENSA-BUGS-E-MELHORIAS-2026-11-01.md): 15 achados e dois riscos de concorrência separados; prioridades de instalação, recuperação, permissões e painel. Sem correções de execução nesta rodada.
+
 # Entrega de 01/11/2026
 
 - [Resultado geral e revisão cruzada](198-FECHAMENTO-ESTABILIZACAO-E-RECUPERACAO-2026-11-01.md): API0.13.0, painel1.14.0, recuperação durável, paginação e LAB0.5.26.
