@@ -8,9 +8,9 @@ Leia este arquivo primeiro.
 
 ## Entrega — 01/11/2026
 
-Controlador: API **0.13.0**, painel **1.14.0** publicados. Package **0.5.26** validado no LAB10 CE2.9 com journal nativo, backup prévio e ciclo real de conta descartável; transição remota do legado em validação final. Relatório desta rodada: `docs/198-FECHAMENTO-ESTABILIZACAO-E-RECUPERACAO-2026-11-01.md`.
+Controlador: API **0.13.0**, painel **1.14.0** publicados. Package **0.5.26** validado no LAB 10 CE 2.9 com journal nativo, backup prévio e ciclo real de conta descartável; transição remota do legado e canário CE 2.8.1 aprovados; 58 agentes em 0.5.26 e os oito excluídos preservados em 0.5.25. Relatório desta rodada: `docs/198-FECHAMENTO-ESTABILIZACAO-E-RECUPERACAO-2026-11-01.md`.
 
-Comandos: recuperação durável com fence por tentativa, CAS e outbox; 60 casos novos e oito casos críticos no PostgreSQL real aprovados. Paginação comprovada com 1.105 equipamentos e alertas; busca, instalação e token no navegador além do milésimo. Backup cifrado externo no220 e agendamento diário; prova final de boot em andamento.
+Comandos: recuperação durável com fence por tentativa, CAS e outbox; 60 casos novos e oito casos críticos no PostgreSQL real aprovados. Paginação comprovada com 1.105 equipamentos e alertas; busca, instalação e token no navegador além do milésimo. Backup cifrado externo no 220 e agendamento diário; restauração e boot da aplicação aprovados.
 
 Os oito firewalls persistentemente degradados continuam excluídos. HA/CARP foi retirado desta entrega pelo usuário; não existe ambiente habilitado. Não alterar regras de saúde, Zabbix ou firmware.
 
@@ -44,7 +44,7 @@ Próximo passo: avaliar destino externo e recuperação completa dos backups, di
 |------------|--------|------------|
 | API | `0.13.0` | servidor 192.168.100.221 |
 | Painel web | `1.14.0` | servidor 192.168.100.221 |
-| Package pfSense | `0.5.26` | release validada no LAB; acompanhamento em docs/198 |
+| Package pfSense | `0.5.26` | 58 agentes confirmados; oito excluídos em 0.5.25 |
 
 **Última entrega (2026-09-18):** endurecimento de segurança API + web (proteção zip-bomb no ingest de backup, fail-fast de `TRUSTED_PROXY_IPS`, fail-closed 503 no middleware, `MONITOR_API_BASE_URL` obrigatória). API **0.11.2**, painel **1.12.7**, package **0.5.20 sem mudança**. Ver `docs/185-ENTREGA-ENDURECIMENTO-SEGURANCA-API-WEB-2026-09-18.md`.
 

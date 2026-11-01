@@ -177,3 +177,5 @@ COMMAND_RECOVERY_PG_CASE=disconnect COMMAND_RECOVERY_PG_URL=postgresql://qa@db:5
 
 The seven approved PG cases and 60 synthetic cases remain closed. No production
 source changed for this harness correction; the coordinator owns the rerun.
+
+Coordinator final evidence: all eight PG17 cases passed (seven first run plus disconnect-only after reconnecting the fixture pool). New protocol passed real backup/create/reset/delete on LAB10 CE2.9 and a real backup on the CE2.8.1 canary. All56 rollout commands succeeded;58 agents reported0.5.26; eight excluded nodes received zero rollout commands. See docs/198.

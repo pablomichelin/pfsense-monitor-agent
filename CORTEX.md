@@ -1,5 +1,12 @@
 # CORTEX
 
+## Recuperação e encerramento — 01/11/2026
+
+Estado atual e evidências: `LEITURA-INICIAL.md` e `docs/198-FECHAMENTO-ESTABILIZACAO-E-RECUPERACAO-2026-11-01.md`. API 0.13.0, painel 1.14.0, package 0.5.26; 58 agentes atualizados e oito excluídos preservados. HA/CARP retirado desta entrega pelo usuário.
+
+Cada nova publicação deve preservar no 220 as imagens de execução cifradas, vinculadas aos fingerprints do conjunto DR correspondente, antes de considerar a recuperação completa. O timer captura banco, arquivos.enc, configuração/chaves, fonte Git e pacote, mas não exporta novamente as imagens a cada dia. Conservar as imagens necessárias aos sete conjuntos retidos. Procedimento em `docs/197-DR-CONTROLADOR-EXTERNO-2026-10-31.md`.
+
+
 ## Finalidade
 
 Este arquivo e a memoria estrategica e tecnica do projeto. Ele define as regras que devem orientar todas as decisoes de arquitetura, implementacao, operacao e documentacao.
