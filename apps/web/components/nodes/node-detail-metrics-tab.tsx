@@ -20,7 +20,7 @@ export function NodeDetailMetricsTab({
   metricsPeriod,
 }: {
   node: Node;
-  metricsHistory: NodeMetricsHistoryResponse;
+  metricsHistory: NodeMetricsHistoryResponse | null;
   metricsPeriod: MetricsHistoryPeriod;
 }) {
   return (
@@ -57,11 +57,11 @@ export function NodeDetailMetricsTab({
         title="Tendências"
         description="Rollups agregados (CPU, memória, disco, latência e disponibilidade)."
       >
-        <NodeMetricsTrendsPanel
+        {metricsHistory ? <NodeMetricsTrendsPanel
           nodeId={node.id}
           history={metricsHistory}
           activePeriod={metricsPeriod}
-        />
+        /> : <Alert variant="error">Não foi possível carregar o histórico de métricas. Recarregue a página para tentar novamente.</Alert>}
       </PageSection>
 
       <PageSection title="Serviços" description="Estado reportado pelo agente (VPN e demais).">

@@ -25,6 +25,7 @@ export class TechnicianAccountsBatchController {
     @Req() request: AuthenticatedRequest,
   ) {
     const actor = getAccessActor(request);
+    await this.accessPolicy.assertRequestedClientFilter(actor, body.client_id);
 
     for (const nodeId of body.node_ids) {
       await this.accessPolicy.assertNodeAccess(actor, nodeId);
@@ -33,6 +34,7 @@ export class TechnicianAccountsBatchController {
     return this.techniciansService.createBatchRevoke(
       request.auth!.userId,
       body,
+      actor,
       resolveClientIp(request),
     );
   }
@@ -44,6 +46,7 @@ export class TechnicianAccountsBatchController {
     @Req() request: AuthenticatedRequest,
   ) {
     const actor = getAccessActor(request);
+    await this.accessPolicy.assertRequestedClientFilter(actor, body.client_id);
 
     for (const nodeId of body.node_ids) {
       await this.accessPolicy.assertNodeAccess(actor, nodeId);
@@ -52,6 +55,7 @@ export class TechnicianAccountsBatchController {
     return this.techniciansService.createBatchProvision(
       request.auth!.userId,
       body,
+      actor,
       resolveClientIp(request),
     );
   }
@@ -63,6 +67,7 @@ export class TechnicianAccountsBatchController {
     @Req() request: AuthenticatedRequest,
   ) {
     const actor = getAccessActor(request);
+    await this.accessPolicy.assertRequestedClientFilter(actor, body.client_id);
 
     for (const nodeId of body.node_ids) {
       await this.accessPolicy.assertNodeAccess(actor, nodeId);
@@ -71,6 +76,7 @@ export class TechnicianAccountsBatchController {
     return this.techniciansService.createBatchPasswordReset(
       request.auth!.userId,
       body,
+      actor,
       resolveClientIp(request),
     );
   }

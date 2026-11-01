@@ -1,10 +1,31 @@
 # 00 Inicio
 
+> **Estabilização 31/10/2026:** API publicada `0.12.0`, painel publicado `1.13.0`; package distribuído `0.5.25`, fonte candidata `0.5.26`. Sem ações em appliances. Ver `docs/196-ESTABILIZACAO-E-REVISAO-2026-10-31.md` para evidências e pendências.
+
+
 Este arquivo existe para retomada imediata do projeto em qualquer novo chat.
 
-> **Versoes atuais (2026-08-31):** API `0.11.1` · painel `1.12.6` · package pfSense `0.5.20`.
+> **Versoes atuais (2026-10-15):** API `0.11.12` · painel `1.12.18` · package pfSense `0.5.25`.
 >
-> **Ultima entrega (2026-08-31):** hotfix 50x ao Save no User Manager (técnico). Package **0.5.20**. Ver `docs/184`.
+> **Ultima entrega (2026-10-15):** troca de senha de técnico com um firewall selecionado deixa de falhar quando o filtro de cliente está em “Todos”. API **0.11.12**, painel **1.12.18**. Ver `docs/195`.
+>
+> **Entrega anterior (2026-09-29):** host com técnico vinculado não é excluído e o painel explica o motivo. API **0.11.10**, painel **1.12.16**. Ver `docs/193`.
+>
+> **Entrega anterior (2026-09-29):** exclusão de host deixa de falhar em silêncio quando há técnico vinculado. API **0.11.9**, painel **1.12.15**. Ver `docs/192`.
+>
+> **Entrega anterior (2026-09-28):** administrador cria clientes, cria firewalls e exclui hosts. API **0.11.8**, painel **1.12.14**. Ver `docs/191`.
+>
+> **Entrega anterior (2026-09-28):** botão Listar bloqueios nas tabelas de lockout. API **0.11.7**, painel **1.12.13**, package **0.5.25**. Ver `docs/190`.
+>
+> **Entrega anterior (2026-09-28):** desbloqueio ignora `ips_liberados` e mostra só tabelas de bloqueio. API **0.11.6**, painel **1.12.12**. Ver `docs/189`.
+>
+> **Entrega anterior (2026-09-28):** máscara `/1`–`/32` ao lado do IP no desbloqueio, padrão `/32`. API **0.11.5**, painel **1.12.11**, package **0.5.24**. Ver `docs/188`.
+>
+> **Entrega anterior (2026-09-28):** desbloqueio de IP mostra o motivo quando o endereço é inválido. Painel **1.12.10**. Ver `docs/187`.
+>
+> **Entrega anterior (2026-09-19):** consulta de tabelas pf no inventário. API **0.11.4**, painel **1.12.9**, package **0.5.23**. Ver `docs/186`.
+>
+> **Entrega anterior (2026-08-31):** hotfix 50x ao Save no User Manager (técnico). Package **0.5.20**. Ver `docs/184`.
 >
 > **Entrega anterior (2026-08-31):** hotfix `kea-dhcp4` no `php -r` (Fatal PHP 8 / CE 2.9.0). Package **0.5.19**. Ver `docs/183`.
 >

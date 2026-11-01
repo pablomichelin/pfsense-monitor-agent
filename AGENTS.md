@@ -25,6 +25,13 @@ Ver lista completa em `CORTEX.md` ("O que nunca deve ser feito sem decisão expl
 - Não depender de HTTP sem TLS.
 - Não salvar `config.xml` puro (sem criptografia) no PostgreSQL ou em disco persistente.
 
+## Testes e limpeza — orientação do usuário (31/10/2026)
+
+- Concluir o desenvolvimento por blocos antes de testar; executar cada grupo de validação uma vez.
+- Não repetir cumulativamente suítes aprovadas a cada alteração independente. Reexecutar somente o grupo afetado por falha, mudança ou evidência nova, registrando o motivo.
+- Aproveitar as evidências válidas dos agentes; build final de publicação e verificação de saúde não exigem repetir toda a suíte.
+- Ao entregar, remover cópias de trabalho, contêineres/redes de teste e arquivos temporários criados na sessão. Manter apenas código final, documentação útil, artefatos necessários e backups operacionais; evitar versões intermediárias supérfluas.
+
 ## Fluxo de encerramento de mudança
 
 Ao final de cada iteração relevante (regra já definida em `CORTEX.md`):
@@ -34,3 +41,24 @@ Ao final de cada iteração relevante (regra já definida em `CORTEX.md`):
 3. Se o package/agente mudou e precisa chegar nos firewalls: **bumpar versão** (não reusar a que a frota já tem), gerar artefato e **enfileirar upgrade remoto**. Sem versão nova o box não reinstala.
 4. Commit e push para `origin main` — este host é o servidor do projeto, o GitHub deve ficar sempre atualizado.
 5. Após o push, executar `git pull origin main` neste host (não delegar ao usuário).
+
+<!-- systemup-rtk:start -->
+## RTK OSS: uso controlado
+
+RTK pode compactar a saída de comandos de desenvolvimento. Use somente
+quando o comando original já estiver autorizado pelas regras deste projeto
+e o comando com RTK também estiver coberto pelas aprovações do agente.
+Exemplo opcional: `rtk git status`. Caso o RTK esteja ausente, utilize o
+comando original. Não altere sandbox, permissões ou regras de aprovação.
+
+Não prefixe comandos automaticamente; não habilite `rtk init`, hooks,
+proxy, aliases globais ou reescrita automática. Não envolva comandos
+de escrita Git, migrations, deploy, operações financeiras ou alterações
+de infraestrutura. Testes e builds podem ter efeitos mesmo com RTK.
+
+Preserve a saída original integral para segurança, auditoria, dados
+financeiros, revisão exaustiva, JSON, CSV, patches e processamento por
+scripts. Não repita comandos com efeitos para recuperar a saída omitida.
+Uma falha não autoriza executar novamente sem RTK. Preserve exit codes
+e evidências necessárias. As regras canônicas deste projeto prevalecem.
+<!-- systemup-rtk:end -->

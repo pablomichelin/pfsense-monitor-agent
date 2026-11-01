@@ -1600,10 +1600,17 @@ package_upgrade_url_allowed() {
     if ($url === "" || $controller === "") { exit(1); }
     $parsed = parse_url($url);
     if (!is_array($parsed) || empty($parsed["host"])) { exit(1); }
-    if (strpos($url, $controller . "/") === 0) { exit(0); }
     $parsedController = parse_url($controller);
-    $controllerHost = trim((string) ($parsedController["host"] ?? ""));
-    if ($controllerHost !== "" && strcasecmp($parsed["host"], $controllerHost) === 0) { exit(0); }
+    if (!is_array($parsedController) || isset($parsed["user"]) || isset($parsed["pass"])
+      || isset($parsed["fragment"])) { exit(1); }
+    $scheme = strtolower((string) ($parsed["scheme"] ?? ""));
+    $controllerScheme = strtolower((string) ($parsedController["scheme"] ?? ""));
+    if (!in_array($scheme, ["http", "https"], true)) { exit(1); }
+    $port = $parsed["port"] ?? ($scheme === "https" ? 443 : 80);
+    $controllerPort = $parsedController["port"] ?? ($controllerScheme === "https" ? 443 : 80);
+    if ($scheme === $controllerScheme && $port === $controllerPort
+      && strcasecmp($parsed["host"], (string) ($parsedController["host"] ?? "")) === 0) { exit(0); }
+    if ($scheme !== "https" || $port !== 443) { exit(1); }
     $repoPath = "/pablomichelin/pfsense-monitor-agent/";
     foreach (array("raw.githubusercontent.com", "github.com") as $host) {
       if (strcasecmp($parsed["host"], $host) === 0
@@ -1663,8 +1670,9 @@ dispatch_package_upgrade() {
     return 1
   fi
 
-  agent_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
-  agent_post_command_ack "$command_id" "running" "$CURL_CMD" >/dev/null 2>&1 || true
+  if ! agent_begin_command "$command_id" "$CURL_CMD"; then
+    return 1
+  fi
 
   backup_ensure_state_dir
   state_file="$(package_upgrade_state_file)"
@@ -1816,16 +1824,25 @@ agent_post_command_ack() {
   backup_post_command_ack "$@"
 }
 
+# Both state transitions must be confirmed before any local side effect.
+# A lost ACK response is ambiguous: abort and let the controller expire/reconcile.
+agent_begin_command() (
+  agent_post_command_ack "$1" "picked_up" "$2" >/dev/null 2>&1 || return 1
+  agent_post_command_ack "$1" "running" "$2" >/dev/null 2>&1 || return 1
+)
+
 agent_post_command_result_failed() {
   backup_post_command_failed "$@"
 }
 
-agent_post_command_result_succeeded() {
+agent_post_command_result_succeeded() (
   command_id="$1"
   result_json="$2"
   CURL_CMD="$3"
-  body_file="$(mktemp)"
-  trap 'rm -f "$body_file"' EXIT INT TERM
+  body_file="$(mktemp)" || return 1
+  trap 'rm -f "$body_file"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   if [ -n "$result_json" ]; then
     printf '{"command_id":"%s","status":"succeeded","result_json":%s}\n' \
       "$(json_escape "$command_id")" \
@@ -1835,7 +1852,7 @@ agent_post_command_result_succeeded() {
       "$(json_escape "$command_id")" >"$body_file"
   fi
   backup_post_signed_json "/api/v1/ingest/command-result" "$body_file" "$CURL_CMD"
-}
+)
 
 pfsense_upgrade_ha_detected() {
   state_file="$(backup_state_dir)/pfsense-update-check.json"
@@ -1907,8 +1924,9 @@ dispatch_pfsense_upgrade() {
     return 1
   fi
 
-  agent_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
-  agent_post_command_ack "$command_id" "running" "$CURL_CMD" >/dev/null 2>&1 || true
+  if ! agent_begin_command "$command_id" "$CURL_CMD"; then
+    return 1
+  fi
 
   backup_ensure_state_dir
   state_file="$(pfsense_upgrade_state_file)"
@@ -2981,44 +2999,63 @@ backup_backoff_blocks_scheduled() {
   ' "$path"
 }
 
-backup_post_signed_json() {
+backup_post_signed_json() (
   endpoint="$1"
   body_file="$2"
   CURL_CMD="$3"
+  expected_ack_status="${4:-}"
+  response_file="$(mktemp)" || return 1
+  err_file=""
+  trap 'rm -f "$response_file" "$err_file"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  err_file="$(mktemp)" || return 1
 
-  response_file="$(mktemp)"
-  err_file="$(mktemp)"
-
-  http_code="$(http_post_signed_json "$endpoint" "$CURL_CMD" "$response_file" body "$body_file" "$err_file")"
-  rm -f "$response_file" "$err_file"
-  if [ -z "$http_code" ] || [ "$http_code" -lt 200 ] 2>/dev/null || [ "$http_code" -ge 300 ] 2>/dev/null; then
-    return 1
+  http_code="$(http_post_signed_json "$endpoint" "$CURL_CMD" "$response_file" body "$body_file" "$err_file")" || return 1
+  case "$http_code" in
+    2[0-9][0-9]) ;;
+    *) return 1 ;;
+  esac
+  if [ -n "$expected_ack_status" ]; then
+    [ ! -s "$err_file" ] || return 1
+    php -r '
+      $request = json_decode(file_get_contents($argv[1]), true);
+      $response = json_decode(file_get_contents($argv[2]), true);
+      exit(is_array($request) && is_array($response)
+        && ($response["ok"] ?? false) === true
+        && ($response["command_id"] ?? null) === ($request["command_id"] ?? "")
+        && ($response["status"] ?? null) === $argv[3] ? 0 : 1);
+    ' "$body_file" "$response_file" "$expected_ack_status" 2>/dev/null || return 1
   fi
   return 0
-}
+)
 
-backup_post_command_ack() {
+backup_post_command_ack() (
   command_id="$1"
   status="$2"
   CURL_CMD="$3"
-  body_file="$(mktemp)"
-  trap 'rm -f "$body_file"' EXIT INT TERM
+  body_file="$(mktemp)" || return 1
+  trap 'rm -f "$body_file"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   printf '{"command_id":"%s","status":"%s"}\n' "$(json_escape "$command_id")" "$(json_escape "$status")" >"$body_file"
-  backup_post_signed_json "/api/v1/ingest/command-ack" "$body_file" "$CURL_CMD"
-}
+  backup_post_signed_json "/api/v1/ingest/command-ack" "$body_file" "$CURL_CMD" "$status"
+)
 
-backup_post_command_failed() {
+backup_post_command_failed() (
   command_id="$1"
   error_message="$2"
   CURL_CMD="$3"
-  body_file="$(mktemp)"
-  trap 'rm -f "$body_file"' EXIT INT TERM
+  body_file="$(mktemp)" || return 1
+  trap 'rm -f "$body_file"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   truncated="$(truncate_text "$error_message" 500)"
   printf '{"command_id":"%s","status":"failed","error_message":"%s"}\n' \
     "$(json_escape "$command_id")" \
     "$(json_escape "$truncated")" >"$body_file"
   backup_post_signed_json "/api/v1/ingest/command-result" "$body_file" "$CURL_CMD"
-}
+)
 
 backup_upload_config() {
   command_id="${1:-}"
@@ -3176,7 +3213,7 @@ backup_config_now() {
   fi
 
   if [ -n "$command_id" ]; then
-    backup_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
+    backup_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || return 1
   fi
 
   backup_upload_config "$command_id" "$CURL_CMD"
@@ -3444,8 +3481,10 @@ dispatch_service_restart() {
     return 1
   fi
 
-  agent_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
-  agent_post_command_ack "$command_id" "running" "$CURL_CMD" >/dev/null 2>&1 || true
+  if ! agent_begin_command "$command_id" "$CURL_CMD"; then
+    operational_action_release_lock
+    return 1
+  fi
 
   restart_ok="0"
   restart_detail=""
@@ -3505,8 +3544,9 @@ dispatch_node_reboot() {
     delay_seconds=600
   fi
 
-  agent_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
-  agent_post_command_ack "$command_id" "running" "$CURL_CMD" >/dev/null 2>&1 || true
+  if ! agent_begin_command "$command_id" "$CURL_CMD"; then
+    return 1
+  fi
 
   state_file="$(backup_state_dir)/node-reboot-pending.json"
   printf '{"command_id":"%s","delay_seconds":"%s","started_at":"%s","status":"running"}\n' \
@@ -3549,10 +3589,25 @@ dispatch_table_action() (
   payload_file="$3"
   CURL_CMD="$4"
 
+  stderr_file=""
+  action_lock_owned=0
+  release_action_lock() {
+    if [ "$action_lock_owned" = 1 ]; then
+      operational_action_release_lock
+      action_lock_owned=0
+    fi
+  }
   cleanup_payload() {
     rm -f "$payload_file" 2>/dev/null || true
   }
-  trap cleanup_payload EXIT INT TERM
+  cleanup_action() {
+    cleanup_payload
+    rm -f "$stderr_file" 2>/dev/null || true
+    release_action_lock
+  }
+  trap cleanup_action EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
 
   if ! operational_action_acquire_lock "table_${action}"; then
     cleanup_payload
@@ -3563,12 +3618,11 @@ dispatch_table_action() (
     return 1
   fi
 
-  agent_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
-  agent_post_command_ack "$command_id" "running" "$CURL_CMD" >/dev/null 2>&1 || true
+  action_lock_owned=1
 
   helper="$SCRIPT_DIR/manage_pf_tables.php"
   if [ ! -f "$helper" ]; then
-    operational_action_release_lock
+    release_action_lock
     cleanup_payload
     agent_post_command_result_failed \
       "$command_id" \
@@ -3578,25 +3632,15 @@ dispatch_table_action() (
   fi
 
   if [ -z "$payload_file" ] || [ ! -r "$payload_file" ]; then
-    fallback_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
-    if [ -r "$fallback_payload" ]; then
-      payload_file="$fallback_payload"
-    else
-      operational_action_release_lock
-      cleanup_payload
-      agent_post_command_result_failed \
-        "$command_id" \
-        "table payload file missing" \
-        "$CURL_CMD" >/dev/null 2>&1 || true
-      return 1
-    fi
+    agent_post_command_result_failed "$command_id" "table payload file missing" "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
   fi
 
   php_bin="php"
   if [ -x /usr/local/bin/php ]; then
     php_bin="/usr/local/bin/php"
   elif ! command_exists php; then
-    operational_action_release_lock
+    release_action_lock
     cleanup_payload
     agent_post_command_result_failed \
       "$command_id" \
@@ -3605,14 +3649,15 @@ dispatch_table_action() (
     return 1
   fi
 
-  stderr_file="$(mktemp)"
+  stderr_file="$(mktemp)" || return 1
+  agent_begin_command "$command_id" "$CURL_CMD" || return 1
   php_exit=0
   result_json="$("$php_bin" -f "$helper" "$action" "$payload_file" 2>"$stderr_file")" || php_exit=$?
 
-  operational_action_release_lock
+  release_action_lock
   cleanup_payload
 
-  if [ -n "$result_json" ]; then
+  if [ "$php_exit" -eq 0 ] && [ -n "$result_json" ]; then
     ok_flag="$(printf '%s' "$result_json" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN), true); echo is_array($d) && !empty($d["ok"]) ? "1" : "0";' 2>/dev/null || echo 0)"
     if [ "$ok_flag" = "1" ]; then
       rm -f "$stderr_file" 2>/dev/null || true
@@ -3647,16 +3692,31 @@ dispatch_table_entry_remove() {
   dispatch_table_action "entry_remove" "$1" "$2" "$3"
 }
 
-dispatch_local_user_action() {
+dispatch_local_user_action() (
   action="$1"
   command_id="$2"
   payload_file="$3"
   CURL_CMD="$4"
 
+  stderr_file=""
+  action_lock_owned=0
+  release_action_lock() {
+    if [ "$action_lock_owned" = 1 ]; then
+      operational_action_release_lock
+      action_lock_owned=0
+    fi
+  }
   cleanup_payload() {
     rm -f "$payload_file" 2>/dev/null || true
   }
-  trap cleanup_payload EXIT INT TERM
+  cleanup_action() {
+    cleanup_payload
+    rm -f "$stderr_file" 2>/dev/null || true
+    release_action_lock
+  }
+  trap cleanup_action EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
 
   if ! technician_accounts_enabled; then
     agent_post_command_result_failed \
@@ -3674,12 +3734,11 @@ dispatch_local_user_action() {
     return 1
   fi
 
-  agent_post_command_ack "$command_id" "picked_up" "$CURL_CMD" >/dev/null 2>&1 || true
-  agent_post_command_ack "$command_id" "running" "$CURL_CMD" >/dev/null 2>&1 || true
+  action_lock_owned=1
 
   helper="$SCRIPT_DIR/manage_local_user.php"
   if [ ! -f "$helper" ]; then
-    operational_action_release_lock
+    release_action_lock
     agent_post_command_result_failed \
       "$command_id" \
       "manage_local_user.php missing" \
@@ -3688,24 +3747,15 @@ dispatch_local_user_action() {
   fi
 
   if [ -z "$payload_file" ] || [ ! -r "$payload_file" ]; then
-    fallback_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
-    if [ -r "$fallback_payload" ]; then
-      payload_file="$fallback_payload"
-    else
-      operational_action_release_lock
-      agent_post_command_result_failed \
-        "$command_id" \
-        "local user payload file missing" \
-        "$CURL_CMD" >/dev/null 2>&1 || true
-      return 1
-    fi
+    agent_post_command_result_failed "$command_id" "local user payload file missing" "$CURL_CMD" >/dev/null 2>&1 || true
+    return 1
   fi
 
   php_bin="php"
   if [ -x /usr/local/bin/php ]; then
     php_bin="/usr/local/bin/php"
   elif ! command_exists php; then
-    operational_action_release_lock
+    release_action_lock
     agent_post_command_result_failed \
       "$command_id" \
       "php interpreter not found" \
@@ -3713,14 +3763,16 @@ dispatch_local_user_action() {
     return 1
   fi
 
-  stderr_file="$(mktemp)"
+  stderr_file="$(mktemp)" || return 1
+  agent_begin_command "$command_id" "$CURL_CMD" || return 1
   result_json=""
   php_exit=0
   result_json="$("$php_bin" -f "$helper" "$action" "$payload_file" 2>"$stderr_file")" || php_exit=$?
 
-  operational_action_release_lock
+  release_action_lock
+  rm -f "$payload_file"
 
-  if [ -n "$result_json" ]; then
+  if [ "$php_exit" -eq 0 ] && [ -n "$result_json" ]; then
     ok_flag="$(printf '%s' "$result_json" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN), true); echo is_array($d) && !empty($d["ok"]) ? "1" : "0";' 2>/dev/null || echo 0)"
     if [ "$ok_flag" = "1" ]; then
       rm -f "$stderr_file" 2>/dev/null || true
@@ -3734,9 +3786,7 @@ dispatch_local_user_action() {
   fi
 
   err_detail="local user action failed"
-  if [ -s "$stderr_file" ]; then
-    err_detail="$(head -n 1 "$stderr_file" | tr '\r\n' ' ' | cut -c1-200)"
-  elif [ "$php_exit" -ne 0 ]; then
+  if [ "$php_exit" -ne 0 ]; then
     err_detail="local user php exited with status ${php_exit}"
   fi
   rm -f "$stderr_file" 2>/dev/null || true
@@ -3745,7 +3795,7 @@ dispatch_local_user_action() {
     "$err_detail" \
     "$CURL_CMD" >/dev/null 2>&1 || true
   return 1
-}
+)
 
 dispatch_local_user_disable() {
   dispatch_local_user_action "disable" "$1" "$2" "$3"
@@ -3763,110 +3813,56 @@ dispatch_local_user_set_password() {
   dispatch_local_user_action "set_password" "$1" "$2" "$3"
 }
 
-process_heartbeat_commands() {
+process_heartbeat_commands() (
   response_file="$1"
   CURL_CMD="$2"
 
   command_exists php || return 0
   [ -f "$response_file" ] || return 0
 
-  dispatch_file="$(mktemp)"
-  payload_state_dir="$(backup_state_dir)"
+  command_batch_dir="$(mktemp -d)" || return 1
+  trap 'rm -rf "$command_batch_dir"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  dispatch_file="$command_batch_dir/dispatch"
 
   php -r '
-    $responseFile = $argv[1];
+    $payload = json_decode(file_get_contents($argv[1]), true);
     $payloadDir = $argv[2];
-    $payload = json_decode(file_get_contents($responseFile), true);
-    if (!is_array($payload["commands"] ?? null)) {
-      exit(0);
-    }
-    if (!is_dir($payloadDir)) {
-      @mkdir($payloadDir, 0750, true);
-    }
+    if (!is_array($payload["commands"] ?? null)) { exit(0); }
     foreach ($payload["commands"] as $command) {
-      $type = trim((string) ($command["type"] ?? ""));
-      $id = trim((string) ($command["id"] ?? ""));
-      if ($id === "" || $type === "") {
-        continue;
+      if (!is_array($command)) { continue; }
+      $type = $command["type"] ?? "";
+      $id = $command["id"] ?? "";
+      if (!is_string($id) || !preg_match("/^[A-Za-z0-9_-]{1,128}$/D", $id)
+        || !is_string($type) || !preg_match("/^[a-z_]+$/D", $type)) { continue; }
+      $cmdPayload = $command["payload"] ?? [];
+      if (!is_array($cmdPayload)) { continue; }
+      $fields = [$type, $id];
+      foreach (["target_version", "artifact_url", "sha256", "service", "delay_seconds"] as $key) {
+        $value = $cmdPayload[$key] ?? "";
+        if (!is_scalar($value)) { continue 2; }
+        $value = (string) $value;
+        // Reject framing bytes before trim: never turn injected records into commands.
+        if (preg_match("/[\x00-\x1f\x7f]/", $value)) { continue 2; }
+        $fields[] = trim($value);
       }
       $payloadPath = "";
-      $hasTablePayload = ($type === "table_search" || $type === "table_entry_remove");
-      if (strncmp($type, "local_user_", 11) === 0 || $hasTablePayload) {
-        $cmdPayload = $command["payload"] ?? null;
-        if (!is_array($cmdPayload)) {
-          continue;
-        }
-        $payloadPath = rtrim($payloadDir, "/") . "/cmd-payload-" . $id . ".json";
-        if ($hasTablePayload) {
-          // Table commands: sempre sobrescreve (sem segredo no payload).
-          $encoded = json_encode($cmdPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-          if ($encoded === false) {
-            continue;
-          }
-          $prevUmask = umask(0077);
-          $written = @file_put_contents($payloadPath, $encoded . "\n", LOCK_EX);
-          umask($prevUmask);
-          if ($written === false) {
-            continue;
-          }
-          @chmod($payloadPath, 0600);
-          echo $type . "\t" . $id . "\t\t\t\t\t\t" . $payloadPath . "\n";
-          continue;
-        }
-        // Reentrega pos picked_up vem sem password (scrub no controlador). Nao
-        // sobrescrever arquivo 0600 que ainda tem a senha para execucao.
-        if (is_readable($payloadPath)) {
-          $existingPayload = json_decode((string) file_get_contents($payloadPath), true);
-          $existingHasPassword = is_array($existingPayload)
-            && isset($existingPayload["password"])
-            && (string) $existingPayload["password"] !== "";
-          $incomingHasPassword = isset($cmdPayload["password"])
-            && (string) $cmdPayload["password"] !== "";
-          if ($existingHasPassword && !$incomingHasPassword) {
-            echo $type . "\t" . $id . "\t\t\t\t\t\t" . $payloadPath . "\n";
-            continue;
-          }
-        }
+      if (in_array($type, ["local_user_create", "local_user_set_password",
+          "local_user_disable", "local_user_delete", "table_search", "table_entry_remove"], true)) {
         $encoded = json_encode($cmdPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if ($encoded === false) {
-          continue;
-        }
-        $prevUmask = umask(0077);
-        $written = @file_put_contents($payloadPath, $encoded . "\n", LOCK_EX);
-        umask($prevUmask);
-        if ($written === false) {
-          continue;
-        }
-        @chmod($payloadPath, 0600);
-        echo $type . "\t" . $id . "\t\t\t\t\t\t" . $payloadPath . "\n";
-        continue;
+        if ($encoded === false) { continue; }
+        $payloadPath = tempnam($payloadDir, "payload-");
+        if ($payloadPath === false) { exit(1); }
+        if (!chmod($payloadPath, 0600)
+          || file_put_contents($payloadPath, $encoded . "\n", LOCK_EX) === false) { exit(1); }
       }
-      $cmdPayload = $command["payload"] ?? null;
-      $target = "";
-      $artifactUrl = "";
-      $sha256 = "";
-      $service = "";
-      $delaySeconds = "";
-      if (is_array($cmdPayload)) {
-        $target = trim((string) ($cmdPayload["target_version"] ?? ""));
-        $artifactUrl = trim((string) ($cmdPayload["artifact_url"] ?? ""));
-        $sha256 = trim((string) ($cmdPayload["sha256"] ?? ""));
-        $service = trim((string) ($cmdPayload["service"] ?? ""));
-        $delaySeconds = trim((string) ($cmdPayload["delay_seconds"] ?? ""));
-      }
-      echo $type . "\t" . $id . "\t" . $target . "\t" . $artifactUrl . "\t" . $sha256 . "\t" . $service . "\t" . $delaySeconds . "\t\n";
+      $fields[] = $payloadPath;
+      echo implode("\x1f", $fields) . "\n";
     }
-  ' "$response_file" "$payload_state_dir" >"$dispatch_file" 2>/dev/null || {
-    rm -f "$dispatch_file"
-    return 0
-  }
+  ' "$response_file" "$command_batch_dir" >"$dispatch_file" 2>/dev/null || return 1
 
-  if [ ! -s "$dispatch_file" ]; then
-    rm -f "$dispatch_file"
-    return 0
-  fi
-
-  while IFS="$(printf '\t')" read -r command_type command_id target_version artifact_url sha256 service_name delay_seconds payload_path; do
+  while IFS="$(printf '\037')" read -r command_type command_id target_version artifact_url sha256 service_name delay_seconds payload_path; do
     [ -z "$command_id" ] && continue
     case "$command_type" in
       config_backup_now)
@@ -3898,44 +3894,26 @@ process_heartbeat_commands() {
         ;;
       local_user_disable)
         resolved_payload="$payload_path"
-        if [ -z "$resolved_payload" ]; then
-          resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
-        fi
         dispatch_local_user_disable "$command_id" "$resolved_payload" "$CURL_CMD" || true
         ;;
       local_user_delete)
         resolved_payload="$payload_path"
-        if [ -z "$resolved_payload" ]; then
-          resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
-        fi
         dispatch_local_user_delete "$command_id" "$resolved_payload" "$CURL_CMD" || true
         ;;
       local_user_create)
         resolved_payload="$payload_path"
-        if [ -z "$resolved_payload" ]; then
-          resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
-        fi
         dispatch_local_user_create "$command_id" "$resolved_payload" "$CURL_CMD" || true
         ;;
       local_user_set_password)
         resolved_payload="$payload_path"
-        if [ -z "$resolved_payload" ]; then
-          resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
-        fi
         dispatch_local_user_set_password "$command_id" "$resolved_payload" "$CURL_CMD" || true
         ;;
       table_search)
         resolved_payload="$payload_path"
-        if [ -z "$resolved_payload" ]; then
-          resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
-        fi
         dispatch_table_search "$command_id" "$resolved_payload" "$CURL_CMD" || true
         ;;
       table_entry_remove)
         resolved_payload="$payload_path"
-        if [ -z "$resolved_payload" ]; then
-          resolved_payload="$(backup_state_dir)/cmd-payload-${command_id}.json"
-        fi
         dispatch_table_entry_remove "$command_id" "$resolved_payload" "$CURL_CMD" || true
         ;;
       *)
@@ -3948,13 +3926,13 @@ process_heartbeat_commands() {
   done <"$dispatch_file"
 
   rm -f "$dispatch_file"
-}
+)
 
 print_config() {
   cat "$CONFIG_FILE"
 }
 
-heartbeat() {
+heartbeat() (
   require_var CONTROLLER_URL
   require_var NODE_UID
   require_var NODE_SECRET
@@ -3977,13 +3955,18 @@ heartbeat() {
   CURL_CMD="$(resolve_curl_cmd)"
 
   timestamp="$(iso_now)"
-  payload_file="$(mktemp)"
-  response_file="$(mktemp)"
-  err_file="$(mktemp)"
-
+  payload_file=""
+  response_file=""
+  err_file=""
   heartbeat_cleanup_temp() {
     rm -f "$payload_file" "$response_file" "$err_file" 2>/dev/null || true
   }
+  trap heartbeat_cleanup_temp EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  payload_file="$(mktemp)" || return 1
+  response_file="$(mktemp)" || return 1
+  err_file="$(mktemp)" || return 1
 
   build_payload >"$payload_file" 2>/dev/null
   if [ ! -s "$payload_file" ]; then
@@ -4017,7 +4000,7 @@ heartbeat() {
   heartbeat_error_record "$http_code" "$curl_error"
   heartbeat_cleanup_temp
   exit 1
-}
+)
 
 test_connection() {
   require_var CONTROLLER_URL

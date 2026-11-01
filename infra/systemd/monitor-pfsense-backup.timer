@@ -1,0 +1,10 @@
+[Unit]
+Description=Backup diario do PostgreSQL Monitor pfSense
+
+[Timer]
+OnCalendar=*-*-* 04:15:00 America/Sao_Paulo
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target

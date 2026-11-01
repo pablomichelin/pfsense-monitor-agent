@@ -31,15 +31,16 @@ export class TechniciansController {
 
   @Get()
   @RequirePermissions('technicians.view')
-  async list(@Query('status') status?: string) {
+  async list(@Req() request: AuthenticatedRequest, @Query('status') status?: string) {
+    const actor = getAccessActor(request);
     // Default: só ativos — removidos do cadastro não poluem a matriz.
     if (status === 'all') {
-      return this.techniciansService.listTechnicians('all');
+      return this.techniciansService.listTechnicians(actor, 'all');
     }
     if (status === TechnicianStatus.revoked) {
-      return this.techniciansService.listTechnicians(TechnicianStatus.revoked);
+      return this.techniciansService.listTechnicians(actor, TechnicianStatus.revoked);
     }
-    return this.techniciansService.listTechnicians(TechnicianStatus.active);
+    return this.techniciansService.listTechnicians(actor, TechnicianStatus.active);
   }
 
   @Post()
@@ -51,14 +52,15 @@ export class TechniciansController {
     return this.techniciansService.createTechnician(
       request.auth!.userId,
       body,
+      getAccessActor(request),
       resolveClientIp(request),
     );
   }
 
   @Get(':id')
   @RequirePermissions('technicians.view')
-  async getById(@Param('id') id: string) {
-    return this.techniciansService.getTechnician(id);
+  async getById(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    return this.techniciansService.getTechnician(id, getAccessActor(request));
   }
 
   @Delete(':id')
@@ -72,6 +74,7 @@ export class TechniciansController {
       request.auth!.userId,
       id,
       body.confirm_login_username,
+      getAccessActor(request),
       resolveClientIp(request),
     );
   }

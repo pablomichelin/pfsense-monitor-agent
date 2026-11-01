@@ -10,7 +10,6 @@ import {
   NodeCommandType,
   Prisma,
 } from '@prisma/client';
-import { appConfig } from '../config/app-config';
 import { NodeCommandsService } from '../node-commands/node-commands.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -166,91 +165,66 @@ export class BackupsCommandService {
       NodeCommandStatus.running,
     ];
 
-    let command = await this.prisma.nodeCommand.findFirst({
-      where: {
-        id: input.commandId,
-        nodeId: input.nodeId,
-        type: NodeCommandType.config_backup_now,
-        status: {
-          in: activeStatuses,
-        },
-      },
-    });
-
-    if (!command) {
-      command = await this.prisma.nodeCommand.findFirst({
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // One atomic admission decision: a concurrent cancel/failure/result wins
+      // permanently. Expiry can only be reconciled by a recorded backup of this
+      // command, node and config; receiving an upload alone is not that proof.
+      const changed = await tx.nodeCommand.updateMany({
         where: {
           id: input.commandId,
           nodeId: input.nodeId,
           type: NodeCommandType.config_backup_now,
-          status: NodeCommandStatus.expired,
+          OR: [
+            { status: { in: activeStatuses } },
+            {
+              status: NodeCommandStatus.expired,
+              configBackups: {
+                some: {
+                  nodeId: input.nodeId,
+                  commandId: input.commandId,
+                  configSha256: input.sha256,
+                  status: { in: [ConfigBackupStatus.stored, ConfigBackupStatus.duplicate] },
+                },
+              },
+            },
+          ],
         },
-      });
-
-      if (!command) {
-        this.logger.warn(
-          `markCommandSucceeded skipped command_id=${input.commandId} node_id=${input.nodeId}: no active or expired command`,
-        );
-        return;
-      }
-
-      const backupExists = await this.prisma.nodeConfigBackup.findFirst({
-        where: {
-          nodeId: input.nodeId,
-          commandId: input.commandId,
-          status: {
-            in: [ConfigBackupStatus.stored, ConfigBackupStatus.duplicate],
+        data: {
+          status: NodeCommandStatus.succeeded,
+          completedAt: new Date(),
+          errorMessage: null,
+          resultJson: {
+            duplicate: input.duplicate,
+            sha256: input.sha256,
+            backup_uid: input.backupUid ?? null,
           },
         },
-        select: {
-          id: true,
+      });
+      if (changed.count === 0) return null;
+
+      const command = await tx.nodeCommand.findUnique({ where: { id: input.commandId } });
+      if (!command) throw new NotFoundException('command not found');
+      await tx.auditLog.create({
+        data: {
+          actorType: 'system',
+          action: 'backup.config.request_succeeded',
+          targetType: 'node_command',
+          targetId: command.id,
+          metadataJson: {
+            node_id: input.nodeId,
+            duplicate: input.duplicate,
+            sha256: input.sha256,
+            backup_uid: input.backupUid ?? null,
+          },
         },
       });
+      return command;
+    });
 
-      if (!backupExists) {
-        this.logger.warn(
-          `markCommandSucceeded skipped expired command_id=${input.commandId} node_id=${input.nodeId}: backup not recorded`,
-        );
-        return;
-      }
-
-      this.logger.warn(
-        `markCommandSucceeded reconciling expired command_id=${input.commandId} node_id=${input.nodeId} after backup stored`,
-      );
+    // Dispatch only after the winning transition and its audit have committed.
+    if (updated) {
+      await this.nodeCommandsService.handleBackupCommandSucceeded(updated);
     }
-
-    const completedAt = new Date();
-    const updated = await this.prisma.nodeCommand.update({
-      where: {
-        id: command.id,
-      },
-      data: {
-        status: NodeCommandStatus.succeeded,
-        completedAt,
-        resultJson: {
-          duplicate: input.duplicate,
-          sha256: input.sha256,
-          backup_uid: input.backupUid ?? null,
-        },
-      },
-    });
-
-    await this.prisma.auditLog.create({
-      data: {
-        actorType: 'system',
-        action: 'backup.config.request_succeeded',
-        targetType: 'node_command',
-        targetId: command.id,
-        metadataJson: {
-          node_id: input.nodeId,
-          duplicate: input.duplicate,
-          sha256: input.sha256,
-          backup_uid: input.backupUid ?? null,
-        },
-      },
-    });
-
-    await this.nodeCommandsService.handleBackupCommandSucceeded(updated);
   }
 
   async reconcileSucceededCommands(nodeId: string): Promise<void> {

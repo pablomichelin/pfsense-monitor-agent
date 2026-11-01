@@ -1,10 +1,26 @@
+# Estabilização de 31/10/2026
+
+- [Resultado e revisão independente](196-ESTABILIZACAO-E-REVISAO-2026-10-31.md): correções do controlador, package candidato sem distribuição, grupos de validação e pendências.
+
 # Indice operacional do projeto
 
-Data de referencia: `2026-09-19`
+Data de referencia: `2026-09-28`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 
-> **Em produção:** API `0.11.4` · painel `1.12.9` · package pfSense `0.5.23`. Consulta de tabelas validada em um firewall; remoção real não ensaiada. Frota: 58 agentes `0.5.23`, um `0.5.20` offline. Ver `docs/186-REVISAO-DESBLOQUEIO-TABELAS-PF-2026-09-19.md`.
+> **Em produção:** API `0.11.12` · painel `1.12.18` · package pfSense `0.5.25`. Troca de senha de técnico ignora `client_id` vazio do filtro. Ver `docs/195-ENTREGA-SENHA-TECNICO-CLIENT-ID-VAZIO-2026-10-15.md`.
+>
+> **Entrega anterior (2026-09-29):** exclusão com técnico vinculado pede confirmação. API `0.11.11`, painel `1.12.17`. Ver `docs/194-ENTREGA-EXCLUSAO-HOST-CONFIRMAR-TECNICO-2026-09-29.md`.
+>
+> **Entrega anterior (2026-09-29):** exclusão com vínculo avisa o motivo. API `0.11.10`, painel `1.12.16`. Ver `docs/193-ENTREGA-AVISO-EXCLUSAO-COM-VINCULO-2026-09-29.md`.
+>
+> **Entrega anterior (2026-09-29):** exclusão de host com técnico vinculado. API `0.11.9`, painel `1.12.15`. Ver `docs/192-ENTREGA-EXCLUSAO-HOST-TECNICO-VINCULADO-2026-09-29.md`.
+>
+> **Entrega anterior (2026-09-28):** administrador cria clientes, firewalls e exclui hosts. API `0.11.8`, painel `1.12.14`. Ver `docs/191-ENTREGA-ADMIN-CRIAR-CLIENTE-FIREWALL-EXCLUIR-HOST-2026-09-28.md`.
+>
+> **Entrega anterior (2026-09-28):** botão Listar bloqueios. API `0.11.7`, painel `1.12.13`, package `0.5.25`. Ver `docs/190-ENTREGA-LISTAR-BLOQUEIOS-2026-09-28.md`.
+>
+> **Entrega anterior (2026-09-19):** consulta de tabelas pf. API `0.11.4`, painel `1.12.9`, package `0.5.23`. Ver `docs/186-REVISAO-DESBLOQUEIO-TABELAS-PF-2026-09-19.md`.
 >
 > **Ultima entrega (2026-08-31):** hotfix 50x ao Save no User Manager (técnico / `getUserGroups` by-ref). Package `0.5.20`. Ver `docs/184-HOTFIX-TECNICO-USER-MANAGER-SAVE-50X-0.5.20-2026-08-31.md`.
 >

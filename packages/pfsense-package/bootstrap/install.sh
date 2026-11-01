@@ -2,6 +2,11 @@
 
 set -eu
 
+# Capture before even dirname/pwd; keep the working variables unexported.
+unset ENV_NODE_SECRET NODE_SECRET
+ENV_NODE_SECRET="${MONITOR_UPDATE_NODE_SECRET:-}"
+unset MONITOR_UPDATE_NODE_SECRET
+
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 PACKAGE_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 INSTALL_ROOT="${INSTALL_ROOT:-/}"
@@ -19,13 +24,16 @@ CONFIG_BACKUP_ENABLED="yes"
 usage() {
   cat <<EOF
 Usage:
-  $0 [--controller-url URL --node-uid UID --node-secret SECRET --customer-code CODE] [--interval-seconds N] [--services CSV] [--heartbeat-mode normal|light] [--config-backup-enabled yes|no] [--enable]
+  $0 [--controller-url URL --node-uid UID --customer-code CODE] [--interval-seconds N] [--services CSV] [--heartbeat-mode normal|light] [--config-backup-enabled yes|no] [--enable]
+
+  Supply the secret through MONITOR_UPDATE_NODE_SECRET for this process only.
+  --node-secret is accepted for legacy callers, but exposes their process arguments.
 
   Com controller-url + node-uid + node-secret + customer-code o serviço é habilitado e iniciado automaticamente (heartbeats a cada 30s).
 
 Examples:
   $0
-  $0 --controller-url https://pfs-monitor.systemup.inf.br --node-uid node-123 --node-secret secret-123 --customer-code CLIENTE
+  $0 --controller-url https://pfs-monitor.systemup.inf.br --node-uid node-123 --customer-code CLIENTE
 EOF
 }
 
@@ -33,7 +41,11 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --controller-url) CONTROLLER_URL="$2"; shift 2 ;;
     --node-uid) NODE_UID="$2"; shift 2 ;;
-    --node-secret) NODE_SECRET="$2"; shift 2 ;;
+    --node-secret)
+      NODE_SECRET="$2"
+      echo "Warning: --node-secret on command line is deprecated; use MONITOR_UPDATE_NODE_SECRET." >&2
+      shift 2
+      ;;
     --customer-code) CUSTOMER_CODE="$2"; shift 2 ;;
     --interval-seconds) INTERVAL_SECONDS="$2"; shift 2 ;;
     --services) SERVICES_CSV="$2"; shift 2 ;;
@@ -44,6 +56,9 @@ while [ "$#" -gt 0 ]; do
     *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
   esac
 done
+
+[ -z "$ENV_NODE_SECRET" ] || NODE_SECRET="$ENV_NODE_SECRET"
+unset ENV_NODE_SECRET
 
 case "$(printf '%s' "$HEARTBEAT_MODE" | tr '[:upper:]' '[:lower:]')" in
   light) HEARTBEAT_MODE="light" ;;
@@ -207,9 +222,6 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
   if [ -n "$NODE_UID" ]; then
     set -- "$@" --node-uid "$NODE_UID"
   fi
-  if [ -n "$NODE_SECRET" ]; then
-    set -- "$@" --node-secret "$NODE_SECRET"
-  fi
   if [ -n "$CUSTOMER_CODE" ]; then
     set -- "$@" --customer-code "$CUSTOMER_CODE"
   fi
@@ -235,7 +247,21 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
     set -- "$@" --enable
   fi
 
-  /usr/local/bin/php -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php "$@" < /dev/null
+  # Adapt the existing CLI parser in PHP memory; the OS argv never holds the secret.
+  # Remove the environment entry before loading pfSense code or spawning its helpers.
+  MONITOR_UPDATE_NODE_SECRET="$NODE_SECRET" /usr/local/bin/php -r '
+    $secret = getenv("MONITOR_UPDATE_NODE_SECRET");
+    putenv("MONITOR_UPDATE_NODE_SECRET");
+    unset($_ENV["MONITOR_UPDATE_NODE_SECRET"], $_SERVER["MONITOR_UPDATE_NODE_SECRET"]);
+    if (is_string($secret) && $secret !== "") {
+      $argv[] = "--node-secret";
+      $argv[] = $secret;
+    }
+    unset($secret);
+    $argv[0] = "/usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php";
+    $argc = count($argv);
+    require $argv[0];
+  ' "$@" < /dev/null
 
   # install_package_xml/seed podem recarregar PHP com opcache stale ou hooks pfSense; tarball vence
   install_package_files

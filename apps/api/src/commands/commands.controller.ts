@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -12,7 +13,7 @@ import { getAccessActor } from '../auth/access-actor.util';
 import { AccessPolicyService } from '../auth/access-policy.service';
 import { MfaEnrollmentGuard } from '../auth/mfa-enrollment.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
-import { PermissionsGuard } from '../auth/permissions.guard';
+import { CommandPermissionsGuard, RequireCommandPermission } from './command-permissions.guard';
 import { PermissionsService } from '../auth/permissions.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { AuthenticatedRequest } from '../common/authenticated-request.type';
@@ -23,8 +24,9 @@ import {
   ListNodeCommandsQueryDto,
 } from './dto/commands.dto';
 import { getCommandPermission } from './command-registry';
+import { assertGenericBatchCommandType } from './generic-command-batch.policy';
 
-@UseGuards(SessionAuthGuard, MfaEnrollmentGuard, PermissionsGuard)
+@UseGuards(SessionAuthGuard, MfaEnrollmentGuard, CommandPermissionsGuard)
 @Controller('api/v1/nodes/:nodeId/commands')
 export class NodeCommandsController {
   constructor(
@@ -60,6 +62,7 @@ export class NodeCommandsController {
   }
 
   @Post(':commandId/cancel')
+  @RequireCommandPermission('stored-command')
   async cancelCommand(
     @Param('nodeId') nodeId: string,
     @Param('commandId') commandId: string,
@@ -84,7 +87,7 @@ export class NodeCommandsController {
   }
 }
 
-@UseGuards(SessionAuthGuard, MfaEnrollmentGuard, PermissionsGuard)
+@UseGuards(SessionAuthGuard, MfaEnrollmentGuard, CommandPermissionsGuard)
 @Controller('api/v1/command-batches')
 export class CommandBatchesController {
   constructor(
@@ -94,10 +97,12 @@ export class CommandBatchesController {
   ) {}
 
   @Post()
+  @RequireCommandPermission('body')
   async createBatch(
     @Body() body: CreateCommandBatchDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    assertGenericBatchCommandType(body.command_type);
     const permission = getCommandPermission(body.command_type);
     await this.permissionsService.assertPermission(
       request.auth!.role,
@@ -105,8 +110,12 @@ export class CommandBatchesController {
     );
 
     const actor = getAccessActor(request);
+    await this.accessPolicy.assertRequestedClientFilter(actor, body.client_id);
     for (const nodeId of body.node_ids) {
-      await this.accessPolicy.assertNodeAccess(actor, nodeId);
+      const nodeClientId = await this.accessPolicy.assertNodeAccess(actor, nodeId);
+      if (body.client_id && nodeClientId !== body.client_id) {
+        throw new ForbiddenException('node does not belong to requested client_id');
+      }
     }
 
     return this.orchestrator.createBatch({

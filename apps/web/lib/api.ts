@@ -4,6 +4,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
   }
@@ -916,18 +917,26 @@ async function apiFetch<T>(path: string, options?: ApiFetchOptions): Promise<T> 
   if (!response.ok) {
     let message = `API request failed with status ${response.status}`;
 
+    let code: string | undefined;
     try {
-      const payload = (await response.json()) as { message?: string | string[] };
+      const payload = (await response.json()) as {
+        message?: string | string[] | { message?: string; code?: string };
+        code?: string;
+      };
       if (Array.isArray(payload.message)) {
         message = payload.message.join(', ');
-      } else if (payload.message) {
+      } else if (typeof payload.message === 'string') {
         message = payload.message;
+      } else if (payload.message && typeof payload.message.message === 'string') {
+        message = payload.message.message;
+        code = payload.message.code;
       }
+      code = payload.code ?? code;
     } catch {
       // keep default message
     }
 
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, code);
   }
 
   return (await response.json()) as T;
@@ -1612,27 +1621,38 @@ export async function setNodeMaintenance(
   });
 }
 
-export async function deleteNode(id: string): Promise<{
+export async function deleteNode(
+  id: string,
+  options?: { confirmLinkedTechnicians?: boolean },
+): Promise<{
   ok: true;
   node_id: string;
   node_uid: string;
   deleted_at: string;
 }> {
-  return apiFetch(`/api/v1/admin/nodes/${id}`, {
+  const query = options?.confirmLinkedTechnicians ? '?confirm_linked_technicians=true' : '';
+  return apiFetch(`/api/v1/admin/nodes/${id}${query}`, {
     method: 'DELETE',
     csrfProtected: true,
   });
 }
 
-export async function deleteNodesBatch(ids: string[]): Promise<{
+export async function deleteNodesBatch(
+  ids: string[],
+  options?: { confirmLinkedTechnicians?: boolean },
+): Promise<{
   ok: true;
   deleted_count: number;
   deleted_ids: string[];
   deleted_at: string;
+  not_deleted?: Array<{ node_id: string; name: string; reason: string }>;
 }> {
   return apiFetch('/api/v1/admin/nodes/delete-batch', {
     method: 'POST',
-    body: { ids },
+    body: {
+      ids,
+      confirm_linked_technicians: options?.confirmLinkedTechnicians === true,
+    },
     csrfProtected: true,
   });
 }
@@ -2188,12 +2208,13 @@ export async function requestNodeReboot(
 
 export async function requestTableSearch(
   nodeId: string,
-  input: { ip: string },
+  input: { ip: string } | { mode: 'list' },
 ): Promise<{
   command_id: string;
   status: string;
   expires_at: string;
-  ip: string;
+  ip?: string;
+  mode?: 'list';
 }> {
   return apiFetch(`/api/v1/nodes/${nodeId}/operational-actions/table-search`, {
     method: 'POST',
@@ -2435,6 +2456,7 @@ export type TechnicianListItem = {
 
 export type TechniciansListResponse = {
   generated_at: string;
+  batch_max_size: number;
   items: TechnicianListItem[];
 };
 

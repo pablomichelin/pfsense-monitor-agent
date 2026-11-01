@@ -198,8 +198,35 @@ echo "[6/6] Validando bloqueio IDOR (403) no cliente B"
 [[ "$(request_with_status "$SCOPED_COOKIE_JAR" POST "/api/v1/admin/clients/$CLIENT_B_ID" "{\"name\":\"Denied\"}")" == "403" ]]
 [[ "$(request_with_status "$SCOPED_COOKIE_JAR" GET "/api/v1/admin/nodes/$NODE_B_ID/bootstrap-command")" == "403" ]]
 
-# C4: admin escopado NAO pode criar cliente (createClient exige escopo global).
-echo "[C4] Validando bloqueio (403) de POST /admin/clients para admin escopado"
-[[ "$(request_with_status "$SCOPED_COOKIE_JAR" POST "/api/v1/admin/clients" "{\"name\":\"Should Be Denied $SUFFIX\",\"code\":\"deny-$SUFFIX\"}")" == "403" ]]
+# Administrador com inventory.global cria cliente e passa a enxergá-lo.
+# Cliente B, fora do escopo, continua inacessível.
+echo "[C4] Admin cria cliente no próprio escopo e segue sem acesso ao cliente B"
+CREATE_STATUS="$(request_with_status "$SCOPED_COOKIE_JAR" POST "/api/v1/admin/clients" "{\"name\":\"Scoped Created $SUFFIX\",\"code\":\"scoped-created-$SUFFIX\"}")"
+[[ "$CREATE_STATUS" == "201" ]]
+CREATED_CLIENT_ID="$(json_get "$(cat "$RESPONSE_BODY_FILE")" "client.id")"
 
-echo "Smoke RBAC client scope OK: admin restrito ve apenas cliente A, recebe 403 no cliente B e nao cria clientes (C4)."
+CREATED_FILTERS="$(request_json "$SCOPED_COOKIE_JAR" GET /api/v1/nodes/filters)"
+CREATED_FILTER_IDS="$(node -e '
+const payload = JSON.parse(process.argv[1]);
+const ids = (payload.clients ?? []).map((item) => item.id);
+process.stdout.write(ids.join(","));
+' "$CREATED_FILTERS")"
+echo "$CREATED_FILTER_IDS" | tr ',' '\n' | grep -Fxq "$CREATED_CLIENT_ID"
+echo "$CREATED_FILTER_IDS" | tr ',' '\n' | grep -Fxq "$CLIENT_A_ID"
+! echo "$CREATED_FILTER_IDS" | tr ',' '\n' | grep -Fxq "$CLIENT_B_ID"
+
+NODE_CREATE_STATUS="$(request_with_status "$SCOPED_COOKIE_JAR" POST "/api/v1/admin/nodes" "{\"client_id\":\"$CREATED_CLIENT_ID\",\"hostname\":\"scoped-fw-$SUFFIX.local\",\"display_name\":\"Scoped FW $SUFFIX\"}")"
+[[ "$NODE_CREATE_STATUS" == "201" ]]
+CREATED_NODE_ID="$(json_get "$(cat "$RESPONSE_BODY_FILE")" "node.id")"
+
+[[ "$(request_with_status "$SCOPED_COOKIE_JAR" DELETE "/api/v1/admin/nodes/$NODE_B_ID")" == "403" ]]
+[[ "$(request_with_status "$SCOPED_COOKIE_JAR" DELETE "/api/v1/admin/nodes/$CREATED_NODE_ID")" == "200" ]]
+
+echo "[cleanup] Removendo clientes criados neste smoke"
+[[ "$(request_with_status "$ADMIN_COOKIE_JAR" DELETE "/api/v1/admin/nodes/$NODE_A_ID")" == "200" ]]
+[[ "$(request_with_status "$ADMIN_COOKIE_JAR" DELETE "/api/v1/admin/nodes/$NODE_B_ID")" == "200" ]]
+[[ "$(request_with_status "$ADMIN_COOKIE_JAR" DELETE "/api/v1/admin/clients/$CLIENT_A_ID")" == "200" ]]
+[[ "$(request_with_status "$ADMIN_COOKIE_JAR" DELETE "/api/v1/admin/clients/$CLIENT_B_ID")" == "200" ]]
+[[ "$(request_with_status "$ADMIN_COOKIE_JAR" DELETE "/api/v1/admin/clients/$CREATED_CLIENT_ID")" == "200" ]]
+
+echo "Smoke RBAC client scope OK: admin restrito ve cliente A, cria cliente e firewall no próprio escopo, exclui o host criado e recebe 403 no cliente B."

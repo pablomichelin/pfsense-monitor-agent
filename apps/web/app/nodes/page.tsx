@@ -27,8 +27,15 @@ export default async function NodesPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = (await searchParams) ?? {};
-  const clientId = typeof params.client_id === 'string' ? params.client_id : undefined;
-  const siteId = typeof params.site_id === 'string' ? params.site_id : undefined;
+  const optionalParam = (value: string | string[] | undefined) => {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
+  const clientId = optionalParam(params.client_id);
+  const siteId = optionalParam(params.site_id);
   const status = typeof params.status === 'string' ? params.status : undefined;
   const tagId = typeof params.tag_id === 'string' ? params.tag_id : undefined;
   const groupId = typeof params.group_id === 'string' ? params.group_id : undefined;
@@ -38,6 +45,11 @@ export default async function NodesPage({
       ? (params.criticality as 'critical' | 'standard' | 'lab')
       : undefined;
   const search = typeof params.search === 'string' ? params.search : undefined;
+  const deletedNotice = params.deleted === '1';
+  const deletedBatch =
+    typeof params.deleted_batch === 'string' ? params.deleted_batch : undefined;
+  const deleteError = typeof params.delete_error === 'string' ? params.delete_error : undefined;
+  const deleteNotice = typeof params.delete_notice === 'string' ? params.delete_notice : undefined;
   const preset =
     typeof params.preset === 'string' &&
     ['problem', 'offline', 'degraded', 'backup-late', 'no-backup', 'package-outdated'].includes(params.preset)
@@ -106,6 +118,7 @@ export default async function NodesPage({
     session.permissions ?? [],
     'technicians.password_reset.run',
   );
+  const canDeleteHosts = hasPermission(session.permissions ?? [], 'firewalls.delete');
 
   const sites = clientId
     ? filterOptions.sites.filter((site) => site.client_id === clientId)
@@ -274,6 +287,14 @@ export default async function NodesPage({
         ]}
         aside={<RealtimeRefresh renderedAt={nodes.generated_at} />}
       />
+
+      {nodes.items.length >= listLimit ? <Alert variant="warning">A listagem atingiu o limite de {listLimit} firewalls da API e pode estar incompleta. Refine os filtros para localizar outros itens.</Alert> : null}
+      {deleteError ? <Alert variant="error">{deleteError}</Alert> : null}
+      {deleteNotice ? <Alert variant="warning">{deleteNotice}</Alert> : null}
+      {deletedNotice ? <Alert variant="success">Host excluído.</Alert> : null}
+      {deletedBatch ? (
+        <Alert variant="success">{deletedBatch} host(s) excluído(s).</Alert>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2" aria-label="Atalhos de inventário">
         <span className="mr-1 text-sm font-medium text-fg-muted">Atalhos:</span>
@@ -493,7 +514,9 @@ export default async function NodesPage({
           canRunPackageUpgrade={canRunPackageUpgrade}
           canManagePfTables={canManagePfTables}
           canManageTechnicians={canManageTechnicians}
+          canManageTechnicianRegistry={session.has_global_client_scope === true && canManageTechnicians}
           canResetTechnicianPassword={canResetTechnicianPassword}
+          canDeleteHosts={canDeleteHosts}
         />
       )}
     </div>

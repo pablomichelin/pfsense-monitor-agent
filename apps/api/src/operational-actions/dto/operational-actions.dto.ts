@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min, ValidateIf } from 'class-validator';
 import { SERVICE_RESTART_ALLOWLIST } from '../operational-actions.util';
 
 export class ServiceRestartRequestDto {
@@ -27,8 +27,13 @@ export class NodeRebootRequestDto {
 }
 
 export class TableSearchRequestDto {
+  @IsOptional()
+  @IsIn(['list'])
+  mode?: 'list';
+
+  @ValidateIf((dto: TableSearchRequestDto) => dto.mode !== 'list')
   @IsString()
-  ip!: string;
+  ip?: string;
 }
 
 export class TableEntryRemoveRequestDto {

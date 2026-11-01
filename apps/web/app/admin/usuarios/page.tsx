@@ -43,8 +43,8 @@ export default async function AdminUsuariosPage({
     throw error;
   }
 
-  if (!hasPermission(session.permissions ?? [], 'users.view')) {
-    redirect('/admin');
+  if (session.user.role !== 'superadmin' || !hasPermission(session.permissions ?? [], 'users.view')) {
+    redirect('/conta?access=denied');
   }
 
   try {
@@ -136,6 +136,7 @@ export default async function AdminUsuariosPage({
             }))}
             clients={clients}
             roles={roles}
+            canManageUsers={session.user.role === 'superadmin'}
             currentUserId={session.user.id}
             userSessionsByUserId={Object.fromEntries(userSessionsByUserId)}
             activeSection={activeSection}

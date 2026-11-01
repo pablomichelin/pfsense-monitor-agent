@@ -33,8 +33,8 @@ export function NodeDetailOverviewTab({
   canRunPackageUpgrade: boolean;
   upgradeStatus: PfsenseUpgradeStatusResponse;
   packageUpgradeStatus: PackageUpgradeStatusResponse;
-  nodeCapabilities: NodeCapabilitiesResponse;
-  pfsenseApiStatus: PfsenseApiStatusResponse;
+  nodeCapabilities: NodeCapabilitiesResponse | null;
+  pfsenseApiStatus: PfsenseApiStatusResponse | null;
   canManagePfsenseCredentials: boolean;
   canViewPfsenseAliases: boolean;
   canViewPfsenseApi: boolean;
@@ -249,14 +249,14 @@ export function NodeDetailOverviewTab({
     </PageSection>
 
     <NodeCertificatesPanel certificates={node.certificates ?? []} />
-    {canViewPfsenseApi ? (
+    {canViewPfsenseApi && nodeCapabilities ? (
       <NodeCapabilitiesPanel
         nodeId={node.id}
         canManageCredentials={canManagePfsenseCredentials}
         initialData={nodeCapabilities}
       />
     ) : null}
-    {canViewPfsenseAliases ? (
+    {canViewPfsenseAliases && pfsenseApiStatus ? (
       <NodePfsenseApiPanel
         nodeId={node.id}
         canViewAliases={canViewPfsenseAliases}

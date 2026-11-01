@@ -6,7 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { NodeCommandStatus, NodeCommandType } from '@prisma/client';
+import { NodeCommandStatus, NodeCommandType, Prisma } from '@prisma/client';
 import { isAgentVersionAtLeast } from '../common/agent-version';
 import { CommandOrchestratorService } from '../commands/command-orchestrator.service';
 import { appConfig } from '../config/app-config';
@@ -21,6 +21,7 @@ import {
 import {
   validateTableIpPayload,
   validateTableEntryRemovePayload,
+  validateTableSearchPayload,
 } from '../commands/command-registry';
 import {
   SERVICE_RESTART_ALLOWLIST,
@@ -44,6 +45,19 @@ export class OperationalActionsService {
     private readonly orchestrator: CommandOrchestratorService,
   ) {}
 
+  private assertNetworkPrefixSupported(agentVersion: string | null, ip: string): void {
+    if (!ip.includes('/')) return;
+    if (!isAgentVersionAtLeast(agentVersion, '0.5.24')) {
+      throw new ConflictException('network prefix requires agent 0.5.24 or newer');
+    }
+  }
+
+  private assertBlockListSupported(agentVersion: string | null): void {
+    if (!isAgentVersionAtLeast(agentVersion, '0.5.25')) {
+      throw new ConflictException('block list requires agent 0.5.25 or newer');
+    }
+  }
+
   private assertOperationalActionsEnabled(): void {
     if (!appConfig.operationalActions.enabled) {
       throw new ServiceUnavailableException('operational actions are disabled');
@@ -64,8 +78,8 @@ export class OperationalActionsService {
     }
   }
 
-  private async assertNodeReady(nodeId: string) {
-    const node = await this.prisma.node.findUnique({
+  private async assertNodeReady(nodeId: string, db: Prisma.TransactionClient = this.prisma) {
+    const node = await db.node.findUnique({
       where: { id: nodeId },
       select: {
         id: true,
@@ -226,7 +240,14 @@ export class OperationalActionsService {
   ) {
     this.assertOperationalActionsEnabled();
     const node = await this.assertNodeReady(nodeId);
-    const payload = validateTableIpPayload({ ip: dto.ip });
+    const payload = validateTableSearchPayload(
+      dto.mode === 'list' ? { mode: 'list' } : { ip: dto.ip },
+    );
+    if ('mode' in payload) {
+      this.assertBlockListSupported(node.agentVersion);
+    } else {
+      this.assertNetworkPrefixSupported(node.agentVersion, payload.ip);
+    }
 
     const command = await this.orchestrator.enqueueCommand({
       nodeId,
@@ -245,7 +266,7 @@ export class OperationalActionsService {
         ipAddress,
         metadataJson: {
           command_id: command.id,
-          ip: payload.ip,
+          ...('ip' in payload ? { ip: payload.ip } : { mode: 'list' }),
           hostname: node.hostname,
         },
       },
@@ -255,7 +276,7 @@ export class OperationalActionsService {
       command_id: command.id,
       status: command.status,
       expires_at: command.expiresAt.toISOString(),
-      ip: payload.ip,
+      ...('ip' in payload ? { ip: payload.ip } : { mode: 'list' as const }),
     };
   }
 
@@ -271,9 +292,11 @@ export class OperationalActionsService {
       table: dto.table,
       ip: dto.ip,
     });
-    if (dto.confirm_ip.trim() !== payload.ip) {
+    const confirmed = validateTableIpPayload({ ip: dto.confirm_ip });
+    if (confirmed.ip !== payload.ip) {
       throw new BadRequestException('confirm_ip must match ip');
     }
+    this.assertNetworkPrefixSupported(node.agentVersion, payload.ip);
 
     const command = await this.orchestrator.enqueueCommand({
       nodeId,
@@ -315,87 +338,90 @@ export class OperationalActionsService {
     ipAddress?: string,
   ) {
     this.assertNodeRebootEnabled();
-    const node = await this.assertNodeReady(nodeId);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM nodes WHERE id = ${nodeId}::uuid FOR UPDATE`;
+      const node = await this.assertNodeReady(nodeId, tx);
 
-    if (!confirmationMatchesHostname(node.hostname, dto.confirm_hostname)) {
-      throw new BadRequestException(
-        'confirm_hostname must match node hostname or CONFIRMAR',
-      );
-    }
+      if (!confirmationMatchesHostname(node.hostname, dto.confirm_hostname)) {
+        throw new BadRequestException(
+          'confirm_hostname must match node hostname or CONFIRMAR',
+        );
+      }
 
-    const payload = validateNodeRebootPayload({
-      delay_seconds:
-        dto.delay_seconds ?? appConfig.operationalActions.rebootDefaultDelaySeconds,
-      enable_maintenance_mode: dto.enable_maintenance_mode ?? true,
-      acknowledge_ha_risk: dto.acknowledge_ha_risk ?? false,
-    });
-
-    const maintenanceGate = evaluateRebootMaintenanceGate({
-      maintenanceMode: node.maintenanceMode,
-      enableMaintenanceMode: payload.enable_maintenance_mode,
-    });
-
-    if (!maintenanceGate.allowed) {
-      throw new ConflictException(
-        'node must be in maintenance mode or enable_maintenance_mode must be true',
-      );
-    }
-
-    const haGate = evaluateHaRebootGate({
-      haRole: node.haRole,
-      haDetectedFromAgent: node.haDetectedFromAgent ?? undefined,
-      acknowledgeHaRisk: payload.acknowledge_ha_risk,
-    });
-
-    if (haGate.blocked) {
-      throw new ForbiddenException(haGate.reason ?? 'HA reboot blocked');
-    }
-
-    if (maintenanceGate.willEnableMaintenance) {
-      await this.prisma.node.update({
-        where: { id: nodeId },
-        data: { maintenanceMode: true },
+      const payload = validateNodeRebootPayload({
+        delay_seconds:
+          dto.delay_seconds ?? appConfig.operationalActions.rebootDefaultDelaySeconds,
+        enable_maintenance_mode: dto.enable_maintenance_mode ?? true,
+        acknowledge_ha_risk: dto.acknowledge_ha_risk ?? false,
       });
-    }
 
-    const command = await this.orchestrator.enqueueCommand({
-      nodeId,
-      type: NodeCommandType.node_reboot,
-      requestedByUserId: userId,
-      payloadJson: {
-        delay_seconds: payload.delay_seconds,
-        maintenance_mode_before: node.maintenanceMode,
-        maintenance_mode_toggled: maintenanceGate.willEnableMaintenance,
-        acknowledge_ha_risk: payload.acknowledge_ha_risk,
-      },
-    });
+      const maintenanceGate = evaluateRebootMaintenanceGate({
+        maintenanceMode: node.maintenanceMode,
+        enableMaintenanceMode: payload.enable_maintenance_mode,
+      });
 
-    await this.prisma.auditLog.create({
-      data: {
-        actorType: 'user',
-        actorId: userId,
-        action: 'node.reboot.request',
-        targetType: 'node',
-        targetId: nodeId,
-        ipAddress,
-        metadataJson: {
-          command_id: command.id,
-          hostname: node.hostname,
+      if (!maintenanceGate.allowed) {
+        throw new ConflictException(
+          'node must be in maintenance mode or enable_maintenance_mode must be true',
+        );
+      }
+
+      const haGate = evaluateHaRebootGate({
+        haRole: node.haRole,
+        haDetectedFromAgent: node.haDetectedFromAgent ?? undefined,
+        acknowledgeHaRisk: payload.acknowledge_ha_risk,
+      });
+
+      if (haGate.blocked) {
+        throw new ForbiddenException(haGate.reason ?? 'HA reboot blocked');
+      }
+
+      if (maintenanceGate.willEnableMaintenance) {
+        await tx.node.update({
+          where: { id: nodeId },
+          data: { maintenanceMode: true },
+        });
+      }
+
+      const command = await this.orchestrator.enqueueCommand({
+        nodeId,
+        type: NodeCommandType.node_reboot,
+        requestedByUserId: userId,
+        payloadJson: {
           delay_seconds: payload.delay_seconds,
-          ha_role: node.haRole,
-          acknowledge_ha_risk: payload.acknowledge_ha_risk,
+          maintenance_mode_before: node.maintenanceMode,
           maintenance_mode_toggled: maintenanceGate.willEnableMaintenance,
+          acknowledge_ha_risk: payload.acknowledge_ha_risk,
         },
-      },
-    });
+      }, tx);
 
-    return {
-      command_id: command.id,
-      status: command.status,
-      expires_at: command.expiresAt.toISOString(),
-      delay_seconds: payload.delay_seconds,
-      maintenance_mode_enabled: maintenanceGate.willEnableMaintenance,
-    };
+      await tx.auditLog.create({
+        data: {
+          actorType: 'user',
+          actorId: userId,
+          action: 'node.reboot.request',
+          targetType: 'node',
+          targetId: nodeId,
+          ipAddress,
+          metadataJson: {
+            command_id: command.id,
+            hostname: node.hostname,
+            delay_seconds: payload.delay_seconds,
+            ha_role: node.haRole,
+            acknowledge_ha_risk: payload.acknowledge_ha_risk,
+            maintenance_mode_toggled: maintenanceGate.willEnableMaintenance,
+          },
+        },
+      });
+
+      return {
+        command_id: command.id,
+        status: command.status,
+        expires_at: command.expiresAt.toISOString(),
+        delay_seconds: payload.delay_seconds,
+        maintenance_mode_enabled: maintenanceGate.willEnableMaintenance,
+      };
+    });
   }
 
   async createBackupBatch(

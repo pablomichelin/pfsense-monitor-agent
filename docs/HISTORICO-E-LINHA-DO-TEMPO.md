@@ -2,7 +2,37 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-08-31
+**Última atualização:** 2026-10-15
+
+---
+
+### 2026-10-15 — Troca de senha de técnico com um firewall selecionado (API 0.11.12, painel 1.12.18)
+
+- O filtro “Todos os clientes” enviava `client_id` vazio. A API recusava com `client_id must be a UUID` mesmo com um único firewall marcado, como o Renova.
+- Campo vazio passa a ser ignorado. O lote usa os firewalls selecionados.
+- Ver `docs/195-ENTREGA-SENHA-TECNICO-CLIENT-ID-VAZIO-2026-10-15.md`.
+
+### 2026-09-29 — Exclusão confirma técnico vinculado (API 0.11.11, painel 1.12.17)
+
+- Se o host tem técnico, a exclusão para e explica quem está vinculado. **Excluir mesmo assim** remove o host e o vínculo só no painel.
+- Ver `docs/194-ENTREGA-EXCLUSAO-HOST-CONFIRMAR-TECNICO-2026-09-29.md`.
+
+### 2026-09-29 — Aviso quando a exclusão não acontece (API 0.11.10, painel 1.12.16)
+
+- Host com técnico vinculado não é apagado. O diálogo e a lista dizem qual host e qual técnico impediram a exclusão.
+- Ver `docs/193-ENTREGA-AVISO-EXCLUSAO-COM-VINCULO-2026-09-29.md`.
+
+### 2026-09-29 — Exclusão de host com técnico vinculado (API 0.11.9, painel 1.12.15)
+
+- A conta de técnico no host bloqueava o `DELETE` do firewall. A auditoria era gravada antes, e a lista não mostrava o erro, então o host antigo continuava na pesquisa.
+- A exclusão remove o vínculo e o cadastro na mesma transação. A lista avisa sucesso ou falha.
+- Ver `docs/192-ENTREGA-EXCLUSAO-HOST-TECNICO-VINCULADO-2026-09-29.md`.
+
+### 2026-09-28 — Administrador cria cliente, firewall e exclui host (API 0.11.8, painel 1.12.14)
+
+- O perfil Administrador já tinha `clients.create`, `firewalls.create` e `firewalls.delete`, mas a API recusava criar cliente para quem tem escopo por cliente.
+- Quem tem `inventory.global` cria o cliente; o cadastro entra no escopo de quem criou e de quem já via a frota inteira. Excluir hosts aparece no inventário e no detalhe do firewall.
+- Ver `docs/191-ENTREGA-ADMIN-CRIAR-CLIENTE-FIREWALL-EXCLUIR-HOST-2026-09-28.md`.
 
 ---
 
@@ -423,6 +453,30 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 ## 2. Linha do tempo por tema
 
+### 2.0.16 Listar bloqueios (**2026-09-28**)
+
+- **Entrega:** `docs/190-ENTREGA-LISTAR-BLOQUEIOS-2026-09-28.md`
+- **Versões:** API `0.11.7`, painel `1.12.13`, package `0.5.25`
+- **Resumo:** nos firewalls selecionados, Listar bloqueios devolve as entradas de `webConfiguratorlockout`, `sshlockout`, `virusprot` e `snort2c`. Clique no endereço preenche o campo de desbloqueio.
+
+### 2.0.15 Desbloqueio ignora ips_liberados (**2026-09-28**)
+
+- **Entrega:** `docs/189-ENTREGA-DESBLOQUEIO-IGNORA-IPS-LIBERADOS-2026-09-28.md`
+- **Versões:** API `0.11.6`, painel `1.12.12` (package `0.5.24` inalterado)
+- **Resumo:** `ips_liberados` é a lista de liberação da operação. O desbloqueio passa a mostrar só tabelas de bloqueio do filtro, como `webConfiguratorlockout` e `sshlockout`.
+
+### 2.0.14 Máscara de rede no desbloqueio de IP (**2026-09-28**)
+
+- **Entrega:** `docs/188-ENTREGA-MASCARA-DESBLOQUEIO-IP-2026-09-28.md`
+- **Versões:** API `0.11.5`, painel `1.12.11`, package `0.5.24`
+- **Resumo:** seletor `/32` a `/1` ao lado do IP, com `/32` selecionado. Outra máscara consulta e remove a rede. O agente 0.5.23 continua válido para `/32`; rede exige 0.5.24.
+
+### 2.0.13 Erro genérico no desbloqueio de IP (**2026-09-28**)
+
+- **Entrega:** `docs/187-ENTREGA-ERRO-DESBLOQUEIO-IP-2026-09-28.md`
+- **Versões:** painel `1.12.10` (API `0.11.4` e package `0.5.23` inalterados)
+- **Resumo:** a consulta na Inova Energia falhou com `ip must be a valid IPv4 or IPv6 address`, e o Next.js em produção substituiu essa mensagem pelo erro genérico de Server Components. O painel agora devolve o motivo e aceita host `/32` ou `/128`.
+
 ### 2.0.12 Coluna Pacote no inventário (**2026-07-01**)
 
 - **Entrega:** `docs/115-ENTREGA-COLUNA-PACOTE-INVENTARIO-2026-07-01.md`
@@ -652,3 +706,10 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 
 - Aplicado bump patch obrigatório antes de continuar as fases do plano 170, evitando publicar mudanças de UI com a versão 1.11.0 já entregue.
 - Escopo permanece exclusivamente visual: sem alteração de API, dados, RBAC, autenticação, SSE, package pfSense ou infraestrutura.
+
+
+### 2026-10-31 — Estabilização e revisão independente
+
+- API candidata 0.12.0 / painel candidato 1.13.0: isolamento, comandos, tokens, polling e dependências; package fonte 0.5.26 permanece candidato e distribuição 0.5.25.
+- Backup PostgreSQL recente com restauração isolada; permissões restritas e agendamento diário. Escopo exclui os oito degradados e qualquer ação na frota.
+- Testes por grupos, sem repetição cumulativa de suítes aprovadas; limpar recursos temporários. Ver relatório 196.

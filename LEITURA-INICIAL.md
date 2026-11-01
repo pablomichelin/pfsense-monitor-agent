@@ -6,17 +6,37 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Versões em produção (2026-09-19)
+## Estabilização — 31/10/2026
 
-**Entrega atual:** API `0.11.4`, painel `1.12.9` e package publicado `0.5.23`. No inventário `/nodes`, o operador seleciona firewalls, informa o IP, consulta as tabelas correspondentes e escolhe as entradas para desbloquear. Diagnóstico e provas em `docs/186-REVISAO-DESBLOQUEIO-TABELAS-PF-2026-09-19.md`.
+Controlador publicado e saudável: API **0.12.0**, painel **1.13.0**. Package publicado permanece **0.5.25**; fonte corrigida **0.5.26 candidata**, sem envio à frota. Compilação, validação dirigida, navegador sintético e saúde após publicação aprovados. Relatório consolidado: `docs/196-ESTABILIZACAO-E-REVISAO-2026-10-31.md`.
+
+Exclusão expressa: os oito firewalls persistentemente degradados não fazem parte da intervenção. Sem comandos nem atualização de appliances nesta rodada.
+
+Próximo passo: avaliar destino externo e recuperação completa dos backups, diagnóstico categorizado de 401 e homologação do package em laboratório.
+
+## Versões anteriores em produção (2026-10-15)
+
+**Entrega anterior:** API `0.11.12`, painel `1.12.18` e package `0.5.25`. Troca de senha de técnico com um firewall selecionado não envia `client_id` vazio. Ver `docs/195-ENTREGA-SENHA-TECNICO-CLIENT-ID-VAZIO-2026-10-15.md`.
+
+**Entrega anterior (2026-09-29):** API `0.11.11`, painel `1.12.17`. Excluir host avisa o técnico vinculado e só apaga se a pessoa confirmar de novo. Ver `docs/194-ENTREGA-EXCLUSAO-HOST-CONFIRMAR-TECNICO-2026-09-29.md`.
+
+**Entrega anterior (2026-09-29):** API `0.11.10`, painel `1.12.16`. Host com técnico vinculado não era excluído sem aviso. Ver `docs/193-ENTREGA-AVISO-EXCLUSAO-COM-VINCULO-2026-09-29.md`.
+
+**Entrega anterior (2026-09-29):** API `0.11.9`, painel `1.12.15`. Exclusão deixou de falhar em silêncio. Ver `docs/192-ENTREGA-EXCLUSAO-HOST-TECNICO-VINCULADO-2026-09-29.md`.
+
+**Entrega anterior (2026-09-28):** API `0.11.8`, painel `1.12.14`. Administrador cria clientes, firewalls e exclui hosts. Ver `docs/191-ENTREGA-ADMIN-CRIAR-CLIENTE-FIREWALL-EXCLUIR-HOST-2026-09-28.md`.
+
+**Entrega anterior (2026-09-28):** API `0.11.7`, painel `1.12.13` e package `0.5.25`. Botão **Listar bloqueios**. Ver `docs/190-ENTREGA-LISTAR-BLOQUEIOS-2026-09-28.md`.
+
+**Entrega anterior (2026-09-19):** API `0.11.4`, painel `1.12.9` e package `0.5.23`. Consulta de tabelas pf no inventário. Ver `docs/186-REVISAO-DESBLOQUEIO-TABELAS-PF-2026-09-19.md`.
 
 **Frota observada após a implantação:** 58 agentes reportaram `0.5.23`; `fw-lages.compasi.local` permaneceu em `0.5.20` e sem heartbeat desde 2026-09-01. Após a orientação do usuário, nenhuma outra ação em firewalls deve ser executada nesta tarefa. A remoção efetiva de IP não foi ensaiada.
 
 | Componente | Versão | Referência |
 |------------|--------|------------|
-| API | `0.11.4` | imagem saudável no servidor 192.168.100.221 |
-| Painel web | `1.12.9` | imagem saudável no servidor 192.168.100.221 |
-| Package pfSense | `0.5.23` | artefato publicado e checksum verificado no endpoint do controlador |
+| API | `0.11.12` | imagem saudável no servidor 192.168.100.221 |
+| Painel web | `1.12.18` | imagem saudável no servidor 192.168.100.221 |
+| Package pfSense | `0.5.25` | listagem das tabelas de bloqueio |
 
 **Última entrega (2026-09-18):** endurecimento de segurança API + web (proteção zip-bomb no ingest de backup, fail-fast de `TRUSTED_PROXY_IPS`, fail-closed 503 no middleware, `MONITOR_API_BASE_URL` obrigatória). API **0.11.2**, painel **1.12.7**, package **0.5.20 sem mudança**. Ver `docs/185-ENTREGA-ENDURECIMENTO-SEGURANCA-API-WEB-2026-09-18.md`.
 

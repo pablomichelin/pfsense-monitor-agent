@@ -322,6 +322,7 @@ export class AdminController {
       request.auth?.userId,
       resolveClientIp(request),
       getAccessActor(request),
+      body.confirm_linked_technicians === true,
     );
   }
 
@@ -441,6 +442,7 @@ export class AdminController {
   @RequirePermissions('firewalls.delete')
   deleteNode(
     @Param('id') id: string,
+    @Query('confirm_linked_technicians') confirmLinkedTechnicians: string | undefined,
     @Req() request: RawBodyRequest & AuthenticatedRequest,
     @Headers('cf-connecting-ip') cfConnectingIp?: string,
   ) {
@@ -449,6 +451,7 @@ export class AdminController {
       request.auth?.userId,
       resolveClientIp(request),
       getAccessActor(request),
+      confirmLinkedTechnicians === 'true',
     );
   }
 }

@@ -3,8 +3,8 @@
 /**
  * Consulta e remocao de entradas em tabelas pf (Diagnostics > Tables).
  * Uso: manage_pf_tables.php <search|entry_remove> <payload_file.json>
- * Payload search:      {"ip":"203.0.113.7"}
- * Payload entry_remove: {"table":"sshd", "ip":"203.0.113.7"}
+ * Payload search:      {"ip":"203.0.113.7"} ou {"ip":"203.0.113.0/24"}
+ * Payload entry_remove: {"table":"sshd", "ip":"203.0.113.7"} ou {"ip":"203.0.113.0/24"}
  *
  * Seguranca: ip e table sao validados com regex estrita antes de qualquer
  * exec_pfctl(). A remocao e em memoria do pf (pfctl -t X -T delete) e nao
@@ -48,11 +48,31 @@ function parse_ip($raw): string
 {
     $ip = strtolower(trim((string) $raw));
     $ip = preg_replace('/^\[(.+)\]$/', '$1', $ip) ?? '';
-    return $ip;
+    if (preg_match('/^(\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,2})$/', $ip, $match) !== 1) {
+        return $ip;
+    }
+    $prefix = (int) $match[2];
+    if ($prefix < 1 || $prefix > 31 || filter_var($match[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+        return '';
+    }
+    $host = ip2long($match[1]);
+    if ($host === false) {
+        return '';
+    }
+    $hostBits = 32 - $prefix;
+    $mask = ~((1 << $hostBits) - 1);
+    $network = $host & $mask;
+
+    return long2ip($network) . '/' . $prefix;
 }
 
 function is_valid_ip(string $ip): bool
 {
+    if (preg_match('/^(\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,2})$/', $ip, $match) === 1) {
+        $prefix = (int) $match[2];
+        return $prefix >= 1 && $prefix <= 31
+            && filter_var($match[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false;
+    }
     if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
         return true;
     }
@@ -110,6 +130,33 @@ function list_tables(): array
     return $tables;
 }
 
+function is_block_list_table(string $table): bool
+{
+    return in_array(strtolower($table), [
+        'webconfiguratorlockout',
+        'sshlockout',
+        'virusprot',
+        'snort2c',
+    ], true);
+}
+
+/** Entradas de uma tabela pf. pfctl -T show devolve um endereço por linha. */
+function list_table_entries(string $table): array
+{
+    [$exit, $stdout, $stderr] = run_pfctl(['-t', $table, '-T', 'show']);
+    if ($exit !== 0 && trim($stdout) === '') {
+        throw new RuntimeException('pfctl show failed for ' . $table . ': ' . trim($stderr));
+    }
+    $entries = [];
+    foreach (preg_split('/\r\n|\n/', trim($stdout)) as $line) {
+        $line = trim($line);
+        if ($line !== '') {
+            $entries[] = $line;
+        }
+    }
+    return $entries;
+}
+
 function table_contains_ip(string $table, string $ip): bool
 {
     [$exit, $stdout, $stderr] = run_pfctl(['-t', $table, '-T', 'test', $ip]);
@@ -123,6 +170,29 @@ function table_contains_ip(string $table, string $ip): bool
 }
 
 try {
+    if (($payload['mode'] ?? '') === 'list') {
+        $blocks = [];
+        foreach (list_tables() as $table) {
+            if (!is_valid_table($table) || !is_block_list_table($table)) {
+                continue;
+            }
+            $entries = list_table_entries($table);
+            $total = count($entries);
+            if ($total === 0) {
+                continue;
+            }
+            $shown = array_slice($entries, 0, 80);
+            $blocks[] = [
+                'table' => $table,
+                'total' => $total,
+                'truncated' => $total > 80,
+                'entries' => $shown,
+            ];
+        }
+        emit_result(true, count($blocks) . ' block table(s)', ['blocks' => $blocks]);
+        exit(0);
+    }
+
     $ip = parse_ip($payload['ip'] ?? '');
     if ($ip === '' || !is_valid_ip($ip)) {
         emit_result(false, 'invalid ip');

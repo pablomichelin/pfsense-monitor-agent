@@ -36,15 +36,28 @@ export async function GET(request: Request): Promise<Response> {
     upstreamHeaders.set('last-event-id', lastEventId);
   }
 
-  const response = await fetch(
-    `${requireEnv(apiBaseUrl, 'MONITOR_API_BASE_URL')}/api/v1/dashboard/events`,
-    {
-      method: 'GET',
-      headers: upstreamHeaders,
-      cache: 'no-store',
-      signal: request.signal,
-    },
-  );
+  let response: Response;
+  try {
+    response = await fetch(
+      `${requireEnv(apiBaseUrl, 'MONITOR_API_BASE_URL')}/api/v1/dashboard/events`,
+      {
+        method: 'GET',
+        headers: upstreamHeaders,
+        cache: 'no-store',
+        signal: request.signal,
+      },
+    );
+  } catch {
+    return new Response('upstream stream unavailable', { status: 502 });
+  }
+
+  if (!response.ok || !response.headers.get('content-type')?.toLowerCase().startsWith('text/event-stream')) {
+    await response.body?.cancel();
+    return new Response('upstream stream unavailable', {
+      status: response.ok ? 502 : response.status,
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  }
 
   if (!response.body) {
     return new Response('upstream stream unavailable', {

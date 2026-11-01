@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_ROOT="${1:-$ROOT_DIR/backups/postgres}"
 TIMESTAMP="${TIMESTAMP:-$(date -u +%Y%m%d-%H%M%SZ)}"
 KEEP_LATEST="${KEEP_LATEST:-7}"
+
+[[ "$KEEP_LATEST" =~ ^[1-9][0-9]*$ ]] || { echo 'KEEP_LATEST deve ser inteiro positivo' >&2; exit 1; }
+[[ "$TIMESTAMP" =~ ^[0-9]{8}-[0-9]{6}Z$ ]] || { echo 'TIMESTAMP invalido' >&2; exit 1; }
+cd "$ROOT_DIR"
 
 read_env_value() {
   local key="$1"
@@ -47,9 +52,15 @@ if [[ -z "$POSTGRES_DB" || -z "$POSTGRES_USER" ]]; then
 fi
 
 mkdir -p "$BACKUP_ROOT"
+chmod 700 "$BACKUP_ROOT"
+exec 9>"$BACKUP_ROOT/.backup.lock"
+flock -n 9 || { echo 'Backup ja em andamento' >&2; exit 1; }
 
 BACKUP_FILE="$BACKUP_ROOT/postgres-${POSTGRES_DB}-${TIMESTAMP}.dump"
 CHECKSUM_FILE="${BACKUP_FILE}.sha256"
+PARTIAL_FILE="${BACKUP_FILE}.partial"
+[[ ! -e "$BACKUP_FILE" ]] || { echo 'Backup de destino ja existe' >&2; exit 1; }
+trap 'rm -f "$PARTIAL_FILE" "${CHECKSUM_FILE}.partial"' EXIT
 
 echo "[1/4] Validando container db do Compose"
 docker compose ps db >/dev/null
@@ -63,15 +74,19 @@ docker compose exec -T db pg_dump \
   --compress=9 \
   --no-owner \
   --no-privileges \
-  > "$BACKUP_FILE"
+  > "$PARTIAL_FILE"
 
-if [[ ! -s "$BACKUP_FILE" ]]; then
+if [[ ! -s "$PARTIAL_FILE" ]]; then
   echo "Backup vazio ou inexistente: $BACKUP_FILE" >&2
   exit 1
 fi
+# Validar o arquivo antes de torna-lo elegivel a restauracao/retencao.
+docker compose exec -T db pg_restore --list < "$PARTIAL_FILE" >/dev/null
+mv "$PARTIAL_FILE" "$BACKUP_FILE"
 
 echo "[3/4] Gerando checksum"
-sha256sum "$BACKUP_FILE" | sed "s#$BACKUP_FILE#$(basename "$BACKUP_FILE")#" > "$CHECKSUM_FILE"
+(cd "$BACKUP_ROOT" && sha256sum "$(basename "$BACKUP_FILE")") > "${CHECKSUM_FILE}.partial"
+mv "${CHECKSUM_FILE}.partial" "$CHECKSUM_FILE"
 
 echo "[4/4] Aplicando retencao local"
 mapfile -t OLD_BACKUPS < <(find "$BACKUP_ROOT" -maxdepth 1 -type f -name 'postgres-*.dump' | sort)

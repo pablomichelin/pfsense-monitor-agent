@@ -20,6 +20,7 @@ import {
   pollBackupCommandStatusAction,
   pollNodeTechnicianAccountsAction,
 } from '@/lib/technicians';
+import { technicianBatchLimit } from '@/lib/technician-batch-limit';
 import { isValidManagedPfsenseUsername } from '@/lib/pfsense-username';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -47,6 +48,9 @@ type Props = {
   totalVisibleCount?: number;
   clientId?: string;
   canManageTechnicians: boolean;
+  canManageRegistry?: boolean;
+  batchMaxSize?: number;
+  allowFleetRevoke?: boolean;
   canResetTechnicianPassword: boolean;
 };
 
@@ -259,12 +263,19 @@ export function FleetTechnicianManagementPanel({
   totalVisibleCount,
   clientId,
   canManageTechnicians,
+  canManageRegistry = false,
+  batchMaxSize,
+  allowFleetRevoke = true,
   canResetTechnicianPassword,
 }: Props) {
   const [technicians, setTechnicians] = useState<TechnicianListItem[]>([]);
+  const [registryLoading, setRegistryLoading] = useState(true);
+  const [registryLoaded, setRegistryLoaded] = useState(false);
+  const [batchLimit, setBatchLimit] = useState<number | null>(technicianBatchLimit(batchMaxSize));
+  const manageRegistry = canManageTechnicians && canManageRegistry;
   const [search, setSearch] = useState('');
   const [technicianId, setTechnicianId] = useState('');
-  const [actionMode, setActionMode] = useState<ActionMode>('provision');
+  const [actionMode, setActionMode] = useState<ActionMode>(canManageTechnicians ? 'provision' : 'password_reset');
   const [revokeAction, setRevokeAction] = useState<'disable' | 'delete'>('delete');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -323,17 +334,23 @@ export function FleetTechnicianManagementPanel({
   };
 
   const reloadTechnicians = useCallback(async () => {
-    const response = await listTechniciansAction('active');
-    setTechnicians(response.items);
-    if (response.items.length > 0) {
-      setTechnicianId((current) => {
-        if (current && response.items.some((item) => item.id === current)) {
-          return current;
-        }
-        return response.items[0]!.id;
-      });
+    setRegistryLoading(true);
+    try {
+      const response = await listTechniciansAction('active');
+      setBatchLimit(technicianBatchLimit(response.batch_max_size));
+      setTechnicians(response.items);
+      setRegistryLoaded(true);
+      setTechnicianId((current) => response.items.some((item) => item.id === current)
+        ? current : response.items[0]?.id ?? '');
+      return response;
+    } catch (cause) {
+      setRegistryLoaded(false);
+      setTechnicians([]);
+      setTechnicianId('');
+      throw cause;
+    } finally {
+      setRegistryLoading(false);
     }
-    return response;
   }, []);
 
   useEffect(() => {
@@ -351,6 +368,12 @@ export function FleetTechnicianManagementPanel({
       setPanelTab('batch_action');
     }
   }, [nodeIds.length]);
+
+  const targetSignature = [...nodeIds].sort().join(',');
+  useEffect(() => {
+    setShowConfirm(false);
+    setConfirmText('');
+  }, [targetSignature]);
 
   const filteredTechnicians = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -559,6 +582,11 @@ export function FleetTechnicianManagementPanel({
     return null;
   }
 
+  const nodeBatchAllowed = registryLoaded && !registryLoading && batchLimit !== null && nodeIds.length > 0 && nodeIds.length <= batchLimit;
+  const batchLimitError = batchLimit === null
+    ? 'Limite do lote indisponível. Recarregue a página antes de executar ações por firewall.'
+    : `Selecione entre 1 e ${batchLimit} firewalls por ação. Nenhum lote será dividido automaticamente.`;
+
   const usingSelection = mode === 'selection' && nodeIds.length > 0;
   const targetLabel = usingSelection
     ? `${nodeIds.length} firewall(s) selecionado(s)`
@@ -570,9 +598,7 @@ export function FleetTechnicianManagementPanel({
 
   const canShowBatchAction =
     technicians.length > 0 &&
-    (nodeIds.length > 0 ||
-      mode === 'filter' ||
-      (mode === 'selection' && nodeIds.length === 0 && canManageTechnicians));
+    (nodeIds.length > 0 || (allowFleetRevoke && canManageTechnicians));
 
   const selectTechnician = (id: string, openBatchTab = false) => {
     setTechnicianId(id);
@@ -582,6 +608,11 @@ export function FleetTechnicianManagementPanel({
   };
 
   const openRevokeConfirm = (revokeMode: RevokeMode) => {
+    if (revokeMode === 'fleet' && !allowFleetRevoke) return;
+    if (revokeMode !== 'fleet' && !nodeBatchAllowed) {
+      setError(batchLimitError);
+      return;
+    }
     setPendingRevokeMode(revokeMode);
     setShowConfirm(true);
     setConfirmText('');
@@ -589,7 +620,14 @@ export function FleetTechnicianManagementPanel({
   };
 
   const runBatchAction = () => {
-    if (!technicianId || nodeIds.length === 0) {
+    if (!showConfirm || !confirmEnabled) return;
+    if (!nodeBatchAllowed) {
+      setError(batchLimitError);
+      return;
+    }
+    if (!technicianId || nodeIds.length === 0 ||
+      (actionMode === 'provision' && !canManageTechnicians) ||
+      (actionMode === 'password_reset' && !canResetTechnicianPassword)) {
       return;
     }
 
@@ -686,8 +724,9 @@ export function FleetTechnicianManagementPanel({
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
-          disabled={pending || !confirmEnabled || !technicianId}
+          disabled={pending || !confirmEnabled || !technicianId || (!(fleetOnly || pendingRevokeMode === 'fleet') && !nodeBatchAllowed)}
           onClick={() => {
+            if (!showConfirm || !confirmEnabled || !canManageTechnicians || ((fleetOnly || pendingRevokeMode === 'fleet') ? !allowFleetRevoke : !nodeBatchAllowed)) return;
             startTransition(async () => {
               const labelBase =
                 revokeAction === 'delete'
@@ -757,7 +796,7 @@ export function FleetTechnicianManagementPanel({
           className={inputClassName}
         >
           {technicians.length === 0 ? (
-            <option value="">Nenhum técnico cadastrado</option>
+            <option value="">{registryLoading ? 'Carregando técnicos…' : !registryLoaded ? 'Lista indisponível' : 'Nenhum técnico visível neste escopo'}</option>
           ) : (
             technicians.map((technician) => (
               <option key={technician.id} value={technician.id}>
@@ -768,7 +807,7 @@ export function FleetTechnicianManagementPanel({
           )}
         </select>
       </label>
-      {canManageTechnicians ? (
+      {manageRegistry ? (
         <Button
           type="button"
           variant="secondary"
@@ -927,24 +966,24 @@ export function FleetTechnicianManagementPanel({
             !showConfirm ? (
               <div className="flex flex-wrap gap-2 self-end lg:ml-auto">
                 {!fleetOnly ? (
-                  <Button type="button" variant="secondary" onClick={() => openRevokeConfirm(mode)}>
+                  <Button type="button" variant="secondary" disabled={!nodeBatchAllowed} onClick={() => openRevokeConfirm(mode)}>
                     {revokeAction === 'delete' ? 'Remover' : 'Desativar'} em {targetLabel}…
                   </Button>
                 ) : null}
-                <Button
+                {allowFleetRevoke ? <Button
                   type="button"
                   variant={fleetOnly ? 'secondary' : 'ghost'}
                   onClick={() => openRevokeConfirm('fleet')}
                 >
                   {revokeAction === 'delete' ? 'Remover' : 'Desativar'} em toda a frota…
-                </Button>
+                </Button> : null}
               </div>
             ) : null
           ) : !showConfirm ? (
             <Button
               type="button"
               className="shrink-0 self-end lg:ml-auto"
-              disabled={pending || !technicianId || nodeIds.length === 0}
+              disabled={pending || !technicianId || !nodeBatchAllowed}
               onClick={() => {
                 const passwordCheck = resolveOptionalPassword();
                 if (!passwordCheck.ok) {
@@ -994,7 +1033,7 @@ export function FleetTechnicianManagementPanel({
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
-                  disabled={pending || !confirmEnabled || !technicianId}
+                  disabled={pending || !confirmEnabled || !technicianId || !nodeBatchAllowed}
                   onClick={runBatchAction}
                 >
                   Confirmar {actionModeLabels[actionMode].toLowerCase()}
@@ -1030,6 +1069,9 @@ export function FleetTechnicianManagementPanel({
 
       {error ? <Alert variant="error">{error}</Alert> : null}
       {info ? <Alert variant="success">{info}</Alert> : null}
+      {registryLoaded && (batchLimit === null || nodeIds.length > batchLimit) ? <Alert variant="warning">{batchLimitError}</Alert> : null}
+      {registryLoading ? <p role="status" className="text-sm text-fg-muted">Carregando técnicos…</p> : null}
+      {!manageRegistry ? <Alert variant="info">Cadastro, reativação e exclusão de técnicos exigem administrador com escopo global. Para um técnico ainda não visível, peça a um administrador global para criar o primeiro vínculo com um firewall do seu escopo. As ações nos firewalls continuam disponíveis conforme suas permissões.</Alert> : null}
 
       {!initialResponse ? (
         <>
@@ -1053,7 +1095,7 @@ export function FleetTechnicianManagementPanel({
                 ) : null}
               </Button>
             ) : null}
-            {canManageTechnicians && panelTab === 'batch_action' ? (
+            {manageRegistry && panelTab === 'batch_action' ? (
               <Button
                 type="button"
                 variant="secondary"
@@ -1090,7 +1132,7 @@ export function FleetTechnicianManagementPanel({
                       className="h-10 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200"
                     />
                   </label>
-                  {canManageTechnicians ? (
+                  {manageRegistry ? (
                     <Button
                       type="button"
                       variant="secondary"
@@ -1115,7 +1157,7 @@ export function FleetTechnicianManagementPanel({
                         <th className="px-3 py-2">Nome</th>
                         <th className="px-3 py-2">Login pfSense</th>
                         <th className="px-3 py-2">Contas</th>
-                        {canManageTechnicians ? <th className="px-3 py-2">Cadastro</th> : null}
+                        {manageRegistry ? <th className="px-3 py-2">Cadastro</th> : null}
                       </tr>
                     </thead>
                     <tbody>
@@ -1149,7 +1191,7 @@ export function FleetTechnicianManagementPanel({
                               {technician.login_username}
                             </td>
                             <td className="px-3 py-2">{technician.node_account_count}</td>
-                            {canManageTechnicians ? (
+                            {manageRegistry ? (
                               <td className="px-3 py-2">
                                 <Button
                                   type="button"
@@ -1173,10 +1215,12 @@ export function FleetTechnicianManagementPanel({
                   </table>
                 </div>
               ) : (
-                <Alert variant="info">Nenhum técnico cadastrado ainda.</Alert>
+                registryLoading ? <Alert variant="info">Carregando técnicos…</Alert>
+                  : !registryLoaded ? <Alert variant="error">Lista de técnicos indisponível. Recarregue a página para tentar novamente.</Alert>
+                    : <Alert variant="info">{search.trim() ? 'Nenhum técnico corresponde à busca.' : 'Nenhum técnico visível neste escopo.'}</Alert>
               )}
 
-              {deleteTarget && canManageTechnicians ? (
+              {deleteTarget && manageRegistry ? (
                 <div className="space-y-3 rounded-lg border border-rose-900/60 bg-rose-950/20 p-4">
                   <p className="text-sm text-slate-200">
                     Remover <strong className="text-fg">{deleteTarget.full_name}</strong> (
@@ -1203,6 +1247,7 @@ export function FleetTechnicianManagementPanel({
                       disabled={deletePending || !deleteConfirmEnabled}
                       onClick={() => {
                         startDeleteTransition(async () => {
+                          if (!manageRegistry) return;
                           const result = await deleteTechnicianFromRegistryAction({
                             technician_id: deleteTarget.id,
                             confirm_login_username: deleteConfirmText.trim(),
@@ -1259,7 +1304,7 @@ export function FleetTechnicianManagementPanel({
             </div>
           ) : null}
 
-          {showCreateModal && canManageTechnicians ? (
+          {showCreateModal && manageRegistry ? (
             <div
               className="fixed inset-0 z-50 flex items-center justify-center theme-overlay p-4"
               role="presentation"
@@ -1308,6 +1353,7 @@ export function FleetTechnicianManagementPanel({
                     disabled={createPending || !newFullName.trim() || !loginUsernameValid}
                     onClick={() => {
                       startCreateTransition(async () => {
+                        if (!manageRegistry) return;
                         const result = await createTechnicianAction({
                           full_name: newFullName.trim(),
                           login_username: newLoginUsername.trim(),

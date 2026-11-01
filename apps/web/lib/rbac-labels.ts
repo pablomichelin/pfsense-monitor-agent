@@ -32,6 +32,9 @@ export const PERMISSION_GROUP_LABELS: Record<string, string> = {
 };
 
 export const PERMISSION_LABELS: Record<string, string> = {
+  'clients.create': 'Criar clientes',
+  'firewalls.create': 'Criar firewalls',
+  'firewalls.delete': 'Excluir hosts',
   'inventory.global': 'Menu Cadastro (criar clientes e firewalls)',
   'notifications.view': 'Visualizar notificações externas',
   'notifications.manage': 'Gerenciar canais e regras de notificação',

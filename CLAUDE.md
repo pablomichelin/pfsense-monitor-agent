@@ -1,0 +1,20 @@
+<!-- systemup-rtk:start -->
+## RTK OSS: uso controlado
+
+RTK pode compactar a saída de comandos de desenvolvimento. Use somente
+quando o comando original já estiver autorizado pelas regras deste projeto
+e o comando com RTK também estiver coberto pelas aprovações do agente.
+Exemplo opcional: `rtk git status`. Caso o RTK esteja ausente, utilize o
+comando original. Não altere sandbox, permissões ou regras de aprovação.
+
+Não prefixe comandos automaticamente; não habilite `rtk init`, hooks,
+proxy, aliases globais ou reescrita automática. Não envolva comandos
+de escrita Git, migrations, deploy, operações financeiras ou alterações
+de infraestrutura. Testes e builds podem ter efeitos mesmo com RTK.
+
+Preserve a saída original integral para segurança, auditoria, dados
+financeiros, revisão exaustiva, JSON, CSV, patches e processamento por
+scripts. Não repita comandos com efeitos para recuperar a saída omitida.
+Uma falha não autoriza executar novamente sem RTK. Preserve exit codes
+e evidências necessárias. As regras canônicas deste projeto prevalecem.
+<!-- systemup-rtk:end -->

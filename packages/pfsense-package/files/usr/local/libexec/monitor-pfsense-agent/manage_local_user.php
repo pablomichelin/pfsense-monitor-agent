@@ -44,6 +44,8 @@ if ($payloadFile === '' || !is_readable($payloadFile)) {
 }
 
 $rawPayload = file_get_contents($payloadFile);
+// The caller owns a private, disposable payload; do not retain plaintext passwords.
+@unlink($payloadFile);
 $payload = json_decode($rawPayload !== false ? $rawPayload : '', true);
 if (!is_array($payload)) {
     fwrite(STDERR, "invalid payload json\n");

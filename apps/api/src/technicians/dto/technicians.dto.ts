@@ -7,6 +7,7 @@ import {
   Matches,
   IsNotIn,
 } from 'class-validator';
+import { EmptyStringToUndefined } from '../../common/empty-to-undefined';
 
 export class CreateTechnicianDto {
   @IsString()
@@ -49,6 +50,7 @@ export class FleetRevokeTechnicianDto {
   @IsString()
   label?: string;
 
+  @EmptyStringToUndefined()
   @IsOptional()
   @IsUUID()
   client_id?: string;
@@ -73,6 +75,7 @@ export class BatchRevokeTechnicianDto {
   @IsString()
   label?: string;
 
+  @EmptyStringToUndefined()
   @IsOptional()
   @IsUUID()
   client_id?: string;
@@ -101,6 +104,7 @@ export class BatchProvisionTechnicianDto {
   @IsString()
   label?: string;
 
+  @EmptyStringToUndefined()
   @IsOptional()
   @IsUUID()
   client_id?: string;
@@ -130,6 +134,7 @@ export class BatchPasswordResetTechnicianDto {
   @IsString()
   label?: string;
 
+  @EmptyStringToUndefined()
   @IsOptional()
   @IsUUID()
   client_id?: string;

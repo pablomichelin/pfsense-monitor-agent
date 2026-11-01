@@ -20,13 +20,20 @@ export function DeleteNodeButton({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [needsTechnicianConfirm, setNeedsTechnicianConfirm] = useState(false);
 
   const label = displayName ?? hostname;
 
   const handleConfirm = async () => {
     setLoading(true);
+    setError(null);
     try {
-      await deleteNodeAction(nodeId);
+      const result = await deleteNodeAction(nodeId, needsTechnicianConfirm);
+      if (result && !result.ok) {
+        setError(result.error);
+        setNeedsTechnicianConfirm(Boolean(result.requiresTechnicianConfirm));
+      }
     } finally {
       setLoading(false);
     }
@@ -34,18 +41,29 @@ export function DeleteNodeButton({
 
   return (
     <>
-      <Button type="button" variant="danger-outline" onClick={() => setOpen(true)}>
+      <Button
+        type="button"
+        variant="danger-outline"
+        onClick={() => {
+          setError(null);
+          setNeedsTechnicianConfirm(false);
+          setOpen(true);
+        }}
+      >
         Excluir host
       </Button>
 
       <ConfirmDialog
         open={open}
-        title="Confirmar exclusão"
-        confirmLabel="Excluir"
+        title={needsTechnicianConfirm ? 'Técnico vinculado' : 'Confirmar exclusão'}
+        confirmLabel={needsTechnicianConfirm ? 'Excluir mesmo assim' : 'Excluir'}
+        tone={needsTechnicianConfirm ? 'warning' : 'danger'}
         loading={loading}
         onCancel={() => {
           if (!loading) {
             setOpen(false);
+            setNeedsTechnicianConfirm(false);
+            setError(null);
           }
         }}
         onConfirm={handleConfirm}
@@ -64,6 +82,7 @@ export function DeleteNodeButton({
                 <span className="text-slate-500">node_uid:</span> {nodeUid}
               </p>
             </div>
+            {error ? <p className="mt-4 text-sm text-rose-200">{error}</p> : null}
           </>
         }
       />

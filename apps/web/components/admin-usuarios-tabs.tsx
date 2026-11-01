@@ -52,6 +52,7 @@ export function AdminUsuariosTabs({
   clients,
   roles,
   currentUserId,
+  canManageUsers = false,
   userSessionsByUserId,
   activeSection,
   status,
@@ -62,6 +63,7 @@ export function AdminUsuariosTabs({
   clients: ClientOption[];
   roles: RoleOption[];
   currentUserId?: string;
+  canManageUsers?: boolean;
   userSessionsByUserId: Record<string, SessionItem[]>;
   activeSection?: string;
   status?: string;
@@ -84,7 +86,7 @@ export function AdminUsuariosTabs({
     'rounded-lg border border-slate-600/80 bg-panel-soft h-11 px-4 py-2 text-sm text-slate-200 outline-none';
 
   const handleDeleteConfirm = async () => {
-    if (!deleteTarget) {
+    if (!canManageUsers || !deleteTarget) {
       return;
     }
 
@@ -169,7 +171,7 @@ export function AdminUsuariosTabs({
                   </span>
                 )}
               </div>
-              <form action={updateUserAction} className="flex flex-col gap-3">
+              {canManageUsers ? <form action={updateUserAction} className="flex flex-col gap-3">
                 <input type="hidden" name="returnTo" value={returnTo} />
                 <input type="hidden" name="user_id" value={user.id} />
                 <div className="flex flex-wrap items-center gap-2">
@@ -212,8 +214,8 @@ export function AdminUsuariosTabs({
                     Salvar
                   </button>
                 </div>
-              </form>
-              {currentUserId !== user.id && (
+              </form> : <p className="text-sm text-fg">{user.display_name || user.email} · {user.email} · {user.status} — Somente leitura</p>}
+              {canManageUsers && currentUserId !== user.id && (
                 <button
                   type="button"
                   onClick={() => openDeleteDialog(user)}
@@ -264,7 +266,7 @@ export function AdminUsuariosTabs({
                         <span className="text-xs text-slate-500">
                           {sessionItem.current ? 'Use Sair para encerrar' : 'Encerrada'}
                         </span>
-                      ) : (
+                      ) : !canManageUsers ? <span className="text-xs text-fg-muted">Somente leitura</span> : (
                         <form action={revokeUserSessionAdminAction}>
                           <input type="hidden" name="returnTo" value={returnTo} />
                           <input type="hidden" name="user_id" value={user.id} />

@@ -28,6 +28,11 @@ function revalidateTechnicianSurfaces() {
   revalidatePath('/admin/tecnicos');
 }
 
+function optionalClientId(clientId?: string): string | undefined {
+  const trimmed = clientId?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 function mapTechnicianError(message: string, fallback: string): string {
   const normalized = message.trim().toLowerCase();
 
@@ -163,7 +168,7 @@ export async function createTechnicianBatchProvisionAction(input: {
       privilege_profile: input.privilege_profile,
       backup_before_provision: input.backup_before_provision,
       label: input.label,
-      client_id: input.client_id,
+      client_id: optionalClientId(input.client_id),
       confirm: input.confirm,
       ...(trimmedPassword ? { password: trimmedPassword } : {}),
     });
@@ -188,7 +193,7 @@ export async function createTechnicianBatchPasswordResetAction(input: {
       technician_id: input.technician_id,
       node_ids: input.node_ids,
       label: input.label,
-      client_id: input.client_id,
+      client_id: optionalClientId(input.client_id),
       confirm: input.confirm,
       ...(trimmedPassword ? { password: trimmedPassword } : {}),
     });
@@ -208,7 +213,10 @@ export async function createTechnicianBatchRevokeAction(input: {
   client_id?: string;
 }): Promise<TechnicianActionResult<TechnicianBatchRevokeResponse>> {
   try {
-    const result = await createTechnicianBatchRevoke(input);
+    const result = await createTechnicianBatchRevoke({
+      ...input,
+      client_id: optionalClientId(input.client_id),
+    });
     revalidateTechnicianSurfaces();
     return { ok: true, data: result };
   } catch (error) {
@@ -228,7 +236,7 @@ export async function createTechnicianFleetRevokeAction(input: {
       action: input.action,
       confirm: input.confirm,
       label: input.label,
-      client_id: input.client_id,
+      client_id: optionalClientId(input.client_id),
     });
     revalidateTechnicianSurfaces();
     return { ok: true, data: result };

@@ -25,9 +25,28 @@ export {
 const SHA256_HEX = /^[a-f0-9]{64}$/i;
 
 const TABLE_NAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+const ALLOW_TABLES = new Set(['ips_liberados']);
 
 function parseIpArg(value: string): string {
   return value.trim().replace(/^\[|\]$/g, '');
+}
+
+function isCanonicalIpv4(value: string): boolean {
+  const parts = value.split('.');
+  if (parts.length !== 4) return false;
+  return parts.every((part) => {
+    if (!/^\d{1,3}$/.test(part)) return false;
+    if (part.length > 1 && part.startsWith('0')) return false;
+    const octet = Number(part);
+    return octet >= 0 && octet <= 255;
+  });
+}
+
+function canonicalIpv4Network(ip: string, prefix: number): string {
+  const value = ip.split('.').reduce((acc, part) => ((acc << 8) + Number(part)) >>> 0, 0);
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  const network = (value & mask) >>> 0;
+  return [24, 16, 8, 0].map((shift) => (network >>> shift) & 255).join('.');
 }
 
 export function validateTableIpPayload(
@@ -40,11 +59,30 @@ export function validateTableIpPayload(
   if (typeof raw !== 'string' || !raw.trim()) {
     throw new BadRequestException('ip is required');
   }
-  const ip = parseIpArg(raw);
-  if (isIP(ip) === 0) {
+  const parsed = parseIpArg(raw);
+  const cidr = parsed.match(/^(.+)\/(\d+)$/);
+  if (cidr) {
+    const prefix = Number(cidr[2]);
+    if (!isCanonicalIpv4(cidr[1]) || !Number.isInteger(prefix) || prefix < 1 || prefix > 32) {
+      throw new BadRequestException('ip must be a valid IPv4 or IPv6 address');
+    }
+    if (prefix === 32) return { ip: cidr[1] };
+    return { ip: `${canonicalIpv4Network(cidr[1], prefix)}/${prefix}` };
+  }
+  if (isIP(parsed) === 0) {
     throw new BadRequestException('ip must be a valid IPv4 or IPv6 address');
   }
-  return { ip };
+  return { ip: parsed };
+}
+
+export function validateTableSearchPayload(
+  payload: unknown,
+): { ip: string } | { mode: 'list' } {
+  if (payload != null && typeof payload === 'object' && !Array.isArray(payload)) {
+    const mode = (payload as Record<string, unknown>).mode;
+    if (mode === 'list') return { mode: 'list' };
+  }
+  return validateTableIpPayload(payload);
 }
 
 export function validateTablePayload(payload: unknown): { ip: string } {
@@ -64,6 +102,9 @@ export function validateTableEntryRemovePayload(
     throw new BadRequestException(
       'table must contain only letters, digits, dot, underscore or dash (max 64 chars)',
     );
+  }
+  if (ALLOW_TABLES.has(table.toLowerCase())) {
+    throw new BadRequestException('table ips_liberados is an allow list and cannot be removed');
   }
   return { table, ip: base.ip };
 }
@@ -92,6 +133,9 @@ function validatePfsenseUpgradePayload(
     target_version: raw.target_version.trim(),
     ...(typeof raw.maintenance_mode_before === 'boolean'
       ? { maintenance_mode_before: raw.maintenance_mode_before }
+      : {}),
+    ...(typeof raw.maintenance_mode_toggled === 'boolean'
+      ? { maintenance_mode_toggled: raw.maintenance_mode_toggled }
       : {}),
     ...(typeof raw.backup_acknowledged_without_recent === 'boolean'
       ? {
@@ -213,7 +257,15 @@ export const COMMAND_REGISTRY: Record<NodeCommandType, CommandTypeDefinition> = 
     auditPrefix: 'node.reboot',
     validatePayload: (payload: unknown) => {
       try {
-        return validateNodeRebootPayload(payload);
+        const normalized = validateNodeRebootPayload(payload);
+        const raw = payload as Record<string, unknown>;
+        return {
+          ...normalized,
+          ...(typeof raw.maintenance_mode_before === 'boolean'
+            ? { maintenance_mode_before: raw.maintenance_mode_before } : {}),
+          ...(typeof raw.maintenance_mode_toggled === 'boolean'
+            ? { maintenance_mode_toggled: raw.maintenance_mode_toggled } : {}),
+        };
       } catch (error) {
         throw new BadRequestException(
           error instanceof Error ? error.message : 'invalid node_reboot payload',
@@ -308,7 +360,7 @@ export const COMMAND_REGISTRY: Record<NodeCommandType, CommandTypeDefinition> = 
     maxConcurrentPerNode: 1,
     maxConcurrentGlobal: 0,
     auditPrefix: 'firewall.table.search',
-    validatePayload: validateTablePayload,
+    validatePayload: validateTableSearchPayload,
   },
   [NodeCommandType.table_entry_remove]: {
     permission: 'firewall.table.manage',

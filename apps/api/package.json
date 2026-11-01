@@ -1,6 +1,6 @@
 {
   "name": "@monitor-pfsense/api",
-  "version": "0.11.4",
+  "version": "0.12.0",
   "private": true,
   "description": "API do controlador Monitor-Pfsense",
   "engines": {
@@ -17,13 +17,13 @@
     "prisma:migrate:deploy": "prisma migrate deploy"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.6",
-    "@nestjs/core": "^11.1.6",
-    "@nestjs/platform-fastify": "^11.1.6",
+    "@nestjs/common": "11.2.8",
+    "@nestjs/core": "11.2.8",
+    "@nestjs/platform-fastify": "11.2.8",
     "@prisma/client": "^6.15.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
-    "fastify": "^5.6.0",
+    "fastify": "5.12.7",
     "otplib": "^12.0.1",
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
@@ -38,5 +38,12 @@
     "@types/semver": "^7.7.0",
     "prisma": "^6.15.0",
     "typescript": "^5.9.2"
+  },
+  "overrides": {
+    "defu": "^6.1.5",
+    "effect": "^3.20.0",
+    "ajv@^8": "^8.18.0",
+    "fast-uri@^3": "^3.1.9",
+    "fastify": "$fastify"
   }
 }

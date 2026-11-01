@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_ROOT="$ROOT_DIR/backups/postgres"
 BACKUP_FILE="${1:-}"
 RESTORE_DB="${RESTORE_DB:-monitor_pfsense_restore}"
 RESTORE_USER="${RESTORE_USER:-monitor_pfsense}"
-RESTORE_PASSWORD="${RESTORE_PASSWORD:-change-me}"
 CONTAINER_NAME="monitor-pfsense-restore-$$"
 
 usage() {
@@ -38,17 +38,28 @@ if [[ -z "$BACKUP_FILE" || ! -f "$BACKUP_FILE" ]]; then
 fi
 
 cleanup() {
-  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
 }
 
 trap cleanup EXIT
 
+BACKUP_FILE="$(realpath "$BACKUP_FILE")"
+[[ -f "${BACKUP_FILE}.sha256" ]] || { echo 'Checksum ausente' >&2; exit 1; }
+# O sidecar precisa descrever exatamente o dump selecionado, nao outro arquivo.
+EXPECTED_DIGEST="$(awk 'NR == 1 && $1 ~ /^[0-9a-f]+$/ && length($1) == 64 { print $1 }' "${BACKUP_FILE}.sha256")"
+SIDECAR_NAME="$(awk 'NR == 1 { $1=""; sub(/^ +/, ""); sub(/^\*/, ""); print }' "${BACKUP_FILE}.sha256")"
+[[ "$(wc -l < "${BACKUP_FILE}.sha256")" -eq 1 && -n "$EXPECTED_DIGEST" && "$SIDECAR_NAME" == "$(basename "$BACKUP_FILE")" ]] || { echo 'Checksum nao corresponde ao dump selecionado' >&2; exit 1; }
+ACTUAL_DIGEST="$(sha256sum "$BACKUP_FILE" | awk '{print $1}')"
+[[ "$EXPECTED_DIGEST" == "$ACTUAL_DIGEST" ]] || { echo 'Checksum do dump invalido' >&2; exit 1; }
+
 echo "[1/6] Subindo PostgreSQL temporario para restore"
 docker run -d \
   --name "$CONTAINER_NAME" \
+  --network none \
+  --memory 1g --cpus 1 --pids-limit 128 \
   -e "POSTGRES_DB=$RESTORE_DB" \
   -e "POSTGRES_USER=$RESTORE_USER" \
-  -e "POSTGRES_PASSWORD=$RESTORE_PASSWORD" \
+  -e POSTGRES_HOST_AUTH_METHOD=trust \
   postgres:17 >/dev/null
 
 echo "[2/6] Aguardando banco temporario ficar pronto"
@@ -66,6 +77,7 @@ docker cp "$BACKUP_FILE" "$CONTAINER_NAME:/tmp/restore.dump"
 
 echo "[4/6] Restaurando dump"
 docker exec "$CONTAINER_NAME" pg_restore \
+  --exit-on-error \
   -U "$RESTORE_USER" \
   -d "$RESTORE_DB" \
   --clean \

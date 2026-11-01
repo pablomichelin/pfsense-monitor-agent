@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PageHero } from '@/components/page-hero';
-import { Badge, Card, PageSection } from '@/components/ui';
+import { Alert, Badge, Card, PageSection } from '@/components/ui';
 import { ApiError, getNodesFilters, getNodesList, getRolesList, getSession } from '@/lib/api';
 import { AdminCadastroCards } from '@/components/admin-cadastro-cards';
 import { hasPermission } from '@/lib/authz';
@@ -42,13 +42,13 @@ export default async function AdminPage({
     redirect('/conta?access=denied');
   }
 
-  const canManageUsers = hasPermission(permissions, 'users.view');
+  const canManageUsers = session.user.role === 'superadmin' && hasPermission(permissions, 'users.create');
   const canViewPermissions = hasPermission(permissions, 'users.view');
 
   try {
     const [filterOptionsResult, nodesResult] = await Promise.all([
       getNodesFilters(),
-      getNodesList({ limit: 200 }),
+      getNodesList({ limit: 1000, sort_by: 'name', sort_order: 'asc' }),
     ]);
     filterOptions = filterOptionsResult;
     nodes = nodesResult;
@@ -106,6 +106,7 @@ export default async function AdminPage({
         </Card>
       </PageSection>
 
+      {nodes.items.length >= 1000 ? <Alert variant="warning">O seletor de tokens atingiu o limite de 1.000 firewalls da API. A lista pode estar incompleta.</Alert> : null}
       <AdminCadastroCards
         filterOptions={filterOptions}
         nodes={nodes}

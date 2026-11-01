@@ -126,8 +126,8 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
       const nextRetryAt = new Date(now.getTime() + backoffMs);
 
       if (command.expiresAt.getTime() <= nextRetryAt.getTime()) {
-        await this.prisma.nodeCommand.update({
-          where: { id: command.id },
+        await this.prisma.nodeCommand.updateMany({
+          where: { id: command.id, status: NodeCommandStatus.failed, retryCount: command.retryCount },
           data: {
             resultJson: {
               ...result,
@@ -138,8 +138,13 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
-      await this.prisma.nodeCommand.update({
-        where: { id: command.id },
+      const changed = await this.prisma.nodeCommand.updateMany({
+        where: {
+          id: command.id,
+          status: NodeCommandStatus.failed,
+          retryCount: command.retryCount,
+          expiresAt: { gt: nextRetryAt },
+        },
         data: {
           status: NodeCommandStatus.pending,
           retryCount: command.retryCount + 1,
@@ -155,6 +160,8 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
           },
         },
       });
+
+      if (changed.count === 0) continue;
 
       await this.prisma.auditLog.create({
         data: {
@@ -212,8 +219,8 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
         });
 
         for (const command of deferred) {
-          await this.prisma.nodeCommand.update({
-            where: { id: command.id },
+          await this.prisma.nodeCommand.updateMany({
+            where: { id: command.id, status: NodeCommandStatus.pending },
             data: {
               nextRetryAt: null,
             },
@@ -237,8 +244,8 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
       });
 
       for (const command of overflow) {
-        await this.prisma.nodeCommand.update({
-          where: { id: command.id },
+        await this.prisma.nodeCommand.updateMany({
+          where: { id: command.id, status: NodeCommandStatus.pending },
           data: {
             nextRetryAt: new Date(now.getTime() + 30_000),
           },

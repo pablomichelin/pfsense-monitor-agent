@@ -18,7 +18,7 @@ type RealtimeRefreshProps = {
   renderedAt?: string;
 };
 
-type StreamState = 'connecting' | 'live' | 'error';
+type StreamState = 'connecting' | 'live' | 'reconnecting' | 'closed';
 
 const sourceLabel: Record<DashboardRefreshEvent['source'], string> = {
   heartbeat_ingested: 'heartbeat',
@@ -47,18 +47,17 @@ export function RealtimeRefresh({
   const REFRESH_THROTTLE_MS = 30000;
 
   useEffect(() => {
+    setStreamState('connecting');
+    setLastEvent(null);
+    lastRefreshAtRef.current = 0;
     const eventSource = new EventSource('/api/realtime/dashboard');
 
     const scheduleRefresh = (payload: DashboardRefreshEvent | null) => {
-      if (scope === 'node' && nodeId && payload?.node_id !== nodeId) {
+      if (payload && scope === 'node' && payload.node_id !== nodeId) {
         return;
       }
 
       if (refreshTimerRef.current !== null) {
-        return;
-      }
-
-      if (Date.now() - lastRefreshAtRef.current < REFRESH_THROTTLE_MS) {
         return;
       }
 
@@ -68,22 +67,25 @@ export function RealtimeRefresh({
         startTransition(() => {
           router.refresh();
         });
-      }, 1200);
+      }, Math.max(1200, REFRESH_THROTTLE_MS - (Date.now() - lastRefreshAtRef.current)));
     };
 
     const handleConnected = () => {
       setStreamState('live');
+      // Recupera mudanças entre o snapshot SSR e a primeira conexão.
+      scheduleRefresh(null);
     };
 
     const handleRefresh = (event: MessageEvent<string>) => {
-      setStreamState('live');
-
       try {
         const payload = JSON.parse(event.data) as DashboardRefreshEvent;
+        if (!payload || !['heartbeat_ingested', 'node_reconciled'].includes(payload.source) || !Number.isFinite(Date.parse(payload.occurred_at))) return;
+        if (scope === 'node' && payload.node_id !== nodeId) return;
+        setStreamState('live');
         setLastEvent(payload);
         scheduleRefresh(payload);
       } catch {
-        scheduleRefresh(null);
+        // Eventos incompletos não devem gerar uma atualização nem quebrar a UI.
       }
     };
 
@@ -92,11 +94,11 @@ export function RealtimeRefresh({
     };
 
     const handleError = () => {
-      setStreamState('error');
+      setStreamState(eventSource.readyState === EventSource.CLOSED ? 'closed' : 'reconnecting');
     };
 
     eventSource.addEventListener('open', handleConnected);
-    eventSource.addEventListener('connected', handleConnected);
+    eventSource.addEventListener('connected', handleKeepalive);
     eventSource.addEventListener('dashboard.refresh', handleRefresh as EventListener);
     eventSource.addEventListener('keepalive', handleKeepalive);
     eventSource.addEventListener('error', handleError);
@@ -108,7 +110,7 @@ export function RealtimeRefresh({
       }
 
       eventSource.removeEventListener('open', handleConnected);
-      eventSource.removeEventListener('connected', handleConnected);
+      eventSource.removeEventListener('connected', handleKeepalive);
       eventSource.removeEventListener(
         'dashboard.refresh',
         handleRefresh as EventListener,
@@ -120,11 +122,10 @@ export function RealtimeRefresh({
   }, [nodeId, router, scope, startTransition]);
 
   const statusLabel =
-    streamState === 'error'
-      ? 'Tempo real reconectando'
-      : isPending
-        ? 'Atualizando painel'
-        : 'Tempo real ativo';
+    streamState === 'connecting' ? 'Tempo real conectando'
+      : streamState === 'reconnecting' ? 'Tempo real reconectando'
+        : streamState === 'closed' ? 'Tempo real desconectado'
+          : isPending ? 'Atualizando painel' : 'Tempo real ativo';
 
   return (
     <div className="inline-flex min-w-[14rem] items-center justify-between gap-4 rounded-xl border border-slate-700/80 bg-slate-950/40 px-3 py-2 text-xs text-slate-400">
@@ -135,7 +136,7 @@ export function RealtimeRefresh({
               ? isPending
                 ? 'bg-amber-300'
                 : 'bg-cyan-400'
-              : streamState === 'error'
+              : streamState === 'reconnecting' || streamState === 'closed'
                 ? 'bg-rose-400'
                 : 'bg-slate-500'
           }`}

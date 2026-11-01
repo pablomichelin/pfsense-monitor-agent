@@ -22,6 +22,7 @@ import {
 import {
   normalizeCommandHistoryLimit,
 } from './command-registry.util';
+import { restoreCommandMaintenance } from '../node-commands/command-maintenance';
 import { scrubSensitiveCommandPayload } from '../technicians/technician-accounts.util';
 
 const ACTIVE_STATUSES: NodeCommandStatus[] = [
@@ -174,39 +175,43 @@ export class CommandOrchestratorService {
     const now = new Date();
     const definition = getCommandDefinition(command.type);
 
-    const updated = await this.prisma.nodeCommand.updateMany({
-      where: {
-        id: command.id,
-        status: {
-          in: ACTIVE_STATUSES,
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.nodeCommand.updateMany({
+        where: {
+          id: command.id,
+          status: {
+            in: ACTIVE_STATUSES,
+          },
         },
-      },
-      data: {
-        status: NodeCommandStatus.cancelled,
-        cancelledAt: now,
-        cancelledByUserId: input.cancelledByUserId,
-        completedAt: now,
-      },
-    });
-
-    if (updated.count === 0) {
-      throw new ConflictException('command state changed');
-    }
-
-    await this.prisma.auditLog.create({
-      data: {
-        actorType: 'user',
-        actorId: input.cancelledByUserId,
-        action: `${definition.auditPrefix}.request_cancelled`,
-        targetType: 'node_command',
-        targetId: command.id,
-        ipAddress: input.ipAddress,
-        metadataJson: {
-          node_id: input.nodeId,
-          command_type: command.type,
-          batch_id: command.batchId,
+        data: {
+          status: NodeCommandStatus.cancelled,
+          cancelledAt: now,
+          cancelledByUserId: input.cancelledByUserId,
+          completedAt: now,
         },
-      },
+      });
+
+      if (updated.count === 0) {
+        throw new ConflictException('command state changed');
+      }
+
+      await restoreCommandMaintenance(tx, command, now);
+
+      await tx.auditLog.create({
+        data: {
+          actorType: 'user',
+          actorId: input.cancelledByUserId,
+          action: `${definition.auditPrefix}.request_cancelled`,
+          targetType: 'node_command',
+          targetId: command.id,
+          ipAddress: input.ipAddress,
+          metadataJson: {
+            node_id: input.nodeId,
+            command_type: command.type,
+            batch_id: command.batchId,
+          },
+        },
+      });
     });
 
     if (command.batchId) {
@@ -260,7 +265,7 @@ export class CommandOrchestratorService {
         error?: string;
       }> = [];
 
-      for (const nodeId of uniqueNodeIds) {
+      for (const nodeId of [...uniqueNodeIds].sort()) {
         try {
           const node = await tx.node.findUnique({
             where: { id: nodeId },
@@ -470,7 +475,10 @@ export class CommandOrchestratorService {
     payloadJson?: Prisma.InputJsonValue;
     batchId?: string;
     idempotencyKey?: string;
-  }): Promise<NodeCommand> {
+  }, tx?: Prisma.TransactionClient): Promise<NodeCommand> {
+    if (tx) {
+      return this.enqueueCommandInTransaction(tx, input);
+    }
     return this.prisma.$transaction((tx) =>
       this.enqueueCommandInTransaction(tx, input),
     );
@@ -487,10 +495,15 @@ export class CommandOrchestratorService {
       idempotencyKey?: string;
     },
   ): Promise<NodeCommand> {
+    await tx.$queryRaw`SELECT id FROM nodes WHERE id = ${input.nodeId}::uuid FOR UPDATE`;
     const definition = getCommandDefinition(input.type);
     const normalizedPayload = definition.validatePayload(input.payloadJson);
 
-    if (input.idempotencyKey) {
+    const carriesPassword =
+      input.type === NodeCommandType.local_user_create ||
+      input.type === NodeCommandType.local_user_set_password ||
+      normalizedPayload?.follow_up_technician_provision != null;
+    if (input.idempotencyKey && !carriesPassword) {
       const existing = await tx.nodeCommand.findFirst({
         where: {
           nodeId: input.nodeId,
@@ -559,7 +572,7 @@ export class CommandOrchestratorService {
         payloadJson: normalizedPayload as Prisma.InputJsonValue | undefined,
         expiresAt,
         batchId: input.batchId,
-        idempotencyKey: input.idempotencyKey,
+        idempotencyKey: carriesPassword ? undefined : input.idempotencyKey,
         maxRetries: definition.maxRetries,
         nextRetryAt,
       },

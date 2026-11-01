@@ -1,5 +1,7 @@
 import { IsArray, IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { NodeCommandType } from '@prisma/client';
+import { EmptyStringToUndefined } from '../../common/empty-to-undefined';
+import { GENERIC_BATCH_COMMAND_TYPES } from '../generic-command-batch.policy';
 
 export class ListNodeCommandsQueryDto {
   @IsOptional()
@@ -14,7 +16,9 @@ export class ListNodeCommandsQueryDto {
 }
 
 export class CreateCommandBatchDto {
-  @IsIn(Object.values(NodeCommandType))
+  @IsIn([...GENERIC_BATCH_COMMAND_TYPES], {
+    message: 'command_type requires its dedicated operation endpoint; generic batches only support config_backup_now',
+  })
   command_type!: NodeCommandType;
 
   @IsArray()
@@ -24,6 +28,7 @@ export class CreateCommandBatchDto {
   @IsOptional()
   label?: string;
 
+  @EmptyStringToUndefined()
   @IsOptional()
   @IsUUID('4')
   client_id?: string;

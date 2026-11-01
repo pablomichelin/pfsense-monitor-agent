@@ -2,6 +2,10 @@
 
 set -eu
 
+unset ENV_NODE_SECRET LEGACY_NODE_SECRET NODE_SECRET
+ENV_NODE_SECRET="${MONITOR_UPDATE_NODE_SECRET:-}"
+unset MONITOR_UPDATE_NODE_SECRET
+
 RELEASE_URL=""
 EXPECTED_SHA256=""
 SECRET_FILE=""
@@ -77,8 +81,8 @@ shell_quote() {
 }
 
 read_node_secret() {
-  if [ -n "${MONITOR_UPDATE_NODE_SECRET:-}" ]; then
-    NODE_SECRET="$MONITOR_UPDATE_NODE_SECRET"
+  if [ -n "$ENV_NODE_SECRET" ]; then
+    NODE_SECRET="$ENV_NODE_SECRET"
     return 0
   fi
 
@@ -133,6 +137,7 @@ if ! read_node_secret; then
   echo "Node secret required via MONITOR_UPDATE_NODE_SECRET or --secret-file." >&2
   exit 1
 fi
+unset ENV_NODE_SECRET LEGACY_NODE_SECRET
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
@@ -160,8 +165,14 @@ fi
 # B3: reidrata os argumentos preservando limites (sem word-splitting cego).
 eval "set -- $INSTALL_ARGS"
 export INSTALL_ROOT
-export MONITOR_UPDATE_NODE_SECRET="$NODE_SECRET"
 
-"$EXTRACT_DIR/pfsense-package/bootstrap/install.sh" \
-  --node-secret "$NODE_SECRET" \
-  "$@"
+installer="$EXTRACT_DIR/pfsense-package/bootstrap/install.sh"
+# Inspect only the SHA256-verified installer; never rewrite artifact contents.
+if grep -q 'MONITOR_UPDATE_NODE_SECRET' "$installer"; then
+  MONITOR_UPDATE_NODE_SECRET="$NODE_SECRET" "$installer" "$@"
+else
+  # Published 0.5.25 and earlier only accept the CLI option. Preserve identity
+  # until those artifacts are retired; their existing argv exposure remains.
+  echo "Warning: verified legacy installer lacks secret environment support; using --node-secret in process arguments (existing legacy exposure)." >&2
+  "$installer" --node-secret "$NODE_SECRET" "$@"
+fi

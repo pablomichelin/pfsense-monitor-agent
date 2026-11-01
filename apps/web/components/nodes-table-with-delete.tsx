@@ -44,6 +44,8 @@ export function NodesTableWithDelete({ nodes, canDelete }: Props) {
   const [batchModal, setBatchModal] = useState(false);
   const [singleModal, setSingleModal] = useState<Node | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [needsTechnicianConfirm, setNeedsTechnicianConfirm] = useState(false);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -68,8 +70,13 @@ export function NodesTableWithDelete({ nodes, canDelete }: Props) {
   const handleBatchConfirm = async () => {
     if (selected.size === 0) return;
     setLoading(true);
+    setError(null);
     try {
-      await deleteNodesBatchAction(Array.from(selected));
+      const result = await deleteNodesBatchAction(Array.from(selected), needsTechnicianConfirm);
+      if (result && !result.ok) {
+        setError(result.error);
+        setNeedsTechnicianConfirm(Boolean(result.requiresTechnicianConfirm));
+      }
     } finally {
       setLoading(false);
     }
@@ -78,8 +85,13 @@ export function NodesTableWithDelete({ nodes, canDelete }: Props) {
   const handleSingleConfirm = async () => {
     if (!singleModal) return;
     setLoading(true);
+    setError(null);
     try {
-      await deleteNodeAction(singleModal.id);
+      const result = await deleteNodeAction(singleModal.id, needsTechnicianConfirm);
+      if (result && !result.ok) {
+        setError(result.error);
+        setNeedsTechnicianConfirm(Boolean(result.requiresTechnicianConfirm));
+      }
     } finally {
       setLoading(false);
     }
@@ -230,6 +242,7 @@ export function NodesTableWithDelete({ nodes, canDelete }: Props) {
                 <span className="text-slate-500">node_uid:</span> {singleModal.node_uid}
               </p>
             </div>
+            {error ? <p className="mt-4 text-sm text-rose-200">{error}</p> : null}
             <div className="mt-6 flex justify-end gap-3">
               <Button
                 type="button"
@@ -240,7 +253,7 @@ export function NodesTableWithDelete({ nodes, canDelete }: Props) {
                 Cancelar
               </Button>
               <Button type="button" variant="danger" onClick={handleSingleConfirm} loading={loading}>
-                {loading ? 'Excluindo...' : 'Excluir'}
+                {loading ? 'Excluindo...' : needsTechnicianConfirm ? 'Excluir mesmo assim' : 'Excluir'}
               </Button>
             </div>
           </div>
@@ -269,6 +282,7 @@ export function NodesTableWithDelete({ nodes, canDelete }: Props) {
                 </li>
               ))}
             </ul>
+            {error ? <p className="mt-4 text-sm text-rose-200">{error}</p> : null}
             <div className="mt-6 flex justify-end gap-3">
               <Button
                 type="button"
@@ -279,7 +293,11 @@ export function NodesTableWithDelete({ nodes, canDelete }: Props) {
                 Cancelar
               </Button>
               <Button type="button" variant="danger" onClick={handleBatchConfirm} loading={loading}>
-                {loading ? 'Excluindo...' : `Excluir ${selectedNodes.length} host(s)`}
+                {loading
+                  ? 'Excluindo...'
+                  : needsTechnicianConfirm
+                    ? 'Excluir mesmo assim'
+                    : `Excluir ${selectedNodes.length} host(s)`}
               </Button>
             </div>
           </div>

@@ -116,6 +116,32 @@ export class NodeRequestAuthService {
     rawBody: Buffer;
     receivedAt: Date;
   }): Promise<AuthenticatedNodeRequest> {
+    try {
+      return await this.authenticate(input);
+    } catch (error) {
+      // Somente categorias fixas: nunca registrar HMAC, corpo, segredo ou UID.
+      const reasons: Record<string, string> = {
+        'timestamp outside allowed window': 'timestamp_skew',
+        'unknown node': 'unknown_node',
+        'active node credential not found': 'missing_credential',
+        'invalid node request signature': 'invalid_signature',
+        'replayed node request signature': 'replay',
+      };
+      const reason = error instanceof Error ? reasons[error.message] : undefined;
+      if (reason) {
+        this.logger.warn(JSON.stringify({ event: 'node_auth_rejected', reason }));
+      }
+      throw error;
+    }
+  }
+
+  private async authenticate(input: {
+    headerNodeUid?: string;
+    headerTimestamp?: string;
+    headerSignature?: string;
+    rawBody: Buffer;
+    receivedAt: Date;
+  }): Promise<AuthenticatedNodeRequest> {
     const headerNodeUid = this.requireHeader('X-Node-Uid', input.headerNodeUid);
     const headerTimestampRaw = this.requireHeader(
       'X-Timestamp',

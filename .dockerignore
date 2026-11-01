@@ -9,6 +9,8 @@ data
 .env.api
 .env.db
 .env.web
+**/.env
+**/.env.*
 apps/api/node_modules
 apps/api/dist
 apps/web/node_modules

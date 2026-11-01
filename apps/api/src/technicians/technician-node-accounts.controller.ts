@@ -49,6 +49,7 @@ export class TechnicianNodeAccountsController {
       nodeId,
       request.auth!.userId,
       body,
+      getAccessActor(request),
       resolveClientIp(request),
     );
   }

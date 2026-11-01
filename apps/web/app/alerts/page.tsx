@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { parsePage, currentAlertPage } from '@/lib/pagination';
 import { redirect } from 'next/navigation';
 import { AdvancedSection } from '@/components/advanced-section';
 import { PageHero } from '@/components/page-hero';
@@ -70,24 +71,26 @@ function ActionForms({
   alertId,
   status,
   returnTo,
-  canManageAlerts,
+  canAcknowledgeAlerts,
+  canResolveAlerts,
 }: {
   alertId: string;
   status: string;
   returnTo: string;
-  canManageAlerts: boolean;
+  canAcknowledgeAlerts: boolean;
+  canResolveAlerts: boolean;
 }) {
   if (status === 'resolved') {
     return <span className="text-xs text-slate-500">Resolvido</span>;
   }
 
-  if (!canManageAlerts) {
+  if (!(canAcknowledgeAlerts && status === 'open') && !canResolveAlerts) {
     return <span className="text-xs text-slate-500">Somente leitura</span>;
   }
 
   return (
     <div className="flex flex-col gap-2">
-      {status === 'open' ? (
+      {canAcknowledgeAlerts && status === 'open' ? (
         <form action={acknowledgeAlertAction} className="flex">
           <input type="hidden" name="alert_id" value={alertId} />
           <input type="hidden" name="return_to" value={returnTo} />
@@ -96,7 +99,7 @@ function ActionForms({
           </Button>
         </form>
       ) : null}
-      <form action={resolveAlertAction} className="flex flex-col gap-2">
+      {canResolveAlerts ? <form action={resolveAlertAction} className="flex flex-col gap-2">
         <input type="hidden" name="alert_id" value={alertId} />
         <input type="hidden" name="return_to" value={returnTo} />
         <input
@@ -113,7 +116,7 @@ function ActionForms({
         >
           Resolver
         </Button>
-      </form>
+      </form> : null}
     </div>
   );
 }
@@ -131,7 +134,7 @@ export default async function AlertsPage({
   const severity = typeof params.severity === 'string' ? params.severity : undefined;
   const type = typeof params.type === 'string' ? params.type : undefined;
   const search = typeof params.search === 'string' ? params.search : undefined;
-  const page = typeof params.page === 'string' && /^\d+$/.test(params.page) ? Math.max(1, Number(params.page)) : 1;
+  const page = parsePage(params.page);
   const perPage = typeof params.per_page === 'string' && ['10', '25', '50'].includes(params.per_page) ? Number(params.per_page) : 25;
 
   let alerts;
@@ -163,7 +166,6 @@ export default async function AlertsPage({
 
   const canAcknowledgeAlerts = hasPermission(permissions, 'alerts.acknowledge');
   const canResolveAlerts = hasPermission(permissions, 'alerts.resolve');
-  const canManageAlerts = canAcknowledgeAlerts || canResolveAlerts;
 
   const sites = clientId
     ? filterOptions.sites.filter((site) => site.client_id === clientId)
@@ -183,6 +185,8 @@ export default async function AlertsPage({
       returnToParams.set(key, value);
     }
   }
+  returnToParams.set('per_page', String(perPage));
+  returnToParams.set('page', String(currentAlertPage(page, alerts.items.length, perPage)));
   const returnTo = returnToParams.toString()
     ? `/alerts?${returnToParams.toString()}`
     : '/alerts';
@@ -196,7 +200,7 @@ export default async function AlertsPage({
     return new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime();
   });
   const totalPages = Math.max(1, Math.ceil(orderedAlerts.length / perPage));
-  const currentPage = Math.min(page, totalPages);
+  const currentPage = currentAlertPage(page, orderedAlerts.length, perPage);
   const visibleAlerts = orderedAlerts.slice((currentPage - 1) * perPage, currentPage * perPage);
   const alertPageHref = (nextPage: number) => {
     const next = new URLSearchParams(returnToParams);
@@ -393,7 +397,8 @@ export default async function AlertsPage({
                       alertId={alert.id}
                       status={alert.status}
                       returnTo={returnTo}
-                      canManageAlerts={canManageAlerts}
+                      canAcknowledgeAlerts={canAcknowledgeAlerts}
+                      canResolveAlerts={canResolveAlerts}
                     />
                   </div>
                 </div>

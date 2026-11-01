@@ -14,6 +14,7 @@ import {
   TechnicianStatus,
 } from '@prisma/client';
 import { AccessActor } from '../auth/access-actor.type';
+import { randomUUID } from 'crypto';
 import { AccessPolicyService } from '../auth/access-policy.service';
 import { isAgentVersionAtLeast } from '../common/agent-version';
 import { appConfig } from '../config/app-config';
@@ -69,6 +70,25 @@ export class TechniciansService {
     private readonly orchestrator: CommandOrchestratorService,
     private readonly accessPolicy: AccessPolicyService,
   ) {}
+
+  private assertGlobalRegistryAccess(actor: AccessActor): void {
+    if (!this.accessPolicy.hasGlobalClientScope(actor)) {
+      throw new ForbiddenException('global technician registry requires global client scope');
+    }
+  }
+
+  private async technicianScope(actor: AccessActor): Promise<Prisma.TechnicianWhereInput> {
+    if (this.accessPolicy.hasGlobalClientScope(actor)) return {};
+    return { nodeAccounts: { some: { node: await this.accessPolicy.mergeNodeWhere(actor) } } };
+  }
+
+  private async findVisibleTechnician(id: string, actor: AccessActor): Promise<Technician> {
+    const technician = await this.prisma.technician.findFirst({
+      where: { id, ...(await this.technicianScope(actor)) },
+    });
+    if (!technician) throw new NotFoundException('technician not found');
+    return technician;
+  }
 
   private assertTechnicianAccountsEnabled() {
     if (!appConfig.technicianAccounts.enabled) {
@@ -191,25 +211,28 @@ export class TechniciansService {
    * Default: apenas `active` (removidos não aparecem na matriz/painéis).
    * Passe `'all'` para incluir soft-deletes históricos ainda no banco.
    */
-  async listTechnicians(status: TechnicianStatus | 'all' = TechnicianStatus.active) {
+  async listTechnicians(actor: AccessActor, status: TechnicianStatus | 'all' = TechnicianStatus.active) {
+    const scope = await this.technicianScope(actor);
+    const accountScope = { node: await this.accessPolicy.mergeNodeWhere(actor) };
     const technicians = await this.prisma.technician.findMany({
-      where: status === 'all' ? undefined : { status },
+      where: { ...scope, ...(status === 'all' ? {} : { status }) },
       orderBy: [{ status: 'asc' }, { fullName: 'asc' }],
       include: {
         _count: {
-          select: { nodeAccounts: true },
+          select: { nodeAccounts: { where: accountScope } },
         },
       },
     });
 
     return {
       generated_at: new Date().toISOString(),
+      batch_max_size: appConfig.technicianAccounts.batchMaxSize,
       items: technicians.map((technician) => ({
         id: technician.id,
         full_name: technician.fullName,
         login_username: technician.loginUsername,
         status: technician.status,
-        notes: technician.notes,
+        notes: this.accessPolicy.hasGlobalClientScope(actor) ? technician.notes : null,
         node_account_count: technician._count.nodeAccounts,
         created_at: technician.createdAt.toISOString(),
         revoked_at: technician.revokedAt?.toISOString() ?? null,
@@ -217,11 +240,12 @@ export class TechniciansService {
     };
   }
 
-  async getTechnician(id: string) {
-    const technician = await this.prisma.technician.findUnique({
-      where: { id },
+  async getTechnician(id: string, actor: AccessActor) {
+    const technician = await this.prisma.technician.findFirst({
+      where: { id, ...(await this.technicianScope(actor)) },
       include: {
         nodeAccounts: {
+          where: { node: await this.accessPolicy.mergeNodeWhere(actor) },
           include: {
             node: {
               select: {
@@ -249,7 +273,7 @@ export class TechniciansService {
         full_name: technician.fullName,
         login_username: technician.loginUsername,
         status: technician.status,
-        notes: technician.notes,
+        notes: this.accessPolicy.hasGlobalClientScope(actor) ? technician.notes : null,
         created_at: technician.createdAt.toISOString(),
         revoked_at: technician.revokedAt?.toISOString() ?? null,
         node_accounts: technician.nodeAccounts.map((account) => ({
@@ -320,8 +344,10 @@ export class TechniciansService {
     userId: string,
     technicianId: string,
     confirmLoginUsername: string,
+    actor: AccessActor,
     ipAddress?: string,
   ) {
+    this.assertGlobalRegistryAccess(actor);
     this.assertTechnicianAccountsEnabled();
 
     const technician = await this.prisma.technician.findUnique({
@@ -379,7 +405,8 @@ export class TechniciansService {
     };
   }
 
-  async createTechnician(userId: string, dto: CreateTechnicianDto, ipAddress?: string) {
+  async createTechnician(userId: string, dto: CreateTechnicianDto, actor: AccessActor, ipAddress?: string) {
+    this.assertGlobalRegistryAccess(actor);
     this.assertTechnicianAccountsEnabled();
 
     const loginUsername = validatePfsenseUsername(dto.login_username);
@@ -477,13 +504,12 @@ export class TechniciansService {
     nodeId: string,
     userId: string,
     dto: ProvisionTechnicianAccountDto,
+    actor: AccessActor,
     ipAddress?: string,
   ) {
     this.assertCreateEnabled();
 
-    const technician = await this.prisma.technician.findUnique({
-      where: { id: dto.technician_id },
-    });
+    const technician = await this.findVisibleTechnician(dto.technician_id, actor);
     if (!technician) {
       throw new NotFoundException('technician not found');
     }
@@ -663,13 +689,12 @@ export class TechniciansService {
   async createBatchProvision(
     userId: string,
     dto: BatchProvisionTechnicianDto,
+    actor: AccessActor,
     ipAddress?: string,
   ) {
     this.assertCreateEnabled();
 
-    const technician = await this.prisma.technician.findUnique({
-      where: { id: dto.technician_id },
-    });
+    const technician = await this.findVisibleTechnician(dto.technician_id, actor);
     if (!technician) {
       throw new NotFoundException('technician not found');
     }
@@ -872,13 +897,12 @@ export class TechniciansService {
   async createBatchPasswordReset(
     userId: string,
     dto: BatchPasswordResetTechnicianDto,
+    actor: AccessActor,
     ipAddress?: string,
   ) {
     this.assertPasswordResetEnabled();
 
-    const technician = await this.prisma.technician.findUnique({
-      where: { id: dto.technician_id },
-    });
+    const technician = await this.findVisibleTechnician(dto.technician_id, actor);
     if (!technician) {
       throw new NotFoundException('technician not found');
     }
@@ -1243,7 +1267,7 @@ export class TechniciansService {
       clientId: input.clientId,
       ipAddress: input.ipAddress,
       payloadByNode: input.payloadByNode,
-      idempotencyPrefix: `${input.commandType}-${input.technician.id}`,
+      idempotencyPrefix: `${input.commandType}-${input.technician.id}-${randomUUID()}`,
     });
 
     const batchRecord = await this.prisma.jobBatch.findUnique({
@@ -1575,6 +1599,7 @@ export class TechniciansService {
   async createBatchRevoke(
     userId: string,
     dto: BatchRevokeTechnicianDto,
+    actor: AccessActor,
     ipAddress?: string,
   ) {
     if (dto.action === 'delete') {
@@ -1583,9 +1608,7 @@ export class TechniciansService {
       this.assertDisableEnabled();
     }
 
-    const technician = await this.prisma.technician.findUnique({
-      where: { id: dto.technician_id },
-    });
+    const technician = await this.findVisibleTechnician(dto.technician_id, actor);
     if (!technician) {
       throw new NotFoundException('technician not found');
     }
@@ -1657,9 +1680,7 @@ export class TechniciansService {
       this.assertDisableEnabled();
     }
 
-    const technician = await this.prisma.technician.findUnique({
-      where: { id: technicianId },
-    });
+    const technician = await this.findVisibleTechnician(technicianId, actor);
     if (!technician) {
       throw new NotFoundException('technician not found');
     }

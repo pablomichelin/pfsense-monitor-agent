@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { FleetBatchBackupPanel } from '@/components/nodes/fleet-batch-backup-panel';
 import { FleetBatchPackageUpgradePanel } from '@/components/nodes/fleet-batch-package-upgrade-panel';
 import { FleetTechnicianManagementPanel } from '@/components/nodes/fleet-technician-management-panel';
@@ -10,6 +11,7 @@ import { Button, PageSection } from '@/components/ui';
 import type { StatusBadgeStatus } from '@/components/ui/status-badge';
 import type { BackupVisualStatus } from '@/lib/backup-status';
 import type { NodeCriticality } from '@/lib/api';
+import { deleteNodesBatchAction } from '@/lib/admin';
 import type { InventorySortBy, InventorySortOrder } from '@/lib/nodes-inventory-sort';
 
 type InventoryNode = {
@@ -43,7 +45,9 @@ type Props = {
   canRunPackageUpgrade: boolean;
   canManagePfTables: boolean;
   canManageTechnicians: boolean;
+  canManageTechnicianRegistry?: boolean;
   canResetTechnicianPassword: boolean;
+  canDeleteHosts: boolean;
 };
 
 export function FleetInventorySection({
@@ -58,10 +62,16 @@ export function FleetInventorySection({
   canRunPackageUpgrade,
   canManagePfTables,
   canManageTechnicians,
+  canManageTechnicianRegistry = false,
   canResetTechnicianPassword,
+  canDeleteHosts,
 }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showFilterBackup, setShowFilterBackup] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [needsTechnicianConfirm, setNeedsTechnicianConfirm] = useState(false);
 
   const visibleNodeIds = useMemo(
     () => new Set(nodes.map((node) => node.id)),
@@ -129,11 +139,29 @@ export function FleetInventorySection({
     canRequestBackupBatch ||
     canManagePfTables ||
     canManageTechnicians ||
-    canResetTechnicianPassword;
+    canResetTechnicianPassword ||
+    canDeleteHosts;
 
   const allVisibleNodeIds = useMemo(() => nodes.map((node) => node.id), [nodes]);
   const selectedNodeIds = selectedNodes.map((node) => node.id);
   const technicianNodeIds = selectedNodeIds;
+
+  const handleDeleteConfirm = async () => {
+    if (selectedNodeIds.length === 0) {
+      return;
+    }
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      const result = await deleteNodesBatchAction(selectedNodeIds, needsTechnicianConfirm);
+      if (result && !result.ok) {
+        setDeleteError(result.error);
+        setNeedsTechnicianConfirm(Boolean(result.requiresTechnicianConfirm));
+      }
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   const filterBackupPanel =
     canRequestBackupBatch && nodes.length > 0 && showFilterBackup ? (
@@ -172,6 +200,20 @@ export function FleetInventorySection({
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {filterBackupEntry}
+              {canDeleteHosts ? (
+                <Button
+                  type="button"
+                  variant="danger-outline"
+                  size="sm"
+                  onClick={() => {
+                    setDeleteError(null);
+                    setNeedsTechnicianConfirm(false);
+                    setDeleteOpen(true);
+                  }}
+                >
+                  Excluir hosts ({selectedCount})
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="secondary"
@@ -216,6 +258,7 @@ export function FleetInventorySection({
                 totalVisibleCount={nodes.length}
                 clientId={clientId}
                 canManageTechnicians={canManageTechnicians}
+                canManageRegistry={canManageTechnicianRegistry}
                 canResetTechnicianPassword={canResetTechnicianPassword}
               />
             ) : null}
@@ -227,6 +270,31 @@ export function FleetInventorySection({
           {filterBackupPanel}
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title={needsTechnicianConfirm ? 'Técnico vinculado' : 'Excluir hosts'}
+        confirmLabel={needsTechnicianConfirm ? 'Excluir mesmo assim' : 'Excluir'}
+        tone={needsTechnicianConfirm ? 'warning' : 'danger'}
+        loading={deleteLoading}
+        onCancel={() => {
+          if (!deleteLoading) {
+            setDeleteOpen(false);
+            setNeedsTechnicianConfirm(false);
+            setDeleteError(null);
+          }
+        }}
+        onConfirm={handleDeleteConfirm}
+        description={
+          <>
+            <p>
+              Esta ação remove permanentemente {selectedCount} host(s) do cadastro,
+              incluindo credenciais, heartbeats e alertas.
+            </p>
+            {deleteError ? <p className="mt-4 text-sm text-rose-200">{deleteError}</p> : null}
+          </>
+        }
+      />
 
       <PageSection title="Inventário">
         <NodesInventoryTable

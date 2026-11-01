@@ -70,26 +70,22 @@ export class AccessPolicyService {
   }
 
   /**
-   * PERM-001: `clients.create` autoriza a rota na API, mas criar cliente top-level
-   * exige superadmin, RBAC scope desligado ou permissao `inventory.global`.
+   * PERM-001: `clients.create` autoriza a rota. Criar cliente top-level exige
+   * superadmin, RBAC de escopo desligado ou a permissão `inventory.global`.
+   * O cliente novo entra no escopo de quem criou e de quem já via a frota inteira.
    */
   async assertCanCreateClient(actor: AccessActor): Promise<void> {
     if (this.hasGlobalClientScope(actor)) {
       return;
     }
 
-    // C4: usuarios com escopo por cliente (admin escopado etc.) nunca criam cliente top-level,
-    // mesmo que tenham inventory.global na matriz de permissoes.
-    const allowedClientIds = await this.getAllowedClientIds(actor);
-    if (allowedClientIds !== null) {
-      throw new ForbiddenException('creating clients requires global inventory scope');
-    }
-
     if (await this.permissionsService.hasPermission(actor.role, 'inventory.global')) {
       return;
     }
 
-    throw new ForbiddenException('creating clients requires inventory.global permission');
+    throw new ForbiddenException(
+      'Criar clientes exige a permissão de cadastro (inventory.global).',
+    );
   }
 
   async assertClientAccess(actor: AccessActor, clientId: string): Promise<void> {

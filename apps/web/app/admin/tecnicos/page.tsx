@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PageHero } from '@/components/page-hero';
-import { FleetTechnicianManagementPanel } from '@/components/nodes/fleet-technician-management-panel';
+import { AdminTechnicianTargets } from '@/components/admin-technician-targets';
 import { Alert, Badge, Card, PageSection } from '@/components/ui';
 import {
   ApiError,
@@ -10,6 +10,7 @@ import {
   getTechnician,
   getTechnicians,
   type TechnicianDetailResponse,
+  type NodesListResponse,
 } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
 import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
@@ -22,7 +23,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-const NODE_LIST_LIMIT = 500;
+const NODE_LIST_LIMIT = 1000;
 
 function countByStatus(nodeAccounts: TechnicianDetailResponse['technician']['node_accounts']) {
   return nodeAccounts.reduce(
@@ -51,10 +52,12 @@ export default async function AdminTecnicosPage() {
   }
 
   const canManageTechnicians = hasPermission(permissions, 'technicians.manage');
+  const canManageRegistry = session.has_global_client_scope === true && canManageTechnicians;
   const canResetTechnicianPassword = hasPermission(permissions, 'technicians.password_reset.run');
 
   let technicianDetails: TechnicianDetailResponse['technician'][] = [];
-  let allNodeIds: string[] = [];
+  let nodeOptions: NodesListResponse['items'] = [];
+  let batchMaxSize = 0;
 
   try {
     const [techniciansList, nodesList] = await Promise.all([
@@ -62,7 +65,8 @@ export default async function AdminTecnicosPage() {
       getNodesList({ limit: NODE_LIST_LIMIT }),
     ]);
 
-    allNodeIds = nodesList.items.map((node) => node.id);
+    nodeOptions = nodesList.items;
+    batchMaxSize = techniciansList.batch_max_size;
 
     const details = await Promise.all(
       techniciansList.items.map((item) =>
@@ -88,14 +92,16 @@ export default async function AdminTecnicosPage() {
       <PageHero
         eyebrow="Administração"
         title="Técnicos"
-        description="Cadastro central de técnicos, contas locais por firewall e provisionamento em lote. Responde 'quem tem acesso a este firewall?' e 'esse técnico ainda tem acesso em algum lugar?' sem abrir o pfSense."
+        description="Técnicos e contas locais visíveis no seu escopo, com provisionamento por firewall."
         stats={[
-          { label: 'Técnicos cadastrados', value: String(technicianDetails.length) },
-          { label: 'Contas ativas na frota', value: String(totalActiveAccounts) },
-          { label: 'Firewalls no inventário', value: String(allNodeIds.length) },
+          { label: 'Técnicos no escopo', value: String(technicianDetails.length) },
+          { label: 'Contas ativas no escopo', value: String(totalActiveAccounts) },
+          { label: 'Firewalls no inventário', value: String(nodeOptions.length) },
         ]}
       />
 
+      {!canManageRegistry ? <Alert variant="info">O cadastro global de técnicos é reservado a administradores com escopo global. Para o primeiro vínculo de um técnico, procure um administrador global.</Alert> : null}
+      {nodeOptions.length >= NODE_LIST_LIMIT ? <Alert variant="warning">O inventário atingiu o limite de {NODE_LIST_LIMIT} firewalls da API. Para selecionar alvos específicos, use os filtros do inventário.</Alert> : null}
       <PageSection title="Navegação">
         <div className="flex flex-wrap gap-3">
           <Link href="/admin" className={adminNavLinkClassName}>
@@ -113,7 +119,7 @@ export default async function AdminTecnicosPage() {
       >
         {technicianDetails.length === 0 ? (
           <Card className="p-6">
-            <Alert variant="info">Nenhum técnico cadastrado ainda.</Alert>
+            <Alert variant="info">Nenhum técnico visível neste escopo.</Alert>
           </Card>
         ) : (
           <div className="space-y-3">
@@ -134,7 +140,7 @@ export default async function AdminTecnicosPage() {
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
                         {technician.node_accounts.length === 0
-                          ? 'Sem contas em nenhum firewall'
+                          ? 'Sem contas visíveis neste escopo'
                           : `${counts.active ?? 0} ativa(s), ${counts.pending_create ?? 0} provisionando, ${
                               counts.disabled ?? 0
                             } desativada(s), ${counts.removed ?? 0} removida(s)`}
@@ -147,7 +153,7 @@ export default async function AdminTecnicosPage() {
                   <div className="border-t border-slate-800 px-4 py-3">
                     {technician.node_accounts.length === 0 ? (
                       <p className="text-sm text-slate-500">
-                        Este técnico não tem conta provisionada em nenhum firewall.
+                        Este técnico não tem conta provisionada visível neste escopo.
                       </p>
                     ) : (
                       <div className="overflow-x-auto">
@@ -206,13 +212,13 @@ export default async function AdminTecnicosPage() {
       {canManageTechnicians || canResetTechnicianPassword ? (
         <PageSection
           title="Cadastro e ações em lote"
-          description="Cadastrar técnicos e agir sobre toda a frota listada. Para escolher firewalls específicos, use os checkboxes em /nodes (mesma seleção do upgrade de package)."
+          description="Selecione explicitamente os firewalls do lote abaixo, dentro do limite informado pelo controlador."
         >
-          <FleetTechnicianManagementPanel
-            nodeIds={allNodeIds}
-            mode="filter"
-            totalVisibleCount={allNodeIds.length}
+          <AdminTechnicianTargets
+            nodes={nodeOptions}
+            batchMaxSize={batchMaxSize}
             canManageTechnicians={canManageTechnicians}
+            canManageRegistry={canManageRegistry}
             canResetTechnicianPassword={canResetTechnicianPassword}
           />
         </PageSection>

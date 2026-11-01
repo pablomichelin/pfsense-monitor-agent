@@ -1,7 +1,7 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY apps/api/package*.json ./
-RUN npm install
+RUN npm ci
 COPY apps/api/prisma ./prisma
 RUN npx prisma generate
 

@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import {
-  createAgentTokenAction,
   createClientAction,
   createUserAction,
 } from '@/lib/admin';
+import { AgentTokenForm } from '@/components/agent-token-form';
 import { CreateNodeForm } from '@/components/create-node-form';
 import { AdminCollapsibleCard } from '@/components/admin-collapsible-card';
 import { AdminSectionMessage } from '@/components/admin-section-message';
@@ -193,31 +193,7 @@ export function AdminCadastroCards({
           status={status}
           message={message}
         />
-        <form action={createAgentTokenAction} className="mt-4 space-y-3">
-          <select
-            name="node_id"
-            required
-            defaultValue=""
-            className={selectClass}
-          >
-            <option value="" disabled>
-              Selecione o firewall
-            </option>
-            {nodes.items.slice(0, 20).map((node) => (
-              <option key={node.id} value={node.id}>
-                {node.client.code} — {node.node_uid}
-              </option>
-            ))}
-          </select>
-          <input
-            type="datetime-local"
-            name="expires_at"
-            className={inputClass}
-          />
-          <button type="submit" className={submitClass}>
-            Emitir token
-          </button>
-        </form>
+        <AgentTokenForm nodes={nodes.items} />
       </AdminCollapsibleCard>
     </div>
   );

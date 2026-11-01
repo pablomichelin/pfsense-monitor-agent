@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { isRedirectError } from 'next/dist/client/components/redirect-error';
 import {
+  ApiError,
   createAgentToken,
   createClient,
   createNode,
@@ -366,11 +367,15 @@ export async function rotateNodeSecretAction(formData: FormData): Promise<void> 
   }
 }
 
-export async function createAgentTokenAction(formData: FormData): Promise<void> {
+export type AgentTokenActionResult =
+  | { ok: true; token: string; hint: string }
+  | { ok: false; error: string };
+
+export async function createAgentTokenAction(formData: FormData): Promise<AgentTokenActionResult> {
   const nodeId = String(formData.get('node_id') ?? '').trim();
 
   if (!nodeId) {
-    redirect('/admin?section=agent-token&status=error&message=Node%20invalido');
+    return { ok: false, error: 'Selecione um firewall.' };
   }
 
   try {
@@ -380,14 +385,11 @@ export async function createAgentTokenAction(formData: FormData): Promise<void> 
 
     revalidatePath('/admin');
     revalidatePath(`/nodes/${nodeId}`);
-    adminRedirect(
-      'agent-token',
-      'ok',
-      `Token ${response.token.token_hint} emitido. Copie o valor agora: ${response.token.agent_token}`,
-    );
+    return { ok: true, token: response.token.agent_token, hint: response.token.token_hint };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Falha ao emitir token';
-    adminRedirect('agent-token', 'error', message);
+    rethrowIfRedirectError(error);
+    // Não refletir respostas de erro do upstream: podem conter a credencial.
+    return { ok: false, error: 'Não foi possível emitir o token. Verifique a sessão e tente novamente.' };
   }
 }
 
@@ -405,6 +407,7 @@ export async function revokeAgentTokenAction(formData: FormData): Promise<void> 
     revalidatePath(`/nodes/${nodeId}`);
     adminRedirect('agent-token-list', 'ok', 'Token revogado.');
   } catch (error) {
+    rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao revogar token';
     adminRedirect('agent-token-list', 'error', message);
   }
@@ -433,12 +436,29 @@ export async function setNodeMaintenanceAction(formData: FormData): Promise<void
   }
 }
 
-export async function deleteNodeAction(nodeId: string): Promise<void> {
+type DeleteActionFailure = {
+  ok: false;
+  error: string;
+  requiresTechnicianConfirm?: boolean;
+};
+
+function deleteFailure(error: unknown, fallback: string): DeleteActionFailure {
+  return {
+    ok: false,
+    error: error instanceof Error ? error.message : fallback,
+    requiresTechnicianConfirm: error instanceof ApiError && error.code === 'technician_link',
+  };
+}
+
+export async function deleteNodeAction(
+  nodeId: string,
+  confirmLinkedTechnicians = false,
+): Promise<DeleteActionFailure | undefined> {
   if (!nodeId?.trim()) {
     redirect('/nodes');
   }
   try {
-    await deleteNode(nodeId.trim());
+    await deleteNode(nodeId.trim(), { confirmLinkedTechnicians });
     revalidatePath('/nodes');
     revalidatePath('/dashboard');
     revalidatePath('/admin');
@@ -446,27 +466,28 @@ export async function deleteNodeAction(nodeId: string): Promise<void> {
     redirect('/nodes?deleted=1');
   } catch (error) {
     rethrowIfRedirectError(error);
-    const message = error instanceof Error ? error.message : 'Falha ao excluir host';
-    redirect(`/nodes?delete_error=${encodeURIComponent(message)}`);
+    return deleteFailure(error, 'Não excluí o host.');
   }
 }
 
-export async function deleteNodesBatchAction(ids: string[]): Promise<void> {
+export async function deleteNodesBatchAction(
+  ids: string[],
+  confirmLinkedTechnicians = false,
+): Promise<DeleteActionFailure | undefined> {
   const trimmed = ids.filter((id) => id?.trim()).map((id) => id.trim());
   if (trimmed.length === 0) {
-    redirect('/nodes?delete_error=Nenhum%20host%20selecionado');
+    return { ok: false, error: 'Nenhum host selecionado.' };
   }
   try {
-    await deleteNodesBatch(trimmed);
+    const response = await deleteNodesBatch(trimmed, { confirmLinkedTechnicians });
     revalidatePath('/nodes');
     revalidatePath('/dashboard');
     revalidatePath('/admin');
     revalidatePath('/bootstrap');
-    redirect(`/nodes?deleted_batch=${trimmed.length}`);
+    redirect(`/nodes?deleted_batch=${response.deleted_count}`);
   } catch (error) {
     rethrowIfRedirectError(error);
-    const message = error instanceof Error ? error.message : 'Falha ao excluir hosts';
-    redirect(`/nodes?delete_error=${encodeURIComponent(message)}`);
+    return deleteFailure(error, 'Não excluí os hosts selecionados.');
   }
 }
 

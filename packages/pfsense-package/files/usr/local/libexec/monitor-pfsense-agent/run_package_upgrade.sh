@@ -4,6 +4,9 @@
 
 set -eu
 
+# The upgrade reads its canonical secret below; never forward an inherited copy.
+unset MONITOR_UPDATE_NODE_SECRET
+
 COMMAND_ID="${1:-}"
 TARGET_VERSION="${2:-}"
 ARTIFACT_URL="${3:-}"
@@ -11,8 +14,9 @@ SHA256="${4:-}"
 STATE_FILE="${5:-}"
 CURL_CMD="${6:-curl}"
 LOG_FILE="${MONITOR_AGENT_LOG_FILE:-/var/log/monitor-pfsense-agent.log}"
-UPGRADE_LOG="/var/log/monitor-pfsense-package-upgrade.log"
-LOCK_FILE="/var/run/monitor-pfsense-package-upgrade.lock"
+UPGRADE_LOG="${MONITOR_PACKAGE_UPGRADE_LOG:-/var/log/monitor-pfsense-package-upgrade.log}"
+LOCK_FILE="${MONITOR_PACKAGE_UPGRADE_LOCK:-/var/run/monitor-pfsense-package-upgrade.lock}"
+WORK_DIR=""
 CONFIG_FILE="${MONITOR_AGENT_CONFIG_FILE:-/usr/local/etc/monitor-pfsense-agent.conf}"
 AGENT_BIN="${MONITOR_AGENT_BIN:-/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh}"
 
@@ -48,6 +52,7 @@ log_msg() {
 }
 
 cleanup_lock() {
+  [ -z "$WORK_DIR" ] || rm -rf "$WORK_DIR" 2>/dev/null || true
   rm -f "$LOCK_FILE" 2>/dev/null || true
   # Remove o marcador de upgrade pendente para o dedup de reentrega não
   # considerar um upgrade concluído como "em andamento".
@@ -103,10 +108,17 @@ package_upgrade_url_allowed() {
     if ($url === "" || $controller === "") { exit(1); }
     $parsed = parse_url($url);
     if (!is_array($parsed) || empty($parsed["host"])) { exit(1); }
-    if (strpos($url, $controller . "/") === 0) { exit(0); }
     $parsedController = parse_url($controller);
-    $controllerHost = trim((string) ($parsedController["host"] ?? ""));
-    if ($controllerHost !== "" && strcasecmp($parsed["host"], $controllerHost) === 0) { exit(0); }
+    if (!is_array($parsedController) || isset($parsed["user"]) || isset($parsed["pass"])
+      || isset($parsed["fragment"])) { exit(1); }
+    $scheme = strtolower((string) ($parsed["scheme"] ?? ""));
+    $controllerScheme = strtolower((string) ($parsedController["scheme"] ?? ""));
+    if (!in_array($scheme, ["http", "https"], true)) { exit(1); }
+    $port = $parsed["port"] ?? ($scheme === "https" ? 443 : 80);
+    $controllerPort = $parsedController["port"] ?? ($controllerScheme === "https" ? 443 : 80);
+    if ($scheme === $controllerScheme && $port === $controllerPort
+      && strcasecmp($parsed["host"], (string) ($parsedController["host"] ?? "")) === 0) { exit(0); }
+    if ($scheme !== "https" || $port !== 443) { exit(1); }
     $repoPath = "/pablomichelin/pfsense-monitor-agent/";
     foreach (array("raw.githubusercontent.com", "github.com") as $host) {
       if (strcasecmp($parsed["host"], $host) === 0
@@ -128,7 +140,9 @@ if ! acquire_lock; then
   exit 1
 fi
 
-trap 'cleanup_lock' EXIT INT TERM
+trap 'cleanup_lock' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 log_msg "start command_id=$COMMAND_ID target=$TARGET_VERSION"
 
@@ -138,33 +152,52 @@ if ! package_upgrade_url_allowed "$ARTIFACT_URL"; then
   exit 1
 fi
 
-repo_base="${MONITOR_PACKAGE_RELEASE_REPO_RAW_BASE:-https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main}"
-repo_base="${repo_base%/}"
-installer_url="${repo_base}/packages/pfsense-package/bootstrap/install-from-release.sh"
+# Only execute the installer INSIDE the artifact authenticated by the command.
+# No mutable main-branch bootstrap download and no temporary node-secret copy.
+case "$SHA256" in
+  *[!0-9a-fA-F]*|'') post_command_failed "invalid SHA256"; exit 1 ;;
+esac
+if [ "${#SHA256}" -ne 64 ]; then
+  post_command_failed "invalid SHA256"
+  exit 1
+fi
+WORK_DIR="$(mktemp -d)"
+chmod 700 "$WORK_DIR"
+archive="$WORK_DIR/package.tar.gz"
+mkdir "$WORK_DIR/extract"
 
-if ! package_upgrade_url_allowed "$installer_url"; then
-  log_msg "installer URL not allowed"
-  post_command_failed "installer URL not allowed"
+if ! "$CURL_CMD" -fsSL --proto '=http,https' --proto-redir '=https' \
+  "$ARTIFACT_URL" -o "$archive" >>"$UPGRADE_LOG" 2>&1; then
+  post_command_failed "package artifact download failed"
+  exit 1
+fi
+actual_sha256="$(php -r 'echo hash_file("sha256", $argv[1]);' "$archive")"
+expected_sha256="$(printf '%s' "$SHA256" | tr 'A-F' 'a-f')"
+if [ "$actual_sha256" != "$expected_sha256" ]; then
+  post_command_failed "package artifact SHA256 mismatch"
+  exit 1
+fi
+if ! tar -C "$WORK_DIR/extract" -xzf "$archive" >>"$UPGRADE_LOG" 2>&1; then
+  post_command_failed "package artifact extraction failed"
+  exit 1
+fi
+# Same layout as build-pfsense-package-artifact.sh / install-from-release.sh.
+installer="$WORK_DIR/extract/pfsense-package/bootstrap/install.sh"
+if [ ! -f "$installer" ] || [ -L "$installer" ]; then
+  post_command_failed "verified package installer missing"
   exit 1
 fi
 
 node_secret="$(read_config_value NODE_SECRET 2>/dev/null || true)"
-if [ -z "$node_secret" ] && [ -r /var/db/monitor-pfsense-agent/node_secret ]; then
-  node_secret="$(cat /var/db/monitor-pfsense-agent/node_secret)"
+node_secret_file="$(read_config_value NODE_SECRET_FILE 2>/dev/null || true)"
+node_secret_file="${node_secret_file:-/var/db/monitor-pfsense-agent/node_secret}"
+if [ -z "$node_secret" ] && [ -r "$node_secret_file" ]; then
+  node_secret="$(cat "$node_secret_file")"
 fi
-
 if [ -z "$node_secret" ]; then
-  log_msg "node secret unavailable"
   post_command_failed "node secret unavailable"
   exit 1
 fi
-
-secret_file="/var/db/monitor-pfsense-agent/.update-node-secret"
-mkdir -p /var/db/monitor-pfsense-agent
-umask 077
-printf '%s' "$node_secret" >"$secret_file"
-chmod 600 "$secret_file"
-umask 022
 
 controller_url="$(read_config_value CONTROLLER_URL)"
 node_uid="$(read_config_value NODE_UID)"
@@ -172,27 +205,16 @@ customer_code="$(read_config_value CUSTOMER_CODE)"
 heartbeat_mode="$(read_config_value HEARTBEAT_MODE)"
 heartbeat_mode="${heartbeat_mode:-normal}"
 
-if command -v fetch >/dev/null 2>&1; then
-  fetch -o /tmp/install-from-release.sh "$installer_url" >>"$UPGRADE_LOG" 2>&1
-else
-  $CURL_CMD -fsSL "$installer_url" -o /tmp/install-from-release.sh >>"$UPGRADE_LOG" 2>&1
-fi
-chmod +x /tmp/install-from-release.sh
-
 set +e
 MONITOR_PACKAGE_UPGRADE_MODE=1 \
-MONITOR_UPDATE_NODE_SECRET="$node_secret" /tmp/install-from-release.sh \
-  --release-url "$ARTIFACT_URL" \
-  --sha256 "$SHA256" \
-  --secret-file "$secret_file" \
+MONITOR_UPDATE_NODE_SECRET="$node_secret" /bin/sh "$installer" \
   --controller-url "$controller_url" \
   --node-uid "$node_uid" \
   --customer-code "$customer_code" \
   --heartbeat-mode "$heartbeat_mode" >>"$UPGRADE_LOG" 2>&1
 install_code=$?
 set -e
-
-rm -f "$secret_file"
+unset node_secret
 
 if [ "$install_code" -ne 0 ]; then
   log_msg "install-from-release failed exit=$install_code"

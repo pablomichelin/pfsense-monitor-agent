@@ -1010,7 +1010,7 @@ model TechnicianNodeAccount {
   updatedAt        DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   technician Technician @relation(fields: [technicianId], references: [id])
-  node       Node       @relation(fields: [nodeId], references: [id])
+  node       Node       @relation(fields: [nodeId], references: [id], onDelete: Cascade)
 
   @@unique([technicianId, nodeId])
   @@index([nodeId])

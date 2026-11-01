@@ -51,6 +51,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAgentTokenDto } from './dto/create-agent-token.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { SetUserClientScopesDto } from './dto/set-user-client-scopes.dto';
+import { preserveNodeDeleteBackups } from './node-delete-backups';
 
 const toSlug = (value: string): string =>
   value
@@ -149,6 +150,64 @@ export class AdminService {
   private ensureNonEmptySlug(value: string, fallback: string): string {
     const normalized = toSlug(value);
     return normalized || fallback;
+  }
+
+  /**
+   * Quem cria o cliente passa a enxergá-lo. Quem já tinha escopo em todos os
+   * clientes ativos também recebe o novo, para o administrador da frota não
+   * ficar sem o cadastro que outro administrador acabou de abrir.
+   */
+  private async grantCreatedClientScope(
+    clientId: string,
+    actor?: AccessActor,
+  ): Promise<void> {
+    const otherActive = await this.prisma.client.findMany({
+      where: {
+        status: EntityStatus.active,
+        id: { not: clientId },
+      },
+      select: { id: true },
+    });
+    const otherIds = otherActive.map((client) => client.id);
+
+    const users = await this.prisma.user.findMany({
+      where: { status: 'active' },
+      select: {
+        id: true,
+        role: true,
+        clientScopes: { select: { clientId: true } },
+      },
+    });
+
+    const grantUserIds = new Set<string>();
+    if (actor && !isSuperadminRole(actor.role) && !isClientRole(actor.role)) {
+      grantUserIds.add(actor.userId);
+    }
+
+    if (otherIds.length > 0) {
+      for (const user of users) {
+        if (isSuperadminRole(user.role) || isClientRole(user.role)) {
+          continue;
+        }
+        const scoped = new Set(user.clientScopes.map((scope) => scope.clientId));
+        if (otherIds.every((id) => scoped.has(id))) {
+          grantUserIds.add(user.id);
+        }
+      }
+    }
+
+    if (grantUserIds.size === 0) {
+      return;
+    }
+
+    await this.prisma.userClientScope.createMany({
+      data: [...grantUserIds].map((userId) => ({
+        userId,
+        clientId,
+        grantedByUserId: actor?.userId ?? null,
+      })),
+      skipDuplicates: true,
+    });
   }
 
   private async withClientScope(
@@ -1524,7 +1583,6 @@ export class AdminService {
       created_at: string;
     };
   }> {
-    // C4: aplica escopo RBAC (superadmin global; admin/cliente escopados sao barrados).
     if (scopeActor) {
       await this.accessPolicy.assertCanCreateClient(scopeActor);
     }
@@ -1536,6 +1594,10 @@ export class AdminService {
         status: dto.status === 'inactive' ? EntityStatus.inactive : EntityStatus.active,
       },
     });
+
+    if (client.status === EntityStatus.active) {
+      await this.grantCreatedClientScope(client.id, scopeActor);
+    }
 
     await this.writeAuditLog({
       actorId,
@@ -2404,6 +2466,7 @@ export class AdminService {
     actorId?: string,
     actorIp?: string,
     scopeActor?: AccessActor,
+    confirmLinkedTechnicians = false,
   ): Promise<{
     ok: true;
     node_id: string;
@@ -2412,37 +2475,64 @@ export class AdminService {
   }> {
     await this.withNodeScope(scopeActor, nodeId);
 
-    const node = await this.prisma.node.findUnique({
-      where: { id: nodeId },
-      select: {
-        id: true,
-        nodeUid: true,
-        hostname: true,
-        displayName: true,
-      },
-    });
-    if (!node) {
-      throw new NotFoundException('node not found');
+    let node: { nodeUid: string };
+    try {
+      node = await this.prisma.$transaction(async (tx) => {
+        await this.lockNodeDeleteTargets(tx, [nodeId]);
+        const node = await tx.node.findUnique({
+          where: { id: nodeId },
+          select: {
+            id: true,
+            nodeUid: true,
+            hostname: true,
+            displayName: true,
+          },
+        });
+        if (!node) {
+          throw new NotFoundException('node not found');
+        }
+
+        const targetName = node.displayName ?? node.hostname;
+        const blocked = await this.describeNodeDeleteBlocks(tx, [nodeId]);
+        const block = blocked.get(nodeId);
+        if (block && !confirmLinkedTechnicians) {
+          throw new ConflictException({
+            message: this.formatNodeDeleteBlock(targetName, block.reason),
+            code: 'technician_link',
+          });
+        }
+
+        const backupCleanupPending = await preserveNodeDeleteBackups(tx, [node], actorId, actorIp);
+        if (block) {
+          await tx.technicianNodeAccount.deleteMany({
+            where: { nodeId },
+          });
+        }
+        await tx.node.delete({
+          where: { id: nodeId },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorType: 'user_session',
+            actorId,
+            action: 'admin.node.delete',
+            targetType: 'node',
+            targetId: nodeId,
+            ipAddress: actorIp,
+            metadataJson: {
+              mode: 'single',
+              node_uid: node.nodeUid,
+              target_name: targetName,
+              detached_technicians: Boolean(block),
+              backup_cleanup_pending_count: backupCleanupPending,
+            } as Prisma.JsonObject,
+          },
+        });
+        return node;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+    } catch (error) {
+      this.rethrowNodeDeleteError(error);
     }
-
-    const targetName = node.displayName ?? node.hostname;
-
-    await this.writeAuditLog({
-      actorId,
-      action: 'admin.node.delete',
-      targetType: 'node',
-      targetId: nodeId,
-      ipAddress: actorIp,
-      metadataJson: {
-        mode: 'single',
-        node_uid: node.nodeUid,
-        target_name: targetName,
-      } as Prisma.JsonObject,
-    });
-
-    await this.prisma.node.delete({
-      where: { id: nodeId },
-    });
     this.invalidateNodesFiltersCache();
 
     return {
@@ -2458,11 +2548,13 @@ export class AdminService {
     actorId?: string,
     actorIp?: string,
     scopeActor?: AccessActor,
+    confirmLinkedTechnicians = false,
   ): Promise<{
     ok: true;
     deleted_count: number;
     deleted_ids: string[];
     deleted_at: string;
+    not_deleted: Array<{ node_id: string; name: string; reason: string }>;
   }> {
     const uniqueIds = Array.from(new Set(ids));
     if (uniqueIds.length === 0) {
@@ -2475,41 +2567,70 @@ export class AdminService {
       }
     }
 
-    const nodes = await this.prisma.node.findMany({
-      where: { id: { in: uniqueIds } },
-      select: { id: true, nodeUid: true, hostname: true, displayName: true },
-    });
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.lockNodeDeleteTargets(tx, uniqueIds);
+        const nodes = await tx.node.findMany({
+          where: { id: { in: uniqueIds } },
+          select: { id: true, nodeUid: true, hostname: true, displayName: true },
+        });
 
-    const foundIds = new Set(nodes.map((n) => n.id));
-    const missingIds = uniqueIds.filter((id) => !foundIds.has(id));
-    if (missingIds.length > 0) {
-      throw new NotFoundException(
-        `node(s) not found: ${missingIds.slice(0, 5).join(', ')}${missingIds.length > 5 ? ` and ${missingIds.length - 5} more` : ''}`,
-      );
+        const foundIds = new Set(nodes.map((n) => n.id));
+        const missingIds = uniqueIds.filter((id) => !foundIds.has(id));
+        if (missingIds.length > 0) {
+          throw new NotFoundException(
+            `node(s) not found: ${missingIds.slice(0, 5).join(', ')}${missingIds.length > 5 ? ` and ${missingIds.length - 5} more` : ''}`,
+          );
+        }
+
+        const blocks = await this.describeNodeDeleteBlocks(tx, uniqueIds);
+        const notDeleted = nodes
+          .filter((node) => blocks.has(node.id))
+          .map((node) => ({
+            node_id: node.id,
+            name: node.displayName ?? node.hostname,
+            reason: blocks.get(node.id)!.reason,
+          }));
+        if (notDeleted.length > 0 && !confirmLinkedTechnicians) {
+          throw new ConflictException({
+            message: notDeleted
+              .map((item) => this.formatNodeDeleteBlock(item.name, item.reason))
+              .join(' '),
+            code: 'technician_link',
+          });
+        }
+
+        const backupCleanupPending = await preserveNodeDeleteBackups(tx, nodes, actorId, actorIp);
+        if (notDeleted.length > 0) {
+          await tx.technicianNodeAccount.deleteMany({
+            where: { nodeId: { in: notDeleted.map((item) => item.node_id) } },
+          });
+        }
+        await tx.node.deleteMany({
+          where: { id: { in: uniqueIds } },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorType: 'user_session',
+            actorId,
+            action: 'admin.node.delete',
+            targetType: 'node',
+            targetId: uniqueIds[0],
+            ipAddress: actorIp,
+            metadataJson: {
+              mode: 'batch',
+              ids: uniqueIds,
+              node_uids: nodes.map((node) => node.nodeUid),
+              target_names: nodes.map((node) => node.displayName ?? node.hostname),
+              detached_technician_node_ids: notDeleted.map((item) => item.node_id),
+              backup_cleanup_pending_count: backupCleanupPending,
+            } as Prisma.JsonObject,
+          },
+        });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+    } catch (error) {
+      this.rethrowNodeDeleteError(error);
     }
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.auditLog.create({
-        data: {
-          actorType: 'user_session',
-          actorId,
-          action: 'admin.node.delete',
-          targetType: 'node',
-          targetId: uniqueIds[0],
-          ipAddress: actorIp,
-          metadataJson: {
-            mode: 'batch',
-            ids: uniqueIds,
-            node_uids: nodes.map((n) => n.nodeUid),
-            target_names: nodes.map((n) => n.displayName ?? n.hostname),
-          } as Prisma.JsonObject,
-        },
-      });
-
-      await tx.node.deleteMany({
-        where: { id: { in: uniqueIds } },
-      });
-    });
     this.invalidateNodesFiltersCache();
 
     return {
@@ -2517,6 +2638,7 @@ export class AdminService {
       deleted_count: uniqueIds.length,
       deleted_ids: uniqueIds,
       deleted_at: new Date().toISOString(),
+      not_deleted: [],
     };
   }
 
@@ -2704,6 +2826,90 @@ export class AdminService {
 
   private hashSecret(secret: string): string {
     return createHash('sha256').update(secret).digest('hex');
+  }
+
+  private rethrowNodeDeleteError(error: unknown): never {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      throw new ConflictException(
+        'Não excluí o host: ainda existe um vínculo interno que impede a exclusão.',
+      );
+    }
+    throw error;
+  }
+
+  private formatNodeDeleteBlock(name: string, reason: string): string {
+    const cleanup = reason.startsWith('os técnicos')
+      ? 'Confirme para excluir o host e remover esses vínculos do painel. A conta no pfSense não é apagada por esta ação.'
+      : 'Confirme para excluir o host e remover esse vínculo do painel. A conta no pfSense não é apagada por esta ação.';
+    return `${name}: ${reason}. ${cleanup}`;
+  }
+
+  private async lockNodeDeleteTargets(tx: Prisma.TransactionClient, nodeIds: string[]): Promise<void> {
+    // FK checks for new technician links/backups take KEY SHARE on nodes.
+    // FOR UPDATE (not NO KEY UPDATE) blocks them until this transaction ends.
+    // Stable order avoids lock inversion between overlapping batch deletions.
+    // READ COMMITTED gives the subsequent reads a fresh snapshot after any wait.
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id" FROM "nodes"
+      WHERE "id" IN (${Prisma.join(nodeIds.map((id) => Prisma.sql`${id}::uuid`))})
+      ORDER BY "id" FOR UPDATE
+    `);
+  }
+
+  private async describeNodeDeleteBlocks(
+    tx: Prisma.TransactionClient,
+    nodeIds: string[],
+  ): Promise<Map<string, { reason: string }>> {
+    const accounts = await tx.technicianNodeAccount.findMany({
+      where: { nodeId: { in: nodeIds } },
+      select: {
+        nodeId: true,
+        technician: {
+          select: {
+            fullName: true,
+            loginUsername: true,
+          },
+        },
+      },
+    });
+
+    const namesByNode = new Map<string, string[]>();
+    for (const account of accounts) {
+      const technician = account.technician;
+      const sameName =
+        technician.fullName.trim().toLowerCase() === technician.loginUsername.trim().toLowerCase();
+      const label =
+        technician.fullName && !sameName
+          ? `${technician.fullName} (${technician.loginUsername})`
+          : technician.fullName || technician.loginUsername;
+      const names = namesByNode.get(account.nodeId) ?? [];
+      if (!names.includes(label)) {
+        names.push(label);
+      }
+      namesByNode.set(account.nodeId, names);
+    }
+
+    const blocks = new Map<string, { reason: string }>();
+    for (const [nodeId, names] of namesByNode) {
+      const listed = this.joinPortuguese(names);
+      blocks.set(nodeId, {
+        reason:
+          names.length === 1
+            ? `o técnico ${listed} ainda está vinculado a este firewall`
+            : `os técnicos ${listed} ainda estão vinculados a este firewall`,
+      });
+    }
+    return blocks;
+  }
+
+  private joinPortuguese(items: string[]): string {
+    if (items.length <= 1) {
+      return items[0] ?? '';
+    }
+    if (items.length === 2) {
+      return `${items[0]} e ${items[1]}`;
+    }
+    return `${items.slice(0, -1).join(', ')} e ${items[items.length - 1]}`;
   }
 
   private async writeAuditLog(input: {

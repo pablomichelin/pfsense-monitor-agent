@@ -118,6 +118,7 @@ export default async function NodeDetailsPage({
     const permissions = session.permissions ?? [];
     const isClientProfile = isClientRole(session.user.role);
     const canManageNode = hasPermission(permissions, 'firewalls.update');
+    const canDeleteNode = hasPermission(permissions, 'firewalls.delete');
     const canRequestBackup = hasPermission(permissions, 'backups.run');
     const canDownloadBackup = hasPermission(permissions, 'backups.download');
     const canManageBackup = hasPermission(permissions, 'backups.manage');
@@ -133,83 +134,31 @@ export default async function NodeDetailsPage({
     const canViewTechnicians = hasPermission(permissions, 'technicians.view');
     const canManageTechnicians = hasPermission(permissions, 'technicians.manage');
 
+    const loadErrors: string[] = [];
+    async function optionalSection<T>(label: string, load: Promise<T>): Promise<T | null> {
+      try {
+        return await load;
+      } catch (error) {
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          handlePageApiError(error);
+        }
+        loadErrors.push(label);
+        return null;
+      }
+    }
+
     const [upgradeStatus, packageUpgradeStatus, fleetTags, metricsHistory, commandHistory, operationalStatus, nodeCapabilities, pfsenseApiStatus, technicianAccounts] =
       await Promise.all([
-      getPfsenseUpgradeStatus(id),
-      getPackageUpgradeStatus(id),
-      canManageFleetMetadata
-        ? listFleetTags({ client_id: node.client.id }).catch(() => ({ items: [], generated_at: '' }))
-        : Promise.resolve({ items: [], generated_at: '' }),
-      getNodeMetricsHistory(id, metricsPeriod).catch(() => ({
-        enabled: false,
-        generated_at: new Date().toISOString(),
-        node_id: id,
-        period: metricsPeriod,
-        granularity: metricsPeriod === '30d' ? ('daily' as const) : ('hourly' as const),
-        from: '',
-        to: '',
-        points: [],
-        summary: {
-          sample_count: 0,
-          cpu_avg: null,
-          memory_avg: null,
-          disk_avg: null,
-          latency_avg: null,
-          availability_pct: null,
-        },
-      })),
-      getNodeCommandHistory(id).catch(() => ({
-        generated_at: new Date().toISOString(),
-        node_id: id,
-        items: [],
-      })),
-      getOperationalActionsStatus(id).catch(() => ({
-        enabled: false,
-        service_restart_enabled: false,
-        node_reboot_enabled: false,
-        min_agent_version: '0.4.8',
-        agent_version: node.agent_version,
-        agent_version_supported: false,
-        hostname: node.hostname,
-        maintenance_mode: node.maintenance_mode,
-        ha_role: node.ha_role,
-        ha_detected_from_agent: false,
-        last_seen_at: node.last_seen_at,
-        allowed_services: [],
-        reboot_default_delay_seconds: 60,
-        active_service_restart: null,
-        active_reboot: null,
-      })),
-      canViewPfsenseApi
-        ? getNodeCapabilities(id).catch(() => ({ capability: null, credential: null }))
-        : Promise.resolve({ capability: null, credential: null }),
-      canViewPfsenseAliases
-        ? getPfsenseApiStatus(id).catch(() => ({
-            enabled: false,
-            alias_read_enabled: false,
-            alias_apply_enabled: false,
-            require_recent_backup_hours: 24,
-          }))
-        : Promise.resolve({
-            enabled: false,
-            alias_read_enabled: false,
-            alias_apply_enabled: false,
-            require_recent_backup_hours: 24,
-          }),
-      canViewTechnicians
-        ? getNodeTechnicianAccounts(id).catch(() => ({
-            generated_at: new Date().toISOString(),
-            node_id: id,
-            hostname: node.hostname,
-            items: [],
-          }))
-        : Promise.resolve({
-            generated_at: new Date().toISOString(),
-            node_id: id,
-            hostname: node.hostname,
-            items: [],
-          }),
-    ]);
+        getPfsenseUpgradeStatus(id),
+        getPackageUpgradeStatus(id),
+        canManageFleetMetadata ? optionalSection('Tags disponíveis', listFleetTags({ client_id: node.client.id })) : null,
+        optionalSection('Histórico de métricas', getNodeMetricsHistory(id, metricsPeriod)),
+        optionalSection('Histórico de comandos', getNodeCommandHistory(id)),
+        optionalSection('Disponibilidade de ações operacionais', getOperationalActionsStatus(id)),
+        canViewPfsenseApi ? optionalSection('Capacidades e credenciais', getNodeCapabilities(id)) : null,
+        canViewPfsenseAliases ? optionalSection('Disponibilidade da API pfSense', getPfsenseApiStatus(id)) : null,
+        canViewTechnicians ? optionalSection('Contas de técnicos', getNodeTechnicianAccounts(id)) : null,
+      ]);
 
     let bootstrap = null;
     if (canViewBootstrap) {
@@ -242,6 +191,7 @@ export default async function NodeDetailsPage({
 
     return (
       <div className="space-y-section">
+        {loadErrors.length > 0 ? <Alert variant="error">Não foi possível carregar: {loadErrors.join(', ')}. Recarregue a página para tentar novamente. As seções afetadas estão indisponíveis.</Alert> : null}
         {created ? (
           <Alert variant="success">
             Firewall criado com sucesso. Use a aba Configuração para instalar o agente.
@@ -302,7 +252,7 @@ export default async function NodeDetailsPage({
                     Voltar para firewalls
                   </Button>
                 </Link>
-                {canManageNode ? (
+                {canDeleteNode ? (
                   <DeleteNodeButton
                     nodeId={node.id}
                     nodeUid={node.node_uid}
@@ -334,7 +284,7 @@ export default async function NodeDetailsPage({
                   canViewPfsenseAliases={canViewPfsenseAliases}
                   canViewPfsenseApi={canViewPfsenseApi}
                 />
-                {(canRestartService || canRebootNode) && operationalStatus.enabled ? (
+                {(canRestartService || canRebootNode) && operationalStatus?.enabled ? (
                   <NodeOperationalActionsSection
                     nodeId={node.id}
                     hostname={node.hostname}
@@ -343,7 +293,7 @@ export default async function NodeDetailsPage({
                     initialStatus={operationalStatus}
                   />
                 ) : null}
-                <NodeCommandHistoryPanel
+                {commandHistory ? <NodeCommandHistoryPanel
                   nodeId={node.id}
                   initialHistory={commandHistory}
                   canCancelBackup={canRequestBackup}
@@ -351,8 +301,8 @@ export default async function NodeDetailsPage({
                   canCancelPackageUpgrade={canRunPackageUpgrade}
                   canCancelServiceRestart={canRestartService}
                   canCancelNodeReboot={canRebootNode}
-                />
-                {canViewTechnicians ? (
+                /> : null}
+                {canViewTechnicians && technicianAccounts ? (
                   <NodeTechnicianAccountsPanel
                     items={technicianAccounts.items}
                     canManageTechnicians={canManageTechnicians}
@@ -388,8 +338,8 @@ export default async function NodeDetailsPage({
                 configBackupInstallMode={configBackupInstallMode}
                 releaseBaseUrl={releaseBaseUrl}
                 controllerUrl={controllerUrl}
-                availableTags={fleetTags.items}
-                canManageFleetMetadata={canManageFleetMetadata}
+                availableTags={fleetTags?.items ?? []}
+                canManageFleetMetadata={canManageFleetMetadata && fleetTags !== null}
               />
             }
           />

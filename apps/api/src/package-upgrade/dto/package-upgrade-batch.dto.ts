@@ -1,4 +1,5 @@
 import { IsArray, IsOptional, IsUUID, MaxLength } from 'class-validator';
+import { EmptyStringToUndefined } from '../../common/empty-to-undefined';
 
 export class CreatePackageUpgradeBatchDto {
   @IsArray()
@@ -9,6 +10,7 @@ export class CreatePackageUpgradeBatchDto {
   @MaxLength(120)
   label?: string;
 
+  @EmptyStringToUndefined()
   @IsOptional()
   @IsUUID('4')
   client_id?: string;
