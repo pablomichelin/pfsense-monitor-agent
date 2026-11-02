@@ -2,7 +2,7 @@
 
 ## Confiabilidade de atualizações — 02/11/2026
 
-API0.14.1/web1.15.2 publicadas; package0.5.29 confirmado em26 agentes, todos com backup remoto posterior succeeded. Recuperação adicional em lote: seis por SSH e sete pelo painel automatizado, usando acessos documentados; Plus local também validado. Restam32 comandos pending do lote autorizado, sem reenfileirar nem ressuscitar expirados. Oito excluídos preservados. Nenhum reboot de firewall ou alteração de VPN/DNS/regras. A versão29 corrige herança de locks; supervisor independente de recuperação ainda não implementado. Detalhes e plano: [208](docs/208-RECUPERACAO-REMOTA-EM-LOTE-2026-11-02.md). Provas de código/DR anteriores permanecem válidas em [207](docs/207-CONFIABILIDADE-UPDATE-2026-11-02.md).
+API 0.14.1/web 1.15.2 publicadas; package 0.5.29 confirmado em 50 agentes, todos com backup remoto posterior succeeded. Nesta rodada foram recuperados 24 dos 32 pendentes pelos painéis existentes. Restam oito pendentes em 0.5.27 por autenticação/documentação/conectividade, além dos oito excluídos em 0.5.26 intocados. Comandos antigos expirados não foram ressuscitados; novas solicitações auditadas somente após recuperar o serviço. Nenhum reboot ou alteração de VPN/DNS/regras. A versão 29 corrige herança de locks; supervisor independente ainda não implementado. Resultado e pendências: [209](docs/209-RECUPERACAO-DOS-32-AGENTES-2026-11-02.md); proposta permanente: [208](docs/208-RECUPERACAO-REMOTA-EM-LOTE-2026-11-02.md).
 
 ## Objetivo deste arquivo
 
@@ -92,9 +92,9 @@ Próximo passo: avaliar destino externo e recuperação completa dos backups, di
 
 | Componente | Versão | Referência |
 |------------|--------|------------|
-| API | `0.13.1` | servidor 192.168.100.221; DR integral aprovado no 220 |
-| Painel web | `1.14.1` | servidor 192.168.100.221 |
-| Package pfSense | `0.5.26` | 58 agentes confirmados; oito excluídos em 0.5.25 |
+| API | `0.14.1` | servidor 192.168.100.221 |
+| Painel web | `1.15.2` | servidor 192.168.100.221 |
+| Package pfSense | `0.5.29` | 50 confirmados; oito pendentes em 0.5.27; oito excluídos em 0.5.26 |
 
 **Última entrega (2026-09-18):** endurecimento de segurança API + web (proteção zip-bomb no ingest de backup, fail-fast de `TRUSTED_PROXY_IPS`, fail-closed 503 no middleware, `MONITOR_API_BASE_URL` obrigatória). API **0.11.2**, painel **1.12.7**, package **0.5.20 sem mudança**. Ver `docs/185-ENTREGA-ENDURECIMENTO-SEGURANCA-API-WEB-2026-09-18.md`.
 

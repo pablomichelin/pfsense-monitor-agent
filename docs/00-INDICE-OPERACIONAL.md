@@ -456,3 +456,4 @@ Ao encerrar uma trilha relevante:
 - registrar o que foi validado e o que nao foi validado
 
 - [207 — Confiabilidade de atualização, diagnóstico e recuperação de travas](207-CONFIABILIDADE-UPDATE-2026-11-02.md)
+- [209 — Recuperação de 24 dos 32 agentes e pendências de acesso](209-RECUPERACAO-DOS-32-AGENTES-2026-11-02.md)

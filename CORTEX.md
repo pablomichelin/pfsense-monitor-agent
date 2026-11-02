@@ -2,7 +2,7 @@
 
 ## Confiabilidade de atualizações — 02/11/2026
 
-API0.14.1/web1.15.2 publicadas; package0.5.29 confirmado em26 agentes, todos com backup remoto posterior succeeded. Recuperação adicional em lote: seis por SSH e sete pelo painel automatizado, usando acessos documentados; Plus local também validado. Restam32 comandos pending do lote autorizado, sem reenfileirar nem ressuscitar expirados. Oito excluídos preservados. Nenhum reboot de firewall ou alteração de VPN/DNS/regras. A versão29 corrige herança de locks; supervisor independente de recuperação ainda não implementado. Detalhes e plano: [208](docs/208-RECUPERACAO-REMOTA-EM-LOTE-2026-11-02.md). Provas de código/DR anteriores permanecem válidas em [207](docs/207-CONFIABILIDADE-UPDATE-2026-11-02.md).
+API 0.14.1/web 1.15.2 publicadas; package 0.5.29 confirmado em 50 agentes, todos com backup remoto posterior succeeded. Nesta rodada foram recuperados 24 dos 32 pendentes pelos painéis existentes. Restam oito pendentes em 0.5.27 por autenticação/documentação/conectividade, além dos oito excluídos em 0.5.26 intocados. Comandos antigos expirados não foram ressuscitados; novas solicitações auditadas somente após recuperar o serviço. Nenhum reboot ou alteração de VPN/DNS/regras. A versão 29 corrige herança de locks; supervisor independente ainda não implementado. Resultado e pendências: [209](docs/209-RECUPERACAO-DOS-32-AGENTES-2026-11-02.md); proposta permanente: [208](docs/208-RECUPERACAO-REMOTA-EM-LOTE-2026-11-02.md).
 
 ## Detecção de firmware — 02/11/2026
 

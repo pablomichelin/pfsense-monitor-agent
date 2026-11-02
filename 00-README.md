@@ -237,3 +237,4 @@ Entregar um sistema que permita:
 Estabilização e revisão de 31/10/2026: [relatório 196](docs/196-ESTABILIZACAO-E-REVISAO-2026-10-31.md).
 
 - [206 — Correção da detecção de firmware e release do pacote](docs/206-CORRECAO-DETECCAO-FIRMWARE-2026-11-02.md).
+- [Recuperação dos 32 agentes — estado e pendências](docs/209-RECUPERACAO-DOS-32-AGENTES-2026-11-02.md)

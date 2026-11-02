@@ -713,3 +713,7 @@ Documento de referência do **que foi feito**, **por quê** e **o que não repet
 - API candidata 0.12.0 / painel candidato 1.13.0: isolamento, comandos, tokens, polling e dependências; package fonte 0.5.26 permanece candidato e distribuição 0.5.25.
 - Backup PostgreSQL recente com restauração isolada; permissões restritas e agendamento diário. Escopo exclui os oito degradados e qualquer ação na frota.
 - Testes por grupos, sem repetição cumulativa de suítes aprovadas; limpar recursos temporários. Ver relatório 196.
+
+## 2026-11-02 — Recuperação dos 32 agentes
+
+24 recuperados, 24 upgrades e 24 backups posteriores succeeded; frota em 50 agentes 0.5.29. Oito pendentes adicionais aos oito excluídos. Credenciais específicas corrigiram divergências da lista geral; não deduzir acesso atual apenas por backup antigo. Certificados liberados pelo usuário, sem reboot. Relatório 209.
