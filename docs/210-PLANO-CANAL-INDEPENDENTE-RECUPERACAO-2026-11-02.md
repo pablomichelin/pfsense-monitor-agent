@@ -13,7 +13,7 @@ Pedido: operador seleciona serviço autorizado, envia comando e acompanha result
 
 Vincular a ação ao monitoramento existente: atalho na lista de serviços para diagnóstico/reinício, estado reportado do serviço selecionado, horário da telemetria principal e horário independente do supervisor. Dado antigo não equivale a serviço saudável. Exibir último resultado, incluindo falha/indeterminação. Não alterar critérios de saúde nem converter automaticamente catálogo de pacotes em autorização para reiniciar serviços arbitrários. Escopo confirmado pelo usuário: exclusivamente pfSense e seus pacotes/serviços; Windows/Linux externos estão fora.
 
-Blocos iniciais: 16 casos de política local, 10 casos de protocolo PHP no FreeBSD isolado, oito casos PostgreSQL 17 e três de autenticação/replay aprovados. API e painel compilaram; somente o painel requer novo build após este ajuste de usabilidade solicitado. LAB operacional e publicação ainda pendentes.
+Blocos iniciais: 16 casos de política local, 10 casos de protocolo PHP no FreeBSD isolado, oito casos PostgreSQL 17 e três de autenticação/replay aprovados. API e painel compilaram; somente o painel requer novo build após este ajuste de usabilidade solicitado. Naquele checkpoint LAB operacional e publicação estavam pendentes; resultados finais abaixo.
 
 ## Correção encontrada no LAB
 
@@ -36,4 +36,14 @@ Somente o agente Monitor foi reiniciado nas provas reais. Os outros quatro adapt
 
 LAB: backup posterior `ae37c473-0884-4edd-ab9c-bbae41445e77` succeeded às 19:21:56Z, confirmando retorno do fluxo principal. Lote novo `ef786355-a543-4649-97b3-f768a91dc2b6` com 56 solicitações, estritamente os mesmos IDs do lote autorizado original; nenhuma solicitação aos oito excluídos. Não ressuscitados comandos antigos.
 
-Recursos QA removidos: contêiner/rede PostgreSQL isolado, diretório LAB temporário, checkout de build e logs temporários do 221, tags auxiliares de build. Imagens de produção e artefatos imutáveis necessários preservados. Imagens exatas API/web/nginx/db cifradas no 220 em `runtime-recovery210-5aeb6ff.tar.gpg`; checksum e importação por decriptação aprovados. Recuperação integral do conjunto final será registrada após o ensaio.
+Recursos QA removidos: contêiner/rede PostgreSQL isolado, diretório LAB temporário, checkout de build e logs temporários do 221, tags auxiliares de build. Imagens de produção e artefatos imutáveis necessários preservados. Imagens exatas API/web/nginx/db cifradas no 220 em `runtime-recovery210-5aeb6ff.tar.gpg`; checksum e importação por decriptação aprovados. Recuperação integral do conjunto final aprovada, conforme fechamento abaixo.
+
+
+## Distribuição observada
+
+50 equipamentos anunciaram package 0.5.31 e contato do supervisor nos últimos três minutos (48 do lote, LAB e canário). Oito antigos permanecem em 0.5.27 sem retirar a atualização; oito excluídos permanecem em 0.5.26, sem comando enviado. Não confundir esses dois grupos. Não é possível instalar o novo supervisor pela fila antiga quando ela está travada; esses oito exigem bootstrap por acesso administrativo funcional. As solicitações novas têm prazo normal, sem ressurreição de expirados.
+
+Uso: detalhe do firewall → Ações operacionais → Reiniciar serviço. Selecionar serviço permitido; ver telemetria principal, contato independente e último resultado. A lista de serviços contém atalho para essa seção. A ação exige permissão service.restart.run e contato recente do supervisor; não oferece shell livre nem restart de qualquer pacote arbitrário.
+
+
+Fechamento do lote: **48 succeeded, oito pending**. Com LAB/canário, 50 instalações comprovadas. Consulta adicional: zero comandos para nodes 0.5.26 desde 18:00Z; quatro serviços do controlador healthy. LAB encerrou com agente PID 90855 e supervisor original PID 94835, ambos ativos. Backup final publicado e restauração de banco/arquivos no receptor aprovada: `dr-20261102T192305Z-b165f14fc87c4297`; ensaio integral retornou **DR STACK PASS (restored database, exact images, API/web/nginx; cleaned)**. Banco restaurado e imagens exatas do runtime iniciadas isoladamente com saúde/login aprovados; recursos do ensaio eliminados. Destino 220 permanece na mesma LAN, sem alegação de DR geográfico.
