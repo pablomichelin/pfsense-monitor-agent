@@ -1,6 +1,6 @@
-# Entrega parcial das correções de 02/11/2026
+# Fechamento das correções de 02/11/2026
 
-- [Andamento das correções da revisão 199](200-CORRECOES-RELATORIO-199-2026-11-02.md): onze achados corrigidos, painel 1.14.1 publicado, DR de dados/imagens provado no 220 e quatro achados ainda abertos.
+- [Correções e evidências da revisão 199](200-CORRECOES-RELATORIO-199-2026-11-02.md): quinze achados corrigidos, API 0.13.1/painel 1.14.1 publicados, C01/C02 corrigidos e provados, dados DR restaurados no 220; importação de imagens e boot da nova API ainda pendentes.
 
 # Revisão intensiva de 01/11/2026
 
@@ -17,7 +17,7 @@
 
 # Indice operacional do projeto
 
-Data de referencia: `2026-11-01`
+Data de referencia: `2026-11-02`
 
 Este arquivo e o mapa curto para retomar o Monitor-Pfsense em qualquer novo chat, nova manutencao ou nova trilha de desenvolvimento.
 

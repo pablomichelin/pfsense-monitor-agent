@@ -1,8 +1,8 @@
 # PROJECT STATUS — Monitor pfSense (pfs-monitor)
 
-Última atualização: **2026-11-01**
+Última atualização: **2026-11-02**
 
-API `0.13.0` e painel `1.14.0` publicados. Recuperação durável, paginação acima de 1.000 e LAB 0.5.26 validados; 58 agentes atualizados, oito preservados. Fechamento operacional em `docs/198-FECHAMENTO-ESTABILIZACAO-E-RECUPERACAO-2026-11-01.md`. Oito degradados excluídos; HA/CARP retirado do escopo pelo usuário.
+API **`0.13.1`**, painel **`1.14.1`** e package **`0.5.26`** publicados. Revisão 199: 15 achados corrigidos; C01/C02 comprovados e corrigidos; duas migrations e limpeza A06 aplicadas; stack saudável. Evidências em `docs/200-CORRECOES-RELATORIO-199-2026-11-02.md`. Recuperação durável e paginação acima de 1.000 continuam aprovadas; último registro de frota confirmado: 58 agentes atualizados, oito preservados. Oito degradados excluídos e HA/CARP retirado do escopo. Novo backup de dados restaurado no 220; importação das imagens e boot isolado da nova API permanecem pendentes por bloqueio automático da ferramenta.
 
 O snapshot abaixo é histórico de setembro; não representa a frota nesta rodada. Não houve intervenção nos oito degradados.
 

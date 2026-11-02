@@ -6,7 +6,15 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Entrega parcial das correções da revisão 199 — 02/11/2026
+## Fechamento de código da revisão 199 — 02/11/2026
+
+O [relatório 200](docs/200-CORRECOES-RELATORIO-199-2026-11-02.md) registra os **15/15 achados corrigidos e publicados**. Os dois riscos concorrentes C01/C02 também foram corrigidos e comprovados em PostgreSQL 17 isolado. **Produção: API 0.13.1, painel 1.14.1 e package 0.5.26**. Código backend no commit `fc97c4e`, enviado ao GitHub e sincronizado no 221; duas migrations aplicadas. O registro histórico com senha foi limpo (1 atualização, 1 auditoria, nenhum candidato residual), sem consultar o valor. API, web, nginx e PostgreSQL saudáveis; HTTP 200 no login e health.
+
+Validações dirigidas: A03/A04/A05 sintéticos, concorrência C01/C02 e A05/A06 no PostgreSQL real descartável, mais prova adicional de rollback, limite e disputa de recovery code no desligamento MFA. Grupos aprovados não foram repetidos; recursos QA foram eliminados. Os oito firewalls persistentemente degradados e HA/CARP continuam excluídos, sem alteração de Zabbix ou Theo.
+
+DR externo dos dados pós-release: conjunto `dr-20261102T065051Z-aea26f2f153244f3` recebido e restaurado no 220. As quatro imagens da release estão preservadas em um arquivo GPG com sidecar, mas a **validação do checksum, importação e boot completo da API 0.13.1 seguem pendentes**, por bloqueio automático de segurança da ferramenta. O conjunto anterior `dr-20261102T051150Z-1ec8c4e24214470e` teve o boot completo aprovado com API 0.13.0/web 1.14.1. Próxima ação operacional: executar a verificação das novas imagens e o boot isolado por canal autorizado; acompanhar a rotina DR e planejar custódia fora da LAN. Não reexecutar suítes já aprovadas por conveniência.
+
+## Primeiro bloco da revisão 199 — 02/11/2026 (histórico)
 
 O [relatório 200](docs/200-CORRECOES-RELATORIO-199-2026-11-02.md) registra correções implementadas para **11 dos 15 achados**, incluindo seleção correta de firewall, nove outras correções de frontend e retenção externa condicionada à restauração comprovada. Painel **1.14.1 publicado**, API **0.13.0** e package **0.5.26** mantidos; commit `d30cfef` enviado ao GitHub e sincronizado no 221. Build de produção, saúde dos quatro serviços e acesso HTTP ao login confirmados.
 
