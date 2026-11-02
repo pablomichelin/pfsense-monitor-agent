@@ -20,8 +20,8 @@ STATE_DIR="${MONITOR_AGENT_CONFIG_BACKUP_STATE_DIR:-/var/db/monitor-pfsense-agen
 STATE_FILE="$STATE_DIR/pfsense-update-check.json"
 INTERVAL_HOURS="${MONITOR_AGENT_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS:-6}"
 # Bump quando o formato do cache ou o parser mudar (invalida resultado antigo).
-# v7: firmware branch no cache + ação set-branch (allowlist).
-CACHE_VERSION=7
+# v8: canais reais, exit status e descoberta de upgrade em canal alternativo.
+CACHE_VERSION=8
 REPO_REFRESH_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_REPO_REFRESH_TIMEOUT_SEC:-180}"
 CHECK_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_UPDATE_CHECK_TIMEOUT_SEC:-120}"
 REPAIR_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_REPO_REPAIR_TIMEOUT_SEC:-180}"
@@ -97,6 +97,14 @@ parse_update_output() {
       exit(1);
     }
 
+    $rc = (int) ($argv[2] ?? 0);
+    // Native checks use 0 (current) and 2 (available). Errors must never be green.
+    if (!in_array($rc, [0, 2], true) || preg_match(
+      "/failed to (?:fetch|read|update)|could not|cannot resolve|timed out|certificate verify failed|another instance|^ERROR:/im", $output
+    )) {
+      echo "unknown\n\n";
+      exit(0);
+    }
     $output = preg_replace("/\x1b\[[0-9;]*m/", "", $output);
     $rawLines = array_values(
       array_filter(
@@ -154,7 +162,7 @@ parse_update_output() {
       "/\\bpfSense is up to date\\b/i",
       "/\\balready\\s+(?:on|at)\\s+(?:the\\s+)?(?:latest|current)\\b/i",
       "/\\bno\\s+(?:updates?|upgrades?)\\s+(?:are\\s+)?available\\b/i",
-      "/\\bnothing\\s+to\\s+do\\b/i",
+      "/\\bYour system is on a newer version\\b/i",
     ];
 
     $upToDateScope = $tailText !== "" ? $tailText : $text;
@@ -166,7 +174,7 @@ parse_update_output() {
     }
 
     echo "unknown\n\n";
-  ' "$1"
+  ' "$1" "${2:-0}"
 }
 
 should_run_check() {
@@ -586,7 +594,7 @@ run_check() {
   exit_code=$?
   set -e
 
-  parsed="$(parse_update_output "$output_file" 2>/dev/null || printf 'unknown\n\n')"
+  parsed="$(parse_update_output "$output_file" "$exit_code" 2>/dev/null || printf 'unknown\n\n')"
   available="$(printf '%s\n' "$parsed" | sed -n '1p' | tr -d '\r')"
   target_version="$(printf '%s\n' "$parsed" | sed -n '2p' | tr -d '\r')"
 
@@ -607,6 +615,24 @@ run_check() {
       ;;
   esac
 
+  # An alternative channel is discovery only: never authorize installing it
+  # through the current channel. The existing explicit set-branch flow is required.
+  if [ "$available" = "false" ] && pfSense-upgrade -h 2>&1 | grep -q -- '-C'; then
+    set +e
+    run_pfsense_upgrade_cmd "$PFSENSE_UPGRADE_IPV4" -C "$output_file" "$CHECK_TIMEOUT_SEC"
+    exit_code=$?
+    set -e
+    parsed="$(parse_update_output "$output_file" "$exit_code" 2>/dev/null || printf 'unknown\n\n')"
+    discovered="$(printf '%s\n' "$parsed" | sed -n '1p')"
+    if [ "$discovered" = "true" ]; then
+      target_version="$(printf '%s\n' "$parsed" | sed -n '2p')"
+      write_state "" "$target_version" "Nova versão $target_version disponível em outro canal. Selecione o canal em Apontar branch e verifique novamente antes de atualizar." "$ha_detected" "branch" ""
+      return 0
+    elif [ "$discovered" != "false" ]; then
+      fail_check "$(summarize_cmd_failure "$output_file" "Falha ao consultar outros canais de firmware" "$exit_code")"
+      return 1
+    fi
+  fi
   write_state "$available" "$target_version" "" "$ha_detected" "" ""
   return 0
 }

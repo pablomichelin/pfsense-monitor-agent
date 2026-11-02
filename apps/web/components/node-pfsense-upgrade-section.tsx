@@ -113,9 +113,16 @@ function OverlayModal({ children }: { children: React.ReactNode }) {
   );
 }
 
+function hasAlternativeFirmware(status: PfsenseUpgradeStatusResponse): boolean {
+  return status.update_error_class === 'branch' && status.update_available === null && !!status.target_version;
+}
+
 function getUpdateLabel(status: PfsenseUpgradeStatusResponse): string {
   if (!status.agent_version_supported) {
     return `Agente ${status.min_agent_version}+ necessário`;
+  }
+  if (hasAlternativeFirmware(status)) {
+    return `Nova versão em outro canal: ${status.target_version}`;
   }
   if (status.update_check_error) {
     return 'Falha ao verificar atualização';
@@ -128,9 +135,9 @@ function getUpdateLabel(status: PfsenseUpgradeStatusResponse): string {
   }
   if (status.update_available === false) {
     if (looksLikeBehindCeTrack(status.pfsense_version)) {
-      return 'pfSense reporta atualizado (cache de repositório pode estar velho)';
+      return 'Sem atualização no canal selecionado';
     }
-    return 'pfSense atualizado';
+    return 'Sem atualização no canal selecionado';
   }
   return 'Status de atualização desconhecido';
 }
@@ -634,8 +641,8 @@ export function NodePfsenseUpgradeSection({
 
         {status.update_check_error ? (
           <Alert variant="warning">
-            Falha ao verificar atualização: {status.update_check_error}
-            {errorClassLabel(status.update_error_class, status.update_check_error) ? (
+            {hasAlternativeFirmware(status) ? 'Seleção de canal necessária: ' : 'Falha ao verificar atualização: '}{status.update_check_error}
+            {!hasAlternativeFirmware(status) && errorClassLabel(status.update_error_class, status.update_check_error) ? (
               <span className="mt-2 block text-xs">
                 {errorClassLabel(status.update_error_class, status.update_check_error)}
               </span>

@@ -21,6 +21,8 @@ if (PHP_SAPI !== 'cli') {
 
 const ALLOWED_TARGETS = ['latest', '2.8.1', '2.9.0'];
 const REPO_DIRS = [
+    '/usr/local/etc/pfSense/pkg/repos',
+    '/usr/local/etc/pfSense-plus/pkg/repos',
     '/usr/local/share/pfSense/pkg/repos',
     '/usr/local/share/pfSense-plus/pkg/repos',
 ];
@@ -135,6 +137,13 @@ function current_repo_saved_value(): string
 function resolve_current(array $repos): array
 {
     $saved = current_repo_saved_value();
+    // The active link is authoritative, including when config has no explicit selection.
+    $active = realpath('/usr/local/etc/pkg/repos/pfSense.conf');
+    foreach ($repos as $repo) {
+        if ($active !== false && realpath((string) ($repo['path'] ?? '')) === $active) {
+            return $repo;
+        }
+    }
     $fallback = [
         'name' => '',
         'path' => $saved,
@@ -160,7 +169,7 @@ function resolve_current(array $repos): array
         }
     }
 
-    return $fallback + ['name' => $saved];
+    return ['name' => $saved, 'path' => $saved, 'descr' => '', 'default' => false];
 }
 
 function allowed_repo_names(array $repos): array

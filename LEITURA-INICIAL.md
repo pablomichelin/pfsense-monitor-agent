@@ -6,6 +6,10 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
+## Detecção de firmware — 02/11/2026
+
+Correção 206 em validação: package 0.5.27, web 1.15.1. Caminhos de canais corrigidos, descoberta de outros canais sem autorizar instalação automática e parser de falhas. DNS do laboratório reparado e consulta real aprovada; rollout ainda em validação. Ver [206](docs/206-CORRECAO-DETECCAO-FIRMWARE-2026-11-02.md).
+
 ## Publicação autorizada — 02/11/2026
 
 **API 0.14.0 e painel 1.15.0 em produção**, package 0.5.26 inalterado. [Relatório 205](docs/205-PUBLICACAO-UX-E-INTEGRIDADE-2026-11-02.md): entrega 201/203 publicada e gates U204-01/02/03 corrigidos. Builds finais e cinco testes dirigidos aprovados; HTTP com login real, RBAC/escopo, edição e CSRF em QA aprovado. Os 26 casos PG anteriores não foram repetidos. Quatro serviços saudáveis; versão/health, migration e login público HTTP200 confirmados. IP real do login conferido no percurso LAN nginx→Next→API, rejeitando headers falsos.
