@@ -2,9 +2,15 @@
 
 Documento de referência do **que foi feito**, **por quê** e **o que não repetir**. Use para retomada do projeto e para evitar os mesmos erros.
 
-**Última atualização:** 2026-10-15
+**Última atualização:** 2026-11-02
 
 ---
+
+### 2026-11-02 — Recuperação independente do agente pfSense
+
+- API 0.14.2/painel 1.15.3 e package 0.5.31: supervisor separado recebe reinício autenticado sem depender do dispatcher principal, com journal próprio e confirmação posterior.
+- LAB nativo revelou herança de pipes e propagação de timeout na versão 0.5.30 (somente LAB). Corrigidos com descritores em /dev/null e timeout --foreground; duas provas nativas adicionais e recuperação real aprovadas. Não substituir prova de daemon FreeBSD por mocks.
+- Contrato, escopo e evidências no relatório 210. Oito excluídos preservados; instalação inicial em agentes antigos travados continua dependendo de um canal funcional.
 
 ### 2026-10-15 — Troca de senha de técnico com um firewall selecionado (API 0.11.12, painel 1.12.18)
 

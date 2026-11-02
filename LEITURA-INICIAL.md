@@ -1,10 +1,10 @@
 # Leitura Inicial
 
-## Canal independente de recuperação — em homologação (02/11/2026)
+## Canal independente de recuperação — publicado (02/11/2026)
 
-Fonte API 0.14.2, painel 1.15.3 e package 0.5.30 preparados. Contrato e evidências: [210](docs/210-PLANO-CANAL-INDEPENDENTE-RECUPERACAO-2026-11-02.md). 16 casos de política, dez de protocolo, oito PostgreSQL e três de autenticação aprovados. LAB operacional/canário/distribuição ainda pendentes; não confundir artefato publicado com instalação comprovada. Oito excluídos preservados.
+API **0.14.2**, painel **1.15.3** e package **0.5.31** publicados. LAB CE 2.9 e canário CE 2.8.1 confirmaram reinício remoto do agente pelo supervisor independente; LAB com agente parado, proteção real do instalador e backup posterior succeeded. 39 casos dirigidos aprovados sem repetir suítes anteriores. Lote `ef786355-a543-4649-97b3-f768a91dc2b6` enviado aos 56 autorizados, instalação em acompanhamento. Oito excluídos preservados; oito agentes antigos travados ainda precisam de instalação por canal funcional. Exclusivamente pfSense. Contrato/evidências: [210](docs/210-PLANO-CANAL-INDEPENDENTE-RECUPERACAO-2026-11-02.md).
 
-## Confiabilidade de atualizações — 02/11/2026
+## Confiabilidade de atualizações — 02/11/2026 (histórico anterior ao canal independente)
 
 Tentativa posterior de reinício pelo pacote nos oito pendentes: todas bloqueadas por `service restart is disabled` no controlador, antes de enfileirar. Nenhum reboot/restart executado nessa tentativa; detalhes no relatório 209.
 
@@ -98,9 +98,9 @@ Próximo passo: avaliar destino externo e recuperação completa dos backups, di
 
 | Componente | Versão | Referência |
 |------------|--------|------------|
-| API | `0.14.1` | servidor 192.168.100.221 |
-| Painel web | `1.15.2` | servidor 192.168.100.221 |
-| Package pfSense | `0.5.29` | 50 confirmados; oito pendentes em 0.5.27; oito excluídos em 0.5.26 |
+| API | `0.14.2` | servidor 192.168.100.221 |
+| Painel web | `1.15.3` | servidor 192.168.100.221 |
+| Package pfSense | `0.5.31` | LAB/canário confirmados; lote autorizado em acompanhamento; oito excluídos em 0.5.26 |
 
 **Última entrega (2026-09-18):** endurecimento de segurança API + web (proteção zip-bomb no ingest de backup, fail-fast de `TRUSTED_PROXY_IPS`, fail-closed 503 no middleware, `MONITOR_API_BASE_URL` obrigatória). API **0.11.2**, painel **1.12.7**, package **0.5.20 sem mudança**. Ver `docs/185-ENTREGA-ENDURECIMENTO-SEGURANCA-API-WEB-2026-09-18.md`.
 

@@ -19,4 +19,21 @@ Blocos iniciais: 16 casos de política local, 10 casos de protocolo PHP no FreeB
 
 0.5.30 instalado somente no LAB. O primeiro reinício independente realmente iniciou o agente, mas pipes de stdout herdados mantiveram a confirmação presa; o timeout padrão também atingia descendentes. Supervisor LAB interrompido e agente recuperado por SSH, sem reboot. Não considerar esse caso sucesso operacional.
 
-0.5.31 troca captura de saída por /dev/null na execução de serviços/daemons e usa timeout --foreground para restringir a interrupção ao worker. Dois casos nativos FreeBSD adicionais PASS: daemon destacado não retém a confirmação e timeout não mata serviço destacado. Grupos de política/protocolo/API anteriores não foram repetidos. Candidato privado 0.5.31 anterior à correção do timeout foi descartado antes de qualquer publicação/distribuição; apenas o artefato final será publicado. O 0.5.30 publicado permanece imutável para auditoria. Nova prova operacional do LAB ainda pendente.
+0.5.31 troca captura de saída por /dev/null na execução de serviços/daemons e usa timeout --foreground para restringir a interrupção ao worker. Dois casos nativos FreeBSD adicionais PASS: daemon destacado não retém a confirmação e timeout não mata serviço destacado. Grupos de política/protocolo/API anteriores não foram repetidos. Candidato privado 0.5.31 anterior à correção do timeout foi descartado antes de qualquer publicação/distribuição; apenas o artefato final foi publicado. O 0.5.30 publicado permanece imutável para auditoria. Nova prova operacional do LAB aprovada conforme registro abaixo.
+
+
+## Evidência operacional do artefato final
+
+API 0.14.2 e painel 1.15.3 em produção. Package 0.5.31 publicado com SHA-256 `e812b39e1af5c284982af9506c82000f73f3525e2bd39dea23cee05a634baf67`. A versão anunciada do protocolo independente é 0.5.30; não confundir com a versão instalada do package.
+
+- 39 casos dirigidos aprovados: 16 política, dez protocolo PHP, oito PostgreSQL 17, três autenticação/replay e dois processos nativos FreeBSD. Sem repetição das suítes antigas.
+- LAB CE 2.9: agente principal interrompido, supervisor PID 94835 mantido. Comando `9743ad76-d412-4b12-9296-7ae4f436ac69` iniciou novo agente PID 84387 e concluiu succeeded às 19:15:14Z. Demonstra transporte independente do dispatcher principal.
+- Proteção de instalação: lease real de update mantido durante 90 segundos; supervisor registrou operation_active às 19:16:14Z, sem mudar PID principal. Comando `b5a93619-3f25-4a29-af62-3b8c683ac676` concluiu succeeded após liberação. Não houve reinício concorrente com o instalador.
+- Canário CE 2.8.1: atualização `424b85c4-e83f-441a-9222-2c11910f394f` succeeded em 0.5.31. Reinício independente `deac5a66-6472-44b5-843e-17b7cb022daf` succeeded às 19:22:17Z.
+
+Somente o agente Monitor foi reiniciado nas provas reais. Os outros quatro adaptadores permitidos não tiveram reinício operacional validado nesta rodada. Não houve reboot, alteração de rede ou inclusão de servidores Windows/Linux. Interface validada por typecheck/build; não alegar teste visual autenticado nesta rodada.
+
+
+LAB: backup posterior `ae37c473-0884-4edd-ab9c-bbae41445e77` succeeded às 19:21:56Z, confirmando retorno do fluxo principal. Lote novo `ef786355-a543-4649-97b3-f768a91dc2b6` com 56 solicitações, estritamente os mesmos IDs do lote autorizado original; nenhuma solicitação aos oito excluídos. Não ressuscitados comandos antigos.
+
+Recursos QA removidos: contêiner/rede PostgreSQL isolado, diretório LAB temporário, checkout de build e logs temporários do 221, tags auxiliares de build. Imagens de produção e artefatos imutáveis necessários preservados. Imagens exatas API/web/nginx/db cifradas no 220 em `runtime-recovery210-5aeb6ff.tar.gpg`; checksum e importação por decriptação aprovados. Recuperação integral do conjunto final será registrada após o ensaio.
