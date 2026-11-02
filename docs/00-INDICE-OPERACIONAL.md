@@ -450,3 +450,5 @@ Ao encerrar uma trilha relevante:
 - atualizar `docs/HISTORICO-E-LINHA-DO-TEMPO.md` se houver aprendizado ou erro a nao repetir
 - rodar smokes aplicaveis
 - registrar o que foi validado e o que nao foi validado
+
+- [207 — Confiabilidade de atualização, diagnóstico e recuperação de travas](207-CONFIABILIDADE-UPDATE-2026-11-02.md)
