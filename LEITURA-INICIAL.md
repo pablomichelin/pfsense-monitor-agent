@@ -6,11 +6,13 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
-## Correções da revisão 199 — 02/11/2026 (candidatas locais)
+## Entrega parcial das correções da revisão 199 — 02/11/2026
 
-O [relatório 200](docs/200-CORRECOES-RELATORIO-199-2026-11-02.md) registra ajustes locais de código para **11 dos 15 achados**, incluindo seleção correta de firewall, nove outras correções de frontend e retenção externa condicionada à restauração comprovada. A proteção DR registra a última cópia validada fora dos conjuntos, mantém essa âncora mesmo após rotação e falha fechada em erro de verificação. A aplicação coordenada do receptor no 220, seguida do emissor no 221, e seu ensaio real ainda são necessários; versão publicada não mudou nesta etapa.
+O [relatório 200](docs/200-CORRECOES-RELATORIO-199-2026-11-02.md) registra correções implementadas para **11 dos 15 achados**, incluindo seleção correta de firewall, nove outras correções de frontend e retenção externa condicionada à restauração comprovada. Painel **1.14.1 publicado**, API **0.13.0** e package **0.5.26** mantidos; commit `d30cfef` enviado ao GitHub e sincronizado no 221. Build de produção, saúde dos quatro serviços e acesso HTTP ao login confirmados.
 
-**Ainda pendentes:** A03 (autorização em provisionamento/reset), A04 (escopo de perfil client), A05 (limite de tentativas MFA) e A06 (limpeza de segredo histórico). Dois cenários concorrentes C01/C02 aguardam PostgreSQL descartável. Um bloqueio automático de segurança da ferramenta impediu examinar o grupo de autenticação/administradores nesta rodada; nenhuma correção foi presumida nesses itens. Teclado real do diálogo, build final e publicação também aguardam conclusão. Os oito firewalls excluídos e HA/CARP continuam fora do escopo. Não repetir testes aprovados por outros grupos sem alteração que os afete.
+O receptor no 220 foi atualizado com três helpers juntos e restaurou o conjunto anteriormente aprovado. Novo backup `dr-20261102T051150Z-1ec8c4e24214470e` recebido e restaurado automaticamente antes do sucesso de envio; marca persistente aponta para esse ID e quatro conjuntos permaneceram no destino. Clone isolado da versão nova com banco, API, painel e nginx **PASS**, recursos limpos. As quatro imagens exatas dessa versão foram preservadas no 220 em `images-dr-20261102T051150Z-1ec8c4e24214470e.tar.gpg`, com checksum, GPG e tar verificados. A cópia permanece na mesma LAN, sem alegação de DR geográfico.
+
+**Ainda pendentes:** A03 (autorização em provisionamento/reset), A04 (escopo de perfil client), A05 (limite de tentativas MFA) e A06 (limpeza de segredo histórico). Dois cenários concorrentes C01/C02 aguardam PostgreSQL descartável. Um bloqueio automático de segurança da ferramenta impediu examinar o grupo de autenticação/administradores nesta rodada; nenhuma correção foi presumida nesses itens. O diálogo passou no Chrome real. Os oito firewalls excluídos e HA/CARP continuam fora do escopo. Não repetir testes aprovados por outros grupos sem alteração que os afete.
 
 ## Revisão intensiva — 01/11/2026
 

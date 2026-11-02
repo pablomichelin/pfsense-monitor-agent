@@ -2,7 +2,7 @@
 
 ## Recuperação e encerramento — 01/11/2026
 
-Estado atual e evidências: `LEITURA-INICIAL.md` e `docs/198-FECHAMENTO-ESTABILIZACAO-E-RECUPERACAO-2026-11-01.md`. API 0.13.0, painel 1.14.0, package 0.5.26; 58 agentes atualizados e oito excluídos preservados. HA/CARP retirado desta entrega pelo usuário.
+Estado atual e evidências: `LEITURA-INICIAL.md` e `docs/200-CORRECOES-RELATORIO-199-2026-11-02.md`. API 0.13.0, painel 1.14.1, package 0.5.26; 58 agentes atualizados e oito excluídos preservados. HA/CARP retirado desta entrega pelo usuário. Retenção DR validada com recuperação real e imagens cifradas da release; quatro achados A03–A06 continuam pendentes.
 
 Cada nova publicação deve preservar no 220 as imagens de execução cifradas, vinculadas aos fingerprints do conjunto DR correspondente, antes de considerar a recuperação completa. O timer captura banco, arquivos.enc, configuração/chaves, fonte Git e pacote, mas não exporta novamente as imagens a cada dia. Conservar as imagens necessárias aos sete conjuntos retidos. Procedimento em `docs/197-DR-CONTROLADOR-EXTERNO-2026-10-31.md`.
 

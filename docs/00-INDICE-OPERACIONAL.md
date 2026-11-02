@@ -1,6 +1,6 @@
-# Correções candidatas de 02/11/2026
+# Entrega parcial das correções de 02/11/2026
 
-- [Andamento das correções da revisão 199](200-CORRECOES-RELATORIO-199-2026-11-02.md): onze ajustes locais, grupos de validação, implantação DR pendente e quatro achados ainda abertos.
+- [Andamento das correções da revisão 199](200-CORRECOES-RELATORIO-199-2026-11-02.md): onze achados corrigidos, painel 1.14.1 publicado, DR de dados/imagens provado no 220 e quatro achados ainda abertos.
 
 # Revisão intensiva de 01/11/2026
 
