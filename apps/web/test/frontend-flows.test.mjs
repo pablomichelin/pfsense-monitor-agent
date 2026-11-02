@@ -106,19 +106,22 @@ test('alertas mostram somente ações autorizadas e preservam página/filtros', 
   }
 });
 
-test('usuários admin/readonly não recebem edição, exclusão, senha ou revogação de sessão', () => {
+test('usuários sem gestão permanecem somente leitura e sessões são carregadas sob demanda', async () => {
   for (const canManageUsers of [false, true]) {
     const harness = hookHarness();
     const { AdminUsuariosTabs } = sourceLoader({ ...uiMocks, react: harness.react,
       '@/lib/admin': {}, '@/components/role-scope-fields': { RoleScopeFields: 'role-fields' },
       '@/components/confirm-dialog': { ConfirmDialog: 'dialog' },
+      '@/lib/admin-user-sessions-actions': { getAdminUserSessionsAction: async () => ({ ok: true, items: [{ id: 'session', current: false, created_at: '2026-10-01', expires_at: '2099-01-01T00:00:00Z', revoked_at: null, ip_address: null, last_seen_at: null, user_agent: null }] }) },
     })('components/admin-usuarios-tabs.tsx');
-    const props = { users: [{ id: 'user', email: 'synthetic@example.invalid', role: 'readonly', status: 'active', client_ids: [] }], clients: [], roles: [], canManageUsers, userSessionsByUserId: { user: [{ id: 'session', current: false, created_at: '2026-10-01', revoked_at: null }] }, SectionMessage: 'message' };
+    const props = { users: [{ id: 'user', email: 'synthetic@example.invalid', role: 'readonly', status: 'active', client_ids: [] }], clients: [], roles: [], canManageUsers, initialUserId: 'user', SectionMessage: 'message' };
     let tree = harness.render(AdminUsuariosTabs, props);
     assert.equal(elements(tree).some((e) => e.type === 'form'), canManageUsers);
     assert.equal(textOf(tree).includes('Excluir usuário'), canManageUsers);
     assert.equal(elements(tree).some((e) => e.props?.name === 'password'), canManageUsers);
-    elements(tree).find((e) => e.type === 'button' && textOf(e) === 'Sessoes').props.onClick();
+    elements(tree).find((e) => e.type === 'button' && textOf(e) === 'Sessões').props.onClick();
+    tree = harness.render(AdminUsuariosTabs, props);
+    await settle();
     tree = harness.render(AdminUsuariosTabs, props);
     assert.equal(textOf(tree).includes('Revogar'), canManageUsers);
   }

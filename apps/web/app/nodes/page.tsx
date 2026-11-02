@@ -227,6 +227,9 @@ export default async function NodesPage({
     activeFilterChips.push(presetLabels[preset]);
   }
   const hasActiveFilters = activeFilterChips.length > 0;
+  const hasAdvancedFilters = Boolean(
+    siteId || tagId || groupId || criticality || sortBy !== 'name' || sortOrder !== 'asc',
+  );
   const quickPresetHref = (value?: string) => {
     const query = new URLSearchParams();
     for (const [key, item] of Object.entries(inventoryQueryParams)) {
@@ -300,7 +303,8 @@ export default async function NodesPage({
         ))}
       </div>
 
-      <form className="glass-panel flex flex-col gap-2 rounded-xl p-3 sm:flex-row sm:flex-wrap sm:items-end">
+      <form className="space-y-2" role="search" aria-label="Filtrar inventário de firewalls">
+        <div className="glass-panel flex flex-col gap-2 rounded-xl p-3 sm:flex-row sm:flex-wrap sm:items-end">
         <label className="min-w-[12rem] flex-1 text-sm text-fg-muted">
           Cliente
           <select
@@ -342,18 +346,12 @@ export default async function NodesPage({
           />
         </label>
         <input type="hidden" name="preset" value={preset ?? ''} />
-        <input type="hidden" name="site_id" value={siteId ?? ''} />
-        <input type="hidden" name="tag_id" value={tagId ?? ''} />
-        <input type="hidden" name="group_id" value={groupId ?? ''} />
-        <input type="hidden" name="criticality" value={criticality ?? ''} />
-        <input type="hidden" name="sort_by" value={sortBy} />
-        <input type="hidden" name="sort_order" value={sortOrder} />
         <Button type="submit">Filtrar</Button>
-      </form>
+        </div>
 
       <details
         className="glass-panel rounded-xl"
-        open={hasActiveFilters ? true : undefined}
+        open={hasAdvancedFilters ? true : undefined}
       >
         <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-3 py-2 text-sm text-slate-200 marker:content-none [&::-webkit-details-marker]:hidden">
           <span className="font-mono text-[10px] uppercase tracking-wider text-cyan-400/90">
@@ -377,22 +375,10 @@ export default async function NodesPage({
           </span>
         </summary>
         <div className="border-t border-slate-800 px-4 py-4 sm:px-6">
-          <form className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end xl:gap-4">
-            <input type="hidden" name="preset" value={preset ?? ''} />
-            <select
-              name="client_id"
-              defaultValue={clientId ?? ''}
-              className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
-            >
-              <option value="">Todos os clientes</option>
-              {filterOptions.clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name} ({client.node_count})
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end xl:gap-4">
             <select
               name="site_id"
+              aria-label="Filtrar por site"
               defaultValue={siteId ?? ''}
               className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
@@ -404,19 +390,8 @@ export default async function NodesPage({
               ))}
             </select>
             <select
-              name="status"
-              defaultValue={status ?? ''}
-              className="h-11 min-w-[10rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
-            >
-              <option value="">Todos os status</option>
-              <option value="online">Online</option>
-              <option value="degraded">Degradado</option>
-              <option value="offline">Offline</option>
-              <option value="maintenance">Manutenção</option>
-              <option value="unknown">Desconhecido</option>
-            </select>
-            <select
               name="criticality"
+              aria-label="Filtrar por criticidade"
               defaultValue={criticality ?? ''}
               className="h-11 min-w-[10rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
@@ -427,6 +402,7 @@ export default async function NodesPage({
             </select>
             <select
               name="tag_id"
+              aria-label="Filtrar por tag"
               defaultValue={tagId ?? ''}
               className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
@@ -439,6 +415,7 @@ export default async function NodesPage({
             </select>
             <select
               name="group_id"
+              aria-label="Filtrar por grupo"
               defaultValue={groupId ?? ''}
               className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
@@ -449,15 +426,9 @@ export default async function NodesPage({
                 </option>
               ))}
             </select>
-            <input
-              type="search"
-              name="search"
-              defaultValue={search ?? ''}
-              placeholder="Buscar por nome, hostname ou cliente"
-              className="h-11 min-w-[16rem] flex-1 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-            />
             <select
               name="sort_by"
+              aria-label="Ordenar inventário por"
               defaultValue={sortBy}
               className="h-11 min-w-[10rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
@@ -470,6 +441,7 @@ export default async function NodesPage({
             </select>
             <select
               name="sort_order"
+              aria-label="Ordem do inventário"
               defaultValue={sortOrder}
               className="h-11 min-w-[9rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
@@ -477,9 +449,10 @@ export default async function NodesPage({
               <option value="desc">Decrescente</option>
             </select>
             <Button type="submit">Aplicar filtros</Button>
-          </form>
+          </div>
         </div>
       </details>
+      </form>
 
       <NodePagination result={nodes} basePath="/nodes" params={{ ...inventoryQueryParams, sort_by: sortBy, sort_order: sortOrder }} />
       {displayedInventoryNodes.length === 0 ? (

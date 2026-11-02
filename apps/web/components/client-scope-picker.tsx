@@ -13,6 +13,7 @@ type ClientScopePickerProps = {
   selectedIds: string[];
   fieldName?: string;
   title?: string;
+  onSelectionChange?: () => void;
 };
 
 export function ClientScopePicker({
@@ -20,6 +21,7 @@ export function ClientScopePicker({
   selectedIds,
   fieldName = 'client_ids',
   title = 'Clientes permitidos',
+  onSelectionChange,
 }: ClientScopePickerProps) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedIds));
 
@@ -30,8 +32,11 @@ export function ClientScopePicker({
       ),
     [clients],
   );
+  const activeIds = useMemo(() => new Set(clients.map((client) => client.id)), [clients]);
+  const unavailableIds = Array.from(selected).filter((id) => !activeIds.has(id));
 
   const toggleClient = (clientId: string, checked: boolean) => {
+    onSelectionChange?.();
     setSelected((current) => {
       const next = new Set(current);
       if (checked) {
@@ -44,20 +49,18 @@ export function ClientScopePicker({
   };
 
   const selectAll = () => {
-    setSelected(new Set(sortedClients.map((client) => client.id)));
+    onSelectionChange?.();
+    // Preservar vínculos históricos até que sua remoção seja explícita.
+    setSelected((current) => new Set([
+      ...Array.from(current).filter((id) => !activeIds.has(id)),
+      ...sortedClients.map((client) => client.id),
+    ]));
   };
 
   const clearSelection = () => {
+    onSelectionChange?.();
     setSelected(new Set());
   };
-
-  if (clients.length === 0) {
-    return (
-      <p className="w-full text-xs text-slate-500">
-        Nenhum cliente ativo disponível para escopo.
-      </p>
-    );
-  }
 
   return (
     <div className="w-full flex-[1_1_100%] rounded-lg border border-slate-700/80 bg-slate-950/30 p-3">
@@ -65,7 +68,7 @@ export function ClientScopePicker({
         <p className="text-xs font-medium text-slate-400">
           {title}{' '}
           <span className="text-slate-500">
-            ({selected.size}/{sortedClients.length})
+            ({selected.size} selecionados)
           </span>
         </p>
         <div className="flex flex-wrap gap-2">
@@ -81,11 +84,23 @@ export function ClientScopePicker({
             onClick={clearSelection}
             className="rounded border border-slate-600/80 bg-panel-soft px-2 py-1 text-xs text-slate-300 hover:border-slate-500"
           >
-            Remover selecao
+            Remover seleção
           </button>
         </div>
       </div>
 
+      {clients.length === 0 ? <p className="text-sm text-fg-muted">Nenhum cliente ativo disponível para novo vínculo.</p> : null}
+      {unavailableIds.length > 0 ? (
+        <div role="status" className="mb-3 space-y-2 rounded-lg border border-warning-border bg-warning-muted p-3 text-xs text-warning-fg">
+          <p>{unavailableIds.length} vínculo(s) histórico(s) indisponível(is). Serão preservados ao editar identidade. Selecionar todos mantém esses vínculos; remova somente se quiser alterar o acesso.</p>
+          {unavailableIds.map((id) => (
+            <label key={id} className="flex items-center gap-2">
+              <input type="checkbox" checked={selected.has(id)} onChange={() => toggleClient(id, false)} />
+              Vínculo histórico preservado ({id}) — desmarque para remover
+            </label>
+          ))}
+        </div>
+      ) : null}
       <div className="client-scope-scroll rounded-lg border border-slate-800/80 bg-slate-950/40 p-2">
         <div className="client-scope-grid">
           {sortedClients.map((client) => {

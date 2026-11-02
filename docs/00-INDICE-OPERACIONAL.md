@@ -1,3 +1,13 @@
+# Implementação local e nova revisão de 02/11/2026
+
+- [203 — Implementação da revisão 202](203-IMPLEMENTACAO-REVISAO-202-2026-11-02.md): mapa dos vinte achados, grupos dirigidos, builds únicos e 26 cenários novos em PG17; QA limpo. Publicação pendente, sem migration em produção.
+- [204 — Usabilidade com cinco agentes](204-REVISAO-USABILIDADE-CINCO-AGENTES-2026-11-02.md): discussão e contrapontos, novos achados de permissões/fluxos, prioridades e plano em três blocos. Propostas separadas do que foi implementado.
+
+# Revisão aprofundada de 02/11/2026
+
+- [Relatório 202 — integridade, segurança, escala e UX](202-REVISAO-UX-PROFUNDA-2026-11-02.md): 20 achados/riscos com evidência e ressalvas, plano A–E de mitigação e aceites dirigidos. **Análise; sem alteração de código, deploy ou appliances.**
+- [Plano 201 — reorganização visual preservando funções](201-PLANO-BASE-UX-MONITOR-PFSENSE-2026-11-02.md): roteiro visual A–E; trabalho local em andamento, publicação pendente.
+
 # Fechamento das correções de 02/11/2026
 
 - [Correções e evidências da revisão 199](200-CORRECOES-RELATORIO-199-2026-11-02.md): quinze achados corrigidos, API 0.13.1/painel 1.14.1 publicados, C01/C02 corrigidos e provados, recuperação DR integral aprovada no 220 com imagens exatas, banco restaurado e boot isolado/limpo.

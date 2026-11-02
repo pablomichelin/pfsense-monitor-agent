@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import {
   ApiError,
-  getNodeBootstrapCommand,
+  getNodeBootstrapCommandIfAllowed,
   getNodeConfigBackups,
   getNodeCommandHistory,
   getNodeDetails,
@@ -127,6 +127,7 @@ export default async function NodeDetailsPage({
     const canRestartService = hasPermission(permissions, 'service.restart.run');
     const canRebootNode = hasPermission(permissions, 'node.reboot.run');
     const canViewBootstrap = hasPermission(permissions, 'bootstrap.view');
+    const canExecuteBootstrap = hasPermission(permissions, 'bootstrap.execute');
     const canViewPfsenseApi = hasPermission(permissions, 'pfsense.api.view');
     const canManagePfsenseCredentials = hasPermission(permissions, 'pfsense.credentials.manage');
     const canViewPfsenseAliases = hasPermission(permissions, 'pfsense.alias.view');
@@ -166,8 +167,8 @@ export default async function NodeDetailsPage({
       ]);
 
     let bootstrap = null;
-    if (canViewBootstrap) {
-      bootstrap = await getNodeBootstrapCommand(
+    if (canExecuteBootstrap) {
+      bootstrap = await getNodeBootstrapCommandIfAllowed(
         id,
         releaseBaseUrl,
         controllerUrl,
@@ -187,7 +188,7 @@ export default async function NodeDetailsPage({
       { id: 'metrics', label: 'Métricas' },
       ...(isClientProfile ? [] : [{ id: 'alerts' as NodeDetailTabId, label: 'Alertas' }]),
       ...(canViewBackups ? [{ id: 'backup' as NodeDetailTabId, label: 'Backup' }] : []),
-      ...(canManageNode || bootstrap
+      ...(canManageNode || canViewBootstrap || canExecuteBootstrap
         ? [{ id: 'config' as NodeDetailTabId, label: 'Configuração' }]
         : []),
     ];
@@ -339,6 +340,7 @@ export default async function NodeDetailsPage({
                 node={node}
                 canManageNode={canManageNode}
                 bootstrap={bootstrap}
+                canExecuteBootstrap={canExecuteBootstrap}
                 heartbeatMode={heartbeatMode}
                 configBackupInstallMode={configBackupInstallMode}
                 releaseBaseUrl={releaseBaseUrl}

@@ -60,12 +60,27 @@ export function NodeDetailTabs({
 
   return (
     <div className="space-y-section">
-      <div className="flex flex-wrap gap-1 border-b border-border">
+      <div className="flex flex-wrap gap-1 border-b border-border" role="tablist" aria-label="Seções do firewall">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
+            id={`node-tab-${tab.id}`}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`node-panel-${tab.id}`}
+            tabIndex={activeTab === tab.id ? 0 : -1}
             onClick={() => selectTab(tab.id)}
+            onKeyDown={(event) => {
+              const movement = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+              if (!movement) return;
+              event.preventDefault();
+              const index = tabs.findIndex((item) => item.id === tab.id);
+              const next = tabs[(index + movement + tabs.length) % tabs.length];
+              if (!next) return;
+              selectTab(next.id);
+              event.currentTarget.parentElement?.querySelector<HTMLElement>(`#node-tab-${next.id}`)?.focus();
+            }}
             className={cn(
               'border-b-2 px-4 py-2.5 text-sm font-medium transition',
               activeTab === tab.id
@@ -77,7 +92,10 @@ export function NodeDetailTabs({
           </button>
         ))}
       </div>
-      <div>{panels[activeTab]}</div>
+      {tabs.filter((tab) => tab.id !== activeTab).map((tab) => (
+        <div key={tab.id} id={`node-panel-${tab.id}`} role="tabpanel" aria-labelledby={`node-tab-${tab.id}`} hidden />
+      ))}
+      <div id={`node-panel-${activeTab}`} role="tabpanel" aria-labelledby={`node-tab-${activeTab}`} tabIndex={0}>{panels[activeTab]}</div>
     </div>
   );
 }

@@ -34,6 +34,27 @@ function buildAdminRedirectUrl(
   const params = new URLSearchParams({ section, status, message });
   const base =
     returnTo && returnTo.startsWith('/admin') ? returnTo.replace(/\?.*$/, '') : '/admin';
+  if (base === '/admin/usuarios' && returnTo) {
+    const originalQuery = new URLSearchParams(returnTo.split('?')[1] ?? '');
+    for (const key of ['showInactive', 'search', 'cursor', 'limit', 'tab']) {
+      const value = originalQuery.get(key);
+      if (value) params.set(key, value);
+    }
+    const selected = originalQuery.get('selected');
+    if (selected) params.set('selected', selected);
+    if (section === 'user-sessions') {
+      params.set('tab', 'sessoes');
+      // Mesmo uma segunda revogação com mensagem idêntica deve atualizar a lista.
+      params.set('rev', String(Date.now()));
+    }
+  }
+  if (base === '/admin/clientes' && returnTo) {
+    const originalQuery = new URLSearchParams(returnTo.split('?')[1] ?? '');
+    for (const key of ['clientStatus', 'search', 'page', 'limit']) {
+      const value = originalQuery.get(key);
+      if (value) params.set(key, value);
+    }
+  }
   return `${base}?${params.toString()}`;
 }
 
@@ -146,13 +167,13 @@ export async function deleteClientAction(
     revalidatePath('/dashboard');
     revalidatePath('/bootstrap');
     redirect(
-      `${baseUrl}?section=client-delete&status=ok&message=${encodeURIComponent('Cliente excluido')}`,
+      buildAdminRedirectUrl('client-delete', 'ok', 'Cliente excluido', safeReturnTo),
     );
   } catch (error) {
     rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao excluir cliente';
     redirect(
-      `${baseUrl}?section=client-delete&status=error&message=${encodeURIComponent(message)}`,
+      buildAdminRedirectUrl('client-delete', 'error', message, safeReturnTo),
     );
   }
 }
@@ -283,17 +304,28 @@ export async function updateUserAction(formData: FormData): Promise<void> {
     const clientIds = parseClientIds(formData);
     const clientId = normalizeOptional(formData.get('client_id'));
 
-    const response = await updateUser(userId, {
-      email: normalizeOptional(formData.get('email')),
-      display_name: normalizeOptional(formData.get('display_name')),
-      password: normalizeOptional(formData.get('password')),
-      role,
-      status:
-        (normalizeOptional(formData.get('status')) as 'active' | 'inactive' | undefined) ??
-        undefined,
-      client_id: role === 'client' ? clientId ?? undefined : undefined,
-      client_ids: role === 'superadmin' || role === 'client' ? [] : clientIds,
-    });
+    // Os originais só decidem quais campos enviar; autorização e validação
+    // permanecem na API. Ausência de originais preserva formulários legados.
+    const changed = (field: string) => !formData.has(`original_${field}`)
+      || String(formData.get(field) ?? '').trim() !== String(formData.get(`original_${field}`) ?? '').trim();
+    const payload: Parameters<typeof updateUser>[1] = {};
+    if (changed('email')) payload.email = normalizeOptional(formData.get('email'));
+    if (changed('display_name')) payload.display_name = String(formData.get('display_name') ?? '').trim();
+    const password = normalizeOptional(formData.get('password'));
+    if (password) payload.password = password;
+    if (changed('role')) payload.role = role;
+    if (changed('status')) payload.status = normalizeOptional(formData.get('status')) as 'active' | 'inactive' | undefined;
+    const originalIds: unknown = formData.has('original_client_ids')
+      ? JSON.parse(String(formData.get('original_client_ids'))) : null;
+    const idsChanged = !Array.isArray(originalIds)
+      || JSON.stringify([...new Set(clientIds)].sort()) !== JSON.stringify([...new Set(originalIds)].sort());
+    const scopeChanged = changed('role') || (formData.get('scope_changed') === '1'
+      && (role === 'client' ? changed('client_id') : idsChanged));
+    if (scopeChanged) {
+      if (role === 'client') payload.client_id = clientId;
+      else payload.client_ids = role === 'superadmin' ? [] : clientIds;
+    }
+    const response = await updateUser(userId, payload);
 
     revalidatePath('/admin');
     revalidatePath('/admin/usuarios');
@@ -317,11 +349,11 @@ export async function deleteUserAction(formData: FormData): Promise<void> {
     await deleteUser(userId);
     revalidatePath('/admin');
     revalidatePath('/admin/usuarios');
-    redirect(`${returnTo.replace(/\?.*$/, '')}?section=user-edit&status=ok&message=${encodeURIComponent('Usuario excluido')}`);
+    redirect(buildAdminRedirectUrl('user-edit', 'ok', 'Usuario excluido', returnTo));
   } catch (error) {
     rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao excluir usuario';
-    redirect(`${returnTo.replace(/\?.*$/, '')}?section=user-edit&status=error&message=${encodeURIComponent(message)}`);
+    redirect(buildAdminRedirectUrl('user-edit', 'error', message, returnTo));
   }
 }
 
@@ -329,10 +361,9 @@ export async function revokeUserSessionAdminAction(formData: FormData): Promise<
   const userId = String(formData.get('user_id') ?? '').trim();
   const sessionId = String(formData.get('session_id') ?? '').trim();
   const returnTo = normalizeOptional(formData.get('returnTo'));
-  const base = returnTo && returnTo.startsWith('/admin') ? returnTo.replace(/\?.*$/, '') : '/admin';
 
   if (!userId || !sessionId) {
-    redirect(`${base}?section=user-sessions&status=error&message=${encodeURIComponent('Sessao invalida')}`);
+    redirect(buildAdminRedirectUrl('user-sessions', 'error', 'Sessao invalida', returnTo));
   }
 
   try {
@@ -340,11 +371,11 @@ export async function revokeUserSessionAdminAction(formData: FormData): Promise<
     revalidatePath('/admin');
     revalidatePath('/admin/usuarios');
     revalidatePath('/sessions');
-    redirect(`${base}?section=user-sessions&status=ok&message=${encodeURIComponent('Sessao revogada')}`);
+    redirect(buildAdminRedirectUrl('user-sessions', 'ok', 'Sessao revogada', returnTo));
   } catch (error) {
     rethrowIfRedirectError(error);
     const message = error instanceof Error ? error.message : 'Falha ao revogar sessao';
-    redirect(`${base}?section=user-sessions&status=error&message=${encodeURIComponent(message)}`);
+    redirect(buildAdminRedirectUrl('user-sessions', 'error', message, returnTo));
   }
 }
 

@@ -20,63 +20,12 @@ import {
 import { hasPermission } from '@/lib/authz';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { formatDateTime, formatRelativeAge } from '@/lib/format';
+import { buildBootstrapHref, buildPfSensePrecheckBlock, buildBootstrapEvidenceBlock, shellQuote } from '@/lib/bootstrap-command-helpers';
 
 export const dynamic = 'force-dynamic';
 
 type BootstrapBucket = 'pending' | 'active' | 'blocked';
 type HeartbeatMode = 'normal' | 'light';
-
-function buildBootstrapHref(filters: {
-  cursor?: string;
-  clientId?: string;
-  siteId?: string;
-  search?: string;
-  bucket?: string;
-  nodeId?: string;
-  releaseBaseUrl?: string;
-  controllerUrl?: string;
-  heartbeatMode?: HeartbeatMode;
-}) {
-  const params = new URLSearchParams();
-
-  if (filters.cursor) {
-    params.set('cursor', filters.cursor);
-  }
-
-  if (filters.clientId) {
-    params.set('client_id', filters.clientId);
-  }
-
-  if (filters.siteId) {
-    params.set('site_id', filters.siteId);
-  }
-
-  if (filters.search) {
-    params.set('search', filters.search);
-  }
-
-  if (filters.bucket) {
-    params.set('bucket', filters.bucket);
-  }
-
-  if (filters.nodeId) {
-    params.set('node_id', filters.nodeId);
-  }
-
-  if (filters.releaseBaseUrl) {
-    params.set('release_base_url', filters.releaseBaseUrl);
-  }
-
-  if (filters.controllerUrl) {
-    params.set('controller_url', filters.controllerUrl);
-  }
-  if (filters.heartbeatMode) {
-    params.set('heartbeat_mode', filters.heartbeatMode);
-  }
-
-  const query = params.toString();
-  return query ? `/bootstrap?${query}` : '/bootstrap';
-}
 
 function normalizeHeartbeatMode(value: string | string[] | undefined): HeartbeatMode {
   return value === 'light' ? 'light' : 'normal';
@@ -99,7 +48,7 @@ function getBootstrapBucket(node: {
 
 function bucketBadge(bucket: BootstrapBucket) {
   if (bucket === 'active') {
-    return <Badge variant="success">Agente ativo</Badge>;
+    return <Badge variant="success">Agente instalado</Badge>;
   }
   if (bucket === 'blocked') {
     return <Badge variant="danger">Bloqueado</Badge>;
@@ -118,103 +67,6 @@ function CommandBlock({ value }: { value: string }) {
   );
 }
 
-function shellQuote(value: string) {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function extractHostname(value: string | null | undefined) {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    return new URL(value).hostname;
-  } catch {
-    return null;
-  }
-}
-
-function buildPfSensePrecheckBlock(input: {
-  controllerUrl: string;
-  installerUrl: string | null;
-  artifactUrl: string | null;
-  checksumUrl: string | null;
-}) {
-  const lines = [
-    'cat /etc/version',
-    '',
-    '# teste de DNS para os destinos da rodada',
-  ];
-
-  const hostnames = [
-    extractHostname(input.controllerUrl),
-    extractHostname(input.installerUrl),
-    extractHostname(input.artifactUrl),
-    extractHostname(input.checksumUrl),
-  ].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index);
-
-  if (hostnames.length > 0) {
-    for (const hostname of hostnames) {
-      lines.push(`drill ${hostname}`);
-    }
-  } else {
-    lines.push('# hostnames indisponiveis nesta visualizacao');
-  }
-
-  lines.push('');
-  lines.push('# teste de saida HTTP/HTTPS para os URLs efetivos da rodada');
-  lines.push(`fetch -qo /tmp/monitor-controller-check.out '${input.controllerUrl}/healthz' || true`);
-
-  if (input.installerUrl) {
-    lines.push(`fetch -qo /tmp/monitor-installer-check.out '${input.installerUrl}' || true`);
-  }
-
-  if (input.artifactUrl) {
-    lines.push(`fetch -qo /tmp/monitor-artifact-check.out '${input.artifactUrl}' || true`);
-  }
-
-  if (input.checksumUrl) {
-    lines.push(`fetch -qo /tmp/monitor-checksum-check.out '${input.checksumUrl}' || true`);
-  }
-
-  return lines.join('\n');
-}
-
-function buildEvidenceBlock(input: {
-  nodeId: string;
-  nodeUid: string;
-  hostname: string;
-  pfsenseVersion: string | null;
-  releaseVersion: string;
-  artifactUrl: string | null;
-  checksumUrl: string | null;
-  installerUrl: string | null;
-  releaseBaseUrl: string | undefined;
-  controllerUrl: string | undefined;
-  bootstrapCommand: string | null;
-}) {
-  const lines = [
-    `data_registro: ${new Date().toISOString()}`,
-    `node_id: ${input.nodeId}`,
-    `node_uid: ${input.nodeUid}`,
-    `hostname: ${input.hostname}`,
-    `pfsense_version: ${input.pfsenseVersion ?? '-'}`,
-    `agent_release_version: ${input.releaseVersion}`,
-    `artifact_url: ${input.artifactUrl ?? '-'}`,
-    `checksum_url: ${input.checksumUrl ?? '-'}`,
-    `installer_url: ${input.installerUrl ?? '-'}`,
-    `release_base_url_override: ${input.releaseBaseUrl ?? 'nao usado'}`,
-    `controller_url_override: ${input.controllerUrl ?? 'nao usado'}`,
-    'test_connection_resultado: [preencher apos a rodada]',
-    'heartbeat_manual_resultado: [preencher apos a rodada]',
-    'painel_online_evidencia: [preencher com print ou anotacao]',
-    'comando_bootstrap_usado:',
-    input.bootstrapCommand ?? '[indisponivel sem release_base_url configurada]',
-  ];
-
-  return lines.join('\n');
-}
-
 export default async function BootstrapPage({
   searchParams,
 }: {
@@ -225,7 +77,7 @@ export default async function BootstrapPage({
   const clientId = typeof params.client_id === 'string' ? params.client_id : undefined;
   const siteId = typeof params.site_id === 'string' ? params.site_id : undefined;
   const search = typeof params.search === 'string' ? params.search : undefined;
-  const bucket = typeof params.bucket === 'string' ? params.bucket : undefined;
+  const bucket: BootstrapBucket | undefined = typeof params.bucket === 'string' && ['pending', 'active', 'blocked'].includes(params.bucket) ? params.bucket as BootstrapBucket : undefined;
   const selectedNodeId = typeof params.node_id === 'string' ? params.node_id : undefined;
   const releaseBaseUrl =
     typeof params.release_base_url === 'string' ? params.release_base_url.trim() : undefined;
@@ -235,6 +87,8 @@ export default async function BootstrapPage({
   let nodes;
   let filterOptions;
   let selectedBootstrap = null;
+  let canExecuteBootstrap = false;
+  let bootstrapError: string | null = null;
 
   try {
     const session = await getSession();
@@ -242,11 +96,13 @@ export default async function BootstrapPage({
       redirect('/conta?access=denied');
     }
 
+    canExecuteBootstrap = hasPermission(session.permissions ?? [], 'bootstrap.execute');
     [nodes, filterOptions] = await Promise.all([
       getNodesList({
         client_id: clientId,
         site_id: siteId,
         search,
+        bootstrap_bucket: bucket,
         limit: 50,
         cursor,
       }),
@@ -261,29 +117,29 @@ export default async function BootstrapPage({
     bootstrap_bucket: getBootstrapBucket(node),
   }));
 
-  const filteredItems = bucket
-    ? items.filter((node) => node.bootstrap_bucket === bucket)
-    : items;
+  const filteredItems = items;
 
   const pending = filteredItems.filter((node) => node.bootstrap_bucket === 'pending');
   const active = filteredItems.filter((node) => node.bootstrap_bucket === 'active');
   const blocked = filteredItems.filter((node) => node.bootstrap_bucket === 'blocked');
+  const bootstrapSummary = nodes.bootstrap_summary;
+  const counts = bootstrapSummary ?? { pending: pending.length, active: active.length, blocked: blocked.length };
+  const countsContext = bootstrapSummary
+    ? 'Nos filtros atuais — todos os estados'
+    : 'Nesta página — resumo completo indisponível';
 
   const sites = clientId
     ? filterOptions.sites.filter((site) => site.client_id === clientId)
     : filterOptions.sites;
   const hasActiveFilters = Boolean(clientId || siteId || search || bucket);
-  const resultSummary =
-    filteredItems.length === items.length
-      ? `${filteredItems.length} firewalls nesta página`
-      : `${filteredItems.length} de ${items.length} firewalls nesta página`;
+  const resultSummary = `${items.length} firewalls nesta página de ${nodes.total} ${bucket ? 'no estado selecionado' : 'nos filtros atuais'}`;
   // An explicit selection must never silently fall back to another firewall.
   const selectedNode = selectedNodeId
     ? filteredItems.find((node) => node.id === selectedNodeId) ?? null
-    : filteredItems.find((node) => node.bootstrap_bucket === 'pending') ?? filteredItems[0] ?? null;
+    : null;
   const selectionMissing = Boolean(selectedNodeId && !selectedNode);
 
-  if (selectedNode) {
+  if (selectedNode && canExecuteBootstrap) {
     try {
       selectedBootstrap = await getNodeBootstrapCommand(
         selectedNode.id,
@@ -292,8 +148,11 @@ export default async function BootstrapPage({
         heartbeatMode,
       );
     } catch (error) {
-      if (error instanceof ApiError && error.status === 403) {
+      if (error instanceof ApiError && [400, 403].includes(error.status)) {
         selectedBootstrap = null;
+        bootstrapError = error.status === 403
+          ? 'Sua permissão de instalação foi alterada. Solicite bootstrap.execute para revelar o comando.'
+          : 'URL não aprovada. Use HTTPS e uma origem de release/controlador configurada pelo administrador.';
       } else {
         handlePageApiError(error);
       }
@@ -331,7 +190,7 @@ export default async function BootstrapPage({
     : null;
   const evidenceBlock =
     selectedNode && selectedBootstrap
-      ? buildEvidenceBlock({
+      ? buildBootstrapEvidenceBlock({
           nodeId: selectedNode.id,
           nodeUid: selectedBootstrap.node.node_uid,
           hostname: selectedNode.hostname,
@@ -342,7 +201,6 @@ export default async function BootstrapPage({
           installerUrl: selectedBootstrap.release.installer_url,
           releaseBaseUrl,
           controllerUrl,
-          bootstrapCommand: selectedBootstrap.package_command ?? selectedBootstrap.command,
         })
       : null;
   const runBootstrapPreflightCommand = selectedNode
@@ -359,17 +217,21 @@ export default async function BootstrapPage({
       <PageHero
         eyebrow="Instalação"
         title="Instalar agente"
-        description="Escolha um firewall e copie o comando de instalação."
+        description={`Selecione explicitamente o firewall antes de gerar ou copiar o comando de instalação. Instalado indica registro anterior do agente; confira o último contato para saber se está comunicando. ${countsContext}.`}
         stats={[
-          { label: 'Prontos', value: String(pending.length), tone: pending.length > 0 ? 'warning' : 'default' },
-          { label: 'Ativos', value: String(active.length), tone: active.length > 0 ? 'success' : 'default' },
-          { label: 'Bloqueados', value: String(blocked.length), tone: blocked.length > 0 ? 'danger' : 'default' },
+          { label: bootstrapSummary ? 'Prontos' : 'Prontos na página', value: String(counts.pending), tone: counts.pending > 0 ? 'warning' : 'default' },
+          { label: bootstrapSummary ? 'Instalados' : 'Instalados na página', value: String(counts.active), tone: counts.active > 0 ? 'success' : 'default' },
+          { label: bootstrapSummary ? 'Bloqueados' : 'Bloqueados na página', value: String(counts.blocked), tone: counts.blocked > 0 ? 'danger' : 'default' },
         ]}
       />
+      <p className="text-sm text-slate-400">{countsContext}{bootstrapSummary ? `: ${bootstrapSummary.total} firewalls.` : '.'}</p>
 
       <PageSection title="Filtros" description="Refine a lista de firewalls por cliente, local ou bucket.">
         <Card className="p-3">
         <form className="flex flex-wrap items-center gap-2">
+          {releaseBaseUrl ? <input type="hidden" name="release_base_url" value={releaseBaseUrl} /> : null}
+          {controllerUrl ? <input type="hidden" name="controller_url" value={controllerUrl} /> : null}
+          <input type="hidden" name="heartbeat_mode" value={heartbeatMode} />
           <select
             name="client_id"
             defaultValue={clientId ?? ''}
@@ -401,7 +263,7 @@ export default async function BootstrapPage({
           >
             <option value="">Todos</option>
             <option value="pending">Prontos</option>
-            <option value="active">Ativos</option>
+            <option value="active">Instalados</option>
             <option value="blocked">Bloqueados</option>
           </select>
           <input
@@ -445,7 +307,7 @@ export default async function BootstrapPage({
             <input type="hidden" name="cursor" value={cursor ?? ''} />
             <AdvancedSection
               title="Overrides de homologacao"
-              description="Release base URL e controller URL para ambientes alternativos. Use apenas quando necessario."
+              description="Somente HTTPS e origens aprovadas na configuração do servidor. O comando oficial do package mantém o release publicado."
             >
               <div className="space-y-3">
                 <input
@@ -488,14 +350,13 @@ export default async function BootstrapPage({
                 <p>Local: {selectedNode.client.name} — {selectedNode.site.name}</p>
                 <p>Último contato: {formatRelativeAge(selectedNode.last_seen_at)}</p>
               </div>
-              <div className="space-y-2">
-                <p className="text-sm text-slate-400">Use este comando no pfSense.</p>
-                {(selectedBootstrap?.package_command ?? selectedBootstrap?.command) ? (
-                  <CommandBlock value={selectedBootstrap.package_command ?? selectedBootstrap.command ?? ''} />
-                ) : (
-                  <CommandBlock value={verifyBootstrapCommand} />
-                )}
-              </div>
+              {selectedBootstrap?.package_command || selectedBootstrap?.command ? (
+                <a href="#comando-instalacao" className={secondaryLinkClassName}>
+                  Ver e copiar comando de instalação ↓
+                </a>
+              ) : (
+                <Alert variant="warning">{!canExecuteBootstrap ? 'Você tem acesso somente à consulta. Revelar o comando e a credencial exige a permissão bootstrap.execute.' : bootstrapError ?? 'O comando de instalação não está disponível para este firewall. Consulte os diagnósticos ou revise a configuração do release.'}</Alert>
+              )}
               <div className="flex flex-col gap-3 lg:flex-row">
                 <Link href={`/nodes/${selectedNode.id}`} className={secondaryLinkClassName}>
                   Abrir firewall
@@ -527,7 +388,7 @@ export default async function BootstrapPage({
             </div>
           ) : (
             <Alert variant="info" className="mt-4">
-              Nenhum firewall selecionado para preflight. Escolha um firewall no formulário ao lado.
+              Nenhum firewall selecionado. Escolha explicitamente um firewall no formulário ao lado para preparar a instalação.
             </Alert>
           )}
         </Card>
@@ -539,6 +400,7 @@ export default async function BootstrapPage({
             <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Resumo</p>
             <h3 className="mt-1.5 font-display text-xl text-fg">Firewall selecionado</h3>
 
+            {releaseBaseUrl || controllerUrl ? <Alert variant="warning">Override solicitado. Confira abaixo os destinos efetivos antes de executar; o package usa o release oficial publicado.</Alert> : null}
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">
                 <p>UID: {selectedBootstrap.node.node_uid}</p>
@@ -566,6 +428,7 @@ export default async function BootstrapPage({
                   <div className="flex flex-wrap gap-2">
                     <Link
                       href={buildBootstrapHref({
+                        cursor,
                         clientId,
                         siteId,
                         search,
@@ -585,6 +448,7 @@ export default async function BootstrapPage({
                     </Link>
                     <Link
                       href={buildBootstrapHref({
+                        cursor,
                         clientId,
                         siteId,
                         search,
@@ -608,7 +472,7 @@ export default async function BootstrapPage({
                     <strong className="text-slate-300">Light</strong> envia só métricas e reaproveita o último estado conhecido.
                   </p>
                 </div>
-                <div className="space-y-2">
+                <div id="comando-instalacao" className="space-y-2 scroll-mt-6">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Comando principal</p>
                     <CopyButton value={selectedBootstrap.package_command ?? selectedBootstrap.command ?? ''} />
@@ -653,7 +517,7 @@ export default async function BootstrapPage({
                   {pfSensePrecheckBlock ? <CommandBlock value={pfSensePrecheckBlock} /> : null}
                 </div>
                 <div>
-                  <p className="mb-2 text-sm text-slate-400">Evidencias</p>
+                  <p className="mb-2 text-sm text-slate-400">Evidência sanitizada — comandos e credenciais omitidos.</p>
                   {evidenceBlock ? <CommandBlock value={evidenceBlock} /> : null}
                 </div>
               </div>
@@ -680,6 +544,8 @@ export default async function BootstrapPage({
                 clientId,
                 siteId,
                 search,
+                releaseBaseUrl,
+                controllerUrl,
                 heartbeatMode,
               })}
               className={`rounded-md border px-4 py-2 text-sm transition ${
@@ -696,6 +562,8 @@ export default async function BootstrapPage({
                 siteId,
                 search,
                 bucket: 'pending',
+                releaseBaseUrl,
+                controllerUrl,
                 heartbeatMode,
               })}
               className={`rounded-md border px-4 py-2 text-sm transition ${
@@ -712,6 +580,8 @@ export default async function BootstrapPage({
                 siteId,
                 search,
                 bucket: 'active',
+                releaseBaseUrl,
+                controllerUrl,
                 heartbeatMode,
               })}
               className={`rounded-md border px-4 py-2 text-sm transition ${
@@ -720,7 +590,7 @@ export default async function BootstrapPage({
                   : 'border-slate-700 text-slate-300 hover:border-slate-500 hover:text-fg'
               }`}
             >
-              Ativos
+              Instalados
             </Link>
             <Link
               href={buildBootstrapHref({
@@ -728,6 +598,8 @@ export default async function BootstrapPage({
                 siteId,
                 search,
                 bucket: 'blocked',
+                releaseBaseUrl,
+                controllerUrl,
                 heartbeatMode,
               })}
               className={`rounded-md border px-4 py-2 text-sm transition ${
@@ -749,12 +621,12 @@ export default async function BootstrapPage({
                 <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Fila de bootstrap</p>
                 <h3 className="mt-1 font-display text-lg text-fg">Firewalls prontos para instalar</h3>
               </div>
-            <Badge variant="warning">{pending.length} pendentes</Badge>
+            <Badge variant="warning">{pending.length} pendentes nesta página</Badge>
           </div>
 
           <div className="mt-4 space-y-3">
             {pending.length === 0 ? (
-              <Alert variant="success">Nenhum firewall aguardando bootstrap no momento.</Alert>
+              <Alert variant="info">Nenhum firewall pronto para bootstrap nesta página. Consulte outras páginas antes de concluir que não há pendências.</Alert>
             ) : (
               pending.map((node) => (
                 <Link
@@ -787,7 +659,7 @@ export default async function BootstrapPage({
 
         <div className="space-y-section">
           <Card className="p-4">
-            <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Agentes ativos</p>
+            <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Agentes instalados</p>
             <div className="mt-4 space-y-3">
               {active.slice(0, 6).map((node) => (
                 <Link
@@ -812,7 +684,7 @@ export default async function BootstrapPage({
                 </Link>
               ))}
               {active.length === 0 ? (
-                <Alert variant="info">Nenhum agente ativo ainda.</Alert>
+                <Alert variant="info">Nenhum agente instalado nesta página.</Alert>
               ) : null}
             </div>
           </Card>

@@ -4,14 +4,13 @@ import { PageHero } from '@/components/page-hero';
 import { AdminClientsList } from '@/components/admin-clients-list';
 import { AdminSectionMessage } from '@/components/admin-section-message';
 import { Alert, Card, PageSection } from '@/components/ui';
-import { getNodesFilters, getNodesList, getSession } from '@/lib/api';
+import { getAdminClientsList, getSession } from '@/lib/api';
 import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 import { hasPermission } from '@/lib/authz';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
 
 export const dynamic = 'force-dynamic';
 
-const returnTo = '/admin/clientes';
 
 export default async function AdminClientesPage({
   searchParams,
@@ -24,8 +23,17 @@ export default async function AdminClientesPage({
   const message = typeof params.message === 'string' ? params.message : undefined;
 
   let session;
-  let filterOptions;
-  let nodesCount = 0;
+  let result;
+  const clientStatus = params.clientStatus === 'inactive' ? 'inactive' : 'active';
+  const search = typeof params.search === 'string' ? params.search.trim().slice(0, 200) : '';
+  const requestedPage = Number(params.page);
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, 1000000) : 1;
+  const href = (nextPage = page, nextStatus = clientStatus) => {
+    const query = new URLSearchParams({ clientStatus: nextStatus, page: String(nextPage) });
+    if (search) query.set('search', search);
+    return `/admin/clientes?${query}`;
+  };
+  const returnTo = href();
 
   try {
     session = await getSession();
@@ -37,29 +45,23 @@ export default async function AdminClientesPage({
     redirect('/conta?access=denied');
   }
 
+  const canViewInactive = session.user.role === 'superadmin' || session.has_global_client_scope === true;
+  if (clientStatus === 'inactive' && !canViewInactive) redirect(href(1, 'active'));
   try {
-    const [filters, nodes] = await Promise.all([
-      getNodesFilters(),
-      getNodesList({ limit: 1 }),
-    ]);
-    filterOptions = filters;
-    nodesCount = nodes.total;
+    result = await getAdminClientsList({ status: clientStatus, search, page, limit: 50 });
   } catch (error) {
     handlePageApiError(error);
   }
-
-  const activeClients = filterOptions.clients;
-  const inactiveCount = filterOptions.inactive_client_count ?? 0;
+  if (page > result.total_pages) redirect(href(result.total_pages));
 
   return (
     <div className="space-y-section">
       <PageHero
         eyebrow="Administração"
         title="Clientes"
-        description="Editar clientes e ver firewalls associados. Apenas entidades ativas em uso."
+        description="Consulte clientes, ajuste seus dados e acompanhe os vínculos existentes."
         stats={[
-          { label: 'Clientes ativos', value: String(activeClients.length) },
-          { label: 'Firewalls', value: String(nodesCount) },
+          { label: clientStatus === 'active' ? 'Clientes ativos' : 'Clientes inativos', value: String(result.total) },
         ]}
       />
 
@@ -70,11 +72,22 @@ export default async function AdminClientesPage({
       </PageSection>
 
       <PageSection
-        title="Clientes ativos"
-        description="Ajustes rápidos de nome, código e status. Firewalls por cliente no inventário."
+        title={clientStatus === 'active' ? 'Clientes ativos' : 'Clientes inativos'}
+        description={canViewInactive ? "Ajuste nome, código e status. A reativação preserva os vínculos existentes." : "Clientes ativos do seu escopo. A consulta de inativos requer escopo global."}
       >
         <Card className="p-6">
           <div className="space-y-4">
+            <nav aria-label="Status dos clientes" className="flex gap-4 text-sm">
+              <Link href={href(1, 'active')} aria-current={clientStatus === 'active' ? 'page' : undefined} className="text-primary hover:underline">Ativos</Link>
+              {canViewInactive ? <Link href={href(1, 'inactive')} aria-current={clientStatus === 'inactive' ? 'page' : undefined} className="text-primary hover:underline">Inativos</Link> : null}
+            </nav>
+            <form action="/admin/clientes" className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="clientStatus" value={clientStatus} />
+              <label className="text-sm text-fg-muted">Buscar cliente
+                <input key={search} name="search" type="search" defaultValue={search} maxLength={200} placeholder="Nome ou código" className="ml-2 rounded border border-border bg-surface p-2 text-fg" />
+              </label>
+              <button type="submit" className="rounded border border-border px-3 py-2 text-sm">Buscar</button>
+            </form>
             <AdminSectionMessage
               section="client-edit"
               activeSection={activeSection}
@@ -87,22 +100,20 @@ export default async function AdminClientesPage({
               status={status}
               message={message}
             />
-            {activeClients.length === 0 ? (
-              <Alert variant="info">Nenhum cliente ativo. Crie um em Cadastro.</Alert>
+            {result.items.length === 0 ? (
+              <Alert variant="info">Nenhum cliente encontrado neste filtro.</Alert>
             ) : (
-              <AdminClientsList clients={activeClients} returnTo={returnTo} />
+              <AdminClientsList key={returnTo} clients={result.items} returnTo={returnTo}
+                canViewFirewalls={hasPermission(session.permissions ?? [], 'firewalls.view')}
+                canUpdate={hasPermission(session.permissions ?? [], 'clients.update')}
+                canDelete={hasPermission(session.permissions ?? [], 'clients.delete')} />
             )}
           </div>
-          {inactiveCount > 0 && (
-            <div className="mt-6 border-t border-slate-700/80 pt-4">
-              <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
-                Inativos ({inactiveCount})
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                Clientes inativos não aparecem na operação diária. Edite o status acima para reativar.
-              </p>
-            </div>
-          )}
+          <nav aria-label="Paginação de clientes" className="mt-4 flex items-center gap-4 text-sm">
+            {page > 1 ? <Link href={href(page - 1)} className="text-primary">Anterior</Link> : null}
+            <span>Página {page} de {result.total_pages} · {result.total} clientes</span>
+            {page < result.total_pages ? <Link href={href(page + 1)} className="text-primary">Próxima</Link> : null}
+          </nav>
         </Card>
       </PageSection>
     </div>

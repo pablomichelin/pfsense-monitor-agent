@@ -24,6 +24,7 @@ type Node = NodeDetailsResponse['node'];
 export function NodeDetailConfigTab({
   node,
   canManageNode,
+  canExecuteBootstrap = false,
   bootstrap,
   heartbeatMode,
   configBackupInstallMode,
@@ -34,6 +35,7 @@ export function NodeDetailConfigTab({
 }: {
   node: Node;
   canManageNode: boolean;
+  canExecuteBootstrap?: boolean;
   bootstrap: NodeBootstrapCommandResponse | null;
   heartbeatMode: HeartbeatMode;
   configBackupInstallMode: ConfigBackupInstallMode;
@@ -155,7 +157,7 @@ export function NodeDetailConfigTab({
         </PageSection>
       ) : null}
 
-      {canManageNode && bootstrap ? (
+      {canExecuteBootstrap && bootstrap ? (
         <PageSection
           title="Instalar agente"
           description="Bootstrap, credenciais e comandos para instalação no pfSense."
@@ -168,16 +170,15 @@ export function NodeDetailConfigTab({
                   Use a instalação abaixo para conectar este firewall ao painel.
                 </p>
               </div>
-              <RotateSecretButton nodeId={node.id} nodeUid={node.node_uid} />
+              {canManageNode ? <RotateSecretButton nodeId={node.id} nodeUid={node.node_uid} /> : null}
             </Card>
 
+            {releaseBaseUrl || controllerUrl ? <Alert variant="warning">Override solicitado. Confira os destinos efetivos abaixo antes de executar.</Alert> : null}
             <div className="grid gap-3 lg:grid-cols-2">
               <BootstrapField label="UID" value={bootstrap.node.node_uid} />
               <BootstrapField
-                label={canManageNode ? 'Secret' : 'Secret hint'}
-                value={
-                  canManageNode ? bootstrap.bootstrap.node_secret : bootstrap.bootstrap.secret_hint
-                }
+                label="Credencial sensível"
+                value={bootstrap.bootstrap.node_secret}
               />
             </div>
 
@@ -387,7 +388,7 @@ export function NodeDetailConfigTab({
 
             <AdvancedSection
               title="Mais opções e diagnóstico"
-              description="URLs, overrides e roteiro técnico para homologação."
+              description="Overrides somente em HTTPS e origens aprovadas pelo servidor. O package mantém o release oficial publicado."
             >
               <div className="space-y-4">
                 <div className="grid gap-3 lg:grid-cols-2">
@@ -469,9 +470,15 @@ export function NodeDetailConfigTab({
         </PageSection>
       ) : null}
 
-      {!canManageNode && !bootstrap ? (
+      {canExecuteBootstrap && !bootstrap ? (
+        <Alert variant="warning">
+          O comando de instalação não está disponível para este perfil ou nesta consulta. O restante do cadastro continua acessível.
+        </Alert>
+      ) : null}
+
+      {!canExecuteBootstrap ? (
         <Alert variant="info">
-          Configuração e instalação do agente disponíveis apenas para operadores com permissão adequada.
+          Consulta sem revelação de credenciais. A instalação exige a permissão bootstrap.execute.
         </Alert>
       ) : null}
     </div>

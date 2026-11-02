@@ -12,6 +12,13 @@ import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
 import { MfaService } from './mfa.service';
 import { hashPassword, verifyPassword } from './password-hash';
+import { PasswordLoginLimitService } from './password-login-limit.service';
+import { ListOwnSessionsQueryDto } from './dto/list-own-sessions-query.dto';
+import { listOwnSessions } from './own-sessions';
+import { assertAuthenticationFresh, AuthenticationSnapshot } from './authentication-fence';
+
+// Match the ordinary scrypt path for unknown accounts without storing a password.
+const dummyPasswordHash = hashPassword(randomBytes(32).toString('hex'));
 
 export interface AuthenticatedSession {
   sessionId: string;
@@ -53,6 +60,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly mfaService: MfaService,
+    private readonly passwordLoginLimit: PasswordLoginLimitService,
   ) {}
 
   async login(input: {
@@ -70,6 +78,7 @@ export class AuthService {
 
     const normalizedEmail = input.email.trim().toLowerCase();
     const expectedEmail = configuredEmail.toLowerCase();
+    await this.passwordLoginLimit.consume(normalizedEmail, input.ipAddress);
     const existingUser = await this.prisma.user.findUnique({
       where: {
         email: normalizedEmail,
@@ -79,7 +88,8 @@ export class AuthService {
     let user = existingUser;
     let authenticated = false;
 
-    if (existingUser?.passwordHash && verifyPassword(input.password, existingUser.passwordHash)) {
+    const passwordMatchesStored = verifyPassword(input.password, existingUser?.passwordHash || dummyPasswordHash);
+    if (existingUser?.passwordHash && passwordMatchesStored) {
       authenticated = true;
     } else if (appConfig.auth.bootstrapLoginEnabled) {
       const emailMatches = this.safeEqual(normalizedEmail, expectedEmail);
@@ -112,42 +122,36 @@ export class AuthService {
         } else {
           // C1: usuario ja existe e ja tem passwordHash — bootstrap NUNCA regrava a senha
           // em login recorrente. Recuperacao deve ser feita via rotacao administrativa.
-          this.logger.warn(
-            `bootstrap login ignorado para usuario ja provisionado email=${normalizedEmail}`,
-          );
+          this.logger.warn(JSON.stringify({ event: 'auth.bootstrap_login_ignored' }));
           authenticated = false;
         }
       }
     }
 
     if (!authenticated || !user) {
-      this.logger.warn(
-        `failed human login email=${normalizedEmail} ip=${input.ipAddress ?? 'unknown'}`,
-      );
+      this.logger.warn(JSON.stringify({ event: 'auth.password_login_failed' }));
       throw new UnauthorizedException('invalid credentials');
     }
 
     if (user.status !== EntityStatus.active) {
-      throw new ForbiddenException('user is inactive');
+      throw new UnauthorizedException('invalid credentials');
     }
 
     // C-MFA: se o usuario tem MFA habilitado, a senha sozinha NAO cria sessao.
     // Emitimos um desafio transitorio; a sessao so nasce apos o TOTP/recovery.
     if (user.mfaEnabled) {
-      const challenge = await this.mfaService.createLoginChallenge({
-        userId: user.id,
-        ipAddress: input.ipAddress,
-        userAgent: input.userAgent,
-      });
-
-      await this.auditService.record({
-        actorId: user.id,
-        actorRole: user.role,
-        action: 'auth.mfa.challenge_issued',
-        targetType: 'user',
-        targetId: user.id,
-        ipAddress: input.ipAddress,
-        metadataJson: { email: user.email },
+      const checked = user;
+      const challenge = await this.prisma.$transaction(async tx => {
+        await assertAuthenticationFresh(tx, checked);
+        const issued = await this.mfaService.createLoginChallenge({
+          userId: checked.id, ipAddress: input.ipAddress, userAgent: input.userAgent,
+        }, tx);
+        await tx.auditLog.create({ data: {
+          actorType: 'user_session', actorId: checked.id, actorRole: checked.role,
+          action: 'auth.mfa.challenge_issued', targetType: 'user', targetId: checked.id,
+          ipAddress: input.ipAddress, metadataJson: { email: checked.email },
+        } });
+        return issued;
       });
 
       return {
@@ -159,6 +163,7 @@ export class AuthService {
     }
 
     return this.createSession({
+      authentication: user,
       user: {
         id: user.id,
         email: user.email,
@@ -197,6 +202,7 @@ export class AuthService {
     }
 
     return this.createSession({
+      authentication: user,
       user: {
         id: user.id,
         email: user.email,
@@ -316,42 +322,10 @@ export class AuthService {
   }
 
   async listSessions(
-    actor: {
-      userId: string;
-      sessionId: string;
-    },
-  ): Promise<{
-    items: Array<{
-      id: string;
-      current: boolean;
-      created_at: string;
-      last_seen_at: string | null;
-      expires_at: string;
-      revoked_at: string | null;
-      ip_address: string | null;
-      user_agent: string | null;
-    }>;
-  }> {
-    const sessions = await this.prisma.userSession.findMany({
-      where: {
-        userId: actor.userId,
-        revokedAt: null,
-      },
-      orderBy: [{ createdAt: 'desc' }],
-    });
-
-    return {
-      items: sessions.map((session) => ({
-        id: session.id,
-        current: session.id === actor.sessionId,
-        created_at: session.createdAt.toISOString(),
-        last_seen_at: session.lastSeenAt?.toISOString() ?? null,
-        expires_at: session.expiresAt.toISOString(),
-        revoked_at: session.revokedAt?.toISOString() ?? null,
-        ip_address: session.ipAddress,
-        user_agent: session.userAgent,
-      })),
-    };
+    actor: { userId: string; sessionId: string },
+    query: ListOwnSessionsQueryDto = {},
+  ) {
+    return listOwnSessions(this.prisma, actor, query);
   }
 
   async revokeSession(
@@ -481,6 +455,7 @@ export class AuthService {
   }
 
   private async createSession(input: {
+    authentication: AuthenticationSnapshot;
     user: {
       id: string;
       email: string;
@@ -497,28 +472,30 @@ export class AuthService {
       Date.now() + appConfig.auth.sessionTtlHours * 60 * 60 * 1000,
     );
 
-    await this.prisma.userSession.create({
-      data: {
-        userId: input.user.id,
-        sessionTokenHash: this.hashValue(sessionToken),
-        csrfTokenHash: this.hashValue(csrfToken),
-        expiresAt,
-        lastSeenAt: new Date(),
-        ipAddress: input.ipAddress?.trim() || null,
-        userAgent: input.userAgent?.trim() || null,
-      },
-    });
+    await this.prisma.$transaction(async tx => {
+      await assertAuthenticationFresh(tx, input.authentication);
+      await tx.userSession.create({
+        data: {
+          userId: input.user.id,
+          sessionTokenHash: this.hashValue(sessionToken),
+          csrfTokenHash: this.hashValue(csrfToken),
+          expiresAt,
+          lastSeenAt: new Date(),
+          ipAddress: input.ipAddress?.trim() || null,
+          userAgent: input.userAgent?.trim() || null,
+        },
+      });
 
-    await this.auditService.record({
-      actorId: input.user.id,
-      actorRole: input.user.role,
-      action: 'auth.login',
-      targetType: 'user',
-      targetId: input.user.id,
-      ipAddress: input.ipAddress,
-      metadataJson: {
-        email: input.user.email,
-      },
+      await tx.auditLog.create({ data: {
+        actorType: 'user_session',
+        actorId: input.user.id,
+        actorRole: input.user.role,
+        action: 'auth.login',
+        targetType: 'user',
+        targetId: input.user.id,
+        ipAddress: input.ipAddress,
+        metadataJson: { email: input.user.email },
+      } });
     });
 
     return {

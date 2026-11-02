@@ -3,6 +3,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AccessPolicyService } from './access-policy.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { PasswordLoginLimitService } from './password-login-limit.service';
 import { MfaEnrollmentGuard } from './mfa-enrollment.guard';
 import { MfaService } from './mfa.service';
 import { MfaPolicyController } from '../mfa-policy/mfa-policy.controller';
@@ -17,6 +18,7 @@ import { SessionAuthGuard } from './session-auth.guard';
   controllers: [AuthController, MfaPolicyController],
   providers: [
     AuthService,
+    PasswordLoginLimitService,
     MfaService,
     MfaPolicyService,
     MfaEnrollmentGuard,

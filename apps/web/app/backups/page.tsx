@@ -1,22 +1,13 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { BackupsFleetTable } from '@/components/backups/backups-fleet-table';
 import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 import { Alert, Button, Card, PageSection } from '@/components/ui';
-import {
-  computeBackupFleetSummary,
-  filterByBackupStatus,
-  sortBackupFleetNodes,
-  type BackupFleetNode,
-} from '@/lib/backup-fleet-helpers';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
-import { ApiError, getNodesFilters, getNodesList, getSession } from '@/lib/api';
+import { getNodesFilters, getBackupFleetList, getSession } from '@/lib/api';
 import { isClientRole } from '@/lib/client-profile';
 
 export const dynamic = 'force-dynamic';
-
-const listLimit = 500;
 
 export default async function BackupsPage({
   searchParams,
@@ -27,7 +18,8 @@ export default async function BackupsPage({
   const clientId = typeof params.client_id === 'string' ? params.client_id : undefined;
   const siteId = typeof params.site_id === 'string' ? params.site_id : undefined;
   const backupStatus =
-    typeof params.backup_status === 'string' ? params.backup_status : undefined;
+    ['ok', 'late', 'failed', 'never'].includes(String(params.backup_status))
+      ? params.backup_status as 'ok' | 'late' | 'failed' | 'never' : undefined;
   const search = typeof params.search === 'string' ? params.search : undefined;
   const sortBy =
     typeof params.sort_by === 'string' &&
@@ -38,7 +30,7 @@ export default async function BackupsPage({
     typeof params.sort_order === 'string' && ['asc', 'desc'].includes(params.sort_order)
       ? (params.sort_order as 'asc' | 'desc')
       : 'asc';
-  const page = typeof params.page === 'string' && /^\d+$/.test(params.page) ? Math.max(1, Number(params.page)) : 1;
+  const page = typeof params.page === 'string' && /^\d+$/.test(params.page) ? Math.min(1000000, Math.max(1, Number(params.page))) : 1;
   const perPage = typeof params.per_page === 'string' && ['10', '25', '50'].includes(params.per_page) ? Number(params.per_page) : 25;
 
   let filterOptions;
@@ -48,13 +40,9 @@ export default async function BackupsPage({
   try {
     [filterOptions, nodes, session] = await Promise.all([
       getNodesFilters(),
-      getNodesList({
-        client_id: clientId,
-        site_id: siteId,
-        search,
-        sort_by: 'name',
-        sort_order: 'asc',
-        limit: listLimit,
+      getBackupFleetList({
+        client_id: clientId, site_id: siteId, search, backup_status: backupStatus,
+        sort_by: sortBy, sort_order: sortOrder, page, per_page: perPage,
       }),
       getSession(),
     ]);
@@ -67,21 +55,9 @@ export default async function BackupsPage({
     ? filterOptions.sites.filter((site) => site.client_id === clientId)
     : filterOptions.sites;
 
-  const fleetNodes: BackupFleetNode[] = nodes.items.map((node) => ({
-    id: node.id,
-    hostname: node.hostname,
-    display_name: node.display_name,
-    client: node.client,
-    site: node.site,
-    backup_status: node.backup_status,
-    latest_backup_received_at: node.latest_backup_received_at,
-  }));
-
-  const filteredNodes = filterByBackupStatus(fleetNodes, backupStatus);
-  const sortedNodes = sortBackupFleetNodes(filteredNodes, sortBy, sortOrder);
-  const totalPages = Math.max(1, Math.ceil(sortedNodes.length / perPage));
-  const currentPage = Math.min(page, totalPages);
-  const visibleNodes = sortedNodes.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const totalPages = nodes.total_pages;
+  const currentPage = nodes.page;
+  const visibleNodes = nodes.items;
   const backupPageHref = (nextPage: number) => {
     const next = new URLSearchParams();
     if (clientId) next.set('client_id', clientId);
@@ -94,7 +70,18 @@ export default async function BackupsPage({
     next.set('page', String(nextPage));
     return `/backups?${next.toString()}`;
   };
-  const summary = computeBackupFleetSummary(fleetNodes);
+  const summary = nodes.summary;
+  const backupStatusHref = (nextStatus: string) => {
+    const next = new URLSearchParams();
+    if (clientId) next.set('client_id', clientId);
+    if (siteId) next.set('site_id', siteId);
+    if (search) next.set('search', search);
+    next.set('backup_status', nextStatus);
+    next.set('sort_by', sortBy);
+    next.set('sort_order', sortOrder);
+    next.set('per_page', String(perPage));
+    return `/backups?${next.toString()}`;
+  };
 
   return (
     <div className="space-y-section">
@@ -136,10 +123,10 @@ export default async function BackupsPage({
         description="Use um atalho para focar a exceção; todos os filtros continuam disponíveis abaixo."
       >
         <div className="mb-4 flex flex-wrap gap-2">
-          <Link href="/backups?backup_status=failed" className="rounded-lg border border-danger-border bg-danger-muted px-3 py-2 text-sm font-medium text-danger-fg">Falharam ({summary.failed})</Link>
-          <Link href="/backups?backup_status=late" className="rounded-lg border border-warning-border bg-warning-muted px-3 py-2 text-sm font-medium text-warning-fg">Atrasados ({summary.late})</Link>
-          <Link href="/backups?backup_status=never" className="rounded-lg border border-border bg-surface-soft px-3 py-2 text-sm font-medium text-fg">Nunca enviados ({summary.never})</Link>
-          <Link href="/backups?backup_status=ok" className="rounded-lg border border-success-border bg-success-muted px-3 py-2 text-sm font-medium text-success-fg">Em dia ({summary.ok})</Link>
+          <Link href={backupStatusHref('failed')} aria-current={backupStatus === 'failed' ? 'page' : undefined} className="rounded-lg border border-danger-border bg-danger-muted px-3 py-2 text-sm font-medium text-danger-fg">Falharam ({summary.failed})</Link>
+          <Link href={backupStatusHref('late')} aria-current={backupStatus === 'late' ? 'page' : undefined} className="rounded-lg border border-warning-border bg-warning-muted px-3 py-2 text-sm font-medium text-warning-fg">Atrasados ({summary.late})</Link>
+          <Link href={backupStatusHref('never')} aria-current={backupStatus === 'never' ? 'page' : undefined} className="rounded-lg border border-border bg-surface-soft px-3 py-2 text-sm font-medium text-fg">Nunca enviados ({summary.never})</Link>
+          <Link href={backupStatusHref('ok')} aria-current={backupStatus === 'ok' ? 'page' : undefined} className="rounded-lg border border-success-border bg-success-muted px-3 py-2 text-sm font-medium text-success-fg">Em dia ({summary.ok})</Link>
         </div>
         <Card className="p-6">
           <form className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end xl:gap-4">
@@ -216,6 +203,7 @@ export default async function BackupsPage({
             : 'Listagem operacional com status, último envio e link para a aba Backup de cada firewall.'
         }
       >
+        <p className="mb-3 text-sm text-fg-muted">Resumo e lista calculados em {new Date(nodes.generated_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}. Cada atualização recalcula os dados.</p>
         <Card className="overflow-hidden p-0">
           {visibleNodes.length === 0 ? (
             <Alert variant="info" className="m-6">
@@ -225,13 +213,8 @@ export default async function BackupsPage({
             <BackupsFleetTable nodes={visibleNodes} />
           )}
         </Card>
-        {fleetNodes.length >= listLimit ? (
-          <p className="mt-3 text-xs text-slate-500">
-            Exibindo até {listLimit} firewalls. Refine os filtros para reduzir o volume.
-          </p>
-        ) : null}
         <div className="mt-4 flex items-center justify-between gap-3 text-sm text-fg-muted">
-          <span>{sortedNodes.length} firewall(s) · página {currentPage} de {totalPages}</span>
+          <span>{nodes.total} firewall(s) · página {currentPage} de {totalPages}</span>
           <div className="flex gap-2">
             {currentPage > 1 ? <Link href={backupPageHref(currentPage - 1)} className="rounded-lg border border-border px-3 py-2 hover:text-fg">Anterior</Link> : null}
             {currentPage < totalPages ? <Link href={backupPageHref(currentPage + 1)} className="rounded-lg border border-border px-3 py-2 hover:text-fg">Próxima</Link> : null}

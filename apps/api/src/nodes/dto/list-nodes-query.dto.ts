@@ -14,6 +14,10 @@ const LIST_PRESETS = [
 
 export class ListNodesQueryDto {
   @IsOptional()
+  @IsIn(['pending', 'active', 'blocked'])
+  bootstrap_bucket?: 'pending' | 'active' | 'blocked';
+
+  @IsOptional()
   @IsUUID()
   client_id?: string;
 

@@ -51,14 +51,22 @@ export default async function DashboardPage() {
         title="Precisa de atenção"
         description="Firewalls offline ou degradados que exigem atenção agora. Os indicadores consolidados continuam logo abaixo."
         actions={
+          <div className="flex flex-wrap gap-2">
           <Link
             href="/nodes?status=offline"
             className={cn(
               'inline-flex h-10 min-h-10 shrink-0 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-fg',
             )}
           >
-            Ver inventário
+            Ver offline
           </Link>
+          <Link
+            href="/nodes?status=degraded"
+            className="inline-flex h-10 min-h-10 items-center justify-center rounded-lg border border-border bg-surface-soft px-4 text-sm font-medium text-fg-muted hover:border-primary/40 hover:text-fg"
+          >
+            Ver degradados
+          </Link>
+          </div>
         }
       >
         {totalAttention === 0 ? (

@@ -26,37 +26,38 @@ type RoleScopeFieldsProps = {
   statusSelectName?: string;
   inputClass: string;
   selectClass: string;
+  onScopeChange?: () => void;
 };
 
 function ClientSinglePicker({
   clients,
   selectedId,
   selectClass,
+  onSelectionChange,
 }: {
   clients: ClientOption[];
   selectedId: string | null;
+  onSelectionChange?: () => void;
   selectClass: string;
 }) {
-  if (clients.length === 0) {
-    return (
-      <p className="w-full text-xs text-slate-500">
-        Nenhum cliente ativo disponível para vínculo.
-      </p>
-    );
-  }
+  const selectedAvailable = Boolean(selectedId && clients.some((client) => client.id === selectedId));
 
   return (
     <div className="w-full rounded-lg border border-slate-700/80 bg-slate-950/30 p-2">
       <p className="mb-2 text-xs font-medium text-slate-400">Empresa vinculada</p>
+      {selectedId && !selectedAvailable ? <p className="mb-2 text-xs text-warning-fg">Vínculo histórico preservado. Você pode editar a identidade sem mudar esta empresa. Para alterar o vínculo, escolha um cliente ativo.</p> : null}
       <select
         name="client_id"
+        aria-label="Cliente único vinculado ao usuário"
         defaultValue={selectedId ?? ''}
+        onChange={onSelectionChange}
         required
         className={selectClass}
       >
         <option value="" disabled>
           Selecione o cliente
         </option>
+        {selectedId && !selectedAvailable ? <option value={selectedId}>Cliente indisponível (vínculo preservado)</option> : null}
         {clients.map((client) => (
           <option key={client.id} value={client.id}>
             {client.name} ({client.code})
@@ -86,6 +87,7 @@ export function RoleScopeFields({
   statusSelectName = 'status',
   inputClass,
   selectClass,
+  onScopeChange,
 }: RoleScopeFieldsProps) {
   const [role, setRole] = useState(defaultRole);
 
@@ -94,8 +96,9 @@ export function RoleScopeFields({
       <div className="flex flex-wrap items-center gap-2">
         <select
           name={roleSelectName}
+          aria-label="Perfil de acesso"
           defaultValue={defaultRole}
-          onChange={(event) => setRole(event.target.value)}
+          onChange={(event) => { setRole(event.target.value); onScopeChange?.(); }}
           className={selectClass}
         >
           {roles.map((item) => (
@@ -106,6 +109,7 @@ export function RoleScopeFields({
         </select>
         <select
           name={statusSelectName}
+          aria-label="Status do usuário"
           defaultValue={defaultStatus}
           className={selectClass}
         >
@@ -116,11 +120,12 @@ export function RoleScopeFields({
       {role === 'client' ? (
         <ClientSinglePicker
           clients={clients}
-          selectedId={defaultClientId}
+          selectedId={defaultRole === 'client' ? defaultClientId : null}
           selectClass={selectClass}
+          onSelectionChange={onScopeChange}
         />
       ) : role !== 'superadmin' ? (
-        <ClientScopePicker clients={clients} selectedIds={defaultClientIds} />
+        <ClientScopePicker clients={clients} selectedIds={defaultClientIds} onSelectionChange={onScopeChange} />
       ) : (
         <p className="w-full text-xs text-slate-500">
           Superadministrador tem escopo global; não usa vínculo por cliente.

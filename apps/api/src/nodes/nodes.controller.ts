@@ -9,6 +9,7 @@ import { resolveClientIp } from '../common/client-ip';
 import { UpdateNodeFleetMetadataDto } from '../fleet-org/dto/node-fleet-metadata.dto';
 import { NodeFleetMetadataService } from '../fleet-org/node-fleet-metadata.service';
 import { ListNodesQueryDto } from './dto/list-nodes-query.dto';
+import { BackupFleetQueryDto } from './dto/backup-fleet-query.dto';
 import { NodesService } from './nodes.service';
 
 @UseGuards(SessionAuthGuard, MfaEnrollmentGuard, PermissionsGuard)
@@ -32,6 +33,12 @@ export class NodesController {
     @Req() request: AuthenticatedRequest,
   ) {
     return this.nodesService.listNodes(getAccessActor(request), query);
+  }
+
+  @Get('backup-fleet')
+  @RequirePermissions('firewalls.view')
+  getBackupFleet(@Query() query: BackupFleetQueryDto, @Req() request: AuthenticatedRequest) {
+    return this.nodesService.getBackupFleet(getAccessActor(request), query);
   }
 
   @Get(':id')

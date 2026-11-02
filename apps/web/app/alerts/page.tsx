@@ -9,7 +9,6 @@ import { acknowledgeAlertAction, resolveAlertAction } from '@/lib/alerts';
 import { getAlertsList, getNodesFilters, getSession } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
-import { cn } from '@/lib/cn';
 import { formInputClassName, formSelectClassName } from '@/lib/form-field-styles';
 import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 import { formatDateTime, formatRelativeAge } from '@/lib/format';
@@ -39,33 +38,6 @@ const severityLabel: Record<string, string> = {
   warning: 'Aviso',
   info: 'Info',
 };
-
-function SummaryCard({
-  label,
-  value,
-  variant,
-}: {
-  label: string;
-  value: number;
-  variant: 'danger' | 'warning' | 'success';
-}) {
-  const dotClass =
-    variant === 'danger'
-      ? 'bg-signal-offline'
-      : variant === 'warning'
-        ? 'bg-signal-degraded'
-        : 'bg-signal-online';
-
-  return (
-    <Card className="min-h-28 p-6">
-      <p className="font-mono text-xs uppercase tracking-wider text-slate-500">{label}</p>
-      <div className="mt-3 flex items-end justify-between gap-3">
-        <span className="font-display text-3xl font-semibold text-fg">{value}</span>
-        <span className={cn('status-dot shrink-0', dotClass)} aria-hidden />
-      </div>
-    </Card>
-  );
-}
 
 function ActionForms({
   alertId,
@@ -105,6 +77,7 @@ function ActionForms({
         <input
           type="text"
           name="resolution_note"
+          aria-label="Nota de resolução do alerta"
           placeholder="Nota de resolução"
           className={`${formInputClassName} w-full text-xs`}
         />
@@ -203,6 +176,15 @@ export default async function AlertsPage({
     next.set('page', String(nextPage));
     return `/alerts?${next.toString()}`;
   };
+  const quickAlertHref = (nextStatus?: string, nextSeverity?: string) => {
+    const next = new URLSearchParams(returnToParams);
+    next.delete('page');
+    next.delete('status');
+    next.delete('severity');
+    if (nextStatus) next.set('status', nextStatus);
+    if (nextSeverity) next.set('severity', nextSeverity);
+    return `/alerts?${next.toString()}`;
+  };
 
   return (
     <div className="space-y-section">
@@ -214,6 +196,7 @@ export default async function AlertsPage({
           { label: 'Abertos', value: String(openCount), tone: openCount > 0 ? 'danger' : 'success' },
           { label: 'Reconhecidos', value: String(acknowledgedCount), tone: acknowledgedCount > 0 ? 'warning' : 'default' },
           { label: 'Críticos', value: String(criticalCount), tone: criticalCount > 0 ? 'danger' : 'default' },
+          { label: 'Resolvidos', value: String(alerts.totals.resolved), tone: 'success' },
         ]}
         aside={<RealtimeRefresh renderedAt={alerts.generated_at} />}
       />
@@ -231,10 +214,10 @@ export default async function AlertsPage({
         }
       >
         <div className="mb-3 flex flex-wrap gap-2" aria-label="Filtros rápidos de alertas">
-          <Link href="/alerts?status=open" className="rounded-lg border border-danger-border bg-danger-muted px-3 py-2 text-sm text-danger-fg">Abertos</Link>
-          <Link href="/alerts?status=open&severity=critical" className="rounded-lg border border-danger-border px-3 py-2 text-sm text-danger-fg">Críticos</Link>
-          <Link href="/alerts?status=acknowledged" className="rounded-lg border border-warning-border bg-warning-muted px-3 py-2 text-sm text-warning-fg">Reconhecidos</Link>
-          <Link href="/alerts" className="rounded-lg border border-border px-3 py-2 text-sm text-fg-muted">Todos</Link>
+          <Link href={quickAlertHref('open')} aria-current={status === 'open' && !severity ? 'page' : undefined} className="rounded-lg border border-danger-border bg-danger-muted px-3 py-2 text-sm text-danger-fg">Abertos</Link>
+          <Link href={quickAlertHref('open', 'critical')} aria-current={status === 'open' && severity === 'critical' ? 'page' : undefined} className="rounded-lg border border-danger-border px-3 py-2 text-sm text-danger-fg">Críticos</Link>
+          <Link href={quickAlertHref('acknowledged')} aria-current={status === 'acknowledged' ? 'page' : undefined} className="rounded-lg border border-warning-border bg-warning-muted px-3 py-2 text-sm text-warning-fg">Reconhecidos</Link>
+          <Link href={quickAlertHref()} aria-current={!status && !severity ? 'page' : undefined} className="rounded-lg border border-border px-3 py-2 text-sm text-fg-muted">Todos</Link>
         </div>
         <Card className="p-6">
           <form className="flex flex-col gap-4">
@@ -278,6 +261,7 @@ export default async function AlertsPage({
             <AdvancedSection
               title="Filtros de diagnóstico"
               description="Severidade e tipo para troubleshooting. Os filtros principais acima bastam para uso diário."
+              defaultOpen={Boolean(severity || type)}
             >
               <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center xl:gap-4">
                 <select name="severity" defaultValue={severity ?? ''} className={formSelectClassName}>
@@ -304,12 +288,6 @@ export default async function AlertsPage({
         </Card>
       </PageSection>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <SummaryCard label="Abertos" value={alerts.totals.open} variant="danger" />
-        <SummaryCard label="Reconhecidos" value={alerts.totals.acknowledged} variant="warning" />
-        <SummaryCard label="Resolvidos" value={alerts.totals.resolved} variant="success" />
-      </section>
-
       <PageSection
         title="Alertas"
         description={`${alerts.total} registro(s) com os filtros atuais, críticos e mais antigos primeiro.`}
@@ -335,8 +313,14 @@ export default async function AlertsPage({
                     <div>
                       <h3 className="font-display text-base font-semibold text-fg">{alert.title}</h3>
                       <p className="mt-1 max-w-3xl text-sm text-fg-muted">{alert.description}</p>
+                      <p className="mt-2 text-xs text-fg-muted">
+                        <Link href={`/nodes/${alert.node.id}`} className="font-medium text-primary hover:underline">{alert.node.display_name ?? alert.node.hostname}</Link>
+                        {' · '}{alert.client.name} / {alert.site.name}{' · '}Aberto {formatRelativeAge(alert.opened_at)}
+                      </p>
                     </div>
 
+                    <details className="rounded-lg border border-border bg-surface-soft px-3 py-2">
+                      <summary className="cursor-pointer text-sm font-medium text-fg">Detalhes técnicos e histórico do alerta</summary>
                     <div className="grid gap-3 text-sm text-fg-muted md:grid-cols-2 xl:grid-cols-4">
                       <div>
                         <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
@@ -385,6 +369,7 @@ export default async function AlertsPage({
                         {alert.resolution_note ? ` Nota: ${alert.resolution_note}` : ''}
                       </p>
                     ) : null}
+                    </details>
                   </div>
 
                   <div className="xl:w-48">

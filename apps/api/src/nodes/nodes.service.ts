@@ -1,3 +1,5 @@
+import { BackupFleetQueryDto, FleetScopeQueryDto } from './dto/backup-fleet-query.dto';
+import { BackupFleetItem, bootstrapBucket, compareBackupFleetItems } from './backup-fleet.util';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   AlertStatus,
@@ -315,6 +317,7 @@ export class NodesService {
       tags: Array<{ id: string; name: string }>;
     }>;
     total: number;
+    bootstrap_summary: { pending: number; active: number; blocked: number; total: number };
     limit: number;
     next_cursor: string | null;
     previous_cursor: string | null;
@@ -425,7 +428,7 @@ export class NodesService {
       actor.userId, actor.role, query.client_id ?? null, query.site_id ?? null,
       query.tag_id ?? null, query.group_id ?? null, query.criticality ?? null,
       searchTerm || null, query.status ?? null, query.preset ?? null,
-      sortBy, sortOrder, targetPackageVersion,
+      sortBy, sortOrder, targetPackageVersion, query.bootstrap_bucket ?? null,
     ]);
     const cursor = decodeNodeCursor(query.cursor, fingerprint);
     const now = new Date();
@@ -435,6 +438,7 @@ export class NodesService {
       const collector = new NodePageCollector<Awaited<ReturnType<NodesService['listNodes']>>['items'][number]>(
         limit, (a, b) => compareListNodes(a, b, sortBy, sortOrder), cursor,
       );
+      const bootstrapSummary = { pending: 0, active: 0, blocked: 0, total: 0 };
       let lastId: string | undefined;
       for (;;) {
         const nodes = await tx.node.findMany({
@@ -594,7 +598,12 @@ export class NodesService {
         );
       });
 
-      for (const item of items) collector.add(item);
+      for (const item of items) {
+        const bucket = bootstrapBucket(item);
+        bootstrapSummary[bucket] += 1;
+        bootstrapSummary.total += 1;
+        if (!query.bootstrap_bucket || bucket === query.bootstrap_bucket) collector.add(item);
+      }
       if (nodes.length < 250) break;
       lastId = nodes[nodes.length - 1].id;
     }
@@ -604,11 +613,96 @@ export class NodesService {
     return {
       items,
       total,
+      bootstrap_summary: bootstrapSummary,
       limit,
       next_cursor: collector.hasNext && last ? encodeNodeCursor(last, 'after', fingerprint, now.toISOString()) : null,
       previous_cursor: collector.hasPrevious && first ? encodeNodeCursor(first, 'before', fingerprint, now.toISOString()) : null,
       generated_at: now.toISOString(),
     };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, maxWait: 5000, timeout: 60_000 });
+  }
+
+  private async fleetWhere(actor: AccessActor, query: FleetScopeQueryDto): Promise<Prisma.NodeWhereInput> {
+    await this.accessPolicy.assertRequestedClientFilter(actor, query.client_id);
+    const search = query.search?.trim();
+    return this.accessPolicy.mergeNodeWhere(actor, {
+      siteId: query.site_id,
+      site: query.client_id ? { clientId: query.client_id } : undefined,
+      OR: search ? [
+        { hostname: { contains: search, mode: 'insensitive' } },
+        { displayName: { contains: search, mode: 'insensitive' } },
+        { nodeUid: { contains: search, mode: 'insensitive' } },
+        { site: { name: { contains: search, mode: 'insensitive' } } },
+        { site: { client: { name: { contains: search, mode: 'insensitive' } } } },
+      ] : undefined,
+    });
+  }
+
+  async getBackupFleet(actor: AccessActor, query: BackupFleetQueryDto) {
+    const where = await this.fleetWhere(actor, query);
+    const perPage = query.per_page ?? 25;
+    const requestedPage = query.page ?? 1;
+    if (![10, 25, 50].includes(perPage) || !Number.isInteger(requestedPage) || requestedPage < 1 || requestedPage > 1000000) {
+      throw new BadRequestException('invalid backup pagination');
+    }
+    // One snapshot per HTTP response. A later navigation/refresh takes a new
+    // snapshot; generated_at identifies when this response was calculated.
+    return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const summary = { ok: 0, late: 0, failed: 0, never: 0, total: 0 };
+      const matches: BackupFleetItem[] = [];
+      let lastId: string | undefined;
+      for (;;) {
+        const nodes = await tx.node.findMany({
+          where, orderBy: { id: 'asc' }, take: 250,
+          ...(lastId ? { cursor: { id: lastId }, skip: 1 } : {}),
+          // No health, alerts, tags, credentials or full telemetry on this path.
+          select: {
+            id: true, hostname: true, displayName: true, configBackupPolicyJson: true,
+            site: { select: { id: true, name: true, code: true, timezone: true,
+              client: { select: { id: true, name: true, code: true } } } },
+            configBackups: {
+              where: { status: { in: [ConfigBackupStatus.stored, ConfigBackupStatus.duplicate] } },
+              orderBy: { receivedAt: 'desc' }, take: 1,
+              select: { receivedAt: true, configSha256: true },
+            },
+            nodeCommands: {
+              where: { type: NodeCommandType.config_backup_now, status: NodeCommandStatus.failed },
+              orderBy: { requestedAt: 'desc' }, take: 1,
+              select: { completedAt: true, requestedAt: true },
+            },
+          },
+        });
+        for (const node of nodes) {
+          const backup = node.configBackups[0];
+          const failed = node.nodeCommands[0];
+          const status = deriveBackupVisualStatus({
+            latestBackupReceivedAt: backup?.receivedAt ?? null,
+            latestBackupSha256: backup?.configSha256 ?? null,
+            latestFailedCommandAt: failed?.completedAt ?? failed?.requestedAt ?? null,
+            backupPolicyJson: node.configBackupPolicyJson, timeZone: node.site.timezone, now,
+          });
+          summary[status] += 1;
+          summary.total += 1;
+          if (query.backup_status && status !== query.backup_status) continue;
+          matches.push({
+            id: node.id, hostname: node.hostname, display_name: node.displayName,
+            client: node.site.client,
+            site: { id: node.site.id, name: node.site.name, code: node.site.code },
+            backup_status: status, latest_backup_received_at: backup?.receivedAt.toISOString() ?? null,
+          });
+        }
+        if (nodes.length < 250) break;
+        lastId = nodes[nodes.length - 1].id;
+      }
+      matches.sort((a, b) => compareBackupFleetItems(a, b, query.sort_by ?? 'backup_priority', query.sort_order ?? 'asc'));
+      const totalPages = Math.max(1, Math.ceil(matches.length / perPage));
+      const page = Math.min(requestedPage, totalPages);
+      return {
+        items: matches.slice((page - 1) * perPage, page * perPage),
+        summary, total: matches.length, page, per_page: perPage, total_pages: totalPages,
+        generated_at: now.toISOString(),
+      };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, maxWait: 5000, timeout: 60_000 });
   }
 

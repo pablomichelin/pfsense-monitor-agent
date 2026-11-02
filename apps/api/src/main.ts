@@ -1,5 +1,4 @@
 import 'reflect-metadata';
-import { Readable } from 'stream';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
@@ -8,6 +7,7 @@ import {
 } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
 import { appConfig } from './config/app-config';
+import { registerJsonBodyParser } from './auth/json-body-parser';
 
 async function bootstrap(): Promise<void> {
   // C5: trust proxy restrito ao proxy local. Quando TRUST_PROXY=true e ha lista
@@ -27,7 +27,7 @@ async function bootstrap(): Promise<void> {
     ),
   });
 
-  // POST/DELETE com application/json e body vazio: Fastify rejeita. Injetar '{}' para evitar erro.
+  registerJsonBodyParser(fastifyAdapter);
   const instance = fastifyAdapter.getInstance();
   instance.addContentTypeParser(
     ['application/xml', 'application/gzip'],
@@ -38,20 +38,6 @@ async function bootstrap(): Promise<void> {
       done(null, rawBody);
     },
   );
-  instance.addHook('preParsing', (request, _reply, payload, done) => {
-    const contentType = request.headers['content-type']?.toLowerCase();
-    const contentLength = request.headers['content-length'];
-    const noBody = contentLength === '0' || contentLength === undefined;
-    if (
-      (request.method === 'POST' || request.method === 'DELETE') &&
-      contentType?.startsWith('application/json') &&
-      noBody
-    ) {
-      done(null, Readable.from([Buffer.from('{}', 'utf8')]));
-      return;
-    }
-    done(null, payload);
-  });
 
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,

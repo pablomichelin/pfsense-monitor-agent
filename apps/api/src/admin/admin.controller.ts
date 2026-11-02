@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Headers,
   Param,
   Post,
@@ -194,9 +195,12 @@ export class AdminController {
   listUserSessions(
     @Param('id') id: string,
     @Req() request: AuthenticatedRequest,
+    @Query() query: ListUsersQueryDto,
   ) {
     return this.adminService.listUserSessions(id, {
       actorSessionId: request.auth!.sessionId,
+      cursor: query.cursor,
+      limit: query.limit,
     });
   }
 
@@ -419,7 +423,9 @@ export class AdminController {
   }
 
   @Get('nodes/:id/bootstrap-command')
-  @RequirePermissions('bootstrap.view')
+  @Header('Cache-Control', 'no-store, private')
+  @Header('Pragma', 'no-cache')
+  @RequirePermissions('bootstrap.execute')
   getBootstrapCommand(
     @Param('id') id: string,
     @Req() request: AuthenticatedRequest,

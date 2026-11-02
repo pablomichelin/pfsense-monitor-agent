@@ -5,10 +5,11 @@ import { NodeSecretCryptoService } from '../common/node-secret-crypto.service';
 import { NodesModule } from '../nodes/nodes.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { ClientsAdminController } from './clients-admin.controller';
 
 @Module({
   imports: [AuthModule, NodesModule, AgentModule],
-  controllers: [AdminController],
+  controllers: [AdminController, ClientsAdminController],
   providers: [AdminService, NodeSecretCryptoService],
 })
 export class AdminModule {}

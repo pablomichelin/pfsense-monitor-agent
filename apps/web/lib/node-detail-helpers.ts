@@ -1,4 +1,5 @@
 import type { StatusBadgeStatus } from '@/components/ui/status-badge';
+export { buildPfSensePrecheckBlock, extractHostname } from '@/lib/bootstrap-command-helpers';
 
 export type HeartbeatMode = 'normal' | 'light';
 export type ConfigBackupInstallMode = 'default' | 'yes' | 'no';
@@ -156,59 +157,6 @@ export function buildAuditHref(input: {
   }
   const query = params.toString();
   return query ? `/audit?${query}` : '/audit';
-}
-
-export function extractHostname(value: string | null | undefined) {
-  if (!value) {
-    return null;
-  }
-  try {
-    return new URL(value).hostname;
-  } catch {
-    return null;
-  }
-}
-
-export function buildPfSensePrecheckBlock(input: {
-  controllerUrl: string;
-  installerUrl: string | null;
-  artifactUrl: string | null;
-  checksumUrl: string | null;
-}) {
-  const lines = ['cat /etc/version', '', '# teste de DNS para os destinos da rodada'];
-
-  const hostnames = [
-    extractHostname(input.controllerUrl),
-    extractHostname(input.installerUrl),
-    extractHostname(input.artifactUrl),
-    extractHostname(input.checksumUrl),
-  ].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index);
-
-  if (hostnames.length > 0) {
-    for (const hostname of hostnames) {
-      lines.push(`drill ${hostname}`);
-    }
-  } else {
-    lines.push('# hostnames indisponiveis nesta visualizacao');
-  }
-
-  lines.push('');
-  lines.push('# teste de saida HTTP/HTTPS para os URLs efetivos da rodada');
-  lines.push(`fetch -qo /tmp/monitor-controller-check.out '${input.controllerUrl}/healthz' || true`);
-
-  if (input.installerUrl) {
-    lines.push(`fetch -qo /tmp/monitor-installer-check.out '${input.installerUrl}' || true`);
-  }
-
-  if (input.artifactUrl) {
-    lines.push(`fetch -qo /tmp/monitor-artifact-check.out '${input.artifactUrl}' || true`);
-  }
-
-  if (input.checksumUrl) {
-    lines.push(`fetch -qo /tmp/monitor-checksum-check.out '${input.checksumUrl}' || true`);
-  }
-
-  return lines.join('\n');
 }
 
 export function operationalStatusLabel(status: string): string {

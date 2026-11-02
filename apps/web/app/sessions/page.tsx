@@ -49,7 +49,7 @@ export default async function SessionsPage({
   let sessions;
 
   try {
-    [session, sessions] = await Promise.all([getSession(), getAuthSessions()]);
+    [session, sessions] = await Promise.all([getSession(), getAuthSessions({ view: view as 'active' | 'history' | 'all', q: query, page, per_page: perPage })]);
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       redirect('/login');
@@ -57,22 +57,10 @@ export default async function SessionsPage({
 
     throw error;
   }
-  const activeCount = sessions.items.filter((item) => !item.revoked_at).length;
-  const filteredSessions = sessions.items
-    .filter((item) => {
-      const state = sessionState(item);
-      if (view === 'active' && state.label !== 'Atual' && state.label !== 'Ativa') return false;
-      if (view === 'history' && state.label !== 'Revogada' && state.label !== 'Expirada') return false;
-      if (!query) return true;
-      return `${item.ip_address ?? ''} ${item.user_agent ?? ''}`.toLowerCase().includes(query);
-    })
-    .sort((a, b) => {
-      if (a.current !== b.current) return a.current ? -1 : 1;
-      return new Date(b.last_seen_at ?? b.created_at).getTime() - new Date(a.last_seen_at ?? a.created_at).getTime();
-    });
-  const totalPages = Math.max(1, Math.ceil(filteredSessions.length / perPage));
-  const currentPage = Math.min(page, totalPages);
-  const visibleSessions = filteredSessions.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const activeCount = sessions.active_count;
+  const totalPages = sessions.total_pages;
+  const currentPage = sessions.page;
+  const visibleSessions = sessions.items;
   const pageHref = (nextPage: number) => {
     const next = new URLSearchParams();
     next.set('view', view);
@@ -90,7 +78,7 @@ export default async function SessionsPage({
         description={`Sessões ativas de ${session.user.email}. Revogue outras sessões sem encerrar a atual.`}
         stats={[
           { label: 'Ativas', value: String(activeCount), tone: activeCount > 0 ? 'success' : 'default' },
-          { label: 'Total', value: String(sessions.items.length) },
+          { label: 'Total', value: String(sessions.total) },
         ]}
       />
 
@@ -167,7 +155,7 @@ export default async function SessionsPage({
                   <td className="px-4 py-4 text-right">
                     {item.current ? (
                       <span className="text-xs text-cyan-400">Use Sair para encerrar</span>
-                    ) : item.revoked_at ? (
+                    ) : item.revoked_at || new Date(item.expires_at).getTime() <= Date.now() ? (
                       <span className="text-xs text-slate-500">Encerrada</span>
                     ) : (
                       <form action={revokeSessionAction} className="inline">
@@ -184,7 +172,7 @@ export default async function SessionsPage({
           </tbody>
         </DataTable>
         <div className="mt-3 flex items-center justify-between gap-3 text-sm text-fg-muted">
-          <span>{filteredSessions.length} sessão(ões) · página {currentPage} de {totalPages}</span>
+          <span>{sessions.total} sessão(ões) · página {currentPage} de {totalPages}</span>
           <div className="flex gap-2">
             {currentPage > 1 ? <Link href={pageHref(currentPage - 1)} className="rounded-lg border border-border px-3 py-2 hover:text-fg">Anterior</Link> : null}
             {currentPage < totalPages ? <Link href={pageHref(currentPage + 1)} className="rounded-lg border border-border px-3 py-2 hover:text-fg">Próxima</Link> : null}

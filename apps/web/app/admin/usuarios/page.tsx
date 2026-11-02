@@ -6,8 +6,7 @@ import { AdminUsuariosTabs } from '@/components/admin-usuarios-tabs';
 import { Card, PageSection } from '@/components/ui';
 import {
   ApiError,
-  getAdminUserSessions,
-  getNodesFilters,
+  getAdminClientsList,
   getRolesList,
   getSession,
   getUsersList,
@@ -24,15 +23,19 @@ export default async function AdminUsuariosPage({
 }) {
   const params = (await searchParams) ?? {};
   const activeSection = typeof params.section === 'string' ? params.section : undefined;
+  const initialTab = typeof params.tab === 'string' ? params.tab : undefined;
+  const search = typeof params.search === 'string' ? params.search.trim().slice(0, 200) : '';
+  const cursor = typeof params.cursor === 'string' ? params.cursor : undefined;
   const status = typeof params.status === 'string' ? params.status : undefined;
   const message = typeof params.message === 'string' ? params.message : undefined;
   const showInactive = params.showInactive === '1' || params.showInactive === 'true';
+  const selectedUserId = typeof params.selected === 'string' ? params.selected : undefined;
+  const sessionRevision = typeof params.rev === 'string' ? params.rev : undefined;
 
   let session;
-  let users = { items: [] as Awaited<ReturnType<typeof getUsersList>>['items'] };
+  let users: Awaited<ReturnType<typeof getUsersList>>;
   let clients: Array<{ id: string; name: string; code: string }> = [];
   let roles: Array<{ code: string; label: string }> = [];
-  let userSessionsByUserId = new Map<string, Awaited<ReturnType<typeof getAdminUserSessions>>['items']>();
 
   try {
     session = await getSession();
@@ -48,27 +51,22 @@ export default async function AdminUsuariosPage({
   }
 
   try {
-    const [usersResponse, filterOptions, rolesResponse] = await Promise.all([
-      getUsersList(showInactive ? { status: 'inactive' } : undefined),
-      getNodesFilters(),
+    const [usersResponse, firstClients, rolesResponse] = await Promise.all([
+      getUsersList({ status: showInactive ? 'inactive' : 'active', search, cursor, limit: 50 }),
+      getAdminClientsList({ status: 'active', page: 1, limit: 100 }),
       getRolesList(),
     ]);
     users = usersResponse;
-    clients = filterOptions.clients.map((client) => ({
-      id: client.id,
-      name: client.name,
-      code: client.code,
-    }));
+    clients = firstClients.items.map(({ id, name, code }) => ({ id, name, code }));
+    // O seletor de escopo não pode perder clientes após a primeira página.
+    for (let page = 2; page <= firstClients.total_pages; page++) {
+      const result = await getAdminClientsList({ status: 'active', page, limit: 100 });
+      clients.push(...result.items.map(({ id, name, code }) => ({ id, name, code })));
+    }
     roles = rolesResponse.items.map((role) => ({
       code: role.code,
       label: role.label,
     }));
-    const sessionsEntries = await Promise.all(
-      users.items.map(
-        async (user) => [user.id, (await getAdminUserSessions(user.id)).items] as const,
-      ),
-    );
-    userSessionsByUserId = new Map(sessionsEntries);
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       redirect('/login');
@@ -76,17 +74,14 @@ export default async function AdminUsuariosPage({
     throw error;
   }
 
-  const totalSessions = Array.from(userSessionsByUserId.values()).reduce((acc, s) => acc + s.length, 0);
-
   return (
     <div className="space-y-section">
       <PageHero
         eyebrow="Administração"
         title="Usuários"
-        description="Gestão de acesso e sessões. Abas: Usuários e Sessões."
+        description="Gestão de acesso e sessões, com edição de um usuário por vez."
         stats={[
-          { label: 'Usuários', value: String(users.items.length) },
-          { label: 'Sessões', value: String(totalSessions) },
+          { label: 'Usuários', value: String(users.total) },
         ]}
       />
 
@@ -104,24 +99,13 @@ export default async function AdminUsuariosPage({
         </div>
       </PageSection>
 
-      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
-        {showInactive ? (
-          <Link href="/admin/usuarios" className="text-cyan-400 hover:text-cyan-300">
-            Ver apenas ativos
-          </Link>
-        ) : (
-          <Link href="/admin/usuarios?showInactive=1" className="text-cyan-400 hover:text-cyan-300">
-            Ver inativos
-          </Link>
-        )}
-      </div>
-
       <PageSection
         title="Gestão de usuários"
         description={showInactive ? 'Exibindo usuários inativos.' : 'Exibindo usuários ativos.'}
       >
         <Card className="p-4">
           <AdminUsuariosTabs
+            key={`${showInactive ? 'inactive' : 'active'}:${search}:${cursor ?? ''}`}
             users={users.items.map((u) => ({
               id: u.id,
               email: u.email,
@@ -136,9 +120,17 @@ export default async function AdminUsuariosPage({
             }))}
             clients={clients}
             roles={roles}
-            canManageUsers={session.user.role === 'superadmin'}
+            canManageUsers={hasPermission(session.permissions ?? [], 'users.update')}
+            canDeleteUsers={hasPermission(session.permissions ?? [], 'users.delete')}
             currentUserId={session.user.id}
-            userSessionsByUserId={Object.fromEntries(userSessionsByUserId)}
+            showInactive={showInactive}
+            initialUserId={selectedUserId}
+            initialTab={initialTab}
+            search={search}
+            cursor={cursor}
+            nextCursor={users.next_cursor}
+            total={users.total}
+            sessionRevision={sessionRevision}
             activeSection={activeSection}
             status={status}
             message={message}

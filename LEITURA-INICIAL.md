@@ -6,6 +6,20 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
+## Implementação local da revisão 202 e debate de usabilidade — 02/11/2026
+
+O [relatório 203](docs/203-IMPLEMENTACAO-REVISAO-202-2026-11-02.md) mapeia as correções dos vinte achados: transações administrativas, último superadmin, reset de senha/sessões concorrentes, instalação permissionada sem segredo em evidência, clientes inativos/rascunhos, filtros e paginação no servidor, parser chunked e limite de login. **Build web e API aprovados; 26 subcasos novos em PostgreSQL 17 real aprovados na primeira rodada**, além dos grupos dirigidos. Somente a API foi recompilada após corrigir uma restrição indevida do novo GET de clientes, com um caso adicional e sem repetir PG. Navegador desktop/mobile com API sintética aprovado para os percursos descritos, sem alegar autenticação/submissões reais. QA no 220 removido e ausência verificada.
+
+O [relatório 204](docs/204-REVISAO-USABILIDADE-CINCO-AGENTES-2026-11-02.md) reúne a discussão efetiva dos cinco agentes e o parecer do coordenador: permissões/resultados primeiro; contexto protegido, contagens e acessibilidade depois; medição antes de cache. **Código ainda não publicado.** Versões de referência permanecem API 0.13.1, web 1.14.1, package 0.5.26. SSH do 221 expirou nas tentativas posteriores à inspeção inicial; nenhuma publicação nem migration de produção nesta rodada.
+
+**Próxima ação:** resolver gates de permissões/IP real/mensagens identificados no 204, conferir estado do 221 quando o acesso voltar, concluir matriz autenticada e publicar API/web coordenadamente com versão, saúde e DR. Não repetir suítes já aprovadas. Os oito firewalls excluídos, saúde e HA/CARP continuam fora do escopo.
+
+## Revisão aprofundada de integridade, segurança, escala e UX — 02/11/2026
+
+O [relatório 202](docs/202-REVISAO-UX-PROFUNDA-2026-11-02.md) registra **20 achados/riscos e oportunidades de correção**, sustentados por inspeção de código, com hipóteses marcadas e plano de entregas A–E por grupo de testes. Destaque: corrida de último superadmin, atomicidade de usuários/escopos/auditoria, revelação de segredo do agente sob `bootstrap.view`, custo da tela de backups e dependências de permissão/fluxos de clientes. **Revisão documental, sem correção/publicação.** UX da etapa 201 permanece modificada localmente, aguardando homologação e build. Nenhum dos oito firewalls persistentemente degradados foi alterado; HA/CARP excluído.
+
+**Próxima ação:** priorizar integridade/permissões (A), bootstrap seguro (B), escala (C) e UX (D), testando blocos uma única vez; verificar limitações de edge/HTTP (E). Provas DR/PG/package aprovadas nas entregas 198/200 permanecem válidas.
+
 ## Fechamento da revisão 199 e recuperação DR — 02/11/2026
 
 O [relatório 200](docs/200-CORRECOES-RELATORIO-199-2026-11-02.md) registra os **15/15 achados corrigidos e publicados**. Os dois riscos concorrentes C01/C02 também foram corrigidos e comprovados em PostgreSQL 17 isolado. **Produção: API 0.13.1, painel 1.14.1 e package 0.5.26**. Código backend no commit `fc97c4e`, enviado ao GitHub e sincronizado no 221; duas migrations aplicadas. O registro histórico com senha foi limpo (1 atualização, 1 auditoria, nenhum candidato residual), sem consultar o valor. API, web, nginx e PostgreSQL saudáveis; HTTP 200 no login e health.

@@ -5,6 +5,7 @@ import {
   Headers,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -18,6 +19,8 @@ import { AccessPolicyService } from './access-policy.service';
 import { AuthService } from './auth.service';
 import { getAccessActor } from './access-actor.util';
 import { LoginDto } from './dto/login.dto';
+import { ListOwnSessionsQueryDto } from './dto/list-own-sessions-query.dto';
+import { resolveLoginClientIp } from './login-client-ip';
 import { MfaCodeDto, MfaLoginDto } from './dto/mfa.dto';
 import { MfaService } from './mfa.service';
 import { PermissionsService } from './permissions.service';
@@ -71,7 +74,7 @@ export class AuthController {
     const result = await this.authService.login({
       email: body.email,
       password: body.password,
-      ipAddress: resolveClientIp(request),
+      ipAddress: resolveLoginClientIp(request),
       userAgent,
     });
 
@@ -222,11 +225,11 @@ export class AuthController {
 
   @UseGuards(SessionAuthGuard)
   @Get('sessions')
-  listSessions(@Req() request: AuthenticatedRequest) {
+  listSessions(@Req() request: AuthenticatedRequest, @Query() query: ListOwnSessionsQueryDto) {
     return this.authService.listSessions({
       userId: request.auth!.userId,
       sessionId: request.auth!.sessionId,
-    });
+    }, query);
   }
 
   @UseGuards(SessionAuthGuard)

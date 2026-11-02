@@ -73,6 +73,7 @@ export type FleetTagRef = {
 };
 
 export type NodesListResponse = {
+  bootstrap_summary?: { pending: number; active: number; blocked: number; total: number };
   generated_at: string;
   total: number;
   limit: number;
@@ -542,6 +543,7 @@ export type SessionResponse = {
 };
 
 export type AuthSessionsResponse = {
+  total: number; active_count: number; page: number; per_page: number; total_pages: number;
   items: Array<{
     id: string;
     current: boolean;
@@ -555,6 +557,8 @@ export type AuthSessionsResponse = {
 };
 
 export type AdminUserSessionsResponse = {
+  total: number;
+  next_cursor: string | null;
   items: Array<{
     id: string;
     user_id: string;
@@ -569,6 +573,8 @@ export type AdminUserSessionsResponse = {
 };
 
 export type UsersListResponse = {
+  total: number;
+  next_cursor: string | null;
   items: Array<{
     id: string;
     email: string;
@@ -981,6 +987,7 @@ export async function getPackageRelease(): Promise<PackageReleaseResponse> {
 }
 
 export async function getNodesList(query?: {
+  bootstrap_bucket?: 'pending' | 'active' | 'blocked';
   client_id?: string;
   site_id?: string;
   status?: string;
@@ -1037,6 +1044,7 @@ export async function getNodesList(query?: {
   }
 
   if (query?.cursor) params.set('cursor', query.cursor);
+  if (query?.bootstrap_bucket) params.set('bootstrap_bucket', query.bootstrap_bucket);
 
   const suffix = params.toString() ? `?${params.toString()}` : '';
   return apiFetch<NodesListResponse>(`/api/v1/nodes${suffix}`);
@@ -1044,6 +1052,37 @@ export async function getNodesList(query?: {
 
 export async function getNodesFilters(): Promise<NodesFiltersResponse> {
   return apiFetch<NodesFiltersResponse>('/api/v1/nodes/filters');
+}
+
+export type BackupFleetListResponse = {
+  items: Array<Pick<NodesListResponse['items'][number], 'id' | 'hostname' | 'display_name' | 'client' | 'site' | 'backup_status' | 'latest_backup_received_at'>>;
+  summary: { ok: number; late: number; failed: number; never: number; total: number };
+  total: number; page: number; per_page: number; total_pages: number; generated_at: string;
+};
+
+export async function getBackupFleetList(query: {
+  client_id?: string; site_id?: string; search?: string; backup_status?: string;
+  sort_by?: 'name' | 'backup_priority' | 'backup_age'; sort_order?: 'asc' | 'desc';
+  page?: number; per_page?: number;
+} = {}): Promise<BackupFleetListResponse> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== '') params.set(key, String(value));
+  return apiFetch<BackupFleetListResponse>(`/api/v1/nodes/backup-fleet?${params}`);
+}
+
+export type AdminClientsListResponse = {
+  items: Array<{ id: string; name: string; code: string; status: string; node_count: number; site_count: number }>;
+  total: number; page: number; limit: number; total_pages: number;
+};
+
+export async function getAdminClientsList(query: {
+  status?: 'active' | 'inactive'; search?: string; page?: number; limit?: number;
+} = {}): Promise<AdminClientsListResponse> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== '') params.set(key, String(value));
+  }
+  return apiFetch<AdminClientsListResponse>(`/api/v1/admin/clients?${params}`);
 }
 
 export async function getNodeDetails(id: string): Promise<NodeDetailsResponse> {
@@ -1436,9 +1475,13 @@ export async function createClient(input: {
 
 export async function getUsersList(params?: {
   status?: 'active' | 'inactive';
+  search?: string;
+  cursor?: string;
+  limit?: number;
 }): Promise<UsersListResponse> {
-  const search = params?.status ? `?status=${params.status}` : '';
-  return apiFetch<UsersListResponse>(`/api/v1/admin/users${search}`);
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params ?? {})) if (value !== undefined && value !== '') search.set(key, String(value));
+  return apiFetch<UsersListResponse>(`/api/v1/admin/users?${search}`);
 }
 
 export async function deleteUser(id: string): Promise<{ ok: true; user_id: string }> {
@@ -1483,8 +1526,11 @@ export async function updateUser(
   });
 }
 
-export async function getAdminUserSessions(id: string): Promise<AdminUserSessionsResponse> {
-  return apiFetch<AdminUserSessionsResponse>(`/api/v1/admin/users/${id}/sessions`);
+export async function getAdminUserSessions(id: string, query: { cursor?: string; limit?: number } = {}): Promise<AdminUserSessionsResponse> {
+  const params = new URLSearchParams();
+  if (query.cursor) params.set('cursor', query.cursor);
+  if (query.limit) params.set('limit', String(query.limit));
+  return apiFetch<AdminUserSessionsResponse>(`/api/v1/admin/users/${id}/sessions?${params}`);
 }
 
 export async function setUserClientScopes(
@@ -1764,8 +1810,10 @@ export async function getOptionalSession(): Promise<SessionResponse | null> {
   }
 }
 
-export async function getAuthSessions(): Promise<AuthSessionsResponse> {
-  return apiFetch<AuthSessionsResponse>('/api/v1/auth/sessions');
+export async function getAuthSessions(query: { view?: 'active' | 'history' | 'all'; q?: string; page?: number; per_page?: number } = {}): Promise<AuthSessionsResponse> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== '') params.set(key, String(value));
+  return apiFetch<AuthSessionsResponse>(`/api/v1/auth/sessions?${params}`);
 }
 
 export async function revokeAuthSession(id: string): Promise<{

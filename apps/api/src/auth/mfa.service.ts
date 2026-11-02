@@ -276,14 +276,14 @@ export class MfaService {
     userId: string;
     ipAddress?: string;
     userAgent?: string;
-  }): Promise<{ token: string; expiresAt: Date }> {
+  }, tx: Prisma.TransactionClient): Promise<{ token: string; expiresAt: Date }> {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(
       Date.now() + appConfig.mfa.challengeTtlMinutes * 60 * 1000,
     );
 
     // Limpeza oportunista de desafios expirados/consumidos.
-    await this.prisma.mfaLoginChallenge
+    await tx.mfaLoginChallenge
       .deleteMany({
         where: {
           OR: [
@@ -291,10 +291,9 @@ export class MfaService {
             { userId: input.userId, consumedAt: { not: null } },
           ],
         },
-      })
-      .catch(() => undefined);
+      });
 
-    await this.prisma.mfaLoginChallenge.create({
+    await tx.mfaLoginChallenge.create({
       data: {
         userId: input.userId,
         challengeTokenHash: this.hashValue(token),

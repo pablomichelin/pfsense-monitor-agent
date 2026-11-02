@@ -18,6 +18,57 @@ export type BackupFleetSummary = {
   total: number;
 };
 
+// Contract for GET /api/v1/nodes/backup-fleet. Summary covers the selected
+// client/site/search scope before backup_status; total is the filtered count.
+export type BackupFleetResponse = {
+  items: BackupFleetNode[];
+  summary: BackupFleetSummary;
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+  generated_at: string;
+};
+
+// Legacy helper retained for existing callers/tests; the backups page uses backup-fleet.
+// The nodes endpoint is cursor-paginated. A fleet-wide summary must consume
+// every page before filtering and sorting, otherwise the oldest alphabetical
+// slice can hide the most urgent backups.
+export async function collectBackupFleetPages<T extends { id: string }>(
+  loadPage: (cursor?: string) => Promise<{
+    items: T[];
+    total: number;
+    generated_at: string;
+    next_cursor: string | null;
+  }>,
+): Promise<{ items: T[]; generated_at: string }> {
+  const items: T[] = [];
+  const seenCursors = new Set<string>();
+  const seenNodeIds = new Set<string>();
+  let cursor: string | undefined;
+  let generatedAt = '';
+
+  for (;;) {
+    const page = await loadPage(cursor);
+    generatedAt = page.generated_at;
+    // Mudanças concorrentes entre páginas podem repetir um firewall. Não
+    // duplicar seus contadores, mesmo sem snapshot transacional entre requests.
+    for (const item of page.items) {
+      if (seenNodeIds.has(item.id)) continue;
+      seenNodeIds.add(item.id);
+      items.push(item);
+    }
+
+    if (!page.next_cursor) return { items, generated_at: generatedAt };
+    if (page.items.length === 0 || seenCursors.has(page.next_cursor)) {
+      throw new Error('A paginação do inventário não avançou. Recarregue a página de backups.');
+    }
+
+    seenCursors.add(page.next_cursor);
+    cursor = page.next_cursor;
+  }
+}
+
 const BACKUP_STATUS_PRIORITY: Record<BackupVisualStatus, number> = {
   failed: 0,
   never: 1,
