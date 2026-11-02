@@ -4,7 +4,7 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import { EntityStatus, User } from '@prisma/client';
+import { EntityStatus, Prisma, User } from '@prisma/client';
 import { createHash, randomBytes, randomInt } from 'crypto';
 import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
@@ -26,6 +26,10 @@ export interface MfaStatus {
   recovery_codes_remaining: number;
   enforcement_required: boolean;
 }
+
+const CHALLENGE_MAX_FAILURES = 5;
+const USER_MAX_FAILURES = 12;
+const USER_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class MfaService {
@@ -166,7 +170,12 @@ export class MfaService {
       });
       await tx.user.update({
         where: { id: user.id },
-        data: { mfaEnabled: true, mfaEnrolledAt: new Date() },
+        data: {
+          mfaEnabled: true,
+          mfaEnrolledAt: new Date(),
+          mfaFailedAttemptCount: 0,
+          mfaFailedWindowStart: null,
+        },
       });
     });
 
@@ -188,30 +197,70 @@ export class MfaService {
     code: string;
     ipAddress?: string;
   }): Promise<void> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: input.userId },
-    });
-    if (!user) {
-      throw new UnauthorizedException('user not found');
-    }
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Serialize against challenge verification, and make recovery-code
+      // consumption, disabling and outstanding challenge invalidation atomic.
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${input.userId}::uuid FOR UPDATE`;
+      const lockedUser = await tx.user.findUnique({ where: { id: input.userId } });
+      if (!lockedUser) {
+        throw new UnauthorizedException('user not found');
+      }
+      if (!lockedUser.mfaEnabled) {
+        throw new BadRequestException('MFA is not enabled');
+      }
+      const now = new Date();
+      const activeWindow = Boolean(
+        lockedUser.mfaFailedWindowStart &&
+        now >= lockedUser.mfaFailedWindowStart &&
+        now.getTime() - lockedUser.mfaFailedWindowStart.getTime() < USER_FAILURE_WINDOW_MS,
+      );
+      const failures = activeWindow ? lockedUser.mfaFailedAttemptCount : 0;
+      if (failures >= USER_MAX_FAILURES) {
+        return { kind: 'invalid' as const, reachedLimit: false, userRole: lockedUser.role };
+      }
+      if (!(await this.verifyFactor(lockedUser, input.code, tx))) {
+        await tx.user.update({
+          where: { id: input.userId },
+          data: {
+            mfaFailedAttemptCount: failures + 1,
+            mfaFailedWindowStart: activeWindow ? lockedUser.mfaFailedWindowStart : now,
+          },
+        });
+        return {
+          kind: 'invalid' as const,
+          reachedLimit: failures + 1 === USER_MAX_FAILURES,
+          userRole: lockedUser.role,
+        };
+      }
+      await tx.mfaRecoveryCode.deleteMany({ where: { userId: input.userId } });
+      await tx.mfaLoginChallenge.deleteMany({ where: { userId: input.userId } });
+      await tx.user.update({
+        where: { id: input.userId },
+        data: {
+          mfaEnabled: false,
+          mfaSecret: null,
+          mfaEnrolledAt: null,
+          mfaFailedAttemptCount: 0,
+          mfaFailedWindowStart: null,
+        },
+      });
+      return { kind: 'ok' as const, user: lockedUser };
+    }, { timeout: 10_000 });
 
-    if (!user.mfaEnabled) {
-      throw new BadRequestException('MFA is not enabled');
-    }
-
-    const ok = await this.verifyFactor(user, input.code);
-    if (!ok) {
+    if (result.kind !== 'ok') {
+      if (result.reachedLimit) {
+        await this.auditService.record({
+          actorId: input.userId,
+          actorRole: result.userRole,
+          action: 'auth.mfa.attempt_limit_reached',
+          targetType: 'user',
+          targetId: input.userId,
+          ipAddress: input.ipAddress,
+        }).catch(() => this.logger.warn('could not record MFA disable attempt limit audit'));
+      }
       throw new UnauthorizedException('invalid MFA code');
     }
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.mfaRecoveryCode.deleteMany({ where: { userId: user.id } });
-      await tx.user.update({
-        where: { id: user.id },
-        data: { mfaEnabled: false, mfaSecret: null, mfaEnrolledAt: null },
-      });
-    });
-
+    const user = result.user;
     await this.auditService.record({
       actorId: user.id,
       actorRole: user.role,
@@ -267,43 +316,106 @@ export class MfaService {
     code: string;
     ipAddress?: string;
   }): Promise<User> {
-    const challenge = await this.prisma.mfaLoginChallenge.findUnique({
-      where: { challengeTokenHash: this.hashValue(input.token) },
-      include: { user: true },
-    });
+    const challengeTokenHash = this.hashValue(input.token);
+    const result = await this.prisma.$transaction(async (tx) => {
+      const candidate = await tx.mfaLoginChallenge.findUnique({
+        where: { challengeTokenHash },
+        select: { userId: true },
+      });
+      if (!candidate) return { kind: 'invalid' as const };
 
-    if (
-      !challenge ||
-      challenge.consumedAt ||
-      challenge.expiresAt <= new Date()
-    ) {
+      // One lock per user, across all simultaneously issued challenges.
+      // It fences both recovery-code consumption and the failure budgets.
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${candidate.userId}::uuid FOR UPDATE`;
+      const challenge = await tx.mfaLoginChallenge.findUnique({
+        where: { challengeTokenHash },
+        include: { user: true },
+      });
+      const now = new Date();
+      if (
+        !challenge || challenge.consumedAt || challenge.expiresAt <= now ||
+        !challenge.user.mfaEnabled
+      ) {
+        return { kind: 'invalid' as const };
+      }
+
+      const user = challenge.user;
+      const activeWindow = Boolean(
+        user.mfaFailedWindowStart &&
+        now.getTime() - user.mfaFailedWindowStart.getTime() < USER_FAILURE_WINDOW_MS &&
+        now >= user.mfaFailedWindowStart,
+      );
+      const userFailures = activeWindow ? user.mfaFailedAttemptCount : 0;
+      if (challenge.attemptCount >= CHALLENGE_MAX_FAILURES || userFailures >= USER_MAX_FAILURES) {
+        return { kind: 'invalid' as const };
+      }
+
+      const verified = await this.verifyFactor(user, input.code, tx);
+      if (!verified) {
+        const nextChallengeFailures = challenge.attemptCount + 1;
+        const nextUserFailures = userFailures + 1;
+        await tx.mfaLoginChallenge.update({
+          where: { id: challenge.id },
+          data: { attemptCount: nextChallengeFailures },
+        });
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            mfaFailedAttemptCount: nextUserFailures,
+            mfaFailedWindowStart: activeWindow ? user.mfaFailedWindowStart : now,
+          },
+        });
+        return {
+          kind: 'invalid' as const,
+          reachedLimit: nextChallengeFailures === CHALLENGE_MAX_FAILURES ||
+            nextUserFailures === USER_MAX_FAILURES,
+          userId: user.id,
+          userRole: user.role,
+        };
+      }
+
+      // The recovery code (if used), challenge consumption, and budget reset
+      // commit together. A lost response cannot authorize the same token again.
+      const consumed = await tx.mfaLoginChallenge.updateMany({
+        where: { id: challenge.id, consumedAt: null, expiresAt: { gt: now } },
+        data: { consumedAt: now },
+      });
+      if (consumed.count !== 1) {
+        throw new UnauthorizedException('MFA challenge already used');
+      }
+      await tx.mfaLoginChallenge.updateMany({
+        where: { userId: user.id, consumedAt: null },
+        data: { consumedAt: now },
+      });
+      await tx.user.update({
+        where: { id: user.id },
+        data: { mfaFailedAttemptCount: 0, mfaFailedWindowStart: null },
+      });
+      return { kind: 'ok' as const, user };
+    }, { timeout: 10_000 });
+
+    if (result.kind !== 'ok') {
+      if (result.reachedLimit && result.userId && result.userRole) {
+        await this.auditService.record({
+          actorId: result.userId,
+          actorRole: result.userRole,
+          action: 'auth.mfa.attempt_limit_reached',
+          targetType: 'user',
+          targetId: result.userId,
+          ipAddress: input.ipAddress,
+        }).catch(() => this.logger.warn('could not record MFA attempt limit audit'));
+      }
       throw new UnauthorizedException('invalid or expired MFA challenge');
     }
-
-    const user = challenge.user;
-    if (!user.mfaEnabled) {
-      throw new UnauthorizedException('MFA challenge no longer valid');
-    }
-
-    const ok = await this.verifyFactor(user, input.code);
-    if (!ok) {
-      throw new UnauthorizedException('invalid MFA code');
-    }
-
-    // Consome o desafio com CAS (so consome se ainda nao consumido).
-    const consumed = await this.prisma.mfaLoginChallenge.updateMany({
-      where: { id: challenge.id, consumedAt: null },
-      data: { consumedAt: new Date() },
-    });
-    if (consumed.count !== 1) {
-      throw new UnauthorizedException('MFA challenge already used');
-    }
-
-    return user;
+    return result.user;
   }
 
   /** Verifica TOTP primeiro; se falhar, tenta consumir um codigo de recuperacao. */
-  private async verifyFactor(user: User, code: string): Promise<boolean> {
+  private async verifyFactor(
+    user: User,
+    code: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<boolean> {
     if (user.mfaSecret) {
       const secret = this.nodeSecretCrypto.decrypt(user.mfaSecret);
       if (this.verifyTotp(secret, code)) {
@@ -311,7 +423,7 @@ export class MfaService {
       }
     }
 
-    return this.consumeRecoveryCode(user.id, code);
+    return this.consumeRecoveryCode(user.id, code, tx);
   }
 
   private verifyTotp(secret: string, code: string): boolean {
@@ -329,6 +441,7 @@ export class MfaService {
   private async consumeRecoveryCode(
     userId: string,
     code: string,
+    tx: Prisma.TransactionClient,
   ): Promise<boolean> {
     const normalized = this.normalizeRecoveryCode(code ?? '');
     if (!normalized) {
@@ -336,7 +449,7 @@ export class MfaService {
     }
 
     const codeHash = this.hashValue(normalized);
-    const updated = await this.prisma.mfaRecoveryCode.updateMany({
+    const updated = await tx.mfaRecoveryCode.updateMany({
       where: { userId, codeHash, usedAt: null },
       data: { usedAt: new Date() },
     });

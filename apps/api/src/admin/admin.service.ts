@@ -636,10 +636,28 @@ export class AdminService {
   }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true },
+      select: {
+        id: true,
+        role: true,
+        clientId: true,
+        client: { select: { id: true, name: true, code: true, status: true } },
+      },
     });
     if (!user) {
       throw new NotFoundException('user not found');
+    }
+
+    if (user.role === CLIENT_ROLE) {
+      const activeClient = user.client?.status === 'active' ? user.client : null;
+      return {
+        user_id: userId,
+        client_ids: activeClient ? [activeClient.id] : [],
+        clients: activeClient ? [{
+          id: activeClient.id,
+          name: activeClient.name,
+          code: activeClient.code,
+        }] : [],
+      };
     }
 
     const scopes = await this.prisma.userClientScope.findMany({
@@ -685,6 +703,11 @@ export class AdminService {
     }
     if (user.role === SUPERADMIN_ROLE) {
       throw new BadRequestException('superadmin does not use client scopes');
+    }
+    if (user.role === CLIENT_ROLE) {
+      throw new BadRequestException(
+        'client role uses the user client binding; change the user client instead',
+      );
     }
 
     await this.replaceUserClientScopes(userId, dto.client_ids, grantedByUserId);
@@ -1766,44 +1789,39 @@ export class AdminService {
   ): Promise<{ ok: true; client_id: string }> {
     await this.withClientScope(scopeActor, clientId);
 
-    const client = await this.prisma.client.findUnique({
-      where: { id: clientId },
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        sites: {
-          select: {
-            _count: { select: { nodes: true } },
-          },
+    await this.prisma.$transaction(async (tx) => {
+      // The parent lock fences new sites. Site row locks also fence a node
+      // INSERT's foreign-key check until the final count and DELETE commit.
+      const [client] = await tx.$queryRaw<Array<{ id: string; name: string; code: string }>>`
+        SELECT id, name, code FROM clients WHERE id = ${clientId}::uuid FOR UPDATE
+      `;
+      if (!client) {
+        throw new NotFoundException('client not found');
+      }
+      const sites = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM sites WHERE client_id = ${clientId}::uuid ORDER BY id FOR UPDATE
+      `;
+      const nodeCount = await tx.node.count({
+        where: { siteId: { in: sites.map((site) => site.id) } },
+      });
+      if (nodeCount > 0) {
+        throw new ConflictException(
+          `Cliente possui ${nodeCount} firewall(s) vinculado(s). Remova os firewalls antes de excluir o cliente.`,
+        );
+      }
+
+      await tx.client.delete({ where: { id: clientId } });
+      await tx.auditLog.create({
+        data: {
+          actorType: actorId ? 'user' : 'system',
+          actorId,
+          action: 'admin.client.delete',
+          targetType: 'client',
+          targetId: clientId,
+          ipAddress: actorIp,
+          metadataJson: { name: client.name, code: client.code },
         },
-      },
-    });
-    if (!client) {
-      throw new NotFoundException('client not found');
-    }
-    const nodeCount = client.sites.reduce(
-      (sum, site) => sum + site._count.nodes,
-      0,
-    );
-    if (nodeCount > 0) {
-      throw new ConflictException(
-        `Cliente possui ${nodeCount} firewall(s) vinculado(s). Remova os firewalls antes de excluir o cliente.`,
-      );
-    }
-    await this.writeAuditLog({
-      actorId,
-      action: 'admin.client.delete',
-      targetType: 'client',
-      targetId: clientId,
-      ipAddress: actorIp,
-      metadataJson: {
-        name: client.name,
-        code: client.code,
-      } as Prisma.JsonObject,
-    });
-    await this.prisma.client.delete({
-      where: { id: clientId },
+      });
     });
     this.invalidateNodesFiltersCache();
     return { ok: true, client_id: clientId };
@@ -2078,6 +2096,14 @@ export class AdminService {
     const rotatedAt = new Date();
 
     await this.prisma.$transaction(async (tx) => {
+      // Serialize rotations on the parent node, including the zero-credential
+      // case. Concurrent rotations cannot leave two active credentials.
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM nodes WHERE id = ${nodeId}::uuid FOR UPDATE
+      `;
+      if (locked.length !== 1) {
+        throw new NotFoundException('node not found');
+      }
       await tx.nodeCredential.updateMany({
         where: {
           nodeId,
@@ -2098,17 +2124,18 @@ export class AdminService {
           status: NodeCredentialStatus.active,
         },
       });
-    });
 
-    await this.writeAuditLog({
-      actorId,
-      action: 'admin.node.rekey',
-      targetType: 'node',
-      targetId: nodeId,
-      ipAddress: actorIp,
-      metadataJson: {
-        secret_hint: secretHint,
-      },
+      await tx.auditLog.create({
+        data: {
+          actorType: actorId ? 'user' : 'system',
+          actorId,
+          action: 'admin.node.rekey',
+          targetType: 'node',
+          targetId: nodeId,
+          ipAddress: actorIp,
+          metadataJson: { secret_hint: secretHint },
+        },
+      });
     });
 
     return {

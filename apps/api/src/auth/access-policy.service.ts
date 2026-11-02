@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessActor } from './access-actor.type';
+import { PermissionKey } from './permission-keys';
 import { PermissionsService } from './permissions.service';
 import { isClientRole, isSuperadminRole } from './role-codes';
 
@@ -27,6 +28,11 @@ export class AccessPolicyService {
     }
 
     return isSuperadminRole(actor.role);
+  }
+
+  /** Authorize the operation actually planned by a multi-command endpoint. */
+  async assertOperationPermission(actor: AccessActor, permission: PermissionKey): Promise<void> {
+    await this.permissionsService.assertPermission(actor.role, permission);
   }
 
   async getAllowedClientIds(actor: AccessActor): Promise<string[] | null> {

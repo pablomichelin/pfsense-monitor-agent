@@ -733,6 +733,7 @@ export class TechniciansService {
       password,
       privilegeProfile,
       userId,
+      actor,
       { backupBeforeProvision },
     );
 
@@ -995,6 +996,7 @@ export class TechniciansService {
     password: string,
     privilegeProfile: string,
     requestedByUserId: string,
+    actor: AccessActor,
     options: { backupBeforeProvision: boolean },
   ) {
     const pfsenseUsername = requireManagedPfsenseUsername(technician.loginUsername);
@@ -1019,6 +1021,11 @@ export class TechniciansService {
     const backupQueue: Array<{
       node_id: string;
       follow_up: Parameters<typeof buildFollowUpTechnicianProvisionPayload>[0];
+    }> = [];
+    const eligible: Array<{
+      nodeId: string;
+      userExists: boolean;
+      needsBackup: boolean;
     }> = [];
 
     for (const nodeId of uniqueNodeIds) {
@@ -1060,6 +1067,21 @@ export class TechniciansService {
 
       const snapshot = parseLocalUsersSnapshot(node.localUsersSnapshotJson);
       const userExists = userAlreadyActiveInSnapshot(snapshot, pfsenseUsername);
+
+      // Finish the entire plan before changing any account. An eligible node
+      // later in the batch may require the separate password-reset permission.
+      eligible.push({ nodeId, userExists, needsBackup });
+    }
+
+    if (eligible.some((item) => item.userExists)) {
+      this.assertPasswordResetEnabled();
+      await this.accessPolicy.assertOperationPermission(
+        actor,
+        'technicians.password_reset.run',
+      );
+    }
+
+    for (const { nodeId, userExists, needsBackup } of eligible) {
 
       const account = await this.prisma.technicianNodeAccount.upsert({
         where: {
