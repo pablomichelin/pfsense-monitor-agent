@@ -8,7 +8,7 @@ Leia este arquivo primeiro.
 
 ## Detecção de firmware — 02/11/2026
 
-Correção 206 em validação: package 0.5.27, web 1.15.1. Caminhos de canais corrigidos, descoberta de outros canais sem autorizar instalação automática e parser de falhas. DNS do laboratório reparado e consulta real aprovada; rollout ainda em validação. Ver [206](docs/206-CORRECAO-DETECCAO-FIRMWARE-2026-11-02.md).
+Correção206 publicada: package 0.5.27, web 1.15.1. Caminhos de canais corrigidos, descoberta de outros canais sem autorizar instalação automática e parser de falhas. DNS do laboratório reparado e consulta real aprovada; rollout58/58 concluído, oito excluídos preservados; CE2.7.0 reparado; uma exceção HTTP400 no repositório Plus. Ver [206](docs/206-CORRECAO-DETECCAO-FIRMWARE-2026-11-02.md).
 
 ## Publicação autorizada — 02/11/2026
 

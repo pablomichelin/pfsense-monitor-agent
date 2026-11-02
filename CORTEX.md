@@ -1,5 +1,9 @@
 # CORTEX
 
+## Detecção de firmware — 02/11/2026
+
+Correção206: package0.5.27 e web1.15.1; API0.14.0. Bind de config agora monta diretório para evitar release obsoleta após git pull. LAB e canário CE2.8.1 aprovados, com descoberta real de2.9.0 em outro canal. Sem upgrade do OS. Lote56/56 concluído;58/58 com LAB/canário. Oito excluídos preservados; CE2.7.0 reparado e uma exceção HTTP400 no repositório Plus documentada. Ver docs/206-CORRECAO-DETECCAO-FIRMWARE-2026-11-02.md.
+
 ## Publicação de UX e integridade — 02/11/2026
 
 API **0.14.0** e painel **1.15.0** publicados; package **0.5.26** inalterado. Estado/evidências em `LEITURA-INICIAL.md` e relatório 205. Login tem lista própria de proxies, sem confiar em CF-Connecting-IP autodeclarado; IPs de web/nginx fixos no override do projeto. Não ampliar a confiança global de proxy para corrigir login. Grupos anteriores aprovados permanecem válidos; novas provas foram dirigidas. Oito firewalls excluídos, saúde e HA/CARP preservados. DR pós-release `dr-20261102T144031Z-2b7ea354ef064d20` com imagens exatas cifradas, checksum/importação e recuperação integral **PASS** no 220, recursos limpos; mesma LAN.
