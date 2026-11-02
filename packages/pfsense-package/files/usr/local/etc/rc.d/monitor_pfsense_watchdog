@@ -1,0 +1,22 @@
+#!/bin/sh
+# PROVIDE: monitor_pfsense_watchdog
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+. /etc/rc.subr
+name="monitor_pfsense_watchdog"
+rcvar="monitor_pfsense_watchdog_enable"
+load_rc_config "$name"
+: "${monitor_pfsense_watchdog_enable:=NO}"
+pidfile="/var/run/${name}.pid"
+helper="/usr/local/libexec/monitor-pfsense-agent/agent_watchdog.php"
+required_files="${helper} /usr/local/etc/monitor-pfsense-agent.conf"
+command="/usr/sbin/daemon"
+command_args="-f -r -P ${pidfile} /usr/local/bin/php ${helper} --loop"
+procname="/usr/sbin/daemon"
+start_precmd="watchdog_prestart"
+watchdog_prestart() {
+    unset MONITOR_UPDATE_LOCK_HELD
+    exec 3>&-
+    return 0
+}
+run_rc_command "$1"

@@ -28,9 +28,16 @@ if [ "$INTERVAL_SECONDS" -lt 10 ] 2>/dev/null; then
 fi
 AGENT_BIN="$AGENT_HOME/monitor-pfsense-agent.sh"
 
+record_cycle() {
+  # Local completion, independent of HTTP success; never a controller-health test.
+  (umask 077; printf '%s\n' "$$" > /var/run/monitor-pfsense-agent-cycle.new &&
+    mv -f /var/run/monitor-pfsense-agent-cycle.new /var/run/monitor-pfsense-agent-cycle)
+}
+record_cycle
 while :; do
   "$AGENT_BIN" heartbeat >>"$LOG_FILE" 2>&1 || true
   "$AGENT_BIN" backup-scheduled >>"$LOG_FILE" 2>&1 || true
+  record_cycle
   # sleep pode retornar nao-zero se interrompido por sinal; || true evita sair do loop
   sleep "$INTERVAL_SECONDS" || true
 done

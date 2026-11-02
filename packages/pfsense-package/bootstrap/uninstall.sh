@@ -9,6 +9,9 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /usr/local/sha
 fi
 
 rm -f \
+  "$INSTALL_ROOT/usr/local/etc/rc.d/monitor_pfsense_watchdog" \
+  "$INSTALL_ROOT/var/run/monitor_pfsense_watchdog.pid" \
+  "$INSTALL_ROOT/var/run/monitor-pfsense-agent-cycle" \
   "$INSTALL_ROOT/usr/local/etc/monitor-pfsense-agent.conf" \
   "$INSTALL_ROOT/usr/local/etc/rc.d/monitor_pfsense_agent" \
   "$INSTALL_ROOT/usr/local/pkg/systemup_monitor.inc" \

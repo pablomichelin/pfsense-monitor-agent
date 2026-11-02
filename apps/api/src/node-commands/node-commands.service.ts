@@ -283,6 +283,7 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
 
   async getPendingCommandsForNode(
     nodeId: string,
+    deliveryChannel: 'agent' | 'supervisor_v1' = 'agent',
   ): Promise<PendingCommandPayload[]> {
     const now = new Date();
     const durableDelivery = await this.supportsDurableDelivery(nodeId);
@@ -319,7 +320,11 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    return commands.map((command) => ({
+    return commands.filter((command) => {
+      const payload = command.payloadJson as Record<string, unknown> | null;
+      const recovery = command.type === NodeCommandType.service_restart && payload?.delivery_channel === 'supervisor_v1';
+      return deliveryChannel === 'supervisor_v1' ? recovery : !recovery;
+    }).map((command) => ({
       id: command.id,
       type: command.type,
       expires_at: command.expiresAt.toISOString(),

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { NodeDetailsResponse } from '@/lib/api';
 import { formatPercent, formatUptime } from '@/lib/format';
 import type { MetricsHistoryPeriod, NodeMetricsHistoryResponse } from '@/lib/metrics-history';
@@ -18,10 +19,12 @@ export function NodeDetailMetricsTab({
   node,
   metricsHistory,
   metricsPeriod,
+  canRestartService = false,
 }: {
   node: Node;
   metricsHistory: NodeMetricsHistoryResponse | null;
   metricsPeriod: MetricsHistoryPeriod;
+  canRestartService?: boolean;
 }) {
   return (
     <div className="space-y-section">
@@ -65,6 +68,7 @@ export function NodeDetailMetricsTab({
       </PageSection>
 
       <PageSection title="Serviços" description="Estado reportado pelo agente (VPN e demais).">
+        {canRestartService ? <Link href={`/nodes/${node.id}?tab=overview#operational-services`} className="text-sm text-primary underline">Ver diagnóstico e reiniciar serviços autorizados</Link> : null}
         {node.services.length > 0 ? (
           <Card className="space-y-4">
             {groupServicesByType(node.services).map((group) => {

@@ -93,6 +93,10 @@ install_package_files() {
   copy_tree "$PACKAGE_ROOT/files" "$INSTALL_ROOT"
 
   chmod 0755 \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/recovery_service.php" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/recovery_channel.php" \
+    "$INSTALL_ROOT/usr/local/etc/rc.d/monitor_pfsense_watchdog" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/agent_watchdog.php" \
     "$INSTALL_ROOT/usr/local/etc/rc.d/monitor_pfsense_agent" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent-loop.sh" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh" \
@@ -277,6 +281,15 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
     -f /usr/local/share/pfSense-pkg-systemup-monitor/systemup_monitor_cli.php sync < /dev/null 2>/dev/null || true
 
   ensure_package_gui_registration || true
+
+  # Independent channel must start even when the OLD upgrade wrapper owns this installation.
+  if [ "$(/usr/sbin/sysrc -n monitor_pfsense_agent_enable 2>/dev/null || true)" = "YES" ] &&
+     [ -f /usr/local/etc/monitor-pfsense-agent.conf ]; then
+    /usr/sbin/sysrc monitor_pfsense_watchdog_enable=YES >/dev/null
+    /usr/sbin/service monitor_pfsense_watchdog restart >/dev/null 2>&1 ||
+      /usr/sbin/service monitor_pfsense_watchdog start >/dev/null 2>&1 || true
+  fi
+
 
   # Upgrade da frota passa por este install.sh (nao pelo pkg-install POST-INSTALL).
   repair_orphaned_local_users || true

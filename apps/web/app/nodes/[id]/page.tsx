@@ -297,6 +297,8 @@ export default async function NodeDetailsPage({
                     canRestartService={canRestartService}
                     canReboot={canRebootNode}
                     initialStatus={operationalStatus}
+                    services={node.services}
+                    lastSeenAt={node.last_seen_at}
                   />
                 ) : null}
                 {commandHistory ? <NodeCommandHistoryPanel
@@ -321,6 +323,7 @@ export default async function NodeDetailsPage({
                 node={node}
                 metricsHistory={metricsHistory}
                 metricsPeriod={metricsPeriod}
+                canRestartService={canRestartService && Boolean(operationalStatus?.service_restart_enabled)}
               />
             }
             alerts={<NodeDetailAlertsTab node={node} />}

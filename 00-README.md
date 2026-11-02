@@ -238,3 +238,4 @@ Estabilização e revisão de 31/10/2026: [relatório 196](docs/196-ESTABILIZACA
 
 - [206 — Correção da detecção de firmware e release do pacote](docs/206-CORRECAO-DETECCAO-FIRMWARE-2026-11-02.md).
 - [Recuperação dos 32 agentes — estado e pendências](docs/209-RECUPERACAO-DOS-32-AGENTES-2026-11-02.md)
+- [Canal independente de recuperação](docs/210-PLANO-CANAL-INDEPENDENTE-RECUPERACAO-2026-11-02.md)

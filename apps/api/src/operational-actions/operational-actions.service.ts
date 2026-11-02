@@ -86,6 +86,8 @@ export class OperationalActionsService {
         hostname: true,
         agentVersion: true,
         lastSeenAt: true,
+        recoveryVersion: true,
+        recoverySeenAt: true,
         maintenanceMode: true,
         haRole: true,
         haDetectedFromAgent: true,
@@ -125,6 +127,8 @@ export class OperationalActionsService {
         id: true,
         hostname: true,
         agentVersion: true,
+        recoveryVersion: true,
+        recoverySeenAt: true,
         maintenanceMode: true,
         haRole: true,
         haDetectedFromAgent: true,
@@ -150,6 +154,11 @@ export class OperationalActionsService {
       orderBy: { requestedAt: 'desc' },
     });
 
+    const latestRestart = await this.prisma.nodeCommand.findFirst({
+      where: {nodeId, type: NodeCommandType.service_restart}, orderBy: {requestedAt: 'desc'},
+      select: {id: true, status: true, errorMessage: true, completedAt: true},
+    });
+
     const activeReboot = await this.prisma.nodeCommand.findFirst({
       where: {
         nodeId,
@@ -159,9 +168,14 @@ export class OperationalActionsService {
       orderBy: { requestedAt: 'desc' },
     });
 
+    const recoverySupported = isAgentVersionAtLeast(node.recoveryVersion, '0.5.30');
+    const recoveryReady = recoverySupported && node.recoverySeenAt != null && Date.now() - node.recoverySeenAt.getTime() < 180_000;
     return {
       enabled: appConfig.operationalActions.enabled,
-      service_restart_enabled: appConfig.operationalActions.serviceRestartEnabled,
+      recovery_supported: recoverySupported,
+      recovery_ready: recoveryReady,
+      recovery_last_seen_at: node.recoverySeenAt?.toISOString() ?? null,
+      service_restart_enabled: appConfig.operationalActions.serviceRestartEnabled || recoverySupported,
       node_reboot_enabled: appConfig.operationalActions.nodeRebootEnabled,
       min_agent_version: appConfig.operationalActions.minAgentVersion,
       agent_version: node.agentVersion,
@@ -174,6 +188,7 @@ export class OperationalActionsService {
       allowed_services: [...SERVICE_RESTART_ALLOWLIST],
       reboot_default_delay_seconds:
         appConfig.operationalActions.rebootDefaultDelaySeconds,
+      latest_service_restart: latestRestart ? {command_id: latestRestart.id, status: latestRestart.status, error_message: latestRestart.errorMessage, completed_at: latestRestart.completedAt?.toISOString() ?? null} : null,
       active_service_restart: activeServiceRestart
         ? {
             command_id: activeServiceRestart.id,
@@ -197,6 +212,23 @@ export class OperationalActionsService {
     dto: ServiceRestartRequestDto,
     ipAddress?: string,
   ) {
+    this.assertOperationalActionsEnabled();
+    const recoveryNode = await this.prisma.node.findUnique({where: {id: nodeId}, select: {recoveryVersion: true, recoverySeenAt: true}});
+    if (isAgentVersionAtLeast(recoveryNode?.recoveryVersion, '0.5.30')) {
+      if (!recoveryNode?.recoverySeenAt || Date.now() - recoveryNode.recoverySeenAt.getTime() >= 180_000) {
+        throw new ConflictException('recovery channel is offline');
+      }
+      const payload = validateServiceRestartPayload({service: dto.service, delivery_channel: 'supervisor_v1'});
+      return this.prisma.$transaction(async tx => {
+        const command = await this.orchestrator.enqueueCommand({nodeId, type: NodeCommandType.service_restart,
+          requestedByUserId: userId, payloadJson: payload}, tx);
+        const expiresAt = new Date(Date.now() + 300_000);
+        await tx.nodeCommand.update({where: {id: command.id}, data: {expiresAt, maxRetries: 0}});
+        await tx.auditLog.create({data: {actorType: 'user', actorId: userId, action: 'service.restart.request',
+          targetType: 'node', targetId: nodeId, ipAddress, metadataJson: {command_id: command.id, ...payload}}});
+        return {command_id: command.id, status: command.status, expires_at: expiresAt.toISOString(), service: payload.service};
+      });
+    }
     this.assertServiceRestartEnabled();
     const node = await this.assertNodeReady(nodeId);
     const payload = validateServiceRestartPayload({ service: dto.service });

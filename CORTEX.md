@@ -1,5 +1,9 @@
 # CORTEX
 
+## Canal independente de recuperação — em homologação (02/11/2026)
+
+Fonte API 0.14.2, painel 1.15.3 e package 0.5.30 preparados. Contrato e evidências: [210](docs/210-PLANO-CANAL-INDEPENDENTE-RECUPERACAO-2026-11-02.md). 16 casos de política, dez de protocolo, oito PostgreSQL e três de autenticação aprovados. LAB operacional/canário/distribuição ainda pendentes; não confundir artefato publicado com instalação comprovada. Oito excluídos preservados.
+
 ## Confiabilidade de atualizações — 02/11/2026
 
 Tentativa posterior de reinício pelo pacote nos oito pendentes: todas bloqueadas por `service restart is disabled` no controlador, antes de enfileirar. Nenhum reboot/restart executado nessa tentativa; detalhes no relatório 209.

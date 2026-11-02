@@ -20,6 +20,8 @@ type Props = {
   canRestartService: boolean;
   canReboot: boolean;
   initialStatus: OperationalActionsStatusResponse;
+  services?: Array<{name: string; status: string}>;
+  lastSeenAt?: string | null;
 };
 
 function confirmationMatches(hostname: string, value: string): boolean {
@@ -33,6 +35,8 @@ export function NodeOperationalActionsSection({
   canRestartService,
   canReboot,
   initialStatus,
+  services = [],
+  lastSeenAt,
 }: Props) {
   const [status, setStatus] = useState(initialStatus);
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +106,7 @@ export function NodeOperationalActionsSection({
   return (
     <PageSection
       title="Ações operacionais"
-      description="Reinício de serviços allowlistados e reboot controlado — sem shell remoto."
+      description="Envie o reinício de um serviço autorizado e acompanhe o resultado."
     >
       {error ? <Alert variant="error">{error}</Alert> : null}
 
@@ -116,14 +120,26 @@ export function NodeOperationalActionsSection({
       <div className="grid gap-4 lg:grid-cols-2">
         {status.service_restart_enabled && canRestartService ? (
           <Card className="space-y-4 p-4">
+            <span id="operational-services" />
             <div>
               <h3 className="font-display text-base text-fg">Reiniciar serviço</h3>
               <p className="mt-1 text-sm text-slate-400">
-                Apenas serviços da allowlist do package. Impacto imediato no serviço
-                selecionado.
+                {status.recovery_supported
+                  ? 'Canal independente do agente principal. O serviço selecionado pode ficar brevemente indisponível.'
+                  : 'Serviços autorizados pelo pacote. O serviço selecionado pode ficar brevemente indisponível.'}
               </p>
             </div>
 
+            <div className="rounded-md border border-slate-700 p-3 text-sm">
+              <p>Estado reportado: {services.find(service => service.name === selectedService)?.status ?? 'sem informação'}</p>
+              <p>Última telemetria: {lastSeenAt ? formatDateTime(lastSeenAt) : 'sem contato'}</p>
+              {status.recovery_supported ? <p>Canal de recuperação: {status.recovery_ready ? 'conectado' : 'sem contato'}
+                {status.recovery_last_seen_at ? ` — ${formatDateTime(status.recovery_last_seen_at)}` : ''}</p> : null}
+              <p className="mt-1 text-slate-400">O estado acima é o último recebido, não uma confirmação de funcionamento atual.</p>
+            </div>
+            {status.recovery_supported && !status.recovery_ready ? (
+              <Alert variant="warning">O canal de recuperação está sem contato. Aguarde sua reconexão.</Alert>
+            ) : null}
             <label className="block text-sm text-slate-300">
               Serviço
               <select
@@ -151,11 +167,20 @@ export function NodeOperationalActionsSection({
               </div>
             ) : null}
 
+            {!status.active_service_restart && status.latest_service_restart ? (
+              <div role="status" className="rounded-md border border-slate-700 p-3 text-sm">
+                <p>Último pedido de reinício</p>
+                <NodeCommandProgress status={status.latest_service_restart.status} isActive={false} compact />
+                {status.latest_service_restart.error_message ? <p>{status.latest_service_restart.error_message}</p> : null}
+                {status.latest_service_restart.completed_at ? <p>{formatDateTime(status.latest_service_restart.completed_at)}</p> : null}
+              </div>
+            ) : null}
             <Button
               type="button"
               variant="secondary"
               disabled={
                 pending ||
+                (status.recovery_supported && !status.recovery_ready) ||
                 !status.agent_version_supported ||
                 status.active_service_restart != null
               }

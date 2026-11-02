@@ -2219,6 +2219,10 @@ export async function cancelNodeCommand(
 export type OperationalActionsStatusResponse = {
   enabled: boolean;
   service_restart_enabled: boolean;
+  recovery_supported: boolean;
+  recovery_ready: boolean;
+  recovery_last_seen_at: string | null;
+  latest_service_restart: {command_id: string; status: string; error_message: string | null; completed_at: string | null} | null;
   node_reboot_enabled: boolean;
   min_agent_version: string;
   agent_version: string | null;

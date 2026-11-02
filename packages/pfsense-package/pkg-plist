@@ -1,3 +1,5 @@
+etc/rc.d/monitor_pfsense_watchdog
+libexec/monitor-pfsense-agent/agent_watchdog.php
 etc/rc.d/monitor_pfsense_agent
 libexec/monitor-pfsense-agent/monitor-pfsense-agent-loop.sh
 libexec/monitor-pfsense-agent/monitor-pfsense-agent.sh
@@ -25,3 +27,5 @@ www/backup_systemup_monitor.php
 www/systemup_usermanager_denied.php
 www/config_systemup_monitor.php
 www/status_systemup_monitor.php
+libexec/monitor-pfsense-agent/recovery_channel.php
+libexec/monitor-pfsense-agent/recovery_service.php

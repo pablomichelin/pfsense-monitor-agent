@@ -72,7 +72,7 @@ export function validateRebootDelaySeconds(raw: unknown): number {
 
 export function validateServiceRestartPayload(
   payload: unknown,
-): { service: RestartableService } {
+): { service: RestartableService; delivery_channel?: 'supervisor_v1' } {
   if (payload == null || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('invalid service_restart payload');
   }
@@ -80,6 +80,7 @@ export function validateServiceRestartPayload(
   const raw = payload as Record<string, unknown>;
   return {
     service: normalizeRestartableService(raw.service),
+    ...(raw.delivery_channel === 'supervisor_v1' ? { delivery_channel: 'supervisor_v1' as const } : {}),
   };
 }
 

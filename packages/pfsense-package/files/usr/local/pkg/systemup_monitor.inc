@@ -17,7 +17,7 @@ if (!defined("SYSTEMUP_MONITOR_DEFAULT_HEARTBEAT_MODE")) {
 }
 /** Versão do agente (enviada no heartbeat). Manter igual ao PORTVERSION do Makefile em cada release. */
 if (!defined("SYSTEMUP_MONITOR_AGENT_VERSION")) {
-    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.5.29");
+    define("SYSTEMUP_MONITOR_AGENT_VERSION", "0.5.30");
 }
 if (!defined("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS")) {
     define("SYSTEMUP_MONITOR_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS", 6);
@@ -1358,11 +1358,23 @@ function systemup_monitor_sync_service($enabled, $config_ready, $background = fa
     if (file_exists('/usr/sbin/sysrc')) {
         $enable_value = ($enabled && $config_ready) ? 'YES' : 'NO';
         systemup_monitor_run_command('/usr/sbin/sysrc monitor_pfsense_agent_enable=' . $enable_value);
+        systemup_monitor_run_command('/usr/sbin/sysrc monitor_pfsense_watchdog_enable=' . $enable_value);
     }
 
     $serviceCommand = $enabled && $config_ready
         ? '/bin/sh -c "/usr/sbin/service monitor_pfsense_agent restart || /usr/sbin/service monitor_pfsense_agent start"'
         : '/bin/sh -c "/usr/sbin/service monitor_pfsense_agent stop || true"';
+
+    if (file_exists('/usr/local/etc/rc.d/monitor_pfsense_watchdog')) {
+        if ($enabled && $config_ready) {
+            $serviceCommand = '/bin/sh -c ' . escapeshellarg(
+                '/usr/sbin/service monitor_pfsense_agent restart || /usr/sbin/service monitor_pfsense_agent start; '
+                . '/usr/sbin/service monitor_pfsense_watchdog restart || /usr/sbin/service monitor_pfsense_watchdog start'
+            );
+        } else {
+            systemup_monitor_run_command('/usr/sbin/service monitor_pfsense_watchdog stop 2>/dev/null || true');
+        }
+    }
 
     if ($background) {
         systemup_monitor_run_command('nohup ' . $serviceCommand . ' >/dev/null 2>&1 &');

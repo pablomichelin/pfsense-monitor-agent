@@ -1,3 +1,5 @@
+import { RecoveryIngestController } from './recovery-ingest.controller';
+import { NodeCommandsModule } from '../node-commands/node-commands.module';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CommandsModule } from '../commands/commands.module';
@@ -9,8 +11,8 @@ import {
 import { OperationalActionsService } from './operational-actions.service';
 
 @Module({
-  imports: [PrismaModule, AuthModule, CommandsModule],
-  controllers: [OperationalActionsController, OperationalActionsBatchController],
+  imports: [PrismaModule, AuthModule, CommandsModule, NodeCommandsModule],
+  controllers: [OperationalActionsController, OperationalActionsBatchController, RecoveryIngestController],
   providers: [OperationalActionsService],
 })
 export class OperationalActionsModule {}

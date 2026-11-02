@@ -406,6 +406,8 @@ model Node {
   remoteAccessUrl String?             @map("remote_access_url")
   pfsenseVersion  String?             @map("pfsense_version")
   agentVersion    String?             @map("agent_version")
+  recoveryVersion String?             @map("recovery_version")
+  recoverySeenAt  DateTime?           @map("recovery_seen_at") @db.Timestamptz(6)
   haRole          String?             @map("ha_role")
   lastBootAt      DateTime?           @map("last_boot_at") @db.Timestamptz(6)
   lastSeenAt      DateTime?           @map("last_seen_at") @db.Timestamptz(6)
