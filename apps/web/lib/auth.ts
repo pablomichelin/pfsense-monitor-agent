@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { revokeAuthSession } from './api';
 import { sanitizeInternalPath } from './internal-path';
+import { loginErrorCode } from './login-error';
 
 const apiBaseUrl = process.env.MONITOR_API_BASE_URL?.trim();
 const sessionCookieName =
@@ -129,9 +130,10 @@ export async function loginAction(formData: FormData): Promise<void> {
   });
 
   if (!response.ok) {
+    const errorCode = loginErrorCode(response.status);
     const errorUrl = nextPath
-      ? `/login?error=1&next=${encodeURIComponent(nextPath)}`
-      : '/login?error=1';
+      ? `/login?error=${errorCode}&next=${encodeURIComponent(nextPath)}`
+      : `/login?error=${errorCode}`;
     redirect(errorUrl);
   }
 

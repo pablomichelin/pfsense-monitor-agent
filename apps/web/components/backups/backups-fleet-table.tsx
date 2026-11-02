@@ -7,9 +7,10 @@ import { buildNodeDetailsHref } from '@/lib/node-detail-helpers';
 
 type Props = {
   nodes: BackupFleetNode[];
+  canViewFirewall?: boolean;
 };
 
-export function BackupsFleetTable({ nodes }: Props) {
+export function BackupsFleetTable({ nodes, canViewFirewall = true }: Props) {
   return (
     <div className="max-h-[70vh] overflow-auto">
       <table className="min-w-full text-left text-sm">
@@ -49,12 +50,12 @@ export function BackupsFleetTable({ nodes }: Props) {
                 {formatBackupAge(node.latest_backup_received_at)}
               </td>
               <td className="w-36 min-w-[8rem] px-4 py-4">
-                <Link
+                {canViewFirewall ? <Link
                   href={buildNodeDetailsHref({ id: node.id, tab: 'backup' })}
                   className="inline-flex h-9 items-center rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-xs font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-fg"
                 >
                   Ver backup
-                </Link>
+                </Link> : <span className="text-xs text-fg-muted">Detalhe requer acesso ao firewall</span>}
               </td>
             </tr>
           ))}

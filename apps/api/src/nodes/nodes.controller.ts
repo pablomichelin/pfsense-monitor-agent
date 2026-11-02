@@ -36,9 +36,16 @@ export class NodesController {
   }
 
   @Get('backup-fleet')
-  @RequirePermissions('firewalls.view')
+  @RequirePermissions('backups.view')
   getBackupFleet(@Query() query: BackupFleetQueryDto, @Req() request: AuthenticatedRequest) {
     return this.nodesService.getBackupFleet(getAccessActor(request), query);
+  }
+
+  @Get('backup-filters')
+  @RequirePermissions('backups.view')
+  async getBackupFilters(@Req() request: AuthenticatedRequest) {
+    const { generated_at, clients, sites } = await this.nodesService.getFilters(getAccessActor(request));
+    return { generated_at, clients, sites };
   }
 
   @Get(':id')

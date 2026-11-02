@@ -3,6 +3,7 @@ import { Alert, Button, Card } from '@/components/ui';
 import { getOptionalSession } from '@/lib/api';
 import { loginAction, loginMfaAction } from '@/lib/auth';
 import { sanitizeInternalPath } from '@/lib/internal-path';
+import { loginErrorMessage } from '@/lib/login-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,7 @@ export default async function LoginPage({
   }
 
   const hasError = params.error === '1';
+  const passwordError = loginErrorMessage(params.error);
   const mfaStep = params.mfa === '1';
 
   if (mfaStep) {
@@ -77,9 +79,9 @@ export default async function LoginPage({
           <h2 className="mt-2 font-display text-2xl font-semibold text-fg">Entrar no painel</h2>
           <p className="mt-2 text-sm text-fg-muted">Autenticação administrativa do controlador Monitor-Pfsense.</p>
 
-          {hasError ? (
+          {passwordError ? (
             <Alert variant="error" className="mt-5">
-              Credenciais inválidas ou sessão indisponível.
+              {passwordError}
             </Alert>
           ) : null}
 

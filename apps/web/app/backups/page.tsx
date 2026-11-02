@@ -4,7 +4,8 @@ import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 import { Alert, Button, Card, PageSection } from '@/components/ui';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
-import { getNodesFilters, getBackupFleetList, getSession } from '@/lib/api';
+import { getBackupFilters, getBackupFleetList, getSession } from '@/lib/api';
+import { hasPermission } from '@/lib/authz';
 import { isClientRole } from '@/lib/client-profile';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +40,7 @@ export default async function BackupsPage({
 
   try {
     [filterOptions, nodes, session] = await Promise.all([
-      getNodesFilters(),
+      getBackupFilters(),
       getBackupFleetList({
         client_id: clientId, site_id: siteId, search, backup_status: backupStatus,
         sort_by: sortBy, sort_order: sortOrder, page, per_page: perPage,
@@ -210,7 +211,7 @@ export default async function BackupsPage({
               Nenhum firewall encontrado com os filtros atuais.
             </Alert>
           ) : (
-            <BackupsFleetTable nodes={visibleNodes} />
+            <BackupsFleetTable nodes={visibleNodes} canViewFirewall={hasPermission(session.permissions ?? [], 'firewalls.view')} />
           )}
         </Card>
         <div className="mt-4 flex items-center justify-between gap-3 text-sm text-fg-muted">

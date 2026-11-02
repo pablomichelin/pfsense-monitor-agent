@@ -1054,6 +1054,10 @@ export async function getNodesFilters(): Promise<NodesFiltersResponse> {
   return apiFetch<NodesFiltersResponse>('/api/v1/nodes/filters');
 }
 
+export async function getBackupFilters(): Promise<Pick<NodesFiltersResponse, 'generated_at' | 'clients' | 'sites'>> {
+  return apiFetch('/api/v1/nodes/backup-filters');
+}
+
 export type BackupFleetListResponse = {
   items: Array<Pick<NodesListResponse['items'][number], 'id' | 'hostname' | 'display_name' | 'client' | 'site' | 'backup_status' | 'latest_backup_received_at'>>;
   summary: { ok: number; late: number; failed: number; never: number; total: number };
