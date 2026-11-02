@@ -9,6 +9,8 @@ Data: 02/11/2026. Escopo autorizado: investigar e corrigir a detecção; nenhum 
 - Parser agora rejeita códigos de erro e mensagens explícitas de falha antes de interpretar disponibilidade. “Nothing to do” genérico não prova atualização do sistema; reconhecida a mensagem oficial “Your system is on a newer version”. Cache incrementado para 8.
 - LAB10: Unbound retornava SERVFAIL para Netgate/pfSense, enquanto o DNS do gateway respondia. HTTPS verificado com TLS válido. Adicionados overrides somente para `netgate.com` e `pfsense.org`, via gateway do laboratório, na configuração nativa; reload do Unbound. Sem alteração de DNS na frota.
 
+- Controlador: após pull da release27, host tinha27 e API ainda lia26, confirmado pelo serviço real e checksum. Bind mount do arquivo ficou preso no inode anterior substituído pelo Git. Corrigido para montar o diretório config em leitura; exige recriar API uma vez, sem rebuild.
+
 ## Evidência
 
 - Repoc antes: falha de fetch; depois do ajuste DNS: lista oficial 2_9_0 recebida.

@@ -35,8 +35,8 @@ services:
       - ./.env.api
       - ./config/package-release.env
     volumes:
-      # Monta o ficheiro em runtime para o comando de bootstrap refletir sempre a versão atual (após git pull), sem restart
-      - ./config/package-release.env:/app/config/package-release.env:ro
+      # Monta o diretório: git pull substitui o inode do arquivo e um bind isolado fica obsoleto.
+      - ./config:/app/config:ro
       - ./dist/pfsense-package:/app/dist/pfsense-package:ro
       - ./data/pfsense-config-backups:/app/data/pfsense-config-backups
     restart: unless-stopped
