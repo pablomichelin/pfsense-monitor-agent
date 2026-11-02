@@ -6,6 +6,12 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
+## Publicação autorizada — 02/11/2026
+
+**API 0.14.0 e painel 1.15.0 em produção**, package 0.5.26 inalterado. [Relatório 205](docs/205-PUBLICACAO-UX-E-INTEGRIDADE-2026-11-02.md): entrega 201/203 publicada e gates U204-01/02/03 corrigidos. Builds finais e cinco testes dirigidos aprovados; HTTP com login real, RBAC/escopo, edição e CSRF em QA aprovado. Os 26 casos PG anteriores não foram repetidos. Quatro serviços saudáveis; versão/health, migration e login público HTTP200 confirmados. IP real do login conferido no percurso LAN nginx→Next→API, rejeitando headers falsos.
+
+Acesso ao 221 funciona via SSH com salto pelo 220; o caminho direto do Mac ainda expira. Recursos QA novos e residuais anteriores identificados foram removidos. Backup anterior `dr-20261102T142849Z-ac35a8546d7a49df` e pós-release `dr-20261102T144031Z-2b7ea354ef064d20`; checksum, importação das quatro imagens e **DR STACK PASS com banco restaurado, boot e limpeza** confirmados no 220. Próxima frente: propostas U204-04 a 10 e triagem dos três alertas high da cadeia Prisma apontados por audit omit-dev, preservando evidências aprovadas. Oito firewalls excluídos, saúde, HA/CARP, Zabbix e Theo intocados.
+
 ## Implementação local da revisão 202 e debate de usabilidade — 02/11/2026
 
 O [relatório 203](docs/203-IMPLEMENTACAO-REVISAO-202-2026-11-02.md) mapeia as correções dos vinte achados: transações administrativas, último superadmin, reset de senha/sessões concorrentes, instalação permissionada sem segredo em evidência, clientes inativos/rascunhos, filtros e paginação no servidor, parser chunked e limite de login. **Build web e API aprovados; 26 subcasos novos em PostgreSQL 17 real aprovados na primeira rodada**, além dos grupos dirigidos. Somente a API foi recompilada após corrigir uma restrição indevida do novo GET de clientes, com um caso adicional e sem repetir PG. Navegador desktop/mobile com API sintética aprovado para os percursos descritos, sem alegar autenticação/submissões reais. QA no 220 removido e ausência verificada.

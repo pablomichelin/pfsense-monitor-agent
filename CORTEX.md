@@ -1,5 +1,9 @@
 # CORTEX
 
+## Publicação de UX e integridade — 02/11/2026
+
+API **0.14.0** e painel **1.15.0** publicados; package **0.5.26** inalterado. Estado/evidências em `LEITURA-INICIAL.md` e relatório 205. Login tem lista própria de proxies, sem confiar em CF-Connecting-IP autodeclarado; IPs de web/nginx fixos no override do projeto. Não ampliar a confiança global de proxy para corrigir login. Grupos anteriores aprovados permanecem válidos; novas provas foram dirigidas. Oito firewalls excluídos, saúde e HA/CARP preservados. DR pós-release `dr-20261102T144031Z-2b7ea354ef064d20` com imagens exatas cifradas, checksum/importação e recuperação integral **PASS** no 220, recursos limpos; mesma LAN.
+
 ## Recuperação e encerramento — 02/11/2026
 
 Estado atual e evidências: `LEITURA-INICIAL.md` e `docs/200-CORRECOES-RELATORIO-199-2026-11-02.md`. API **0.13.1**, painel **1.14.1**, package **0.5.26**; quinze achados corrigidos, dois riscos de concorrência comprovados e corrigidos, migrations aplicadas e limpeza histórica auditada. A revisão anterior confirmou 58 agentes atualizados; oito firewalls persistentemente degradados permanecem excluídos. HA/CARP fora do escopo. A recuperação pós-release **integral** da API 0.13.1 foi comprovada no 220: checksum SHA-256, decriptação/TAR, importação das quatro imagens exatas, restauração PostgreSQL 17 e boot descartável de API/web/nginx com saúde/login aprovados; recursos de ensaio removidos. Custódia ainda na mesma LAN.
