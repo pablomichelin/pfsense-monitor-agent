@@ -21,7 +21,7 @@ STATE_FILE="$STATE_DIR/pfsense-update-check.json"
 INTERVAL_HOURS="${MONITOR_AGENT_PFSENSE_UPDATE_CHECK_INTERVAL_HOURS:-6}"
 # Bump quando o formato do cache ou o parser mudar (invalida resultado antigo).
 # v8: canais reais, exit status e descoberta de upgrade em canal alternativo.
-CACHE_VERSION=8
+CACHE_VERSION=9
 REPO_REFRESH_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_REPO_REFRESH_TIMEOUT_SEC:-180}"
 CHECK_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_UPDATE_CHECK_TIMEOUT_SEC:-120}"
 REPAIR_TIMEOUT_SEC="${MONITOR_AGENT_PFSENSE_REPO_REPAIR_TIMEOUT_SEC:-180}"
@@ -188,15 +188,8 @@ should_run_check() {
     return 0
   fi
 
-  last_epoch="$(read_last_check_epoch)"
-  now_epoch="$(date -u +%s)"
-  interval_sec=$((INTERVAL_HOURS * 3600))
+  php "$SCRIPT_DIR/update_cache.php" due "$STATE_FILE" "$CACHE_VERSION" "$((INTERVAL_HOURS * 3600))"
 
-  if [ "$last_epoch" = "0" ] || [ $((now_epoch - last_epoch)) -ge "$interval_sec" ]; then
-    return 0
-  fi
-
-  return 1
 }
 
 run_timed() {
@@ -253,27 +246,8 @@ pkg_process_busy() {
 }
 
 clear_stale_pfsense_upgrade_locks() {
-  for lock in \
-    /tmp/pfSense-upgrade.lock \
-    /var/run/pfSense-upgrade.lock \
-    /var/run/pfSense-upgrade.pid \
-    /tmp/pkg.lock \
-    /var/run/pkg.lock
-  do
-    [ -e "$lock" ] || continue
-    pid="$(extract_lock_pid "$lock")"
-    if is_pid_alive "$pid"; then
-      continue
-    fi
-    case "$lock" in
-      *pkg.lock)
-        if pkg_process_busy; then
-          continue
-        fi
-        ;;
-    esac
-    rm -f "$lock" 2>/dev/null || true
-  done
+  # Native locks are kernel-owned; unlinking them can allow concurrent installers.
+  :
 }
 
 looks_like_tls_error() {
@@ -281,7 +255,7 @@ looks_like_tls_error() {
 }
 
 looks_like_dns_error() {
-  printf '%s' "$1" | grep -qiE 'no address record|name does not resolve|nxdomain|temporary failure in name resolution|cannot resolve'
+  printf '%s' "$1" | grep -qiE 'no address record|name does not resolve|nxdomain|temporary failure in name resolution|cannot resolve|servfail|resolving timed out'
 }
 
 looks_like_metadata_error() {
@@ -300,6 +274,8 @@ classify_check_error() {
   msg="$1"
   if looks_like_lock_error "$msg"; then
     printf 'lock'
+  elif printf '%s' "$msg" | grep -qiE 'response code.*[45][0-9][0-9]|HTTP.*[45][0-9][0-9]'; then
+    printf 'http'
   elif looks_like_tls_error "$msg"; then
     printf 'tls'
   elif looks_like_dns_error "$msg"; then
@@ -307,7 +283,7 @@ classify_check_error() {
   elif looks_like_metadata_error "$msg"; then
     printf 'metadata'
   elif looks_like_timeout_or_route "$msg"; then
-    printf 'ipv6'
+    printf 'network'
   else
     printf 'unknown'
   fi
@@ -356,6 +332,8 @@ pfsense_upgrade_in_progress() {
   fi
 
   for lock in \
+    /var/run/monitor-pfsense-package-upgrade.lock \
+    /var/run/monitor-pfsense-agent-upgrade.lock \
     /tmp/pfSense-upgrade.lock \
     /var/run/pfSense-upgrade.lock \
     /var/run/pfSense-upgrade.pid
@@ -378,16 +356,8 @@ summarize_cmd_failure() {
   log_file="$1"
   default_msg="$2"
   exit_code="$3"
-  first="$(first_output_line "$log_file")"
-  if [ -n "$first" ]; then
-    printf '%s' "$first"
-    return
-  fi
-  if [ "$exit_code" -eq 124 ]; then
-    printf '%s timed out' "$default_msg"
-    return
-  fi
-  printf '%s' "$default_msg"
+  php "$SCRIPT_DIR/update_cache.php" summary "$log_file" "$exit_code"
+
 }
 
 run_pfsense_upgrade_cmd() {
@@ -404,6 +374,7 @@ run_pfsense_upgrade_cmd() {
 
 refresh_pkg_repositories() {
   refresh_log="$(mktemp)"
+  REFRESH_ERROR=""
   set +e
   run_pfsense_upgrade_cmd 0 -u "$refresh_log" "$REPO_REFRESH_TIMEOUT_SEC"
   refresh_code=$?
@@ -443,7 +414,7 @@ refresh_pkg_repositories() {
   fi
 
   rm -f "$refresh_log" 2>/dev/null || true
-  printf '%s' "$first"
+  REFRESH_ERROR="$first"
   return 1
 }
 
@@ -533,21 +504,8 @@ write_state() {
     branch_list="$(printf '%s\n' "$branch_fields" | sed -n '3p' | tr -d '\r')"
   fi
 
-  cat >"$STATE_FILE" <<EOF
-{
-  "cache_version": $CACHE_VERSION,
-  "available": $available_json,
-  "target_version": "$(json_escape "$target_version")",
-  "checked_at": "$(json_escape "$checked_at")",
-  "check_error": "$(json_escape "$check_error")",
-  "error_class": "$(json_escape "$error_class")",
-  "log_snippet": "$(json_escape "$log_snippet")",
-  "firmware_branch": "$(json_escape "$branch_name")",
-  "firmware_branch_descr": "$(json_escape "$branch_descr")",
-  "firmware_branches": "$(json_escape "$branch_list")",
-  "ha_detected": $ha_json
-}
-EOF
+  php "$SCRIPT_DIR/update_cache.php" write "$STATE_FILE" "$available" "$target_version" "$check_error" "$ha_detected" "$error_class" "${CHECK_STATUS:-}" "${CHECK_STEP:-}" "${CHECK_EXIT:-}" "${PFSENSE_UPGRADE_IPV4:-0}" "$branch_name" "$branch_descr" "$branch_list" "$CACHE_VERSION" "$((INTERVAL_HOURS * 3600))"
+
 }
 
 fail_check() {
@@ -573,25 +531,28 @@ run_check() {
     return 1
   fi
 
-  clear_stale_pfsense_upgrade_locks
-
   if pfsense_upgrade_in_progress; then
     fail_check "pfSense-upgrade already running" "lock"
     return 1
   fi
 
-  refresh_error="$(refresh_pkg_repositories || true)"
-  if [ -n "$refresh_error" ]; then
-    fail_check "$refresh_error"
+  CHECK_STATUS="checking" CHECK_STEP="repository_refresh" write_state "" "" "" "$ha_detected" "" ""
+  CHECK_STEP="repository_refresh"
+  REFRESH_ERROR=""
+  if ! refresh_pkg_repositories; then
+    CHECK_EXIT="$refresh_code"
+    fail_check "$REFRESH_ERROR"
     return 1
   fi
 
+  CHECK_STEP="current_channel"
   output_file="$(mktemp)"
   trap 'rm -f "$output_file"' EXIT INT TERM
 
   set +e
   run_pfsense_upgrade_cmd "$PFSENSE_UPGRADE_IPV4" -c "$output_file" "$CHECK_TIMEOUT_SEC"
   exit_code=$?
+  CHECK_EXIT="$exit_code"
   set -e
 
   parsed="$(parse_update_output "$output_file" "$exit_code" 2>/dev/null || printf 'unknown\n\n')"
@@ -602,7 +563,7 @@ run_check() {
     true|false)
       ;;
     *)
-      check_error="$(first_output_line "$output_file")"
+      check_error="$(summarize_cmd_failure "$output_file" "Firmware check failed" "$exit_code")"
       if [ -z "$check_error" ]; then
         if [ "$exit_code" -ne 0 ]; then
           check_error="pfSense-upgrade check failed"
@@ -619,14 +580,20 @@ run_check() {
   # through the current channel. The existing explicit set-branch flow is required.
   if [ "$available" = "false" ] && pfSense-upgrade -h 2>&1 | grep -q -- '-C'; then
     set +e
+    CHECK_STEP="alternative_channels"
     run_pfsense_upgrade_cmd "$PFSENSE_UPGRADE_IPV4" -C "$output_file" "$CHECK_TIMEOUT_SEC"
     exit_code=$?
+    CHECK_EXIT="$exit_code"
     set -e
     parsed="$(parse_update_output "$output_file" "$exit_code" 2>/dev/null || printf 'unknown\n\n')"
     discovered="$(printf '%s\n' "$parsed" | sed -n '1p')"
     if [ "$discovered" = "true" ]; then
       target_version="$(printf '%s\n' "$parsed" | sed -n '2p')"
-      write_state "" "$target_version" "Nova versão $target_version disponível em outro canal. Selecione o canal em Apontar branch e verifique novamente antes de atualizar." "$ha_detected" "branch" ""
+      if ! php "$SCRIPT_DIR/set_pfsense_update_branch.php" stable-target "$target_version"; then
+        fail_check "Versão anunciada sem canal estável confirmado; seleção automática bloqueada" "policy"
+        return 1
+      fi
+      write_state "" "$target_version" "Nova versão $target_version disponível em outro canal. Selecione o canal em Apontar branch e verifique novamente antes de atualizar." "$ha_detected" "branch_available" ""
       return 0
     elif [ "$discovered" != "false" ]; then
       fail_check "$(summarize_cmd_failure "$output_file" "Falha ao consultar outros canais de firmware" "$exit_code")"
@@ -638,12 +605,11 @@ run_check() {
 }
 
 run_repair_repo() {
+  CHECK_STEP="repository_repair"
   ha_detected="false"
   if detect_ha_detected; then
     ha_detected="true"
   fi
-
-  clear_stale_pfsense_upgrade_locks
 
   if pfsense_upgrade_in_progress; then
     fail_check "pfSense-upgrade already running" "lock"
@@ -705,6 +671,7 @@ run_repair_repo() {
 }
 
 run_set_branch() {
+  CHECK_STEP="channel_selection"
   target="$1"
   case "$target" in
     latest|2.8.1|2.9.0)
@@ -767,6 +734,20 @@ print_cached_state() {
 main() {
   action="${1:-check}"
 
+  case "$action" in
+    check|force-check|repair-repo|set-branch)
+      if [ "${MONITOR_UPDATE_LOCK_HELD:-0}" != "1" ]; then
+        set +e
+        php "$SCRIPT_DIR/update_operation.php" sh "$0" "$@"
+        lock_result=$?
+        set -e
+        if [ "$lock_result" -eq 75 ]; then
+          CHECK_STATUS="waiting" CHECK_STEP="operation_lock" write_state "" "" "Aguardando outra operação de atualização terminar" "false" "lock" ""
+        fi
+        return "$lock_result"
+      fi
+      ;;
+  esac
   case "$action" in
     check)
       if should_run_check 0; then

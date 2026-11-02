@@ -30,6 +30,15 @@ const REPO_DIRS = [
 $action = $argv[1] ?? '';
 $target = strtolower(trim((string) ($argv[2] ?? '')));
 
+if ($action === 'stable-target') {
+    if (!preg_match('/^\d+\.\d+(?:\.\d+)*(?:[-_]RELEASE|_\d+)?$/i', $target)) { exit(1); }
+    $version = preg_replace('/-(RELEASE|RC|BETA).*$/i', '', $target);
+    foreach (scan_repos_from_disk() as $repo) {
+        if (!repo_is_forbidden($repo) && repo_matches_version($repo, $version)) { exit(0); }
+    }
+    exit(1);
+}
+
 if ($action === 'list') {
     emit_json(build_list_payload(false));
     exit(0);
@@ -72,7 +81,7 @@ function product_is_plus(): bool
 function repo_is_forbidden(array $repo): bool
 {
     $hay = strtolower(trim(($repo['name'] ?? '') . ' ' . ($repo['descr'] ?? '')));
-    if (preg_match('/\b(devel|development|snapshot)\b/', $hay) === 1) {
+    if (preg_match('/\b(devel|development|snapshot|rc|beta|alpha|preview|candidate)\b/', $hay) === 1) {
         return true;
     }
     if (preg_match('/next major|plus upgrade|pfsense plus upgrade|migrate.*plus/', $hay) === 1) {
@@ -282,18 +291,8 @@ function pick_repo(array $repos, string $target, bool $plus): ?array
                 return $repo;
             }
         }
-        $newest = $candidates[0];
-        foreach ($candidates as $repo) {
-            if (version_compare(
-                preg_replace('/[^0-9.]/', '', (string) ($repo['name'] ?? '')) ?: '0',
-                preg_replace('/[^0-9.]/', '', (string) ($newest['name'] ?? '')) ?: '0',
-                '>'
-            )) {
-                $newest = $repo;
-            }
-        }
-
-        return $newest;
+        // No positively identified stable channel: fail closed.
+        return null;
     }
 
     foreach ($candidates as $repo) {

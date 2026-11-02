@@ -423,6 +423,7 @@ model Node {
   status          NodeStatus          @default(unknown)
   maintenanceMode Boolean             @default(false) @map("maintenance_mode")
   criticality     NodeCriticality     @default(standard)
+  pfsenseUpdateDetails      Json? @map("pfsense_update_details")
   pfsenseUpdateAvailable    Boolean?  @map("pfsense_update_available")
   pfsenseUpdateTargetVersion String?  @map("pfsense_update_target_version")
   pfsenseUpdateCheckedAt    DateTime? @map("pfsense_update_checked_at") @db.Timestamptz(6)

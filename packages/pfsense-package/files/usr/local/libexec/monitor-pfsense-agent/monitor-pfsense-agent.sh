@@ -1377,6 +1377,9 @@ append_pfsense_update_json_fields() {
     $branchDescr = substr(trim((string) ($data["firmware_branch_descr"] ?? "")), 0, 160);
     $branches = substr(trim((string) ($data["firmware_branches"] ?? "")), 0, 200);
     $ha = !empty($data["ha_detected"]);
+    if (isset($data["details"]) && is_array($data["details"])) {
+      echo ",\n  \"pfsense_update_details\": " . json_encode($data["details"], JSON_INVALID_UTF8_SUBSTITUTE);
+    }
     echo ",\n  \"pfsense_update_available\": " . $availableJson;
     if ($target !== "") {
       echo ",\n  \"pfsense_update_target_version\": \"" . addslashes($target) . "\"";
@@ -1516,7 +1519,7 @@ maybe_run_deferred_pfsense_update_check() {
         return 0
       fi
       echo "heartbeat: force_set_update_branch=$branch_target" >&2
-      "$helper" set-branch "$branch_target" >/dev/null 2>&1 || true
+      "$helper" set-branch "$branch_target" </dev/null >/dev/null 2>&1 &
       pfsense_update_branch_mark_ran
       pfsense_update_mark_force_ran
       return 0
@@ -1529,7 +1532,7 @@ maybe_run_deferred_pfsense_update_check() {
       return 0
     fi
     echo "heartbeat: force_repo_repair — certctl + pkg-static clean/install repo tools" >&2
-    "$helper" repair-repo >/dev/null 2>&1 || true
+    "$helper" repair-repo </dev/null >/dev/null 2>&1 &
     pfsense_repo_repair_mark_ran
     pfsense_update_mark_force_ran
     return 0
@@ -1541,14 +1544,14 @@ maybe_run_deferred_pfsense_update_check() {
       return 0
     fi
     echo "heartbeat: force_update_check — refreshing pfSense repositories" >&2
-    "$helper" force-check >/dev/null 2>&1 || true
+    "$helper" force-check </dev/null >/dev/null 2>&1 &
     pfsense_update_mark_force_ran
     return 0
   fi
 
   if "$helper" needed >/dev/null 2>&1; then
     echo "heartbeat: deferred pfSense update check (repo refresh + -c)" >&2
-    "$helper" check >/dev/null 2>&1 || true
+    "$helper" check </dev/null >/dev/null 2>&1 &
   fi
 }
 

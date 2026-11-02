@@ -45,6 +45,10 @@ ARTIFACT_NAME="monitor-pfsense-package-v${VERSION}.tar.gz"
 ARTIFACT_PATH="$DIST_DIR/$ARTIFACT_NAME"
 CHECKSUM_PATH="$DIST_DIR/${ARTIFACT_NAME}.sha256"
 
+if [[ -e "$ARTIFACT_PATH" || -e "$CHECKSUM_PATH" ]]; then
+  echo "Release $VERSION already exists; use a new version (immutable artifacts)." >&2
+  exit 1
+fi
 mkdir -p "$DIST_DIR"
 cp -R "$PACKAGE_DIR" "$STAGE_DIR/pfsense-package"
 printf 'v%s\n' "$VERSION" > "$STAGE_DIR/pfsense-package/VERSION"

@@ -135,6 +135,18 @@ if [ -z "$COMMAND_ID" ] || [ -z "$ARTIFACT_URL" ] || [ -z "$SHA256" ]; then
   exit 1
 fi
 
+# Serialize with repository checks without touching native pkg locks.
+if [ "${MONITOR_UPDATE_LOCK_HELD:-0}" != "1" ]; then
+  lock_helper="$(dirname "$0")/update_operation.php"
+  set +e
+  php "$lock_helper" --wait 300 sh "$0" "$@"
+  lock_result=$?
+  if [ "$lock_result" -eq 75 ]; then
+    post_command_failed "update operation busy; installation was not started"
+  fi
+  exit "$lock_result"
+fi
+
 if ! acquire_lock; then
   post_command_failed "another package upgrade operation is running"
   exit 1

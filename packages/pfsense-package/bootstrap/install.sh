@@ -102,6 +102,8 @@ install_package_files() {
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/collect_config_snapshot.php" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/collect_local_users.php" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/manage_local_user.php" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/update_cache.php" \
+    "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/update_operation.php" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/command_journal.php" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/set_pfsense_update_branch.php" \
     "$INSTALL_ROOT/usr/local/libexec/monitor-pfsense-agent/run_pfsense_upgrade.sh" \

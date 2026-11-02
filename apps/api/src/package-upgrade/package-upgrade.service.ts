@@ -150,6 +150,8 @@ export class PackageUpgradeService {
       throw new ServiceUnavailableException('package upgrade is disabled');
     }
 
+    await this.packageReleaseService.verifyPublishedRelease();
+
     const node = await this.prisma.node.findUnique({
       where: { id: nodeId },
       select: {
@@ -283,6 +285,8 @@ export class PackageUpgradeService {
     if (!appConfig.packageUpgrade.enabled) {
       throw new ServiceUnavailableException('package upgrade is disabled');
     }
+
+    await this.packageReleaseService.verifyPublishedRelease();
 
     const payload = this.resolvePayload();
     const uniqueNodeIds = [

@@ -38,6 +38,32 @@ export const HEARTBEAT_SERVICE_IMPACT = [
   'optional',
 ] as const;
 
+export class FirmwareUpdateDetailsDto {
+  @IsIn(['checking', 'waiting', 'current', 'available', 'channel_required', 'error'])
+  status!: string;
+
+  @IsOptional() @IsString() @MaxLength(40)
+  step?: string;
+
+  @IsOptional() @IsInt() @Min(0) @Max(255)
+  exit_code?: number | null;
+
+  @IsOptional() @IsInt() @Min(100) @Max(599)
+  http_status?: number | null;
+
+  @IsOptional() @IsBoolean()
+  ipv4_only?: boolean;
+
+  @IsOptional() @IsInt() @Min(0) @Max(4)
+  retry_count?: number;
+
+  @IsOptional() @IsBoolean()
+  retry_exhausted?: boolean;
+
+  @IsOptional() @IsISO8601()
+  next_check_at?: string;
+}
+
 export class HeartbeatServiceDto {
   @IsString()
   @IsNotEmpty()
@@ -354,6 +380,11 @@ export class HeartbeatDto {
   @ValidateNested({ each: true })
   @Type(() => HeartbeatInterfaceDto)
   interfaces?: HeartbeatInterfaceDto[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FirmwareUpdateDetailsDto)
+  pfsense_update_details?: FirmwareUpdateDetailsDto;
 
   @IsOptional()
   @ValidateIf((_, value) => value !== null)

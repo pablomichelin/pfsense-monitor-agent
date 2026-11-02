@@ -1,0 +1,30 @@
+import './synthetic-env.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+const require=createRequire(import.meta.url);
+require('reflect-metadata');
+const ts=require('typescript');
+const original=require.extensions['.ts'];
+require.extensions['.ts']=(mod,file)=>mod._compile(ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,experimentalDecorators:true,emitDecoratorMetadata:true,esModuleInterop:true}}).outputText,file);
+const {PackageReleaseService}=require('../src/common/package-release.service.ts');
+const {PackageUpgradeService}=require('../src/package-upgrade/package-upgrade.service.ts');
+const {FirmwareUpdateDetailsDto}=require('../src/ingest/dto/heartbeat.dto.ts');
+const {appConfig}=require('../src/config/app-config.ts');
+const {validateSync}=require('class-validator');
+const {plainToInstance}=require('class-transformer');
+if(original)require.extensions['.ts']=original;else delete require.extensions['.ts'];
+const digest=b=>createHash('sha256').update(b).digest('hex');
+function fixture(t){const dir=mkdtempSync(join(tmpdir(),'monitor-publication207-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));appConfig.packageRelease.artifactDir=dir;appConfig.packageRelease.publicBaseUrl='https://updates.example.test';const svc=new PackageReleaseService();let release;
+const publish=(version,bytes)=>{const path=join(dir,`monitor-pfsense-package-v${version}.tar.gz`);const sha=digest(bytes);writeFileSync(path,bytes);writeFileSync(`${path}.sha256`,`${sha}  artifact\n`);release={version,sha256:sha,repoRawBase:'https://example.test/repo'};return {path,sha,version,bytes};};svc.readPackageReleaseMetadata=()=>release;return {svc,publish};}
+async function bytes(stream){const chunks=[];for await(const c of stream)chunks.push(Buffer.from(c));return Buffer.concat(chunks).toString();}
+test('old command retains artifact after release promotion; URL pins version and hash',async t=>{const f=fixture(t);const a=f.publish('0.5.27','older');assert.match(f.svc.getPackageRelease().artifact_url,new RegExp(`/0.5.27/${a.sha}$`));f.publish('0.5.28','newer');assert.equal(await bytes(f.svc.openArtifactStream(a.version,a.sha).stream),'older');});
+test('traversal and unknown hash rejected',t=>{const f=fixture(t);const a=f.publish('0.5.28','bytes');assert.throws(()=>f.svc.openArtifactStream('../../other',a.sha));assert.throws(()=>f.svc.openArtifactStream(a.version,'0'.repeat(64)));});
+test('modified artifact rejected and open stream is an immutable byte snapshot',async t=>{const f=fixture(t);const a=f.publish('0.5.28','approved');const stream=f.svc.openArtifactStream().stream;writeFileSync(a.path,'tampered');assert.equal(await bytes(stream),'approved');assert.throws(()=>f.svc.openArtifactStream());});
+test('publication compares manifest plus downloaded bytes and fails closed',async t=>{const f=fixture(t);const a=f.publish('0.5.28','approved');const native=globalThis.fetch;t.after(()=>globalThis.fetch=native);let broken='manifest';globalThis.fetch=async url=>String(url).endsWith('package-release')?new Response(JSON.stringify({...f.svc.getPackageRelease(),version:broken==='manifest'?'0.0.0':'0.5.28'})):new Response(broken==='bytes'?'tampered':a.bytes);await assert.rejects(f.svc.verifyPublishedRelease());broken='bytes';await assert.rejects(f.svc.verifyPublishedRelease());broken='';await f.svc.verifyPublishedRelease();});
+test('single and batch queue stop before database writes if publication fails',async()=>{appConfig.packageUpgrade.enabled=true;const db=new Proxy({}, {get(){throw new Error('database must not be accessed');}});const svc=new PackageUpgradeService(db,null,{verifyPublishedRelease:async()=>{throw new Error('publication rejected');}},null);await assert.rejects(svc.requestUpgrade('node','user',{}),/publication rejected/);await assert.rejects(svc.createUpgradeBatch('user',{node_ids:['node']}),/publication rejected/);});
+test('diagnostics DTO accepts independent state and rejects invalid codes/counts',()=>{assert.equal(validateSync(plainToInstance(FirmwareUpdateDetailsDto,{status:'channel_required',step:'alternative_channels',exit_code:2,http_status:null,retry_count:0})).length,0);for(const bad of [{status:'bad'},{status:'error',http_status:999},{status:'waiting',retry_count:99}])assert.ok(validateSync(plainToInstance(FirmwareUpdateDetailsDto,bad)).length);});

@@ -34,9 +34,16 @@ function errorClassLabel(
     case 'tls':
       return 'O pkg não confia no certificado dos servidores Netgate. O agente 0.5.13+ tenta certctl rehash sozinho; se persistir, use Reparar repositório.';
     case 'lock':
-      return 'Há um lock de update (às vezes órfão). O agente 0.5.13+ remove lock sem processo vivo. Se voltar, use Reparar repositório.';
+      return 'Outra operação está usando o gerenciador de pacotes. A consulta aguardará sem remover locks nativos.';
     case 'dns':
       return 'O firewall não resolve o servidor de update (DNS). Confira DNS e rota de saída no pfSense.';
+    case 'http':
+      return 'O repositório recusou a consulta. O código HTTP não comprova problema de licença.';
+    case 'policy':
+      return 'A versão não possui canal estável confirmado. Canais de teste não são selecionados automaticamente.';
+    case 'network':
+    case 'timeout':
+      return 'Falha de conexão com o repositório. A consulta pode tentar novamente com espera limitada.';
     case 'ipv6':
       return 'Timeout ou rota IPv6. O agente 0.5.13+ tenta de novo forçando IPv4.';
     case 'metadata':
@@ -114,13 +121,15 @@ function OverlayModal({ children }: { children: React.ReactNode }) {
 }
 
 function hasAlternativeFirmware(status: PfsenseUpgradeStatusResponse): boolean {
-  return status.update_error_class === 'branch' && status.update_available === null && !!status.target_version;
+  return status.update_details?.status === 'channel_required' || status.update_error_class === 'branch' && status.update_available === null && !!status.target_version;
 }
 
 function getUpdateLabel(status: PfsenseUpgradeStatusResponse): string {
   if (!status.agent_version_supported) {
     return `Agente ${status.min_agent_version}+ necessário`;
   }
+  if (status.update_details?.status === 'checking') return 'Consultando repositórios…';
+  if (status.update_details?.status === 'waiting') return 'Aguardando outra operação terminar';
   if (hasAlternativeFirmware(status)) {
     return `Nova versão em outro canal: ${status.target_version}`;
   }
@@ -281,7 +290,8 @@ export function NodePfsenseUpgradeSection({
       !upgradeActive &&
       !status.force_check_pending &&
       !status.repair_pending &&
-      !status.set_branch_pending
+      !status.set_branch_pending &&
+      !['checking', 'waiting'].includes(status.update_details?.status ?? '')
     ) {
       return;
     }
@@ -301,6 +311,7 @@ export function NodePfsenseUpgradeSection({
     status.force_check_pending,
     status.repair_pending,
     status.set_branch_pending,
+    status.update_details?.status,
   ]);
 
   const blockReason = useMemo(() => {
@@ -316,6 +327,9 @@ export function NodePfsenseUpgradeSection({
     if (status.ha_blocked) {
       return 'Upgrade bloqueado em cluster HA';
     }
+    if (hasAlternativeFirmware(status)) return 'Selecione um canal estável e consulte novamente';
+    if (status.update_details?.status === 'checking') return 'Consulta em andamento';
+    if (status.update_details?.status === 'waiting') return 'Aguardando outra operação terminar';
     if (status.update_check_error) {
       return 'Falha na checagem de atualização pelo agente';
     }
@@ -639,9 +653,22 @@ export function NodePfsenseUpgradeSection({
           <Alert variant="warning">{activeLabel}</Alert>
         ) : null}
 
+        {hasAlternativeFirmware(status) ? (
+          <Alert variant="warning">A versão {status.target_version} está em outro canal. Use Apontar branch para selecionar um canal estável e consultar novamente. Isso não instala o firmware.</Alert>
+        ) : null}
+        {status.update_details?.http_status ? (
+          <p>Repositório: HTTP {status.update_details.http_status}</p>
+        ) : null}
+        {status.update_details?.status === 'error' || status.update_details?.status === 'waiting' ? (
+          <p className="text-sm text-slate-500">
+            {status.update_details.retry_exhausted ? 'Tentativas rápidas esgotadas. ' : ''}
+            {status.update_details.next_check_at ? `Próxima consulta: ${formatDateTime(status.update_details.next_check_at)}.` : ''}
+          </p>
+        ) : null}
+
         {status.update_check_error ? (
           <Alert variant="warning">
-            {hasAlternativeFirmware(status) ? 'Seleção de canal necessária: ' : 'Falha ao verificar atualização: '}{status.update_check_error}
+            {status.update_details?.status === 'waiting' ? 'Consulta adiada: ' : hasAlternativeFirmware(status) ? 'Seleção de canal necessária: ' : 'Falha ao verificar atualização: '}{status.update_check_error}
             {!hasAlternativeFirmware(status) && errorClassLabel(status.update_error_class, status.update_check_error) ? (
               <span className="mt-2 block text-xs">
                 {errorClassLabel(status.update_error_class, status.update_check_error)}

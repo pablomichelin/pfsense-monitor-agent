@@ -1,7 +1,7 @@
 # $FreeBSD$
 
 PORTNAME=	pfSense-pkg-systemup-monitor
-PORTVERSION=	0.5.27
+PORTVERSION=	0.5.28
 PORTREVISION=	0
 CATEGORIES=	sysutils
 MASTER_SITES=	# empty
@@ -47,6 +47,10 @@ do-install:
 		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent
 	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/manage_local_user.php \
 		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent
+	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/update_cache.php \
+		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent/
+	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/update_operation.php \
+		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent/
 	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/command_journal.php \
 		${STAGEDIR}${PREFIX}/libexec/monitor-pfsense-agent
 	${INSTALL_SCRIPT} ${FILESDIR}${PREFIX}/libexec/monitor-pfsense-agent/set_pfsense_update_branch.php \

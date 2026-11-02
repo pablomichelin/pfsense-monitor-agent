@@ -33,6 +33,9 @@ procname="/usr/sbin/daemon"
 start_precmd="monitor_pfsense_agent_prestart"
 monitor_pfsense_agent_prestart()
 {
+	# A daemon must not inherit an installer operation lock or its bypass marker.
+	unset MONITOR_UPDATE_LOCK_HELD
+	exec 3>&-
 	export PATH="/usr/local/sbin:/usr/local/bin:/usr/bin:/bin${PATH:+:$PATH}"
 	return 0
 }

@@ -198,6 +198,7 @@ export class IngestService {
       : Prisma.JsonNull;
 
     const updateCheckProvided =
+      request.body.pfsense_update_details != null ||
       request.body.pfsense_update_checked_at != null ||
       request.body.pfsense_update_available !== undefined ||
       request.body.pfsense_update_check_error != null ||
@@ -276,6 +277,9 @@ export class IngestService {
           status: nodeStatus,
           ...(updateCheckProvided
             ? {
+                pfsenseUpdateDetails: request.body.pfsense_update_details
+                  ? JSON.parse(JSON.stringify(request.body.pfsense_update_details))
+                  : Prisma.DbNull,
                 pfsenseUpdateAvailable: request.body.pfsense_update_available ?? null,
                 pfsenseUpdateTargetVersion:
                   request.body.pfsense_update_target_version?.trim() || null,

@@ -3,7 +3,8 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { createReadStream, existsSync, readFileSync, statSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
+import { Readable } from 'stream';
 import { createHash } from 'crypto';
 import { join } from 'path';
 import { appConfig } from '../config/app-config';
@@ -16,11 +17,6 @@ export type PackageReleaseMetadata = {
 
 @Injectable()
 export class PackageReleaseService {
-  private artifactChecksumCache: {
-    path: string;
-    mtimeMs: number;
-    sha256: string;
-  } | null = null;
   getPackageRelease(): {
     generated_at: string;
     version: string;
@@ -44,7 +40,7 @@ export class PackageReleaseService {
 
   resolveLocalArtifactPath(version: string): string {
     const resolvedVersion = version.trim();
-    if (!resolvedVersion) {
+    if (!/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(resolvedVersion)) {
       throw new NotFoundException('package version not configured');
     }
 
@@ -70,47 +66,60 @@ export class PackageReleaseService {
     throw new NotFoundException('package artifact not found on controller');
   }
 
-  openArtifactStream(version?: string) {
-    const resolvedVersion =
-      version?.trim() || this.readPackageReleaseMetadata().version;
-    const filePath = this.resolveLocalArtifactPath(resolvedVersion);
-    const { size } = statSync(filePath);
-    return {
-      filePath,
-      stream: createReadStream(filePath),
-      filename: filePath.split('/').pop() ?? 'monitor-pfsense-package.tar.gz',
-      size,
-    };
-  }
-
-  /** SHA256 do artefato local; falha se divergir do config versionado. */
-  assertArtifactMatchesConfig(version?: string): string {
+  openArtifactStream(version?: string, expectedHash?: string) {
+    // Snapshot metadata once and hash the very bytes returned (no check/open race).
     const release = this.readPackageReleaseMetadata();
-    const resolvedVersion = version?.trim() || release.version;
+    const resolvedVersion = version ?? release.version;
     const filePath = this.resolveLocalArtifactPath(resolvedVersion);
-    const actualSha256 = this.sha256HexOfFile(filePath);
-    if (actualSha256 !== release.sha256.toLowerCase()) {
-      throw new ServiceUnavailableException(
-        'package artifact checksum mismatch on controller',
-      );
+    if (statSync(filePath).size > 20 * 1024 * 1024) {
+      throw new ServiceUnavailableException('package artifact exceeds size limit');
     }
-    return actualSha256;
+    const sidecar = readFileSync(`${filePath}.sha256`, 'utf8').trim().split(/\s+/)[0];
+    const expected = expectedHash ?? release.sha256;
+    if (!/^[a-f0-9]{64}$/.test(expected) || sidecar !== expected ||
+        (resolvedVersion === release.version && expected !== release.sha256.toLowerCase())) {
+      throw new NotFoundException('package version/hash not published');
+    }
+    const bytes = readFileSync(filePath);
+    if (createHash('sha256').update(bytes).digest('hex') !== expected) {
+      throw new ServiceUnavailableException('package artifact checksum mismatch on controller');
+    }
+    return { filePath, size: bytes.length, stream: Readable.from(bytes),
+      filename: `monitor-pfsense-package-v${resolvedVersion}.tar.gz`, sha256: expected };
   }
 
-  private sha256HexOfFile(filePath: string): string {
-    const { mtimeMs } = statSync(filePath);
-    if (
-      this.artifactChecksumCache?.path === filePath &&
-      this.artifactChecksumCache.mtimeMs === mtimeMs
-    ) {
-      return this.artifactChecksumCache.sha256;
-    }
+  assertArtifactMatchesConfig(): string {
+    const artifact = this.openArtifactStream();
+    artifact.stream.destroy();
+    return artifact.sha256;
+  }
 
-    const sha256 = createHash('sha256')
-      .update(readFileSync(filePath))
-      .digest('hex');
-    this.artifactChecksumCache = { path: filePath, mtimeMs, sha256 };
-    return sha256;
+  private verifiedPublication: { hash: string; until: number } | null = null;
+
+  async verifyPublishedRelease(): Promise<void> {
+    const release = this.getPackageRelease();
+    this.assertArtifactMatchesConfig();
+    if (this.verifiedPublication?.hash === release.sha256 && this.verifiedPublication.until > Date.now()) return;
+    try {
+      const base = appConfig.packageRelease.publicBaseUrl.replace(/\/+$/, '');
+      const metadataResponse = await fetch(`${base}/api/v1/agent/package-release`, { signal: AbortSignal.timeout(15000), redirect: 'error' });
+      if (!metadataResponse.ok) throw new Error('manifest HTTP failure');
+      const published = await metadataResponse.json() as { version?: string; sha256?: string; artifact_url?: string };
+      if (published.version !== release.version || published.sha256 !== release.sha256 || published.artifact_url !== release.artifact_url) throw new Error('manifest mismatch');
+      const response = await fetch(release.artifact_url, { signal: AbortSignal.timeout(15000), redirect: 'error' });
+      if (!response.ok || !response.body) throw new Error('artifact HTTP failure');
+      const hash = createHash('sha256');
+      let size = 0;
+      for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+        size += chunk.length;
+        if (size > 20 * 1024 * 1024) throw new Error('artifact too large');
+        hash.update(chunk);
+      }
+      if (hash.digest('hex') !== release.sha256) throw new Error('download checksum mismatch');
+      this.verifiedPublication = { hash: release.sha256, until: Date.now() + 300000 };
+    } catch {
+      throw new ServiceUnavailableException('Published package verification failed; no upgrade was queued');
+    }
   }
 
   buildReleaseUrls(release: PackageReleaseMetadata): {
@@ -127,7 +136,7 @@ export class PackageReleaseService {
         '',
       );
       return {
-        artifactUrl: `${publicBase}/api/v1/agent/package-artifact`,
+        artifactUrl: `${publicBase}/api/v1/agent/package-artifacts/${release.version}/${release.sha256}`,
         installerUrl,
       };
     } catch {

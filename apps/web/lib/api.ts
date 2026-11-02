@@ -391,6 +391,16 @@ export type PfsenseUpgradeStatusResponse = {
   target_version: string | null;
   update_checked_at: string | null;
   update_check_error: string | null;
+  update_details?: {
+    status: 'checking' | 'waiting' | 'current' | 'available' | 'channel_required' | 'error';
+    step?: string;
+    exit_code?: number | null;
+    http_status?: number | null;
+    ipv4_only?: boolean;
+    retry_count?: number;
+    retry_exhausted?: boolean;
+    next_check_at?: string;
+  } | null;
   update_error_class: string | null;
   update_log_snippet: string | null;
   refresh_check_supported: boolean;
