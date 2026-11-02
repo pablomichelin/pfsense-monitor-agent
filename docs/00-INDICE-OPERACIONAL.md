@@ -1,6 +1,6 @@
 # Fechamento das correções de 02/11/2026
 
-- [Correções e evidências da revisão 199](200-CORRECOES-RELATORIO-199-2026-11-02.md): quinze achados corrigidos, API 0.13.1/painel 1.14.1 publicados, C01/C02 corrigidos e provados, dados DR restaurados no 220; importação de imagens e boot da nova API ainda pendentes.
+- [Correções e evidências da revisão 199](200-CORRECOES-RELATORIO-199-2026-11-02.md): quinze achados corrigidos, API 0.13.1/painel 1.14.1 publicados, C01/C02 corrigidos e provados, recuperação DR integral aprovada no 220 com imagens exatas, banco restaurado e boot isolado/limpo.
 
 # Revisão intensiva de 01/11/2026
 
