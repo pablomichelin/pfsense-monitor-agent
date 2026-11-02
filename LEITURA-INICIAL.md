@@ -2,7 +2,7 @@
 
 ## Confiabilidade de atualizações — 02/11/2026
 
-API0.14.1/web1.15.2 publicadas; package0.5.29 no LAB e canário, lote56 ainda não enfileirado. Oito excluídos preservados. Estados explícitos, diagnóstico HTTP, IPv4, canais estáveis, mutex, retries de consulta e artefatos imutáveis com preflight. Encontrada trava herdada do journal no processo antigo: recuperar somente o serviço do agente antes/depois da transição; versão29 impede novas heranças. Sem upgrade/reboot de pfSense. Evidências, limitações e próximos passos: [207](docs/207-CONFIABILIDADE-UPDATE-2026-11-02.md). Acesso SSH direto ao221 voltou a responder nesta rodada.
+API0.14.1/web1.15.2 publicadas; package0.5.29 confirmado em12 agentes (LAB, canário e10 do lote56), com backups seguintes aprovados. Outros46 permanecem pending no lote0a8ecbec-74f4-46fe-a38d-cdf8a8c5f51e apesar de telemetria nova; recuperar somente o serviço após acesso administrativo. DR final163640Z aprovado no220 e ambiente de prova limpo. Oito excluídos preservados. Estados explícitos, diagnóstico HTTP, IPv4, canais estáveis, mutex, retries de consulta e artefatos imutáveis com preflight. Encontrada trava herdada do journal no processo antigo: recuperar somente o serviço do agente antes/depois da transição; versão29 impede novas heranças. Sem upgrade/reboot de pfSense. Evidências, limitações e próximos passos: [207](docs/207-CONFIABILIDADE-UPDATE-2026-11-02.md). Acesso SSH direto ao221 voltou a responder nesta rodada.
 
 ## Objetivo deste arquivo
 
