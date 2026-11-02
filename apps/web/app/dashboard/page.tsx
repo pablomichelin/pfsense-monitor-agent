@@ -14,13 +14,15 @@ export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
   let fleet;
-  let nodes;
+  let offlineNodes;
+  let degradedNodes;
   let session;
 
   try {
-    [fleet, nodes, session] = await Promise.all([
+    [fleet, offlineNodes, degradedNodes, session] = await Promise.all([
       getDashboardFleet(),
-      getNodesList({ sort_by: 'name', sort_order: 'asc', limit: 200 }),
+      getNodesList({ status: 'offline', sort_by: 'name', sort_order: 'asc', limit: 6 }),
+      getNodesList({ status: 'degraded', sort_by: 'name', sort_order: 'asc', limit: 6 }),
       getSession(),
     ]);
   } catch (error) {
@@ -29,9 +31,8 @@ export default async function DashboardPage() {
 
   const isClientProfile = isClientRole(session.user.role);
 
-  const attentionNodes = nodes.items
-    .filter((node) => node.effective_status === 'offline' || node.effective_status === 'degraded')
-    .slice(0, 6);
+  const attentionNodes = [...offlineNodes.items, ...degradedNodes.items].slice(0, 6);
+  const totalAttention = fleet.totals.offline + fleet.totals.degraded;
 
   return (
     <div className="space-y-section">
@@ -60,10 +61,12 @@ export default async function DashboardPage() {
           </Link>
         }
       >
-        {attentionNodes.length === 0 ? (
+        {totalAttention === 0 ? (
           <Alert variant="success">
             Nenhum firewall offline ou degradado no momento.
           </Alert>
+        ) : attentionNodes.length === 0 ? (
+          <Alert variant="warning">Há {totalAttention} firewall(s) offline ou degradado(s). Abra o inventário para consultar os equipamentos.</Alert>
         ) : (
           <HotZoneExpandableList
             nodes={attentionNodes.map((node) => ({

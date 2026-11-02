@@ -6,6 +6,12 @@ Este arquivo existe para retomada rapida do projeto em qualquer novo chat ou nov
 
 Leia este arquivo primeiro.
 
+## Correções da revisão 199 — 02/11/2026 (candidatas locais)
+
+O [relatório 200](docs/200-CORRECOES-RELATORIO-199-2026-11-02.md) registra ajustes locais de código para **11 dos 15 achados**, incluindo seleção correta de firewall, nove outras correções de frontend e retenção externa condicionada à restauração comprovada. A proteção DR registra a última cópia validada fora dos conjuntos, mantém essa âncora mesmo após rotação e falha fechada em erro de verificação. A aplicação coordenada do receptor no 220, seguida do emissor no 221, e seu ensaio real ainda são necessários; versão publicada não mudou nesta etapa.
+
+**Ainda pendentes:** A03 (autorização em provisionamento/reset), A04 (escopo de perfil client), A05 (limite de tentativas MFA) e A06 (limpeza de segredo histórico). Dois cenários concorrentes C01/C02 aguardam PostgreSQL descartável. Um bloqueio automático de segurança da ferramenta impediu examinar o grupo de autenticação/administradores nesta rodada; nenhuma correção foi presumida nesses itens. Teclado real do diálogo, build final e publicação também aguardam conclusão. Os oito firewalls excluídos e HA/CARP continuam fora do escopo. Não repetir testes aprovados por outros grupos sem alteração que os afete.
+
 ## Revisão intensiva — 01/11/2026
 
 Nova revisão da base `1ecb6f8`, sem correções ou alteração de versões: [relatório 199](docs/199-REVISAO-INTENSA-BUGS-E-MELHORIAS-2026-11-01.md). Foram identificados 15 achados sustentados por fonte/provas sintéticas/observação atual (dois P1, doze P2 e um P3), além de dois riscos de concorrência sem prova PostgreSQL. Continuidade de sessões após troca de senha ficou como melhoria de política, fora da contagem. Prioridades: seleção de firewall na instalação e retenção externa condicionada à recuperação; depois permissões e atualização do painel.

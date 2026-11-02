@@ -228,6 +228,10 @@ def verify(identifier, home):
                               'users', 'audit_logs', '_prisma_migrations'):
                     dr.require(database.query("SELECT to_regclass('public." + table + "') IS NOT NULL;") == ['t'],
                                'Required restored table missing')
+        # A recovery proof is durable only after the complete restore succeeded.
+        # Hold the same lock so publication, proof and retention cannot race.
+        dr.mark_verified(dr.DEST, identifier)
+        dr.prune_verified(dr.DEST)
     print('DR restore verification OK (all referenced backups and nodeSecrets)')
 
 

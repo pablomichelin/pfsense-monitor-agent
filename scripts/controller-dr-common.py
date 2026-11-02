@@ -6,12 +6,15 @@ import contextlib
 import fcntl
 import hashlib
 import json
+from datetime import datetime, timezone
 import os
 from pathlib import Path, PurePosixPath
 import re
 import signal
+import shutil
 import stat
 import subprocess
+import uuid
 
 DEST = Path('/var/backups/monitor-pfsense-dr')
 STATE = Path('/var/lib/monitor-pfsense-dr')
@@ -19,6 +22,7 @@ KEYS = STATE / 'keys'
 REPO = Path('/Dados/Monitor-Pfsense')
 ID_PATTERN = re.compile(r'dr-\d{8}T\d{6}Z-[0-9a-f]{16}')
 FILES = {'controller.tar.gpg', 'controller.tar.gpg.sha256', 'metadata.json'}
+VERIFIED_FILE = '.last-verified-recovery.json'
 REF_SQL = """SELECT json_build_object('id',id,'storage_path',storage_path,
  'sha256',config_sha256,'size',size_bytes,'version',encryption_version)::text
  FROM public.node_config_backups
@@ -152,6 +156,72 @@ def validate_set(path, hash_content=True):
     if hash_content:
         require(digest(path / 'controller.tar.gpg') == meta['sha256'], 'DR checksum mismatch')
     return meta
+
+
+def verified_recovery(destination):
+    """Read the durable recovery proof, which lives outside the immutable set."""
+    marker = Path(destination) / VERIFIED_FILE
+    if not marker.exists() and not marker.is_symlink():
+        return None
+    regular(marker)
+    record = json.loads(marker.read_text(encoding='utf-8'))
+    require(isinstance(record, dict) and set(record) == {'format', 'id', 'sha256', 'verified_at'},
+            'Invalid DR verification record')
+    require(record['format'] == 1 and isinstance(record['id'], str), 'Invalid DR verification record')
+    validate_id(record['id'])
+    require(isinstance(record['sha256'], str) and re.fullmatch('[0-9a-f]{64}', record['sha256']),
+            'Invalid DR verification record checksum')
+    require(isinstance(record['verified_at'], str) and
+            re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z', record['verified_at']),
+            'Invalid DR verification timestamp')
+    return record
+
+
+def mark_verified(destination, identifier):
+    """Only call after GPG, isolated PostgreSQL restore and every AES-GCM check pass.
+
+    Caller holds the destination lock through verification and this durable update.
+    """
+    destination = Path(destination)
+    meta = validate_set(destination / validate_id(identifier))
+    record = {'format': 1, 'id': identifier, 'sha256': meta['sha256'],
+              'verified_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}
+    marker = destination / VERIFIED_FILE
+    temporary = destination / ('.verified-' + uuid.uuid4().hex + '.tmp')
+    try:
+        write_json(temporary, record)
+        with temporary.open('rb') as source:
+            os.fsync(source.fileno())
+        os.replace(temporary, marker)
+        sync_dir(destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def prune_verified(destination, keep_latest=7):
+    """Fail closed: retain the last genuinely restored set even after many failures."""
+    destination = Path(destination)
+    verified = verified_recovery(destination)
+    if verified is None:
+        return 0
+    anchor = destination / verified['id']
+    require(anchor.is_dir() and not anchor.is_symlink(), 'Last verified DR set missing')
+    require(validate_set(anchor)['sha256'] == verified['sha256'],
+            'Last verified DR set changed')
+    candidates = []
+    for path in destination.iterdir():
+        if ID_PATTERN.fullmatch(path.name) and path.is_dir() and not path.is_symlink():
+            validate_set(path, hash_content=False)
+            candidates.append(path)
+    keep = {p.name for p in sorted(candidates)[-keep_latest:]}
+    keep.add(verified['id'])
+    to_remove = [p for p in candidates if p.name not in keep]
+    for path in to_remove:
+        shutil.rmtree(path)
+    if to_remove:
+        sync_dir(destination)
+    return len(to_remove)
 
 
 def ref_path(ref, storage_prefix):

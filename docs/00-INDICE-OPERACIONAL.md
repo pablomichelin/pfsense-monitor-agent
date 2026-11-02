@@ -1,3 +1,7 @@
+# Correções candidatas de 02/11/2026
+
+- [Andamento das correções da revisão 199](200-CORRECOES-RELATORIO-199-2026-11-02.md): onze ajustes locais, grupos de validação, implantação DR pendente e quatro achados ainda abertos.
+
 # Revisão intensiva de 01/11/2026
 
 - [Bugs, riscos e melhorias — nova revisão](199-REVISAO-INTENSA-BUGS-E-MELHORIAS-2026-11-01.md): 15 achados e dois riscos de concorrência separados; prioridades de instalação, recuperação, permissões e painel. Sem correções de execução nesta rodada.

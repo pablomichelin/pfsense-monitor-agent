@@ -129,7 +129,8 @@ class DRTests(unittest.TestCase):
         for i in range(9):
             b.receive_stream(identifier(i), frame(), dest)
         sets = sorted(p.name for p in dest.iterdir() if p.is_dir())
-        self.assertEqual(sets, [identifier(i) for i in range(2, 9)])
+        # Transport checksum alone never evicts even an older unverified set.
+        self.assertEqual(sets, [identifier(i) for i in range(9)])
         self.assertEqual(dest.stat().st_mode & 0o777, 0o700)
         for directory in [dest / s for s in sets]:
             self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
@@ -150,6 +151,41 @@ class DRTests(unittest.TestCase):
         with b.dr.locked(dest / '.lock'):
             with self.assertRaises(b.dr.DRError):
                 b.receive_stream(identifier(11), frame(), dest)
+
+    def test_verified_retention_preserves_anchor_until_new_restore_passes(self):
+        dest = self.root / 'destination'
+        for i in range(9):
+            b.receive_stream(identifier(i), frame(), dest)
+        self.assertIsNone(b.dr.verified_recovery(dest))
+        self.assertEqual(b.prune(dest), 0)
+        self.assertEqual(len([p for p in dest.iterdir() if p.is_dir()]), 9)
+
+        # Equivalent to a successful restore, with only synthetic data.
+        b.dr.mark_verified(dest, identifier(0))
+        self.assertEqual(b.prune(dest), 1)
+        self.assertTrue((dest / identifier(0)).is_dir())
+        self.assertFalse((dest / identifier(1)).exists())
+        self.assertEqual(b.dr.verified_recovery(dest)['id'], identifier(0))
+
+        # New transfer with a valid transport hash but no recovery proof.
+        b.receive_stream(identifier(9), frame(), dest)
+        self.assertEqual(b.prune(dest), 1)
+        self.assertTrue((dest / identifier(0)).is_dir())
+
+        # Even a stale marker with altered bytes must fail closed.
+        marker = dest / b.dr.VERIFIED_FILE
+        correct_marker = marker.read_bytes()
+        marker.write_text('{"format":1,"id":"missing"}')
+        with self.assertRaises(b.dr.DRError):
+            b.prune(dest)
+        marker.write_bytes(correct_marker)
+        self.assertTrue((dest / identifier(0)).is_dir())
+
+        # A genuinely restored successor replaces the protected anchor.
+        b.dr.mark_verified(dest, identifier(9))
+        self.assertEqual(b.prune(dest), 1)
+        self.assertFalse((dest / identifier(0)).exists())
+        self.assertEqual(b.dr.verified_recovery(dest)['id'], identifier(9))
 
     def test_no_publication_on_atomic_rename_failure(self):
         dest = self.root / 'destination'
@@ -352,10 +388,13 @@ class DRTests(unittest.TestCase):
              patch.object(v, 'Restore', FakeRestore), contextlib.redirect_stdout(io.StringIO()):
             v.verify('latest', keys)
             self.assertEqual(list((state / 'verify-work').iterdir()), [])
+            verified_before_failure = v.dr.verified_recovery(dest)
+            self.assertEqual(verified_before_failure['id'], identifier(1))
             fail_restore[0] = True
             with self.assertRaises(v.dr.DRError):
                 v.verify('latest', keys)
             self.assertEqual(list((state / 'verify-work').iterdir()), [])
+            self.assertEqual(v.dr.verified_recovery(dest), verified_before_failure)
         self.assertEqual(len(events), 2)
 
     def test_transmit_only_ciphertext_to_fixed_install_path(self):

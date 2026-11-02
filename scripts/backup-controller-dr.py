@@ -362,14 +362,7 @@ def backup(args):
 
 
 def prune(destination):
-    candidates = []
-    for path in destination.iterdir():
-        if dr.ID_PATTERN.fullmatch(path.name) and path.is_dir() and not path.is_symlink():
-            dr.validate_set(path, hash_content=False)
-            candidates.append(path)
-    for path in sorted(candidates)[:-7]:
-        shutil.rmtree(path)
-    dr.sync_dir(destination)
+    return dr.prune_verified(destination)
 
 
 def receive_stream(identifier, stream, destination=dr.DEST):
@@ -400,8 +393,8 @@ def receive_stream(identifier, stream, destination=dr.DEST):
             dr.sync_tree(incoming)
             os.rename(incoming, destination / identifier)
             dr.sync_dir(destination)
-        # Only a fully received, checked and atomically published set triggers retention.
-        prune(destination)
+        # Transport integrity alone does not authorize retention. The verifier
+        # performs isolated restore and then prunes under this same lock.
 
 
 def main():
@@ -422,7 +415,12 @@ def main():
     else:
         dr.host_guard()
         receive_stream(args.identifier, sys.stdin.buffer)
-        print('DR encrypted set received')
+        verifier_spec = importlib.util.spec_from_file_location(
+            'controller_dr_verify', Path(__file__).with_name('verify-controller-dr.py'))
+        verifier = importlib.util.module_from_spec(verifier_spec)
+        verifier_spec.loader.exec_module(verifier)
+        verifier.verify(args.identifier, str(dr.KEYS))
+        print('DR encrypted set received and restoration verified')
 
 
 if __name__ == '__main__':

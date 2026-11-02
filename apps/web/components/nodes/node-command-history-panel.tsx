@@ -65,6 +65,13 @@ export function NodeCommandHistoryPanel({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  // Next.js may stream a new server snapshot into the mounted client component.
+  // Adopt it even when the previous snapshot contained no active commands.
+  useEffect(() => {
+    setHistory(initialHistory);
+    setError(null);
+  }, [initialHistory, nodeId]);
+
   const refresh = useCallback(async () => {
     try {
       const next = await fetchNodeCommandHistory(nodeId);

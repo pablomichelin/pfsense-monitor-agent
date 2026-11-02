@@ -155,10 +155,13 @@ export function NodeConfigBackupsSection({
 }: Props) {
   const router = useRouter();
   const [requestError, setRequestError] = useState<string | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
   const [commandStatus, setCommandStatus] =
     useState<ConfigBackupCommandStatusResponse | null>(null);
   const pollTimerRef = useRef<number | null>(null);
+  const activePollCommandRef = useRef<string | null>(null);
+  const pollFailuresRef = useRef(0);
 
   const latestStored = useMemo(
     () => getLatestStoredBackup(initialBackups.items),
@@ -174,26 +177,39 @@ export function NodeConfigBackupsSection({
 
   const clearPollTimer = useCallback(() => {
     if (pollTimerRef.current !== null) {
-      window.clearInterval(pollTimerRef.current);
+      window.clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
     }
+    activePollCommandRef.current = null;
   }, []);
 
   const pollCommand = useCallback(
     async (commandId: string) => {
+      if (activePollCommandRef.current !== commandId) return;
+      let delayMs = 5_000;
       try {
         const status = await pollConfigBackupCommandAction(nodeId, commandId);
+        if (activePollCommandRef.current !== commandId) return;
         setCommandStatus(status);
+        setPollError(null);
+        pollFailuresRef.current = 0;
 
         if (TERMINAL_COMMAND_STATUSES.has(status.status)) {
           clearPollTimer();
           router.refresh();
+          return;
         }
       } catch (error) {
+        if (activePollCommandRef.current !== commandId) return;
         const message =
           error instanceof Error ? error.message : 'Falha ao consultar comando';
-        setRequestError(message);
-        clearPollTimer();
+        setPollError(`Consulta temporariamente indisponível: ${message}. Acompanhamento será retomado automaticamente.`);
+        pollFailuresRef.current += 1;
+        delayMs = Math.min(60_000, 5_000 * 2 ** Math.min(pollFailuresRef.current, 4));
+      }
+      // One read in flight at a time. A polling failure never resends the backup.
+      if (activePollCommandRef.current === commandId) {
+        pollTimerRef.current = window.setTimeout(() => void pollCommand(commandId), delayMs);
       }
     },
     [clearPollTimer, nodeId, router],
@@ -202,10 +218,10 @@ export function NodeConfigBackupsSection({
   const startPolling = useCallback(
     (commandId: string) => {
       clearPollTimer();
+      activePollCommandRef.current = commandId;
+      pollFailuresRef.current = 0;
+      setPollError(null);
       void pollCommand(commandId);
-      pollTimerRef.current = window.setInterval(() => {
-        void pollCommand(commandId);
-      }, 5000);
     },
     [clearPollTimer, pollCommand],
   );
@@ -214,6 +230,7 @@ export function NodeConfigBackupsSection({
 
   const handleRequestBackup = async () => {
     setRequestError(null);
+    setPollError(null);
     setRequesting(true);
 
     try {
@@ -302,6 +319,17 @@ export function NodeConfigBackupsSection({
       {requestError ? (
         <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
           {requestError}
+        </div>
+      ) : null}
+
+      {pollError ? (
+        <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200" role="status">
+          {pollError}
+          {commandActive && commandStatus ? (
+            <button type="button" className="ml-3 underline" onClick={() => startPolling(commandStatus.command_id)}>
+              Consultar novamente
+            </button>
+          ) : null}
         </div>
       ) : null}
 

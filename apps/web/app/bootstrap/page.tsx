@@ -27,6 +27,7 @@ type BootstrapBucket = 'pending' | 'active' | 'blocked';
 type HeartbeatMode = 'normal' | 'light';
 
 function buildBootstrapHref(filters: {
+  cursor?: string;
   clientId?: string;
   siteId?: string;
   search?: string;
@@ -37,6 +38,10 @@ function buildBootstrapHref(filters: {
   heartbeatMode?: HeartbeatMode;
 }) {
   const params = new URLSearchParams();
+
+  if (filters.cursor) {
+    params.set('cursor', filters.cursor);
+  }
 
   if (filters.clientId) {
     params.set('client_id', filters.clientId);
@@ -272,11 +277,11 @@ export default async function BootstrapPage({
     filteredItems.length === items.length
       ? `${filteredItems.length} firewalls nesta página`
       : `${filteredItems.length} de ${items.length} firewalls nesta página`;
-  const selectedNode =
-    items.find((node) => node.id === selectedNodeId) ??
-    filteredItems.find((node) => node.bootstrap_bucket === 'pending') ??
-    filteredItems[0] ??
-    null;
+  // An explicit selection must never silently fall back to another firewall.
+  const selectedNode = selectedNodeId
+    ? filteredItems.find((node) => node.id === selectedNodeId) ?? null
+    : filteredItems.find((node) => node.bootstrap_bucket === 'pending') ?? filteredItems[0] ?? null;
+  const selectionMissing = Boolean(selectedNodeId && !selectedNode);
 
   if (selectedNode) {
     try {
@@ -297,6 +302,7 @@ export default async function BootstrapPage({
 
   const selectedNodeScopeHref = selectedNode
     ? buildBootstrapHref({
+        cursor,
         clientId,
         siteId,
         search,
@@ -436,6 +442,7 @@ export default async function BootstrapPage({
             <input type="hidden" name="site_id" value={siteId ?? ''} />
             <input type="hidden" name="search" value={search ?? ''} />
             <input type="hidden" name="bucket" value={bucket ?? ''} />
+            <input type="hidden" name="cursor" value={cursor ?? ''} />
             <AdvancedSection
               title="Overrides de homologacao"
               description="Release base URL e controller URL para ambientes alternativos. Use apenas quando necessario."
@@ -471,6 +478,9 @@ export default async function BootstrapPage({
 
         <Card className="p-4">
           <p className="font-mono text-xs uppercase tracking-wider text-cyan-300">Instalação</p>
+          {selectionMissing ? (
+            <Alert variant="error">O firewall selecionado não está nesta página ou não pertence aos filtros atuais. Selecione novamente o firewall correto antes de copiar o comando.</Alert>
+          ) : null}
           {selectedNode && verifyBootstrapCommand && runBootstrapPreflightCommand ? (
             <div className="mt-4 space-y-4">
               <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 text-sm text-slate-300">

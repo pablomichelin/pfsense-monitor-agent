@@ -109,10 +109,9 @@ export default async function NodeDetailsPage({
   );
 
   try {
-    const [response, session, configBackups] = await Promise.all([
+    const [response, session] = await Promise.all([
       getNodeDetails(id),
       getSession(),
-      getNodeConfigBackups(id),
     ]);
     const { node } = response;
     const permissions = session.permissions ?? [];
@@ -120,6 +119,7 @@ export default async function NodeDetailsPage({
     const canManageNode = hasPermission(permissions, 'firewalls.update');
     const canDeleteNode = hasPermission(permissions, 'firewalls.delete');
     const canRequestBackup = hasPermission(permissions, 'backups.run');
+    const canViewBackups = hasPermission(permissions, 'backups.view');
     const canDownloadBackup = hasPermission(permissions, 'backups.download');
     const canManageBackup = hasPermission(permissions, 'backups.manage');
     const canRunUpgrade = hasPermission(permissions, 'pfsense.upgrade.run');
@@ -131,6 +131,7 @@ export default async function NodeDetailsPage({
     const canManagePfsenseCredentials = hasPermission(permissions, 'pfsense.credentials.manage');
     const canViewPfsenseAliases = hasPermission(permissions, 'pfsense.alias.view');
     const canManageFleetMetadata = canManageNode;
+    const canViewTags = hasPermission(permissions, 'tags.view');
     const canViewTechnicians = hasPermission(permissions, 'technicians.view');
     const canManageTechnicians = hasPermission(permissions, 'technicians.manage');
 
@@ -147,11 +148,15 @@ export default async function NodeDetailsPage({
       }
     }
 
+    const configBackups = canViewBackups
+      ? await optionalSection('Backups de configuração', getNodeConfigBackups(id))
+      : null;
+
     const [upgradeStatus, packageUpgradeStatus, fleetTags, metricsHistory, commandHistory, operationalStatus, nodeCapabilities, pfsenseApiStatus, technicianAccounts] =
       await Promise.all([
         getPfsenseUpgradeStatus(id),
         getPackageUpgradeStatus(id),
-        canManageFleetMetadata ? optionalSection('Tags disponíveis', listFleetTags({ client_id: node.client.id })) : null,
+        canManageFleetMetadata && canViewTags ? optionalSection('Tags disponíveis', listFleetTags({ client_id: node.client.id })) : null,
         optionalSection('Histórico de métricas', getNodeMetricsHistory(id, metricsPeriod)),
         optionalSection('Histórico de comandos', getNodeCommandHistory(id)),
         optionalSection('Disponibilidade de ações operacionais', getOperationalActionsStatus(id)),
@@ -181,7 +186,7 @@ export default async function NodeDetailsPage({
       { id: 'overview', label: 'Visão geral' },
       { id: 'metrics', label: 'Métricas' },
       ...(isClientProfile ? [] : [{ id: 'alerts' as NodeDetailTabId, label: 'Alertas' }]),
-      { id: 'backup', label: 'Backup' },
+      ...(canViewBackups ? [{ id: 'backup' as NodeDetailTabId, label: 'Backup' }] : []),
       ...(canManageNode || bootstrap
         ? [{ id: 'config' as NodeDetailTabId, label: 'Configuração' }]
         : []),
@@ -319,7 +324,7 @@ export default async function NodeDetailsPage({
             }
             alerts={<NodeDetailAlertsTab node={node} />}
             backup={
-              <NodeDetailBackupTab
+              canViewBackups && configBackups ? <NodeDetailBackupTab
                 nodeId={node.id}
                 nodeEffectiveStatus={node.effective_status}
                 canRequest={canRequestBackup}
@@ -327,7 +332,7 @@ export default async function NodeDetailsPage({
                 canManage={canManageBackup}
                 initialBackups={configBackups}
                 auditHref={isClientProfile ? undefined : nodeAuditHref}
-              />
+              /> : <Alert variant="warning">Backups indisponíveis para este perfil ou nesta consulta.</Alert>
             }
             config={
               <NodeDetailConfigTab
@@ -339,7 +344,7 @@ export default async function NodeDetailsPage({
                 releaseBaseUrl={releaseBaseUrl}
                 controllerUrl={controllerUrl}
                 availableTags={fleetTags?.items ?? []}
-                canManageFleetMetadata={canManageFleetMetadata && fleetTags !== null}
+                canManageFleetMetadata={canManageFleetMetadata && canViewTags && fleetTags !== null}
               />
             }
           />

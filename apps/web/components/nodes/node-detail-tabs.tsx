@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/cn';
 import type { NodeDetailTabId } from '@/lib/node-detail-helpers';
@@ -12,7 +12,7 @@ type TabDef = {
 
 export function NodeDetailTabs({
   tabs,
-  initialTab,
+  initialTab: _initialTab,
   overview,
   metrics,
   alerts,
@@ -31,13 +31,13 @@ export function NodeDetailTabs({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const validIds = tabs.map((t) => t.id);
-  const resolvedInitial =
-    initialTab && validIds.includes(initialTab) ? initialTab : validIds[0] ?? 'overview';
-  const [activeTab, setActiveTab] = useState<NodeDetailTabId>(resolvedInitial);
+  const requestedTab = searchParams.get('tab');
+  const activeTab = requestedTab && validIds.includes(requestedTab as NodeDetailTabId)
+    ? requestedTab as NodeDetailTabId
+    : validIds[0] ?? 'overview';
 
   const selectTab = useCallback(
     (tabId: NodeDetailTabId) => {
-      setActiveTab(tabId);
       const params = new URLSearchParams(searchParams.toString());
       if (tabId === 'overview') {
         params.delete('tab');
