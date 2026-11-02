@@ -63,3 +63,9 @@ Foi solicitada ao usuário somente a localização de documentação complementa
 A versão 0.5.29 corrige herança de descritores de lock. Supervisor independente permanece proposta do relatório 208, não implementado nesta rodada. Recuperação via painel existente não equivale a capacidade autônoma universal do produto.
 
 Concluir os oito acessos restantes mediante fonte válida e seguir o mesmo ciclo restrito, sem reexecutar backups dos aprovados. Nenhum build, migration ou suíte global foi necessário nesta operação. Painéis tratados fechados continuamente conforme pedido; arquivos temporários de credenciais e scripts removidos ao finalizar a rodada. A aba de erro de navegação do Laticínio não pôde ser fechada pela ferramenta e pode ser fechada pelo usuário.
+
+## Tentativa solicitada pelo pacote — 02/11/2026, 15:33 BRT
+
+Após nova autorização do usuário, foi invocado requestServiceRestart pelo serviço oficial para os oito pendentes, exclusivamente com service=monitor_pfsense_agent. Os oito tinham heartbeat recente. Todas as oito solicitações retornaram service restart is disabled antes de enqueue: nenhum comando criado e nenhum reinício executado. Não foi enviado reboot de firewall nem alterado o estado dos comandos.
+
+A configuração SERVICE_RESTART_ENABLED do controlador impede a operação. O agente também exige MONITOR_AGENT_OPERATIONAL_ACTIONS_ENABLED e MONITOR_AGENT_SERVICE_RESTART_ENABLED, ambos desabilitados por padrão. Os valores efetivos locais desses oito não foram lidos nesta tentativa. Mesmo habilitar somente o controlador não fornece canal independente: service_restart passa pelo dispatcher/fila do pacote. Não afirmar que heartbeat recente comprova execução de comandos. A recuperação autônoma independente continua não implementada; o acesso administrativo existente permanece necessário quando o dispatcher está bloqueado.
