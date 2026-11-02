@@ -2,7 +2,7 @@
 
 ## Confiabilidade de atualizações — 02/11/2026
 
-API0.14.1/web1.15.2 publicadas; package0.5.29 confirmado em13 agentes (LAB, canário e11 do lote56); os12 anteriores têm backups seguintes aprovados. Recuperado somente o serviço do Plus local, com trava comprovada e heartbeat29. Outros45 permanecem pending no lote0a8ecbec-74f4-46fe-a38d-cdf8a8c5f51e apesar de telemetria nova; recuperar somente o serviço após acesso administrativo. DR final163640Z aprovado no220 e ambiente de prova limpo. Oito excluídos preservados. Estados explícitos, diagnóstico HTTP, IPv4, canais estáveis, mutex, retries de consulta e artefatos imutáveis com preflight. Encontrada trava herdada do journal no processo antigo: recuperar somente o serviço do agente antes/depois da transição; versão29 impede novas heranças. Sem upgrade/reboot de pfSense. Evidências, limitações e próximos passos: [207](docs/207-CONFIABILIDADE-UPDATE-2026-11-02.md). Acesso SSH direto ao221 voltou a responder nesta rodada.
+API0.14.1/web1.15.2 publicadas; package0.5.29 confirmado em26 agentes, todos com backup remoto posterior succeeded. Recuperação adicional em lote: seis por SSH e sete pelo painel automatizado, usando acessos documentados; Plus local também validado. Restam32 comandos pending do lote autorizado, sem reenfileirar nem ressuscitar expirados. Oito excluídos preservados. Nenhum reboot de firewall ou alteração de VPN/DNS/regras. A versão29 corrige herança de locks; supervisor independente de recuperação ainda não implementado. Detalhes e plano: [208](docs/208-RECUPERACAO-REMOTA-EM-LOTE-2026-11-02.md). Provas de código/DR anteriores permanecem válidas em [207](docs/207-CONFIABILIDADE-UPDATE-2026-11-02.md).
 
 ## Detecção de firmware — 02/11/2026
 

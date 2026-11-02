@@ -1,3 +1,7 @@
+# Recuperação remota em lote — 02/11/2026
+
+- [208 — Recuperação e limite do canal travado](208-RECUPERACAO-REMOTA-EM-LOTE-2026-11-02.md):26 atualizados e validados,32 pendentes; supervisor independente proposto, ainda não implementado.
+
 # Publicação de 02/11/2026
 
 - [205 — API 0.14.0 e painel 1.15.0](205-PUBLICACAO-UX-E-INTEGRIDADE-2026-11-02.md): implantação autorizada, gates de login/permissões, prova HTTP autenticada, saúde e recuperação pós-release. Agente inalterado.
