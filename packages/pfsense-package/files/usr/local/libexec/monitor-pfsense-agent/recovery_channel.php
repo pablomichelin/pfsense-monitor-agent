@@ -48,7 +48,7 @@ function recovery_run(string $dir, bool $blocked, array &$state, ?callable $tran
 {
     $config = $identity ?? recovery_config();
     $http = $transport ?? fn($path, $body) => recovery_http($config, $path, $body);
-    $execute = $runner ?? fn($service) => watchdog_cmd(['/usr/bin/timeout','60','/usr/local/bin/php',__DIR__.'/recovery_service.php',$service])[0];
+    $execute = $runner ?? fn($service) => watchdog_exec(['/usr/bin/timeout','--foreground','60','/usr/local/bin/php',__DIR__.'/recovery_service.php',$service]);
     $scope = hash('sha256', $config['CONTROLLER_URL'] . "\n" . $config['NODE_UID'] . "\n" . $config['secret']);
     $rd = $dir . '/requests';
     if (!is_dir($rd) && !mkdir($rd, 0700)) throw new RuntimeException('recovery journal unavailable');

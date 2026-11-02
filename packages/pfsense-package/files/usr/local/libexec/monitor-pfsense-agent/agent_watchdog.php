@@ -51,6 +51,13 @@ function watchdog_cmd(array $args): array
     $out = stream_get_contents($pipes[1]); fclose($pipes[1]);
     return [proc_close($p), trim($out)];
 }
+/** Services spawn daemons. A captured stdout pipe can stay open in descendants. */
+function watchdog_exec(array $args): int
+{
+    $p = proc_open($args, [0=>['file','/dev/null','r'], 1=>['file','/dev/null','w'], 2=>['file','/dev/null','w']], $pipes);
+    if (!is_resource($p)) throw new RuntimeException('service process unavailable');
+    return proc_close($p);
+}
 function watchdog_lock_busy(string $path): bool
 {
     if (!file_exists($path) && !is_link($path)) return false;
@@ -133,7 +140,7 @@ function watchdog_tick(): array
         // Recheck enable immediately before the only permitted action.
         [$erc, $flag] = watchdog_cmd(['/usr/sbin/sysrc', '-n', 'monitor_pfsense_agent_enable']);
         if ($erc !== 0 || strtoupper($flag) !== 'YES') return ['reason'=>'disabled_before_restart'];
-        [$code] = watchdog_cmd(['/usr/bin/timeout', '60', '/usr/sbin/service', 'monitor_pfsense_agent', 'restart']);
+        $code = watchdog_exec(['/usr/bin/timeout', '--foreground', '60', '/usr/sbin/service', 'monitor_pfsense_agent', 'restart']);
         $state['last_restart_at'] = $now; $state['last_restart_exit'] = $code;
         watchdog_save($path, $state);
         openlog('systemup-agent-watchdog', LOG_PID, LOG_DAEMON);

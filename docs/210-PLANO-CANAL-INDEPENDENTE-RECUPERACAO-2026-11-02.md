@@ -11,6 +11,12 @@ Pedido: operador seleciona serviço autorizado, envia comando e acompanha result
 
 ## Ajuste de usabilidade solicitado durante implementação
 
-Vincular a ação ao monitoramento existente: atalho na lista de serviços para diagnóstico/reinício, estado reportado do serviço selecionado, horário da telemetria principal e horário independente do supervisor. Dado antigo não equivale a serviço saudável. Exibir último resultado, incluindo falha/indeterminação. Não alterar critérios de saúde nem converter automaticamente catálogo de pacotes em autorização para reiniciar serviços arbitrários. Escopo externo Windows/Linux depende de esclarecimento do usuário.
+Vincular a ação ao monitoramento existente: atalho na lista de serviços para diagnóstico/reinício, estado reportado do serviço selecionado, horário da telemetria principal e horário independente do supervisor. Dado antigo não equivale a serviço saudável. Exibir último resultado, incluindo falha/indeterminação. Não alterar critérios de saúde nem converter automaticamente catálogo de pacotes em autorização para reiniciar serviços arbitrários. Escopo confirmado pelo usuário: exclusivamente pfSense e seus pacotes/serviços; Windows/Linux externos estão fora.
 
 Blocos iniciais: 16 casos de política local, 10 casos de protocolo PHP no FreeBSD isolado, oito casos PostgreSQL 17 e três de autenticação/replay aprovados. API e painel compilaram; somente o painel requer novo build após este ajuste de usabilidade solicitado. LAB operacional e publicação ainda pendentes.
+
+## Correção encontrada no LAB
+
+0.5.30 instalado somente no LAB. O primeiro reinício independente realmente iniciou o agente, mas pipes de stdout herdados mantiveram a confirmação presa; o timeout padrão também atingia descendentes. Supervisor LAB interrompido e agente recuperado por SSH, sem reboot. Não considerar esse caso sucesso operacional.
+
+0.5.31 troca captura de saída por /dev/null na execução de serviços/daemons e usa timeout --foreground para restringir a interrupção ao worker. Dois casos nativos FreeBSD adicionais PASS: daemon destacado não retém a confirmação e timeout não mata serviço destacado. Grupos de política/protocolo/API anteriores não foram repetidos. Candidato privado 0.5.31 anterior à correção do timeout foi descartado antes de qualquer publicação/distribuição; apenas o artefato final será publicado. O 0.5.30 publicado permanece imutável para auditoria. Nova prova operacional do LAB ainda pendente.

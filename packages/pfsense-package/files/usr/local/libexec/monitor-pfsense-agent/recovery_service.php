@@ -9,9 +9,9 @@ if ($service === 'monitor_pfsense_agent') {
     require_once __DIR__.'/agent_watchdog.php';
     [$rc, $enabled] = watchdog_cmd(['/usr/sbin/sysrc','-n','monitor_pfsense_agent_enable']);
     if ($rc !== 0 || strtoupper($enabled) !== 'YES') exit(78);
-    [$rc] = watchdog_cmd(['/usr/sbin/service', $service, 'restart']);
+    $rc = watchdog_exec(['/usr/sbin/service', $service, 'restart']);
     if ($rc !== 0) exit(1);
-    [$rc] = watchdog_cmd(['/usr/sbin/service', $service, 'onestatus']);
+    $rc = watchdog_exec(['/usr/sbin/service', $service, 'onestatus']);
     exit($rc === 0 ? 0 : 1);
 }
 require_once '/etc/inc/config.inc';
