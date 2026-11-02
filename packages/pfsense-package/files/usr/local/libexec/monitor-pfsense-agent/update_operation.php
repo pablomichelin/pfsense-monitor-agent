@@ -11,7 +11,7 @@ if (($args[0] ?? '') === '--wait') {
 if ($args === []) { exit(64); }
 $path = getenv('MONITOR_UPDATE_OPERATION_LOCK') ?: '/var/run/monitor-pfsense-update-operation.lock';
 umask(0077);
-$lock = fopen($path, 'c');
+$lock = fopen($path, 'ce');
 if ($lock === false) { exit(73); }
 $deadline = microtime(true) + $wait;
 while (!flock($lock, LOCK_EX | LOCK_NB)) {

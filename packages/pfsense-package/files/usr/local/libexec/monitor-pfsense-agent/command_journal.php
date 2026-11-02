@@ -87,7 +87,9 @@ final class CommandJournal
     {
         $path = $this->dir . '/' . $name;
         if (file_exists($path) || is_link($path)) private_path($path);
-        $handle = fopen($path, 'c+b');
+        // The supervisor owns these leases. Installer/service descendants must
+        // not retain them after the supervisor exits (including SIGKILL).
+        $handle = fopen($path, 'c+be');
         if ($handle === false) throw new RuntimeException('journal lock failed');
         private_path($path);
         return $handle;
