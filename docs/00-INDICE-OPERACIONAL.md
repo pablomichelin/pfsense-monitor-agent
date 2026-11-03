@@ -1,5 +1,7 @@
 # Recuperação remota em lote — 02/11/2026
 
+- [211 — aviso de crash PHP pelo log do supervisor](211-AVISO-CRASH-PHP-LOG-SUPERVISOR-2026-11-03.md).
+
 - [208 — Recuperação e limite do canal travado](208-RECUPERACAO-REMOTA-EM-LOTE-2026-11-02.md):26 atualizados e validados,32 pendentes; supervisor independente proposto, ainda não implementado.
 
 # Publicação de 02/11/2026

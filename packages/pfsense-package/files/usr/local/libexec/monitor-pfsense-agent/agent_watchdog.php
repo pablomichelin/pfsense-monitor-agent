@@ -4,6 +4,14 @@
 declare(strict_types=1);
 require_once __DIR__.'/recovery_channel.php';
 
+/** Handled operational failures belong in system logs, not PHP's crash report. */
+function watchdog_log(string $component, string $message): void
+{
+    openlog($component, LOG_PID, LOG_DAEMON);
+    try { syslog(LOG_WARNING, $message); }
+    finally { closelog(); }
+}
+
 function watchdog_decide(array $s, array $o, int $now): array
 {
     $s += ['fault' => '', 'since' => $now, 'attempts' => []];
@@ -134,7 +142,7 @@ function watchdog_tick(): array
                 $state['fault'] = ''; $state['since'] = time();
                 watchdog_save($path, $state);
             }
-        } catch (Throwable $e) { error_log('systemup-agent-recovery: ' . $e->getMessage()); }
+        } catch (Throwable $e) { watchdog_log('systemup-agent-recovery', $e->getMessage()); }
     }
     if ($restart) {
         // Recheck enable immediately before the only permitted action.
@@ -156,7 +164,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     $loop = ($argv[1] ?? '') === '--loop';
     do {
         try { $result = watchdog_tick(); if (!$loop) echo json_encode($result) . "\n"; }
-        catch (Throwable $e) { error_log('systemup-agent-watchdog: ' . $e->getMessage()); if (!$loop) exit(1); }
+        catch (Throwable $e) { watchdog_log('systemup-agent-watchdog', $e->getMessage()); if (!$loop) exit(1); }
         if ($loop) sleep(60);
     } while ($loop);
 }

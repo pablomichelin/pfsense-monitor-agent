@@ -1,5 +1,9 @@
 # CORTEX
 
+## Aviso indevido de crash PHP — 03/11/2026
+
+Package **0.5.32** implementado e candidato validado no PHP nativo do `.254`, pendente de commit/publicação/instalação. Falhas operacionais tratadas pelo supervisor agora usam syslog `LOG_DAEMON/LOG_WARNING`, preservando o erro e a autenticação sem escrever em `/tmp/PHP_errors.log`. Não altera HMAC, RBAC, política de restart ou controlador. Evidências e limites: [211](docs/211-AVISO-CRASH-PHP-LOG-SUPERVISOR-2026-11-03.md). Distribuição de frota não foi executada nesta rodada.
+
 ## Canal independente de recuperação — publicado (02/11/2026)
 
 API **0.14.2**, painel **1.15.3** e package **0.5.31** publicados. LAB CE 2.9 e canário CE 2.8.1 confirmaram reinício remoto do agente pelo supervisor independente; LAB com agente parado, proteção real do instalador e backup posterior succeeded. 39 casos dirigidos aprovados sem repetir suítes anteriores. Versão 0.5.31 e contato independente fresco confirmados em **50 equipamentos** (LAB/canário + 48 do lote autorizado). Lote `ef786355-a543-4649-97b3-f768a91dc2b6`: oito antigos ainda sem retirada. Oito excluídos preservados; oito agentes antigos travados ainda precisam de instalação por canal funcional. DR integral da nova entrega PASS no 220, conjunto `dr-20261102T192305Z-b165f14fc87c4297`, recursos do ensaio limpos (mesma LAN). Exclusivamente pfSense. Contrato/evidências: [210](docs/210-PLANO-CANAL-INDEPENDENTE-RECUPERACAO-2026-11-02.md).
