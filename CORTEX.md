@@ -2,7 +2,7 @@
 
 ## Aviso indevido de crash PHP — 03/11/2026
 
-Package **0.5.32** implementado e candidato validado no PHP nativo do `.254`, pendente de commit/publicação/instalação. Falhas operacionais tratadas pelo supervisor agora usam syslog `LOG_DAEMON/LOG_WARNING`, preservando o erro e a autenticação sem escrever em `/tmp/PHP_errors.log`. Não altera HMAC, RBAC, política de restart ou controlador. Evidências e limites: [211](docs/211-AVISO-CRASH-PHP-LOG-SUPERVISOR-2026-11-03.md). Distribuição de frota não foi executada nesta rodada.
+Package **0.5.32** publicado e validado no ambiente autorizado. Falhas operacionais tratadas pelo supervisor usam syslog `LOG_DAEMON/LOG_WARNING`, preservando o aviso sem alimentar o relatório de erro PHP. 36 casos dirigidos no PHP nativo aprovados; teste real confirmou o destino do aviso. Autenticação e política de recuperação preservadas. Evidência operacional detalhada mantida na documentação privada. Nenhuma distribuição adicional foi executada, conforme decisão do operador. [Detalhes técnicos](docs/211-AVISO-CRASH-PHP-LOG-SUPERVISOR-2026-11-03.md).
 
 ## Canal independente de recuperação — publicado (02/11/2026)
 
