@@ -48,7 +48,7 @@ function mapOutcomeLabel(outcome: string): string {
 function mapCommandStatusLabel(status: string): string {
   switch (status) {
     case 'pending':
-      return 'Pendente';
+      return 'Aguardando retirada pelo agente';
     case 'picked_up':
       return 'Aceito pelo agente';
     case 'running':
@@ -96,6 +96,10 @@ export function FleetBatchPackageUpgradePanel({
   canRunPackageUpgrade,
   onClearSelection,
 }: Props) {
+  const [lookupId, setLookupId] = useState('');
+  const [recovered, setRecovered] = useState(false);
+  const [pollError, setPollError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmText, setConfirmText] = useState('');
@@ -116,8 +120,10 @@ export function FleetBatchPackageUpgradePanel({
     try {
       const next = await pollCommandBatchStatusAction(batchId);
       setBatchStatus(next);
+      setPollError(null);
+      setUpdatedAt(new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
     } catch {
-      // polling silencioso
+      setPollError('Não foi possível atualizar o acompanhamento. Os últimos resultados foram mantidos; isso não significa falha da atualização do pacote.');
     }
   }, [batchId]);
 
@@ -180,13 +186,13 @@ export function FleetBatchPackageUpgradePanel({
       {initialResponse ? (
         <div className="space-y-3">
           <Alert variant={initialResponse.summary.enqueued > 0 ? 'success' : 'warning'}>
-            Lote criado: {initialResponse.summary.enqueued} enfileirado(s),{' '}
+            {recovered ? 'Lote consultado (somente comandos criados; ignorados não fazem parte do lote):' : 'Lote criado:'} {initialResponse.summary.enqueued} enfileirado(s),{' '}
             {initialResponse.summary.skipped} ignorado(s), {initialResponse.summary.failed}{' '}
             falha(s) imediata(s).
             {batchId ? (
               <>
                 {' '}
-                ID {batchId.slice(0, 8)}…
+                ID <span className="break-all">{batchId}</span>
               </>
             ) : null}
           </Alert>
@@ -195,45 +201,36 @@ export function FleetBatchPackageUpgradePanel({
             <p className="text-sm text-slate-300">
               Progresso do lote: {batchStatus.batch.succeeded_count ?? 0} concluído(s),{' '}
               {batchStatus.batch.failed_count ?? 0} falha(s),{' '}
-              {batchStatus.batch.expired_count ?? 0} expirado(s) — status{' '}
+              {batchStatus.batch.expired_count ?? 0} expirado(s),{' '}
+              {batchStatus.nodes.filter((node) => ['pending', 'picked_up', 'running'].includes(node.status)).length} aguardando,{' '}
+              {batchStatus.batch.cancelled_count ?? 0} cancelado(s) — {' '}
               <Badge variant={batchFinished ? 'neutral' : 'warning'}>
-                {batchStatus.batch.status}
+                {batchFinished ? 'Finalizado' : 'Aguardando equipamentos'}
               </Badge>
             </p>
           ) : null}
 
-          <div className="overflow-x-auto rounded-lg border border-slate-800">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-slate-800 bg-slate-950/40 text-slate-400">
-                <tr>
-                  <th className="px-3 py-2">Firewall</th>
-                  <th className="px-3 py-2">Resultado inicial</th>
-                  <th className="px-3 py-2">Status do comando</th>
-                  <th className="px-3 py-2">Detalhe</th>
-                </tr>
-              </thead>
-              <tbody>
-                {initialResponse.results.map((item) => {
-                  const live = liveStatusByNodeId.get(item.node_id);
-                  const label = item.hostname ?? item.node_id.slice(0, 8);
-
-                  return (
-                    <tr key={item.node_id} className="border-b border-slate-900/80 text-slate-200">
-                      <td className="px-3 py-2">{label}</td>
-                      <td className="px-3 py-2">{mapOutcomeLabel(item.outcome)}</td>
-                      <td className="px-3 py-2">
-                        {live ? mapCommandStatusLabel(live.status) : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-slate-400">
-                        {live?.error_message ??
-                          (item.reason ? mapSkipReason(item.reason) : '—')}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          {pollError ? <Alert variant="warning">{pollError}</Alert> : null}
+          <div className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
+            <Button type="button" variant="secondary" size="sm" onClick={() => void refreshBatchStatus()}>Atualizar resultados</Button>
+            {updatedAt ? <span>Última consulta: {updatedAt} (Brasília)</span> : null}
           </div>
+          <ul className="divide-y divide-border rounded-lg border border-border" aria-label="Resultado atual por firewall">
+            {initialResponse.results.map((item) => {
+              const live = liveStatusByNodeId.get(item.node_id);
+              const label = item.hostname ?? item.node_id.slice(0, 8);
+              const status = live?.status;
+              return <li key={item.node_id} className="space-y-1 p-3 text-sm">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <span className="min-w-0 break-all font-medium text-fg">{label}</span>
+                  <Badge variant={status === 'succeeded' ? 'success' : ['failed', 'expired'].includes(status ?? '') ? 'danger' : status ? 'warning' : 'neutral'}>{live ? mapCommandStatusLabel(live.status) : item.outcome === 'enqueued' ? 'Aguardando confirmação' : mapOutcomeLabel(item.outcome)}</Badge>
+                </div>
+                {status === 'pending' ? <p className="text-xs text-fg-muted">O firewall ainda não retirou o comando. A atualização não começou neste equipamento.</p> : null}
+                {(live?.error_message || item.reason) ? <p className="break-words text-xs text-fg-muted">{live?.error_message ?? mapSkipReason(item.reason)}</p> : null}
+                <details className="text-xs text-fg-muted"><summary className="cursor-pointer">Detalhes do envio</summary>Resultado inicial: {mapOutcomeLabel(item.outcome)}{live ? <p>Comando: {live.command_id}</p> : null}</details>
+              </li>;
+            })}
+          </ul>
 
           {batchFinished ? (
             <div className="flex flex-wrap gap-2">
@@ -267,6 +264,20 @@ export function FleetBatchPackageUpgradePanel({
           >
             Atualizar package selecionados…
           </Button>
+          <details className="w-full text-sm text-fg-muted">
+            <summary className="cursor-pointer">Consultar lote existente sem reenviar</summary>
+            <label className="mt-2 block">ID do lote<input className="mt-1 w-full rounded border border-border bg-surface p-2 text-fg" value={lookupId} onChange={(event) => setLookupId(event.target.value)} /></label>
+            <Button type="button" variant="secondary" disabled={pending || !lookupId.trim()} onClick={() => startTransition(async () => {
+              try {
+                const status = await pollCommandBatchStatusAction(lookupId.trim());
+                if (status.batch.command_type !== 'package_upgrade') throw new Error('Este lote não é de atualização de pacote.');
+                setInitialResponse({generated_at: status.generated_at, published_version: '', batch: status.batch,
+                  summary: {total: status.nodes.length, enqueued: status.nodes.length, skipped: 0, failed: 0},
+                  results: status.nodes.map((node) => ({node_id: node.node_id, hostname: selectedNodes.find((selected) => selected.id === node.node_id)?.hostname ?? null, outcome: 'enqueued', reason: null, command_id: node.command_id, status: node.status}))});
+                setBatchStatus(status); setRecovered(true); setError(null);
+              } catch (err) {setError(err instanceof Error ? err.message : 'Não foi possível consultar o lote.');}
+            })}>Consultar lote</Button>
+          </details>
           {blockReason ? (
             <p className="text-xs text-slate-500">{blockReason}</p>
           ) : null}
@@ -303,16 +314,14 @@ export function FleetBatchPackageUpgradePanel({
                       client_id: clientId,
                       label: `Inventário — package upgrade (${selectedNodes.length} nodes)`,
                     });
+                    setRecovered(false);
                     setInitialResponse(response);
                     setError(null);
                     setShowConfirm(false);
                     setConfirmText('');
-                    if (response.batch?.batch_id) {
-                      const status = await pollCommandBatchStatusAction(
-                        response.batch.batch_id,
-                      );
-                      setBatchStatus(status);
-                    }
+                    setBatchStatus(null);
+                    setPollError(null);
+                    setUpdatedAt(null);
                   } catch (err) {
                     setError(
                       err instanceof Error
