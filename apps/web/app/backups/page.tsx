@@ -124,11 +124,11 @@ export default async function BackupsPage({
         description="Clique nos indicadores acima para filtrar por situação."
       >
         <Card className="p-3">
-          <form className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end xl:gap-4">
+          <form className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <select
               name="client_id" aria-label="Cliente"
               defaultValue={clientId ?? ''}
-              className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
+              className="h-11 min-w-0 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
               <option value="">Todos os clientes</option>
               {filterOptions.clients.map((client) => (
@@ -140,7 +140,7 @@ export default async function BackupsPage({
             <select
               name="site_id" aria-label="Local"
               defaultValue={siteId ?? ''}
-              className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
+              className="h-11 min-w-0 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
               <option value="">Todos os sites</option>
               {sites.map((site) => (
@@ -152,7 +152,7 @@ export default async function BackupsPage({
             <select
               name="backup_status" aria-label="Situação do backup"
               defaultValue={backupStatus ?? ''}
-              className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
+              className="h-11 min-w-0 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
               <option value="">Todos os status backup</option>
               <option value="ok">Em dia</option>
@@ -165,7 +165,7 @@ export default async function BackupsPage({
               name="search" aria-label="Buscar firewalls"
               defaultValue={search ?? ''}
               placeholder="Buscar por nome, hostname ou cliente"
-              className="h-11 min-w-0 flex-1 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+              className="h-11 min-w-0 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
             />
             <select
               name="sort_by" aria-label="Ordenar por"

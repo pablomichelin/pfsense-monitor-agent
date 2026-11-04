@@ -261,7 +261,7 @@ export default async function AlertsPage({
                 name="search" aria-label="Buscar alertas"
                 defaultValue={search ?? ''}
                 placeholder="Buscar firewall, cliente ou descrição"
-                className={`${formInputClassName} min-w-0 flex-1`}
+                className={`${formInputClassName} min-h-11 min-w-0 xl:min-w-[16rem] xl:flex-1`}
               />
               <Button type="submit">Filtrar</Button>
               <select name="per_page" defaultValue={String(perPage)} className={formSelectClassName} aria-label="Alertas por página"><option value="10">10 por página</option><option value="25">25 por página</option><option value="50">50 por página</option></select>
