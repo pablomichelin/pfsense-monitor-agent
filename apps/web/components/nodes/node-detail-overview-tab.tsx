@@ -85,22 +85,22 @@ export function NodeDetailOverviewTab({
       <Card>
         <div className="space-y-4 text-sm text-slate-300">
           <p>
-            <span className="text-slate-500">Hostname:</span> {node.hostname}
+            <span className="text-fg-muted">Hostname:</span> {node.hostname}
           </p>
           <p>
-            <span className="text-slate-500">Cliente:</span> {node.client.name}
+            <span className="text-fg-muted">Cliente:</span> {node.client.name}
           </p>
           <p>
-            <span className="text-slate-500">Site:</span> {node.site.name}
+            <span className="text-fg-muted">Site:</span> {node.site.name}
           </p>
           <p>
-            <span className="text-slate-500">UID:</span>{' '}
+            <span className="text-fg-muted">UID:</span>{' '}
             <span className="font-mono text-slate-200">{node.node_uid}</span>
           </p>
           {hasValidInterfaces && hasRole && (internalIfaces.length > 0 || wanIfaces.length > 0) ? (
             <div className="space-y-3">
               <p className="flex flex-wrap items-center gap-1.5">
-                <span className="shrink-0 font-mono text-xs uppercase tracking-wider text-slate-500">WAN</span>
+                <span className="shrink-0 font-mono text-xs uppercase tracking-wider text-fg-muted">WAN</span>
                 {wanIfaces.length > 0 ? (
                   <span className="flex flex-wrap gap-2">
                     {wanIfaces.map((iface, i) => {
@@ -112,17 +112,17 @@ export function NodeDetailOverviewTab({
                           className="inline-flex items-center gap-2 rounded-md border border-slate-600 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-slate-200"
                         >
                           <span className="font-semibold uppercase text-cyan-300/90">{name}</span>
-                          <span className={ip === 'n/a' ? 'text-slate-500 italic' : ''}>{ip}</span>
+                          <span className={ip === 'n/a' ? 'text-fg-muted italic' : ''}>{ip}</span>
                         </span>
                       );
                     })}
                   </span>
                 ) : (
-                  <span className="text-slate-500">—</span>
+                  <span className="text-fg-muted">—</span>
                 )}
               </p>
               <p className="flex flex-wrap items-center gap-1.5">
-                <span className="shrink-0 font-mono text-xs uppercase tracking-wider text-slate-500">
+                <span className="shrink-0 font-mono text-xs uppercase tracking-wider text-fg-muted">
                   Interfaces
                 </span>
                 {internalIfaces.length > 0 ? (
@@ -136,13 +136,13 @@ export function NodeDetailOverviewTab({
                           className="inline-flex items-center gap-2 rounded-md border border-slate-600 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-slate-200"
                         >
                           <span className="font-semibold uppercase text-cyan-300/90">{name}</span>
-                          <span className={ip === 'n/a' ? 'text-slate-500 italic' : ''}>{ip}</span>
+                          <span className={ip === 'n/a' ? 'text-fg-muted italic' : ''}>{ip}</span>
                         </span>
                       );
                     })}
                   </span>
                 ) : (
-                  <span className="text-slate-500">—</span>
+                  <span className="text-fg-muted">—</span>
                 )}
               </p>
             </div>
@@ -159,7 +159,7 @@ export function NodeDetailOverviewTab({
                       className="inline-flex items-center gap-2 rounded-md border border-slate-600 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-slate-200"
                     >
                       <span className="font-semibold uppercase text-cyan-300/90">{name}</span>
-                      <span className={ip === 'n/a' ? 'text-slate-500 italic' : ''}>{ip}</span>
+                      <span className={ip === 'n/a' ? 'text-fg-muted italic' : ''}>{ip}</span>
                     </span>
                   );
                 })}
@@ -178,7 +178,7 @@ export function NodeDetailOverviewTab({
                     </span>
                   ))
                 ) : (
-                  <span className="text-slate-500">—</span>
+                  <span className="text-fg-muted">—</span>
                 )}
               </p>
               <p className="flex flex-wrap items-center gap-1.5">
@@ -193,13 +193,13 @@ export function NodeDetailOverviewTab({
                     </span>
                   ))
                 ) : (
-                  <span className="text-slate-500">—</span>
+                  <span className="text-fg-muted">—</span>
                 )}
               </p>
               {interfacesAllEmpty &&
                 parseIps(node.management_ip).length === 0 &&
                 parseIps(node.wan_ip).length === 0 && (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-fg-muted">
                     O agente enviou a lista de interfaces vazia. Para ver interfaces com nome (ADM, P4, etc.),
                     atualize o agente no firewall para a versão 0.2.20 ou superior e o painel para 0.1.20.
                   </p>
@@ -207,7 +207,7 @@ export function NodeDetailOverviewTab({
             </>
           )}
           <p>
-            <span className="text-slate-500">Último contato:</span>{' '}
+            <span className="text-fg-muted">Último contato:</span>{' '}
             {formatDateTime(node.latest_heartbeat?.received_at ?? null)}
           </p>
         </div>
@@ -225,24 +225,18 @@ export function NodeDetailOverviewTab({
               variant={node.maintenance_mode ? 'primary' : 'secondary'}
               size="sm"
             >
-              {node.maintenance_mode ? 'Desativar maintenance mode' : 'Ativar maintenance mode'}
+              {node.maintenance_mode ? 'Desativar modo de manutenção' : 'Ativar modo de manutenção'}
             </Button>
           </form>
         ) : (
           <Alert variant="info" className="mt-6">
-            Maintenance mode disponível apenas para operadores com permissão de edição.
+            Modo de manutenção disponível apenas para operadores com permissão de edição.
           </Alert>
         )}
 
       </Card>
     </PageSection>
 
-    <PageSection title="Atualizações" description="Escolha entre o agente Monitor e o sistema operacional do firewall.">
-      <ActionTabs id="node-updates" label="Tipo de atualização" tabs={[
-        { id: 'agent', label: 'Agente Monitor', description: 'Pacote de monitoramento', content: <NodePackageUpgradeSection nodeId={node.id} canRunPackageUpgrade={canRunPackageUpgrade} initialStatus={packageUpgradeStatus} /> },
-        { id: 'os', label: 'pfSense OS', description: 'Sistema operacional', content: <NodePfsenseUpgradeSection nodeId={node.id} nodeEffectiveStatus={node.effective_status} canRunUpgrade={canRunUpgrade} initialStatus={upgradeStatus} /> },
-      ]} />
-    </PageSection>
 
     <details className="border-t border-border py-4">
       <summary className="cursor-pointer font-display text-lg font-semibold text-fg">Integrações e certificados</summary>
@@ -266,4 +260,17 @@ export function NodeDetailOverviewTab({
     </details>
     </>
   );
+}
+
+
+export function NodeUpdatesSection({ node, canRunUpgrade, canRunPackageUpgrade, upgradeStatus, packageUpgradeStatus }: {
+  node: Node; canRunUpgrade: boolean; canRunPackageUpgrade: boolean;
+  upgradeStatus: PfsenseUpgradeStatusResponse; packageUpgradeStatus: PackageUpgradeStatusResponse;
+}) {
+  return (<PageSection title="Atualizações" description="Escolha entre o agente Monitor e o sistema operacional do firewall.">
+      <ActionTabs id="node-updates" label="Tipo de atualização" tabs={[
+        { id: 'agent', label: 'Agente Monitor', description: 'Pacote de monitoramento', content: <NodePackageUpgradeSection nodeId={node.id} canRunPackageUpgrade={canRunPackageUpgrade} initialStatus={packageUpgradeStatus} /> },
+        { id: 'os', label: 'pfSense OS', description: 'Sistema operacional', content: <NodePfsenseUpgradeSection nodeId={node.id} nodeEffectiveStatus={node.effective_status} canRunUpgrade={canRunUpgrade} initialStatus={upgradeStatus} /> },
+      ]} />
+    </PageSection>);
 }

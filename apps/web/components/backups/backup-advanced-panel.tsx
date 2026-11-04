@@ -58,7 +58,7 @@ export function BackupDriftIndicator({ nodeId, backups, canManage }: Props) {
       </p>
       {backups.drift.state.detected_at ? (
         <p className="mt-1 text-xs text-amber-100/80">
-          Detectado em {new Date(backups.drift.state.detected_at).toLocaleString('pt-BR')}
+          Detectado em {new Date(backups.drift.state.detected_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
         </p>
       ) : null}
       {canManage ? (

@@ -1,3 +1,4 @@
+import { hasPermission } from '@/lib/authz';
 import Link from 'next/link';
 import { DashboardKpiGrid } from '@/components/dashboard/dashboard-kpi-grid';
 import { FleetVersionMatrix } from '@/components/dashboard/fleet-version-matrix';
@@ -6,7 +7,7 @@ import { PageHero } from '@/components/page-hero';
 import { Alert, Card, PageSection } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
-import { getDashboardFleet, getNodesList, getSession } from '@/lib/api';
+import { getDashboardFleet, getNodesList, getSession, getAlertsList } from '@/lib/api';
 import { isClientRole } from '@/lib/client-profile';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 
@@ -32,6 +33,13 @@ export default async function DashboardPage() {
   const isClientProfile = isClientRole(session.user.role);
 
   const attentionNodes = [...offlineNodes.items, ...degradedNodes.items].slice(0, 6);
+  const attentionSummaries = new Map(await Promise.all(attentionNodes.map(async (node) => {
+    if (!hasPermission(session.permissions ?? [], 'alerts.view')) return [node.id, null] as const;
+    try {
+      const result = await getAlertsList({ node_id: node.id, status: 'open', page: 1, limit: 1, sort_by: 'attention' });
+      return [node.id, result.items[0] ?? null] as const;
+    } catch { return [node.id, null] as const; }
+  })));
   const totalAttention = fleet.totals.offline + fleet.totals.degraded;
 
   return (
@@ -48,8 +56,20 @@ export default async function DashboardPage() {
       />
 
       <PageSection
+        title="Saúde da frota"
+        description={
+          isClientProfile
+            ? 'Resumo do status da sua frota monitorada.'
+            : 'Totais consolidados de status, backup e package da frota.'
+        }
+      >
+        <DashboardKpiGrid fleet={fleet} isClientProfile={isClientProfile} />
+      </PageSection>
+
+
+      <PageSection
         title="Precisa de atenção"
-        description="Firewalls offline ou degradados que exigem atenção agora. Os indicadores consolidados continuam logo abaixo."
+        description="Causa prioritária e tempo desde o alerta. Expanda a linha para consultar outras ocorrências."
         actions={
           <div className="flex flex-wrap gap-2">
           <Link
@@ -84,21 +104,12 @@ export default async function DashboardPage() {
               open_alerts: node.open_alerts,
               last_seen_at: node.last_seen_at,
               effective_status: node.effective_status,
+              attention: attentionSummaries.get(node.id) ?? null,
             }))}
           />
         )}
       </PageSection>
 
-      <PageSection
-        title="Saúde da frota"
-        description={
-          isClientProfile
-            ? 'Resumo do status da sua frota monitorada.'
-            : 'Totais consolidados de status, backup e package da frota.'
-        }
-      >
-        <DashboardKpiGrid fleet={fleet} isClientProfile={isClientProfile} />
-      </PageSection>
 
       <PageSection
         title="Versões e indicadores informativos"

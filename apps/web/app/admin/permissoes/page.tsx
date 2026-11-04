@@ -56,7 +56,7 @@ export default async function AdminPermissoesPage() {
 
       <PageSection
         title="Matriz RBAC"
-        description={`Atualizado em ${new Date(matrix.generated_at).toLocaleString('pt-BR')}.${
+        description={`Atualizado em ${new Date(matrix.generated_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}.${
           canManage
             ? ' Clique em Editar no perfil desejado para alterar permissões.'
             : ' Você possui apenas visualização nesta tela.'

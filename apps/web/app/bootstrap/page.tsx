@@ -1,3 +1,4 @@
+import { BootstrapNodePicker } from '@/components/bootstrap-node-picker';
 import { NodePagination } from '@/components/node-pagination';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -217,7 +218,7 @@ export default async function BootstrapPage({
       <PageHero
         eyebrow="Instalação"
         title="Instalar agente"
-        description={`Selecione explicitamente o firewall antes de gerar ou copiar o comando de instalação. Instalado indica registro anterior do agente; confira o último contato para saber se está comunicando. ${countsContext}.`}
+        description="Escolha o equipamento, prepare o comando e confira a comunicação. Instalado indica registro anterior; não confirma contato atual."
         stats={[
           { label: bootstrapSummary ? 'Prontos' : 'Prontos na página', value: String(counts.pending), tone: counts.pending > 0 ? 'warning' : 'default' },
           { label: bootstrapSummary ? 'Instalados' : 'Instalados na página', value: String(counts.active), tone: counts.active > 0 ? 'success' : 'default' },
@@ -226,14 +227,19 @@ export default async function BootstrapPage({
       />
       <p className="text-sm text-slate-400">{countsContext}{bootstrapSummary ? `: ${bootstrapSummary.total} firewalls.` : '.'}</p>
 
-      <PageSection title="Filtros" description="Refine a lista de firewalls por cliente, local ou bucket.">
+      <ol aria-label="Etapas da instalação" className="flex flex-wrap gap-3 text-sm text-fg-muted">
+        <li className={!selectedNode ? 'font-semibold text-primary' : ''}>1. Escolher firewall</li>
+        <li className={selectedNode ? 'font-semibold text-primary' : ''}>2. Preparar e executar comando</li>
+        <li>3. Conferir comunicação no detalhe</li>
+      </ol>
+      <PageSection title="Filtros" description="Busque em toda a frota por nome, cliente, local ou situação.">
         <Card className="p-3">
         <form className="flex flex-wrap items-center gap-2">
           {releaseBaseUrl ? <input type="hidden" name="release_base_url" value={releaseBaseUrl} /> : null}
           {controllerUrl ? <input type="hidden" name="controller_url" value={controllerUrl} /> : null}
           <input type="hidden" name="heartbeat_mode" value={heartbeatMode} />
           <select
-            name="client_id"
+            name="client_id" aria-label="Cliente"
             defaultValue={clientId ?? ''}
             className={formSelectClassName}
           >
@@ -245,7 +251,7 @@ export default async function BootstrapPage({
             ))}
           </select>
           <select
-            name="site_id"
+            name="site_id" aria-label="Local"
             defaultValue={siteId ?? ''}
             className={formSelectClassName}
           >
@@ -257,7 +263,7 @@ export default async function BootstrapPage({
             ))}
           </select>
           <select
-            name="bucket"
+            name="bucket" aria-label="Situação da instalação"
             defaultValue={bucket ?? ''}
             className={formSelectClassName}
           >
@@ -288,25 +294,14 @@ export default async function BootstrapPage({
           <h3 className="mt-1.5 font-display text-xl text-fg">Preparar instalação</h3>
 
           <form className="mt-4 space-y-3">
-            <select
-              name="node_id"
-              defaultValue={selectedNode?.id ?? ''}
-              className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
-            >
-              <option value="">Selecione um firewall</option>
-              {filteredItems.map((node) => (
-                <option key={node.id} value={node.id}>
-                  {node.client.name} — {node.site.name} — {node.node_uid}
-                </option>
-              ))}
-            </select>
+            <BootstrapNodePicker key={selectedNode?.id ?? 'unselected'} nodes={filteredItems} selectedId={selectedNode?.id} />
             <input type="hidden" name="client_id" value={clientId ?? ''} />
             <input type="hidden" name="site_id" value={siteId ?? ''} />
             <input type="hidden" name="search" value={search ?? ''} />
             <input type="hidden" name="bucket" value={bucket ?? ''} />
             <input type="hidden" name="cursor" value={cursor ?? ''} />
             <AdvancedSection
-              title="Overrides de homologacao"
+              title="Opções de homologação"
               description="Somente HTTPS e origens aprovadas na configuração do servidor. O comando oficial do package mantém o release publicado."
             >
               <div className="space-y-3">
@@ -327,7 +322,7 @@ export default async function BootstrapPage({
               </div>
             </AdvancedSection>
             <div className="flex flex-col gap-3 lg:flex-row">
-              <Button type="submit">Abrir</Button>
+              <Button type="submit">Preparar instalação</Button>
               <Link
                 href={buildBootstrapHref({ clientId, siteId, search, bucket, heartbeatMode })}
                 className={secondaryLinkClassName}

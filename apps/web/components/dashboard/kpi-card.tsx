@@ -15,12 +15,12 @@ export function KpiCard({
   indicator: KpiIndicator;
 }) {
   return (
-    <Card className="min-h-28 p-6">
-      <p className="font-mono text-xs uppercase tracking-wider text-fg-subtle">
+    <Card className="p-3">
+      <p className="text-xs text-fg-subtle">
         {label}
       </p>
-      <div className="mt-3 flex items-end justify-between gap-3">
-        <span className="font-display text-3xl font-semibold text-fg">
+      <div className="mt-1 flex items-end justify-between gap-3">
+        <span className="font-display text-2xl font-semibold text-fg">
           {value}
           {suffix ? (
             <span className="ml-1 text-lg font-medium text-fg-muted">{suffix}</span>

@@ -81,7 +81,7 @@ test('cadastro mantém ações, retorno por seção e restrição de usuários',
 });
 
 test('atualizações saem da identidade e preservam permissões e dados por operação', () => {
-  const { NodeDetailOverviewTab } = sourceLoader({ ...uiMocks,
+  const { NodeDetailOverviewTab, NodeUpdatesSection } = sourceLoader({ ...uiMocks,
     '@/lib/admin': { setNodeMaintenanceAction: () => {} },
     '@/components/ui/action-tabs': { ActionTabs: 'task-tabs' },
     '@/components/node-package-upgrade-section': { NodePackageUpgradeSection: 'agent-update' },
@@ -91,7 +91,8 @@ test('atualizações saem da identidade e preservam permissões e dados por oper
     '@/components/nodes/node-pfsense-api-panel': { NodePfsenseApiPanel: 'aliases' },
   })('components/nodes/node-detail-overview-tab.tsx');
   const tree = NodeDetailOverviewTab({ node: { id: 'lab', client: { name: 'Test' }, site: { name: 'Test' } }, canManageNode: false, canRunUpgrade: false, canRunPackageUpgrade: true, upgradeStatus: { marker: 'os' }, packageUpgradeStatus: { marker: 'agent' } });
-  const tabs = elements(tree).find((e) => e.type === 'task-tabs');
+  const updateTree = NodeUpdatesSection({ node: { id: 'lab' }, canRunUpgrade: false, canRunPackageUpgrade: true, upgradeStatus: { marker: 'os' }, packageUpgradeStatus: { marker: 'agent' } });
+  const tabs = elements(updateTree).find((e) => e.type === 'task-tabs');
   assert.equal(tabs.props.tabs.length, 2);
   const [agent, os] = tabs.props.tabs.map((tab) => tab.content);
   assert.equal(agent.props.canRunPackageUpgrade, true);

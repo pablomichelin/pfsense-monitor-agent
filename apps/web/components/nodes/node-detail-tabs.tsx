@@ -18,6 +18,7 @@ export function NodeDetailTabs({
   alerts,
   backup,
   config,
+  operations, history, access,
 }: {
   tabs: TabDef[];
   initialTab?: NodeDetailTabId;
@@ -26,6 +27,7 @@ export function NodeDetailTabs({
   alerts: React.ReactNode;
   backup: React.ReactNode;
   config: React.ReactNode;
+  operations?: React.ReactNode; history?: React.ReactNode; access?: React.ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -56,6 +58,7 @@ export function NodeDetailTabs({
     alerts,
     backup,
     config,
+    operations, history, access,
   };
 
   return (
@@ -92,10 +95,9 @@ export function NodeDetailTabs({
           </button>
         ))}
       </div>
-      {tabs.filter((tab) => tab.id !== activeTab).map((tab) => (
-        <div key={tab.id} id={`node-panel-${tab.id}`} role="tabpanel" aria-labelledby={`node-tab-${tab.id}`} hidden />
-      ))}
-      <div id={`node-panel-${activeTab}`} role="tabpanel" aria-labelledby={`node-tab-${activeTab}`} tabIndex={0}>{panels[activeTab]}</div>
+      {tabs.map((tab) => <div key={tab.id} id={`node-panel-${tab.id}`} role="tabpanel" aria-labelledby={`node-tab-${tab.id}`} hidden={activeTab !== tab.id} tabIndex={0}>
+        {tab.id === 'config' && activeTab !== tab.id ? null : panels[tab.id]}
+      </div>)}
     </div>
   );
 }

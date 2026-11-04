@@ -1,3 +1,4 @@
+import { alertTitle, alertTypes } from '@/lib/alert-display';
 import Link from 'next/link';
 import { parsePage } from '@/lib/pagination';
 import { redirect } from 'next/navigation';
@@ -85,7 +86,7 @@ function ActionForms({
           type="submit"
           variant="secondary"
           size="sm"
-          className="border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:border-emerald-400/50"
+          className="border-emerald-500/30 bg-emerald-500/10 text-success-fg hover:border-emerald-400/50"
         >
           Resolver
         </Button>
@@ -103,7 +104,7 @@ export default async function AlertsPage({
   const clientId = typeof params.client_id === 'string' ? params.client_id : undefined;
   const siteId = typeof params.site_id === 'string' ? params.site_id : undefined;
   const nodeId = typeof params.node_id === 'string' ? params.node_id : undefined;
-  const status = typeof params.status === 'string' ? params.status : undefined;
+  const status = typeof params.status === 'string' ? params.status || undefined : params.view === 'all' ? undefined : 'open';
   const severity = typeof params.severity === 'string' ? params.severity : undefined;
   const type = typeof params.type === 'string' ? params.type : undefined;
   const search = typeof params.search === 'string' ? params.search : undefined;
@@ -166,7 +167,8 @@ export default async function AlertsPage({
     : '/alerts';
   const openCount = alerts.totals.open;
   const acknowledgedCount = alerts.totals.acknowledged;
-  const criticalCount = alerts.totals.critical;
+  const criticalCount = alerts.totals.critical_pending;
+  if (!status) returnToParams.set('view', 'all');
   const totalPages = alerts.total_pages;
   const currentPage = alerts.page;
   const visibleAlerts = alerts.items;
@@ -181,7 +183,9 @@ export default async function AlertsPage({
     next.delete('page');
     next.delete('status');
     next.delete('severity');
+    next.delete('view');
     if (nextStatus) next.set('status', nextStatus);
+    else next.set('view', 'all');
     if (nextSeverity) next.set('severity', nextSeverity);
     return `/alerts?${next.toString()}`;
   };
@@ -191,19 +195,20 @@ export default async function AlertsPage({
       <PageHero
         eyebrow="Operação"
         title="Central de alertas"
-        description="Lista de problemas que precisam de atenção."
+        description="Pendências primeiro. Consulte ocorrências resolvidas em Histórico e todo o acervo em Todos."
         stats={[
           { label: 'Abertos', value: String(openCount), tone: openCount > 0 ? 'danger' : 'success' },
           { label: 'Reconhecidos', value: String(acknowledgedCount), tone: acknowledgedCount > 0 ? 'warning' : 'default' },
-          { label: 'Críticos', value: String(criticalCount), tone: criticalCount > 0 ? 'danger' : 'default' },
+          { label: 'Críticos pendentes', value: String(criticalCount), tone: criticalCount > 0 ? 'danger' : 'default' },
           { label: 'Resolvidos', value: String(alerts.totals.resolved), tone: 'success' },
+          { label: 'Críticos resolvidos', value: String(alerts.totals.critical_resolved), tone: 'default' },
         ]}
         aside={<RealtimeRefresh renderedAt={alerts.generated_at} />}
       />
 
       <PageSection
         title="Filtros"
-        description="Refine por cliente, local, status ou busca textual."
+        description="Contadores referentes aos filtros atuais."
         actions={
           <Link
             href="/alerts"
@@ -214,16 +219,19 @@ export default async function AlertsPage({
         }
       >
         <div className="mb-3 flex flex-wrap gap-2" aria-label="Filtros rápidos de alertas">
-          <Link href={quickAlertHref('open')} aria-current={status === 'open' && !severity ? 'page' : undefined} className="rounded-lg border border-danger-border bg-danger-muted px-3 py-2 text-sm text-danger-fg">Abertos</Link>
-          <Link href={quickAlertHref('open', 'critical')} aria-current={status === 'open' && severity === 'critical' ? 'page' : undefined} className="rounded-lg border border-danger-border px-3 py-2 text-sm text-danger-fg">Críticos</Link>
+          <Link href={quickAlertHref('open')} aria-current={status === 'open' && !severity ? 'page' : undefined} className="rounded-lg border border-danger-border bg-danger-muted px-3 py-2 text-sm text-danger-fg">Pendentes</Link>
+          <Link href={quickAlertHref('open', 'critical')} aria-current={status === 'open' && severity === 'critical' ? 'page' : undefined} className="rounded-lg border border-danger-border px-3 py-2 text-sm text-danger-fg">Críticos pendentes</Link>
           <Link href={quickAlertHref('acknowledged')} aria-current={status === 'acknowledged' ? 'page' : undefined} className="rounded-lg border border-warning-border bg-warning-muted px-3 py-2 text-sm text-warning-fg">Reconhecidos</Link>
+          <Link href={quickAlertHref('resolved')} aria-current={status === 'resolved' ? 'page' : undefined} className="rounded-lg border border-border px-3 py-2 text-sm text-fg-muted">Histórico</Link>
           <Link href={quickAlertHref()} aria-current={!status && !severity ? 'page' : undefined} className="rounded-lg border border-border px-3 py-2 text-sm text-fg-muted">Todos</Link>
         </div>
-        <Card className="p-6">
-          <form className="flex flex-col gap-4">
+        <Card className="p-3">
+          <form className="flex flex-col gap-3">
+            {!status ? <input type="hidden" name="view" value="all" /> : null}
+            {nodeId ? <input type="hidden" name="node_id" value={nodeId} /> : null}
             <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center xl:gap-4">
               <select
-                name="client_id"
+                name="client_id" aria-label="Cliente"
                 defaultValue={clientId ?? ''}
                 className={formSelectClassName}
               >
@@ -234,7 +242,7 @@ export default async function AlertsPage({
                   </option>
                 ))}
               </select>
-              <select name="site_id" defaultValue={siteId ?? ''} className={formSelectClassName}>
+              <select name="site_id" aria-label="Local" defaultValue={siteId ?? ''} className={formSelectClassName}>
                 <option value="">Todos</option>
                 {sites.map((site) => (
                   <option key={site.id} value={site.id}>
@@ -242,7 +250,7 @@ export default async function AlertsPage({
                   </option>
                 ))}
               </select>
-              <select name="status" defaultValue={status ?? ''} className={formSelectClassName}>
+              <select name="status" aria-label="Status do alerta" defaultValue={status ?? ''} className={formSelectClassName}>
                 <option value="">Todos os status</option>
                 <option value="open">Aberto</option>
                 <option value="acknowledged">Reconhecido</option>
@@ -250,27 +258,27 @@ export default async function AlertsPage({
               </select>
               <input
                 type="search"
-                name="search"
+                name="search" aria-label="Buscar alertas"
                 defaultValue={search ?? ''}
-                placeholder="Buscar por node, cliente ou descrição"
-                className={`${formInputClassName} min-w-[16rem] flex-1`}
+                placeholder="Buscar firewall, cliente ou descrição"
+                className={`${formInputClassName} min-w-0 flex-1`}
               />
               <Button type="submit">Filtrar</Button>
               <select name="per_page" defaultValue={String(perPage)} className={formSelectClassName} aria-label="Alertas por página"><option value="10">10 por página</option><option value="25">25 por página</option><option value="50">50 por página</option></select>
             </div>
             <AdvancedSection
               title="Filtros de diagnóstico"
-              description="Severidade e tipo para troubleshooting. Os filtros principais acima bastam para uso diário."
+              description="Severidade e tipo de ocorrência."
               defaultOpen={Boolean(severity || type)}
             >
               <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center xl:gap-4">
-                <select name="severity" defaultValue={severity ?? ''} className={formSelectClassName}>
+                <select name="severity" aria-label="Severidade" defaultValue={severity ?? ''} className={formSelectClassName}>
                   <option value="">Todas as severidades</option>
                   <option value="critical">Crítico</option>
                   <option value="warning">Aviso</option>
                   <option value="info">Info</option>
                 </select>
-                <select name="type" defaultValue={type ?? ''} className={formSelectClassName}>
+                <select name="type" aria-label="Tipo de alerta" defaultValue={type ?? ''} className={formSelectClassName}>
                   <option value="">Todos os tipos</option>
                   <option value="heartbeat_missing">heartbeat_missing</option>
                   <option value="service_down">service_down</option>
@@ -307,20 +315,21 @@ export default async function AlertsPage({
                       <Badge variant={severityVariant[alert.severity] ?? 'neutral'}>
                         {severityLabel[alert.severity] ?? alert.severity}
                       </Badge>
-                      <Badge variant="neutral">{alert.type}</Badge>
+                      <Badge variant="neutral">{alertTypes[alert.type] ?? alert.type}</Badge>
                     </div>
 
                     <div>
-                      <h3 className="font-display text-base font-semibold text-fg">{alert.title}</h3>
+                      <h3 className="font-display text-base font-semibold text-fg">{alertTitle(alert.title)}</h3>
                       <p className="mt-1 max-w-3xl text-sm text-fg-muted">{alert.description}</p>
                       <p className="mt-2 text-xs text-fg-muted">
                         <Link href={`/nodes/${alert.node.id}`} className="font-medium text-primary hover:underline">{alert.node.display_name ?? alert.node.hostname}</Link>
-                        {' · '}{alert.client.name} / {alert.site.name}{' · '}Aberto {formatRelativeAge(alert.opened_at)}
+                        {' · '}{alert.client.name} / {alert.site.name}{' · '}Registrado {formatRelativeAge(alert.opened_at)}
                       </p>
                     </div>
 
                     <details className="rounded-lg border border-border bg-surface-soft px-3 py-2">
                       <summary className="cursor-pointer text-sm font-medium text-fg">Detalhes técnicos e histórico do alerta</summary>
+                    <p className="my-2 text-xs text-fg-muted">Título original: {alert.title} · Tipo: {alert.type}</p>
                     <div className="grid gap-3 text-sm text-fg-muted md:grid-cols-2 xl:grid-cols-4">
                       <div>
                         <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
@@ -345,7 +354,7 @@ export default async function AlertsPage({
                         <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
                           Tempo
                         </p>
-                        <p className="mt-2">Aberto {formatRelativeAge(alert.opened_at)}</p>
+                        <p className="mt-2">Registrado {formatRelativeAge(alert.opened_at)}</p>
                         <p className="text-slate-500">{formatDateTime(alert.opened_at)}</p>
                       </div>
                       <div>

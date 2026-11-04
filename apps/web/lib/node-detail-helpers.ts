@@ -3,7 +3,7 @@ export { buildPfSensePrecheckBlock, extractHostname } from '@/lib/bootstrap-comm
 
 export type HeartbeatMode = 'normal' | 'light';
 export type ConfigBackupInstallMode = 'default' | 'yes' | 'no';
-export type NodeDetailTabId = 'overview' | 'metrics' | 'alerts' | 'backup' | 'config';
+export type NodeDetailTabId = 'overview' | 'metrics' | 'alerts' | 'backup' | 'config' | 'operations' | 'history' | 'access';
 
 export const VPN_GROUP_LABELS: Record<string, string> = {
   openvpn: 'OpenVPN',
@@ -108,7 +108,7 @@ export function normalizeConfigBackupInstallMode(
 
 export function normalizeNodeDetailTab(value: string | string[] | undefined): NodeDetailTabId | undefined {
   if (typeof value !== 'string') return undefined;
-  const valid: NodeDetailTabId[] = ['overview', 'metrics', 'alerts', 'backup', 'config'];
+  const valid: NodeDetailTabId[] = ['overview', 'metrics', 'alerts', 'backup', 'config', 'operations', 'history', 'access'];
   return valid.includes(value as NodeDetailTabId) ? (value as NodeDetailTabId) : undefined;
 }
 

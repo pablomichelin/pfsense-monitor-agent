@@ -21,7 +21,7 @@
   --color-canvas: 4 9 20;
   --color-fg: 226 232 240;
   --color-fg-muted: 148 163 184;
-  --color-fg-subtle: 100 116 139;
+  --color-fg-subtle: 148 163 184;
   --color-surface: 12 23 40;
   --color-surface-soft: 19 33 56;
   --color-surface-elevated: 15 27 46;
@@ -70,9 +70,7 @@
   --body-glow:
     radial-gradient(circle at 20% 12%, rgba(34, 211, 238, 0.1), transparent 18%),
     radial-gradient(circle at 78% 20%, rgba(59, 130, 246, 0.1), transparent 16%);
-  --bg-grid:
-    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  --bg-grid: none;
   --selection-bg: rgba(34, 211, 238, 0.24);
   --selection-fg: #f8fafc;
   --focus-border: rgba(103, 232, 249, 0.45);
@@ -199,9 +197,7 @@ html[data-theme='light'] {
   --body-glow:
     radial-gradient(circle at 20% 12%, rgba(14, 116, 144, 0.05), transparent 18%),
     radial-gradient(circle at 78% 20%, rgba(37, 99, 235, 0.04), transparent 16%);
-  --bg-grid:
-    linear-gradient(rgba(15, 40, 70, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 40, 70, 0.035) 1px, transparent 1px);
+  --bg-grid: none;
   --selection-bg: rgba(14, 116, 144, 0.2);
   --selection-fg: #0f1a2e;
   --focus-border: rgba(14, 116, 144, 0.55);

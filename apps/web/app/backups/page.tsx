@@ -96,22 +96,22 @@ export default async function BackupsPage({
         }
         stats={[
           {
-            label: 'Em dia',
+            label: 'Em dia', href: backupStatusHref('ok'), active: backupStatus === 'ok',
             value: String(summary.ok),
             tone: summary.ok > 0 ? 'success' : 'default',
           },
           {
-            label: 'Atrasados',
+            label: 'Atrasados', href: backupStatusHref('late'), active: backupStatus === 'late',
             value: String(summary.late),
             tone: summary.late > 0 ? 'warning' : 'default',
           },
           {
-            label: 'Falharam',
+            label: 'Falharam', href: backupStatusHref('failed'), active: backupStatus === 'failed',
             value: String(summary.failed),
             tone: summary.failed > 0 ? 'danger' : 'default',
           },
           {
-            label: 'Nunca enviado',
+            label: 'Nunca enviado', href: backupStatusHref('never'), active: backupStatus === 'never',
             value: String(summary.never),
             tone: summary.never > 0 ? 'default' : 'default',
           },
@@ -120,19 +120,13 @@ export default async function BackupsPage({
       />
 
       <PageSection
-        title="Prioridade de backup"
-        description="Use um atalho para focar a exceção; todos os filtros continuam disponíveis abaixo."
+        title="Filtrar backups"
+        description="Clique nos indicadores acima para filtrar por situação."
       >
-        <div className="mb-4 flex flex-wrap gap-2">
-          <Link href={backupStatusHref('failed')} aria-current={backupStatus === 'failed' ? 'page' : undefined} className="rounded-lg border border-danger-border bg-danger-muted px-3 py-2 text-sm font-medium text-danger-fg">Falharam ({summary.failed})</Link>
-          <Link href={backupStatusHref('late')} aria-current={backupStatus === 'late' ? 'page' : undefined} className="rounded-lg border border-warning-border bg-warning-muted px-3 py-2 text-sm font-medium text-warning-fg">Atrasados ({summary.late})</Link>
-          <Link href={backupStatusHref('never')} aria-current={backupStatus === 'never' ? 'page' : undefined} className="rounded-lg border border-border bg-surface-soft px-3 py-2 text-sm font-medium text-fg">Nunca enviados ({summary.never})</Link>
-          <Link href={backupStatusHref('ok')} aria-current={backupStatus === 'ok' ? 'page' : undefined} className="rounded-lg border border-success-border bg-success-muted px-3 py-2 text-sm font-medium text-success-fg">Em dia ({summary.ok})</Link>
-        </div>
-        <Card className="p-6">
+        <Card className="p-3">
           <form className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end xl:gap-4">
             <select
-              name="client_id"
+              name="client_id" aria-label="Cliente"
               defaultValue={clientId ?? ''}
               className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
@@ -144,7 +138,7 @@ export default async function BackupsPage({
               ))}
             </select>
             <select
-              name="site_id"
+              name="site_id" aria-label="Local"
               defaultValue={siteId ?? ''}
               className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
@@ -156,7 +150,7 @@ export default async function BackupsPage({
               ))}
             </select>
             <select
-              name="backup_status"
+              name="backup_status" aria-label="Situação do backup"
               defaultValue={backupStatus ?? ''}
               className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
@@ -168,13 +162,13 @@ export default async function BackupsPage({
             </select>
             <input
               type="search"
-              name="search"
+              name="search" aria-label="Buscar firewalls"
               defaultValue={search ?? ''}
               placeholder="Buscar por nome, hostname ou cliente"
-              className="h-11 min-w-[16rem] flex-1 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+              className="h-11 min-w-0 flex-1 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
             />
             <select
-              name="sort_by"
+              name="sort_by" aria-label="Ordenar por"
               defaultValue={sortBy}
               className="h-11 min-w-[12rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >
@@ -183,7 +177,7 @@ export default async function BackupsPage({
               <option value="name">Ordenar: nome</option>
             </select>
             <select
-              name="sort_order"
+              name="sort_order" aria-label="Direção da ordenação"
               defaultValue={sortOrder}
               className="h-11 min-w-[9rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
             >

@@ -135,12 +135,14 @@ export default async function SessionsPage({
                   </td>
                   <td className="px-4 py-4 text-slate-400">
                     {new Date(item.created_at).toLocaleString('pt-BR', {
+                      timeZone: 'America/Sao_Paulo',
                       dateStyle: 'short',
                       timeStyle: 'short',
                     })}
                   </td>
                   <td className="px-4 py-4 text-slate-400">
                     {new Date(item.expires_at).toLocaleString('pt-BR', {
+                      timeZone: 'America/Sao_Paulo',
                       dateStyle: 'short',
                       timeStyle: 'short',
                     })}

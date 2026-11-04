@@ -1,3 +1,5 @@
+export const DISPLAY_TIME_ZONE = 'America/Sao_Paulo';
+
 export const formatDateTime = (value: string | null): string => {
   if (!value) {
     return '-';
@@ -6,7 +8,8 @@ export const formatDateTime = (value: string | null): string => {
   return new Intl.DateTimeFormat('pt-BR', {
     dateStyle: 'short',
     timeStyle: 'medium',
-  }).format(new Date(value));
+    timeZone: DISPLAY_TIME_ZONE,
+  }).format(new Date(value)) + ' (Brasília)';
 };
 
 export const formatRelativeAge = (value: string | null): string => {

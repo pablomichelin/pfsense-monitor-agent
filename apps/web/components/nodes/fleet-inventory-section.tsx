@@ -66,6 +66,7 @@ export function FleetInventorySection({
   canResetTechnicianPassword,
   canDeleteHosts,
 }: Props) {
+  const [actionsOpen, setActionsOpen] = useState(true);
   const [activeAction, setActiveAction] = useState('unblock');
   const actionTabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -112,6 +113,7 @@ export function FleetInventorySection({
   const selectedCount = selectedNodes.length;
 
   const toggleNode = (nodeId: string) => {
+    setActionsOpen(true);
     setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(nodeId)) {
@@ -124,6 +126,7 @@ export function FleetInventorySection({
   };
 
   const toggleAll = () => {
+    setActionsOpen(true);
     setSelectedIds((current) => {
       const allVisibleSelected =
         nodes.length > 0 && nodes.every((node) => current.has(node.id));
@@ -203,16 +206,17 @@ export function FleetInventorySection({
   return (
     <>
       {selectedCount > 0 ? (
-        <section aria-label="Ações dos firewalls selecionados" className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+        <section aria-label="Ações dos firewalls selecionados" className="rounded-lg border border-border bg-surface-soft p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="font-display text-lg text-fg">Ações para {selectedCount} firewall(s)</h2>
-              <p className="mt-1 max-w-2xl break-words text-sm text-fg-muted">
+              <h2 className="font-display text-base text-fg">{selectedCount} firewall(s) selecionado(s)</h2>
+              <details className="mt-1 max-w-2xl break-words text-sm text-fg-muted"><summary className="cursor-pointer">Ver equipamentos selecionados</summary>
                 {selectedNodes.map((node) => node.display_name || node.hostname).join(', ')}
-              </p>
+              </details>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" variant="secondary" size="sm" onClick={() => setSelectedIds(new Set())}>Limpar seleção</Button>
+              {actionTabs.length > 0 ? <Button type="button" size="sm" aria-expanded={actionsOpen} aria-controls="fleet-action-workspace" onClick={() => setActionsOpen((open) => !open)}>{actionsOpen ? 'Recolher ações' : 'Abrir ações'}</Button> : null}
               {canDeleteHosts ? (
                 <Button type="button" variant="danger-outline" size="sm" onClick={() => {
                   setDeleteError(null);
@@ -222,14 +226,69 @@ export function FleetInventorySection({
               ) : null}
             </div>
           </div>
+        </section>
+      ) : null}
+      {canRequestBackupBatch && nodes.length > 0 ? <div className="space-y-3 border-t border-border pt-4">
+        {filterBackupEntry}
+        {filterBackupPanel}
+      </div> : null}
 
-          {actionTabs.length > 0 ? <div role="tablist" aria-label="Escolha a ação nos firewalls" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <ConfirmDialog
+        open={deleteOpen}
+        title={needsTechnicianConfirm ? 'Técnico vinculado' : 'Excluir hosts'}
+        confirmLabel={needsTechnicianConfirm ? 'Excluir mesmo assim' : 'Excluir'}
+        tone={needsTechnicianConfirm ? 'warning' : 'danger'}
+        loading={deleteLoading}
+        onCancel={() => {
+          if (!deleteLoading) {
+            setDeleteOpen(false);
+            setNeedsTechnicianConfirm(false);
+            setDeleteError(null);
+          }
+        }}
+        onConfirm={handleDeleteConfirm}
+        description={
+          <>
+            <p>
+              Esta ação remove permanentemente {selectedCount} host(s) do cadastro,
+              incluindo credenciais, heartbeats e alertas.
+            </p>
+            {deleteError ? <p className="mt-4 text-sm text-rose-200">{deleteError}</p> : null}
+          </>
+        }
+      />
+
+      <div className={selectedCount > 0 && actionsOpen && actionTabs.length > 0 ? 'grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)] xl:items-start' : 'min-w-0'}>
+        <div className="order-2 min-w-0 xl:order-1">
+      <PageSection title="Inventário">
+        <NodesInventoryTable
+          nodes={nodes}
+          showAlertsColumn={showAlertsColumn}
+          targetPackageVersion={targetPackageVersion}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          queryParams={queryParams}
+          selection={
+            showRowSelection
+              ? {
+                  selectedIds,
+                  onToggle: toggleNode,
+                  onToggleAll: toggleAll,
+                }
+              : undefined
+          }
+        />
+      </PageSection>
+        </div>
+        {selectedCount > 0 && actionTabs.length > 0 ? <aside id="fleet-action-workspace" aria-label="Operar nos firewalls selecionados" hidden={!actionsOpen} className="order-1 min-w-0 space-y-3 rounded-lg border border-border bg-surface p-3 xl:order-2 xl:sticky xl:top-20 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto">
+          <p className="text-sm font-medium text-fg">Ações · {selectedCount} selecionado(s)</p>
+          {actionTabs.length > 0 ? <div role="tablist" aria-label="Escolha a ação nos firewalls" className="grid grid-cols-2 gap-1">
             {actionTabs.map((tab, index) => <button
               key={tab.id}
               ref={(element) => { actionTabRefs.current[tab.id] = element; }}
               id={`fleet-action-tab-${tab.id}`}
               type="button"
-              role="tab"
+              role="tab" title={tab.description}
               aria-selected={currentAction === tab.id}
               aria-controls={`fleet-action-panel-${tab.id}`}
               tabIndex={currentAction === tab.id ? 0 : -1}
@@ -242,10 +301,10 @@ export function FleetInventorySection({
                 setActiveAction(actionTabs[next].id);
                 actionTabRefs.current[actionTabs[next].id]?.focus();
               }}
-              className={`min-w-0 rounded-t-lg border-b-2 px-3 py-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${currentAction === tab.id ? 'border-primary bg-primary/10 text-primary' : 'border-border text-fg-muted hover:bg-nav-hover hover:text-fg'}`}
+              className={`min-w-0 rounded-t-lg border-b-2 px-2 py-2 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${currentAction === tab.id ? 'border-primary bg-primary/10 text-primary' : 'border-border text-fg-muted hover:bg-nav-hover hover:text-fg'}`}
             >
               <span className="block text-sm font-semibold">{tab.label}</span>
-              <span className="mt-1 hidden text-xs text-fg-muted sm:block">{tab.description}</span>
+              <span className="sr-only">{tab.description}</span>
             </button>)}
           </div> : null}
 
@@ -281,57 +340,8 @@ export function FleetInventorySection({
               canResetTechnicianPassword={canResetTechnicianPassword}
             />
           </div> : null}
-        </section>
-      ) : null}
-      {canRequestBackupBatch && nodes.length > 0 ? <div className="space-y-3 border-t border-border pt-4">
-        {filterBackupEntry}
-        {filterBackupPanel}
-      </div> : null}
-
-      <ConfirmDialog
-        open={deleteOpen}
-        title={needsTechnicianConfirm ? 'Técnico vinculado' : 'Excluir hosts'}
-        confirmLabel={needsTechnicianConfirm ? 'Excluir mesmo assim' : 'Excluir'}
-        tone={needsTechnicianConfirm ? 'warning' : 'danger'}
-        loading={deleteLoading}
-        onCancel={() => {
-          if (!deleteLoading) {
-            setDeleteOpen(false);
-            setNeedsTechnicianConfirm(false);
-            setDeleteError(null);
-          }
-        }}
-        onConfirm={handleDeleteConfirm}
-        description={
-          <>
-            <p>
-              Esta ação remove permanentemente {selectedCount} host(s) do cadastro,
-              incluindo credenciais, heartbeats e alertas.
-            </p>
-            {deleteError ? <p className="mt-4 text-sm text-rose-200">{deleteError}</p> : null}
-          </>
-        }
-      />
-
-      <PageSection title="Inventário">
-        <NodesInventoryTable
-          nodes={nodes}
-          showAlertsColumn={showAlertsColumn}
-          targetPackageVersion={targetPackageVersion}
-          sortBy={sortBy}
-          sortOrder={sortOrder}
-          queryParams={queryParams}
-          selection={
-            showRowSelection
-              ? {
-                  selectedIds,
-                  onToggle: toggleNode,
-                  onToggleAll: toggleAll,
-                }
-              : undefined
-          }
-        />
-      </PageSection>
+        </aside> : null}
+      </div>
     </>
   );
 }

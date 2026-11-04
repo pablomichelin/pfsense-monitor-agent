@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
+import { DISPLAY_TIME_ZONE } from '@/lib/format';
 import { useRouter } from 'next/navigation';
 
 type DashboardRefreshEvent = {
@@ -27,6 +28,7 @@ const sourceLabel: Record<DashboardRefreshEvent['source'], string> = {
 
 const formatClock = (value: string): string =>
   new Intl.DateTimeFormat('pt-BR', {
+    timeZone: DISPLAY_TIME_ZONE,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -128,7 +130,7 @@ export function RealtimeRefresh({
           : isPending ? 'Atualizando painel' : 'Tempo real ativo';
 
   return (
-    <div className="inline-flex min-w-[14rem] items-center justify-between gap-4 rounded-xl border border-slate-700/80 bg-slate-950/40 px-3 py-2 text-xs text-slate-400">
+    <div className="inline-flex flex-wrap items-center gap-3 text-xs text-fg-muted">
       <div className="flex items-center gap-2">
         <span
           className={`status-dot ${
@@ -144,15 +146,15 @@ export function RealtimeRefresh({
         <span>{statusLabel}</span>
       </div>
       {lastEvent ? (
-        <div className="text-right font-mono text-[11px] text-slate-500">
+        <div className="text-right font-mono text-[11px] text-fg-muted">
           <div>
             {sourceLabel[lastEvent.source]} {formatClock(lastEvent.occurred_at)}
           </div>
-          {renderedAt ? <div>render {formatClock(renderedAt)}</div> : null}
+          {renderedAt ? <div>Atualizado {formatClock(renderedAt)} (Brasília)</div> : null}
         </div>
       ) : renderedAt ? (
-        <span className="font-mono text-[11px] text-slate-500">
-          render {formatClock(renderedAt)}
+        <span className="font-mono text-[11px] text-fg-muted">
+          Atualizado {formatClock(renderedAt)} (Brasília)
         </span>
       ) : null}
     </div>

@@ -1,3 +1,4 @@
+import { PackageReleaseService } from '../common/package-release.service';
 import { Injectable } from '@nestjs/common';
 import {
   AlertSeverity,
@@ -76,6 +77,7 @@ export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly packageRelease: PackageReleaseService,
   ) {}
 
   async getSummary(actor: AccessActor): Promise<DashboardSummary> {
@@ -252,7 +254,7 @@ export class DashboardService {
       );
 
     const packageTargetVersion =
-      appConfig.packageRelease.version.trim() || null;
+      this.packageRelease.getPublishedVersion();
     const aggregated = aggregateFleetMetrics(fleetNodes, packageTargetVersion);
 
     const result: DashboardFleet = {

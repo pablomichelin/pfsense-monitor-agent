@@ -82,6 +82,7 @@ export function AuditEventRow({ item }: { item: AuditItem }) {
           dateTime={item.created_at}
         >
           {new Date(item.created_at).toLocaleString('pt-BR', {
+                      timeZone: 'America/Sao_Paulo',
             dateStyle: 'short',
             timeStyle: 'short',
           })}

@@ -1,3 +1,4 @@
+import { PackageReleaseService } from '../common/package-release.service';
 import { BackupFleetQueryDto, FleetScopeQueryDto } from './dto/backup-fleet-query.dto';
 import { BackupFleetItem, bootstrapBucket, compareBackupFleetItems } from './backup-fleet.util';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -80,6 +81,7 @@ export class NodesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly packageRelease: PackageReleaseService,
   ) {}
 
   invalidateFiltersCache(): void {
@@ -417,7 +419,7 @@ export class NodesService {
     if (!Number.isInteger(limit) || limit < 1 || limit > LIST_NODES_MAX_LIMIT) {
       throw new BadRequestException('limit must be an integer between 1 and 1000');
     }
-    const targetPackageVersion = appConfig.packageRelease.version.trim() || null;
+    const targetPackageVersion = this.packageRelease.getPublishedVersion();
     const sortOrder = query.sort_order ?? 'asc';
     const sortBy: ListNodesSortBy =
       query.sort_by &&

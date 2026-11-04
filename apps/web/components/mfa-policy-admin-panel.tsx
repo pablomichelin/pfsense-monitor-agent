@@ -72,7 +72,7 @@ export function MfaPolicyAdminPanel({ policy: initialPolicy, canManage }: Props)
             </p>
           </div>
           <div className="text-right text-xs text-slate-500">
-            <div>Ultima alteracao (banco): {new Date(policy.stored.updated_at).toLocaleString('pt-BR')}</div>
+            <div>Ultima alteracao (banco): {new Date(policy.stored.updated_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</div>
             {!policy.editable ? (
               <div className="mt-1 text-amber-300">
                 Override via env ativo — painel somente leitura.

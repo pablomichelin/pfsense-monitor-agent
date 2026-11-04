@@ -624,7 +624,7 @@ export function NotificationsAdminPanel({
                 {deliveries.map((delivery) => (
                   <tr key={delivery.id} className="border-b border-border/60">
                     <td className="px-2 py-2 whitespace-nowrap text-muted">
-                      {new Date(delivery.sent_at ?? delivery.created_at).toLocaleString('pt-BR')}
+                      {new Date(delivery.sent_at ?? delivery.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
                     </td>
                     <td className="px-2 py-2">{delivery.alert_title}</td>
                     <td className="px-2 py-2">{delivery.channel_name}</td>

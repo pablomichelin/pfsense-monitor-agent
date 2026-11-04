@@ -12,22 +12,22 @@ export function AdvancedSection({
   return (
     <details
       open={defaultOpen}
-      className="rounded-xl border border-border bg-surface-soft/60 p-5"
+      className="border-t border-border py-2"
     >
       <summary className="cursor-pointer list-none">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="font-display text-lg font-semibold text-fg">{title}</p>
+            <p className="font-display text-sm font-semibold text-fg">{title}</p>
             {description ? (
-              <p className="mt-1 text-sm text-fg-muted">{description}</p>
+              <p className="mt-1 text-xs text-fg-muted">{description}</p>
             ) : null}
           </div>
           <span className="rounded-md border border-border px-2.5 py-0.5 text-xs text-fg-muted">
-            Avancado
+            Avançado
           </span>
         </div>
       </summary>
-      <div className="mt-5">{children}</div>
+      <div className="mt-3">{children}</div>
     </details>
   );
 }

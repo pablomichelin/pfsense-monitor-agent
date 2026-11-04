@@ -1,3 +1,4 @@
+import { AgentModule } from '../agent/agent.module';
 import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { FleetOrgModule } from '../fleet-org/fleet-org.module';
@@ -11,6 +12,7 @@ import { NodesService } from './nodes.service';
 
 @Module({
   imports: [
+    AgentModule,
     PrismaModule,
     AuthModule,
     RealtimeModule,

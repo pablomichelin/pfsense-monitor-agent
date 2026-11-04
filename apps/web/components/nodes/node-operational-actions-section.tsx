@@ -24,6 +24,11 @@ type Props = {
   lastSeenAt?: string | null;
 };
 
+const serviceLabels: Record<string, string> = {
+  monitor_pfsense_agent: 'Agente de monitoramento', unbound: 'DNS — Unbound', dhcpd: 'DHCP — dhcpd', ntpd: 'Horário — NTP', dpinger: 'Monitor de gateways — dpinger',
+};
+const serviceLabel = (name: string) => serviceLabels[name] ?? name;
+
 function confirmationMatches(hostname: string, value: string): boolean {
   const trimmed = value.trim();
   return trimmed === hostname || trimmed.toUpperCase() === 'CONFIRMAR';
@@ -123,7 +128,7 @@ export function NodeOperationalActionsSection({
             <span id="operational-services" />
             <div>
               <h3 className="font-display text-base text-fg">Reiniciar serviço</h3>
-              <p className="mt-1 text-sm text-slate-400">
+              <p className="mt-1 text-sm text-fg-muted">
                 {status.recovery_supported
                   ? 'Canal independente do agente principal. O serviço selecionado pode ficar brevemente indisponível.'
                   : 'Serviços autorizados pelo pacote. O serviço selecionado pode ficar brevemente indisponível.'}
@@ -135,12 +140,12 @@ export function NodeOperationalActionsSection({
               <p>Última telemetria: {lastSeenAt ? formatDateTime(lastSeenAt) : 'sem contato'}</p>
               {status.recovery_supported ? <p>Canal de recuperação: {status.recovery_ready ? 'conectado' : 'sem contato'}
                 {status.recovery_last_seen_at ? ` — ${formatDateTime(status.recovery_last_seen_at)}` : ''}</p> : null}
-              <p className="mt-1 text-slate-400">O estado acima é o último recebido, não uma confirmação de funcionamento atual.</p>
+              <p className="mt-1 text-fg-muted">O estado acima é o último recebido, não uma confirmação de funcionamento atual.</p>
             </div>
             {status.recovery_supported && !status.recovery_ready ? (
               <Alert variant="warning">O canal de recuperação está sem contato. Aguarde sua reconexão.</Alert>
             ) : null}
-            <label className="block text-sm text-slate-300">
+            <label className="block text-sm text-fg-muted">
               Serviço
               <select
                 className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2"
@@ -150,15 +155,16 @@ export function NodeOperationalActionsSection({
               >
                 {status.allowed_services.map((service) => (
                   <option key={service} value={service}>
-                    {service}
+                    {serviceLabel(service)}
                   </option>
                 ))}
               </select>
             </label>
 
+            <p className="text-xs text-fg-muted">Identificador técnico: <code>{selectedService}</code></p>
             {status.active_service_restart ? (
               <div className="rounded-md border border-slate-700 bg-slate-900/50 p-3 text-sm">
-                <p className="text-slate-400">Comando ativo</p>
+                <p className="text-fg-muted">Comando ativo</p>
                 <NodeCommandProgress
                   status={status.active_service_restart.status}
                   isActive
@@ -197,7 +203,7 @@ export function NodeOperationalActionsSection({
                 });
               }}
             >
-              Reiniciar {selectedService}
+              Reiniciar {serviceLabel(selectedService)}
             </Button>
           </Card>
         ) : null}
@@ -206,7 +212,7 @@ export function NodeOperationalActionsSection({
           <Card className="space-y-4 p-4">
             <div>
               <h3 className="font-display text-base text-rose-200">Reiniciar firewall</h3>
-              <p className="mt-1 text-sm text-slate-400">
+              <p className="mt-1 text-sm text-fg-muted">
                 Reboot agendado com atraso configurável. Exige confirmação forte e janela de
                 manutenção.
               </p>
@@ -222,7 +228,7 @@ export function NodeOperationalActionsSection({
 
             {status.active_reboot ? (
               <div className="rounded-md border border-rose-900/50 bg-rose-950/20 p-3 text-sm">
-                <p className="text-slate-400">Reboot em andamento</p>
+                <p className="text-fg-muted">Reboot em andamento</p>
                 <NodeCommandProgress status={status.active_reboot.status} isActive compact />
               </div>
             ) : null}
@@ -242,7 +248,7 @@ export function NodeOperationalActionsSection({
               </Button>
             ) : (
               <div className="space-y-3 rounded-md border border-rose-900/40 bg-slate-950/40 p-3">
-                <label className="block text-sm text-slate-300">
+                <label className="block text-sm text-fg-muted">
                   Digite <span className="font-mono text-fg">{hostname}</span> ou CONFIRMAR
                   <input
                     className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 font-mono"
@@ -252,7 +258,7 @@ export function NodeOperationalActionsSection({
                   />
                 </label>
 
-                <label className="block text-sm text-slate-300">
+                <label className="block text-sm text-fg-muted">
                   Atraso (segundos, 30–600)
                   <input
                     type="number"
@@ -265,7 +271,7 @@ export function NodeOperationalActionsSection({
                 </label>
 
                 {!status.maintenance_mode ? (
-                  <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <label className="flex items-center gap-2 text-sm text-fg-muted">
                     <input
                       type="checkbox"
                       checked={enableMaintenance}

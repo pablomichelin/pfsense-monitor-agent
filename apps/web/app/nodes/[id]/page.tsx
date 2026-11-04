@@ -10,7 +10,7 @@ import { NodeDetailAlertsTab } from '@/components/nodes/node-detail-alerts-tab';
 import { NodeDetailBackupTab } from '@/components/nodes/node-detail-backup-tab';
 import { NodeDetailConfigTab } from '@/components/nodes/node-detail-config-tab';
 import { NodeDetailMetricsTab } from '@/components/nodes/node-detail-metrics-tab';
-import { NodeDetailOverviewTab } from '@/components/nodes/node-detail-overview-tab';
+import { NodeDetailOverviewTab, NodeUpdatesSection } from '@/components/nodes/node-detail-overview-tab';
 import { NodeDetailTabs } from '@/components/nodes/node-detail-tabs';
 import { NodeTechnicianAccountsPanel } from '@/components/nodes/node-technician-accounts-panel';
 import { Alert } from '@/components/ui/alert';
@@ -184,7 +184,10 @@ export default async function NodeDetailsPage({
     });
 
     const tabs: { id: NodeDetailTabId; label: string }[] = [
-      { id: 'overview', label: 'Visão geral' },
+      { id: 'overview', label: 'Resumo' },
+      { id: 'operations', label: 'Operações' },
+      ...(commandHistory ? [{ id: 'history' as NodeDetailTabId, label: 'Histórico' }] : []),
+      ...(canViewTechnicians && technicianAccounts ? [{ id: 'access' as NodeDetailTabId, label: 'Acessos' }] : []),
       { id: 'metrics', label: 'Métricas' },
       ...(isClientProfile ? [] : [{ id: 'alerts' as NodeDetailTabId, label: 'Alertas' }]),
       ...(canViewBackups ? [{ id: 'backup' as NodeDetailTabId, label: 'Backup' }] : []),
@@ -217,7 +220,7 @@ export default async function NodeDetailsPage({
           </Alert>
         ) : null}
         {maintenanceError ? (
-          <Alert variant="error">Falha ao atualizar maintenance mode: {maintenanceError}</Alert>
+          <Alert variant="error">Falha ao atualizar modo de manutenção: {maintenanceError}</Alert>
         ) : null}
         {updated ? (
           <Alert variant="info">Metadados do firewall atualizados com sucesso.</Alert>
@@ -290,6 +293,10 @@ export default async function NodeDetailsPage({
                   canViewPfsenseAliases={canViewPfsenseAliases}
                   canViewPfsenseApi={canViewPfsenseApi}
                 />
+              </>
+            }
+            operations={<div className="space-y-4">
+              <NodeUpdatesSection node={node} canRunUpgrade={canRunUpgrade} canRunPackageUpgrade={canRunPackageUpgrade} upgradeStatus={upgradeStatus} packageUpgradeStatus={packageUpgradeStatus} />
                 {(canRestartService || canRebootNode) && operationalStatus?.enabled ? (
                   <NodeOperationalActionsSection
                     nodeId={node.id}
@@ -301,7 +308,8 @@ export default async function NodeDetailsPage({
                     lastSeenAt={node.last_seen_at}
                   />
                 ) : null}
-                {commandHistory ? <NodeCommandHistoryPanel
+            </div>}
+            history={<>                {commandHistory ? <NodeCommandHistoryPanel
                   nodeId={node.id}
                   initialHistory={commandHistory}
                   canCancelBackup={canRequestBackup}
@@ -310,14 +318,14 @@ export default async function NodeDetailsPage({
                   canCancelServiceRestart={canRestartService}
                   canCancelNodeReboot={canRebootNode}
                 /> : null}
-                {canViewTechnicians && technicianAccounts ? (
+</>}
+            access={<>                {canViewTechnicians && technicianAccounts ? (
                   <NodeTechnicianAccountsPanel
                     items={technicianAccounts.items}
                     canManageTechnicians={canManageTechnicians}
                   />
                 ) : null}
-              </>
-            }
+</>}
             metrics={
               <NodeDetailMetricsTab
                 node={node}

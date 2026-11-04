@@ -34,6 +34,8 @@ export class AlertsService {
       acknowledged: number;
       resolved: number;
       critical: number;
+      critical_pending: number;
+      critical_resolved: number;
       warning: number;
       info: number;
     };
@@ -167,11 +169,12 @@ export class AlertsService {
       const counts = await tx.alert.groupBy({
         by: ['status', 'severity'], where, _count: { _all: true },
       });
-      const totals = { open: 0, acknowledged: 0, resolved: 0, critical: 0, warning: 0, info: 0 };
+      const totals = { open: 0, acknowledged: 0, resolved: 0, critical: 0, critical_pending: 0, critical_resolved: 0, warning: 0, info: 0 };
       let total = 0;
       for (const group of counts) {
         totals[group.status] += group._count._all;
         totals[group.severity] += group._count._all;
+        if (group.severity === 'critical') totals[group.status === 'resolved' ? 'critical_resolved' : 'critical_pending'] += group._count._all;
         total += group._count._all;
       }
       const totalPages = paginated ? Math.max(1, Math.ceil(total / limit)) : 1;

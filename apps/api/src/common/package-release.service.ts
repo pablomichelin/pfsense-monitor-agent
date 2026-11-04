@@ -38,6 +38,11 @@ export class PackageReleaseService {
     };
   }
 
+  getPublishedVersion(): string | null {
+    try { return this.getPackageRelease().version.trim() || null; }
+    catch { return null; }
+  }
+
   resolveLocalArtifactPath(version: string): string {
     const resolvedVersion = version.trim();
     if (!/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(resolvedVersion)) {

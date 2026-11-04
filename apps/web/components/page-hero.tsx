@@ -1,4 +1,8 @@
+import Link from 'next/link';
+
 type HeroStat = {
+  href?: string;
+  active?: boolean;
   label: string;
   value: string;
   tone?: 'default' | 'success' | 'warning' | 'danger';
@@ -25,16 +29,16 @@ export function PageHero({
   aside?: React.ReactNode;
 }) {
   return (
-    <section className="glass-panel overflow-hidden rounded-xl p-3 sm:p-4">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between xl:gap-5">
-        <div className="min-w-0 flex-1 space-y-2">
+    <section className="border-b border-border pb-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between xl:gap-5">
+        <div className="min-w-0 flex-1 space-y-1">
           <p className="font-mono text-xs uppercase tracking-wider text-primary">
             {eyebrow}
           </p>
-          <h2 className="font-display text-2xl font-semibold text-fg">
+          <h2 className="font-display text-xl font-semibold text-fg">
             {title}
           </h2>
-          <p className="max-w-2xl text-sm leading-relaxed text-fg-muted">
+          <p className="max-w-3xl text-sm leading-relaxed text-fg-muted">
             {description}
           </p>
 
@@ -42,15 +46,12 @@ export function PageHero({
             <div className="flex flex-wrap gap-2 pt-1">
               {stats.map((stat) => (
                 <div
-                  key={`${stat.label}-${stat.value}`}
-                  className={`rounded-lg border px-3 py-2 ${toneClass[stat.tone ?? 'default']}`}
+                  key={stat.label}
+                  className={`rounded-lg border px-3 py-1.5 ${toneClass[stat.tone ?? 'default']}`}
                 >
-                  <p className="font-mono text-[11px] uppercase tracking-wider opacity-90">
-                    {stat.label}
-                  </p>
-                  <p className="mt-0.5 text-sm font-medium">
-                    {stat.value}
-                  </p>
+                  {stat.href ? <Link href={stat.href} aria-current={stat.active ? 'page' : undefined} className="block rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                    <span className="text-xs">{stat.label}</span><strong className="ml-2 text-base">{stat.value}</strong>
+                  </Link> : <><span className="text-xs">{stat.label}</span><strong className="ml-2 text-base">{stat.value}</strong></>}
                 </div>
               ))}
             </div>

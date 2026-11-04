@@ -68,7 +68,7 @@ export function NodeDetailMetricsTab({
       </PageSection>
 
       <PageSection title="Serviços" description="Estado reportado pelo agente (VPN e demais).">
-        {canRestartService ? <Link href={`/nodes/${node.id}?tab=overview#operational-services`} className="text-sm text-primary underline">Ver diagnóstico e reiniciar serviços autorizados</Link> : null}
+        {canRestartService ? <Link href={`/nodes/${node.id}?tab=operations#operational-services`} className="text-sm text-primary underline">Ver diagnóstico e reiniciar serviços autorizados</Link> : null}
         {node.services.length > 0 ? (
           <Card className="space-y-4">
             {groupServicesByType(node.services).map((group) => {

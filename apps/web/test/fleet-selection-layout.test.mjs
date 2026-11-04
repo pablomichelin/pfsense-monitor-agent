@@ -75,3 +75,18 @@ test('setas e Home/End selecionam e focam abas acessíveis', () => {
   tree = render();
   assert.equal(elements(tree).find((e) => e.props?.role === 'tab' && e.props['aria-selected']).props.id, 'fleet-action-tab-unblock');
 });
+
+
+test('painel lateral pode recolher sem desmontar formulários nem perder seleção', () => {
+  const { render } = fixture();
+  let tree = render();
+  assert.ok(!elements(tree).find(e => e.props?.id === 'fleet-action-workspace').props.hidden);
+  elements(tree).find(e => e.type === 'button' && textOf(e) === 'Recolher ações').props.onClick();
+  tree = render();
+  assert.ok(elements(tree).find(e => e.props?.id === 'fleet-action-workspace').props.hidden);
+  assert.ok(elements(tree).some(e => e.type === 'unblock-form'));
+  assert.equal(elements(tree).find(e => e.type === 'inventory').props.selection.selectedIds.size, 1);
+  elements(tree).find(e => e.type === 'button' && textOf(e) === 'Abrir ações').props.onClick();
+  tree = render();
+  assert.ok(!elements(tree).find(e => e.props?.id === 'fleet-action-workspace').props.hidden);
+});

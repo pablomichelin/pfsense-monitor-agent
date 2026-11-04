@@ -785,6 +785,8 @@ export type AlertsListResponse = {
     acknowledged: number;
     resolved: number;
     critical: number;
+    critical_pending: number;
+    critical_resolved: number;
     warning: number;
     info: number;
   };

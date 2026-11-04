@@ -1,5 +1,6 @@
 'use client';
 
+import { alertTitle } from '@/lib/alert-display';
 import Link from 'next/link';
 import { useState } from 'react';
 import { Badge, StatusBadge, type StatusBadgeStatus } from '@/components/ui';
@@ -13,6 +14,7 @@ type NodeItem = {
   open_alerts: number;
   last_seen_at: string | null;
   effective_status: string;
+  attention?: { title: string; opened_at: string } | null;
 };
 
 const severityLabels: Record<string, { label: string; variant: 'danger' | 'warning' | 'neutral' }> = {
@@ -66,29 +68,35 @@ export function HotZoneExpandableList({ nodes }: { nodes: NodeItem[] }) {
         return (
           <div
             key={node.id}
-            className="overflow-hidden rounded-lg border border-slate-700/80 bg-panel-soft/70"
+            className="overflow-hidden rounded-lg border border-border bg-surface-soft"
           >
+            <div className="flex items-center gap-2 pr-3">
             <button
               type="button"
+              aria-expanded={isExpanded}
+              aria-controls={`attention-${node.id}`}
               onClick={() => toggle(node)}
-              className="flex w-full items-center justify-between gap-4 px-4 py-2.5 text-left transition hover:bg-panel-soft"
+              className="flex min-w-0 flex-1 flex-col items-start justify-between gap-2 sm:flex-row sm:items-center px-4 py-2.5 text-left transition hover:bg-panel-soft"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <StatusBadge status={toStatusBadge(node.effective_status)} />
-                <span className="truncate font-medium text-fg">
-                  {node.display_name ?? node.hostname}
+                <span className="min-w-0"><span className="block font-medium text-fg">{node.display_name ?? node.hostname}</span>
+                  <span className="mt-1 block text-xs text-fg-muted">{node.attention ? `${alertTitle(node.attention.title)} · registrado ${formatRelativeAge(node.attention.opened_at)}` : node.effective_status === 'offline' ? `Sem comunicação · último contato ${formatRelativeAge(node.last_seen_at)}` : 'Causa não disponível no resumo; consulte os detalhes'}</span>
                 </span>
               </div>
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 text-sm text-slate-400">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 text-sm text-fg-muted">
                 <span className="hidden sm:inline">
                   Último heartbeat: {formatRelativeAge(node.last_seen_at)}
                 </span>
                 <span>
                   Alertas:{' '}
-                  <span className={node.open_alerts > 0 ? 'text-rose-300' : 'text-slate-500'}>
+                  <span className={node.open_alerts > 0 ? 'text-danger-fg' : 'text-fg-muted'}>
                     {node.open_alerts}
                   </span>
                 </span>
+
+              </div>
+            </button>
                 <Link
                   href={`/nodes/${node.id}`}
                   onClick={(e) => e.stopPropagation()}
@@ -96,18 +104,17 @@ export function HotZoneExpandableList({ nodes }: { nodes: NodeItem[] }) {
                 >
                   Abrir
                 </Link>
-              </div>
-            </button>
+            </div>
 
             {isExpanded && (
-              <div className="border-t border-slate-700/80 bg-slate-950/50 px-4 py-3">
-                <p className="mb-2 text-xs text-slate-500 sm:hidden">
+              <div id={`attention-${node.id}`} className="border-t border-border bg-surface px-4 py-3">
+                <p className="mb-2 text-xs text-fg-muted sm:hidden">
                   Último heartbeat: {formatRelativeAge(node.last_seen_at)}
                 </p>
                 {isLoading ? (
-                  <p className="text-sm text-slate-500">Carregando alertas…</p>
+                  <p className="text-sm text-fg-muted">Carregando alertas…</p>
                 ) : node.open_alerts === 0 ? (
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-fg-muted">
                     Nenhum alerta aberto para este firewall.
                   </p>
                 ) : alerts && alerts.length > 0 ? (
@@ -126,8 +133,8 @@ export function HotZoneExpandableList({ nodes }: { nodes: NodeItem[] }) {
                           <Badge variant={severity.variant} className="shrink-0">
                             {severity.label}
                           </Badge>
-                          <span className="text-slate-200">{alert.title}</span>
-                          <span className="text-xs text-slate-500">
+                          <span className="text-fg">{alertTitle(alert.title)}</span>
+                          <span className="text-xs text-fg-muted">
                             {formatRelativeAge(alert.opened_at)}
                           </span>
                           <Link
@@ -142,7 +149,7 @@ export function HotZoneExpandableList({ nodes }: { nodes: NodeItem[] }) {
                     })}
                   </ul>
                 ) : (
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-fg-muted">
                     Nenhum alerta aberto para este firewall.
                   </p>
                 )}

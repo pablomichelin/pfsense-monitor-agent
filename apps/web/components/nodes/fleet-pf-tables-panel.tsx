@@ -223,7 +223,7 @@ function FleetPfTablesQuery({ selectedNodes }: { selectedNodes: Node[] }) {
       <div className="space-y-2">
         {rows.map((row, index) => <div key={row.id} className="flex flex-wrap items-end gap-2">
           <label className="min-w-0 flex-1 text-sm text-fg">IP {index + 1}
-            <input className={`${FIELD_CLASS} mt-1 w-full`} disabled={busy} value={row.address} onChange={(event) => editRow(row.id, event.target.value, row.prefix)} placeholder="ex.: 203.0.113.10" />
+            <input autoComplete="off" autoCapitalize="none" spellCheck={false} name={`unblock-address-${row.id}`} className={`${FIELD_CLASS} mt-1 w-full`} disabled={busy} value={row.address} onChange={(event) => editRow(row.id, event.target.value, row.prefix)} placeholder="ex.: 203.0.113.10" />
           </label>
           <label className="text-sm text-fg">Máscara
             <select className={`${FIELD_CLASS} mt-1 block`} aria-label={`Máscara do IP ${index + 1}`} disabled={busy} value={row.prefix} onChange={(event) => editRow(row.id, row.address, Number(event.target.value))}>
