@@ -12,6 +12,7 @@ import {
   pollConfigBackupCommandAction,
   requestConfigBackupAction,
 } from '@/lib/backups';
+import { ActionTabs } from '@/components/ui/action-tabs';
 import { BackupDownloadButton } from '@/components/backup-download-button';
 import {
   BackupDriftIndicator,
@@ -270,7 +271,7 @@ export function NodeConfigBackupsSection({
     ACTIVE_COMMAND_STATUSES.has(commandStatus.status);
 
   return (
-    <section className="glass-panel rounded-xl p-5">
+    <section className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-300">
@@ -358,7 +359,7 @@ export function NodeConfigBackupsSection({
       ) : null}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4">
+        <div className="min-w-0 border-l-2 border-border px-4 py-2">
           <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
             Ultimo backup
           </p>
@@ -369,7 +370,7 @@ export function NodeConfigBackupsSection({
             )}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4">
+        <div className="min-w-0 border-l-2 border-border px-4 py-2">
           <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
             Idade
           </p>
@@ -380,7 +381,7 @@ export function NodeConfigBackupsSection({
             )}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4">
+        <div className="min-w-0 border-l-2 border-border px-4 py-2">
           <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
             Tamanho
           </p>
@@ -388,7 +389,7 @@ export function NodeConfigBackupsSection({
             {formatBytes(latestStored?.size_bytes ?? null)}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4">
+        <div className="min-w-0 border-l-2 border-border px-4 py-2">
           <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-500">
             SHA256
           </p>
@@ -398,6 +399,14 @@ export function NodeConfigBackupsSection({
         </div>
       </div>
 
+      <BackupDriftIndicator
+        nodeId={nodeId}
+        backups={initialBackups}
+        canManage={canManage}
+      />
+
+      <ActionTabs id="node-backup-tasks" label="Opções de backup" tabs={[
+        { id: 'history', label: 'Histórico e downloads', description: 'Arquivos recebidos do firewall', content: <>
       <p className="mt-4 text-xs text-slate-500">
         {initialBackups.summary.stored_count} backup(s) armazenado(s) ·{' '}
         {formatBytes(initialBackups.summary.total_stored_bytes)} no total
@@ -458,23 +467,23 @@ export function NodeConfigBackupsSection({
         </div>
       )}
 
-      <BackupDriftIndicator
+        </> },
+        { id: 'compare', label: 'Comparar configurações', description: 'Diferenças entre dois backups', content: <>
+      <BackupDiffViewer
         nodeId={nodeId}
-        backups={initialBackups}
-        canManage={canManage}
+        items={initialBackups.items}
+        enabled={initialBackups.advanced_features?.diff_enabled === true}
       />
-
+        </> },
+        { id: 'retention', label: 'Retenção', description: 'Quantidade e espaço armazenado', content: <>
       <BackupRetentionPolicyForm
         nodeId={nodeId}
         backups={initialBackups}
         canManage={canManage}
       />
 
-      <BackupDiffViewer
-        nodeId={nodeId}
-        items={initialBackups.items}
-        enabled={initialBackups.advanced_features?.diff_enabled === true}
-      />
+        </> },
+      ]} />
     </section>
   );
 }

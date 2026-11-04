@@ -122,7 +122,7 @@ export function NodePackageUpgradeSection({
   const activeLabel = getActiveCommandLabel(status);
 
   return (
-    <Card className="mt-6">
+    <Card>
       <div className="space-y-4">
         <div>
           <h3 className="font-display text-base text-slate-100">

@@ -1,5 +1,9 @@
 # Leitura Inicial
 
+## Organização das telas por tarefa — painel 1.15.6
+
+Revisão identificou quatro áreas com excesso de agrupamentos. Cadastro abre um formulário de largura completa por aba, preservando o retorno por seção. Visão geral separa identidade de atualizações (agente e pfSense OS); integrações e certificados ficam em seção expansível. Backup do firewall separa histórico/downloads, comparação e retenção, mantendo resumo e alerta de drift visíveis. Técnicos separa consulta de contas e gestão. Componente de abas compartilhado conserva formulários montados; token desmonta ao sair para encerrar a exibição do segredo. Sete casos dirigidos aprovados; o caso de atualizações teve correção do seletor da fixture e foi repetido isoladamente. Publicação e inspeção visual em andamento.
+
 ## Organização das ações da seleção — 03/11/2026
 
 Painel **1.15.5** publicado. Seleção em faixa própria e ações em quatro abas independentes — Desbloquear IPs, Atualizar pacote, Backups e Técnicos. Um formulário visível por vez, sem moldura externa envolvendo todos os painéis. Componentes permanecem montados ao trocar a aba, preservando campos e acompanhamento. Backup da página separado das ações da seleção. Cores semânticas para os temas claro/escuro e navegação por setas/Home/End. Três testes dirigidos e typecheck aprovados. Build único PASS, quatro serviços healthy. Inspeção autenticada das quatro abas e screenshots dos temas claro e escuro aprovados; campo preservado na troca real entre abas. Tema escuro original restaurado. Imagens de execução cifradas preservadas no 220 em `runtime-web1155.tar.gpg`, checksum/decriptação/importação PASS. Backup `dr-20261104T025217Z-88137439c08541dc` com restauração integral da stack PASS e recursos isolados limpos. Mesma LAN.
@@ -115,7 +119,7 @@ Próximo passo: avaliar destino externo e recuperação completa dos backups, di
 | Componente | Versão | Referência |
 |------------|--------|------------|
 | API | `0.14.2` | servidor 192.168.100.221 |
-| Painel web | `1.15.5` | servidor 192.168.100.221 |
+| Painel web | `1.15.6` | servidor 192.168.100.221 |
 | Package pfSense | `0.5.31` | 50 confirmados com supervisor ativo; oito pendentes em 0.5.27; oito excluídos em 0.5.26 |
 
 **Última entrega (2026-09-18):** endurecimento de segurança API + web (proteção zip-bomb no ingest de backup, fail-fast de `TRUSTED_PROXY_IPS`, fail-closed 503 no middleware, `MONITOR_API_BASE_URL` obrigatória). API **0.11.2**, painel **1.12.7**, package **0.5.20 sem mudança**. Ver `docs/185-ENTREGA-ENDURECIMENTO-SEGURANCA-API-WEB-2026-09-18.md`.

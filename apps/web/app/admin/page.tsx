@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PageHero } from '@/components/page-hero';
-import { Badge, Card, PageSection } from '@/components/ui';
+import { PageSection } from '@/components/ui';
 import { ApiError, getNodesFilters, getNodesList, getRolesList, getSession } from '@/lib/api';
 import { AdminCadastroCards } from '@/components/admin-cadastro-cards';
 import { hasPermission } from '@/lib/authz';
@@ -72,7 +72,7 @@ export default async function AdminPage({
       <PageHero
         eyebrow="Administração"
         title="Cadastro inicial"
-        description="Novo cliente e novo firewall. Usuários, tokens e permissões nas seções abaixo."
+        description="Escolha o tipo de cadastro. Cada formulário aparece em uma área própria."
         stats={[
           { label: 'Clientes', value: String(filterOptions.clients.length) },
           { label: 'Firewalls', value: String(nodes.total) },
@@ -80,11 +80,7 @@ export default async function AdminPage({
       />
 
       <PageSection title="Atalhos" description="Navegação rápida para áreas relacionadas.">
-        <Card className="p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="neutral" className="font-mono uppercase tracking-wider">
-              Atalhos
-            </Badge>
+        <nav aria-label="Atalhos de administração" className="flex flex-wrap items-center gap-2">
             <Link href="/nodes" className={`${adminShortcutLinkClassName} border-cyan-500/30 bg-cyan-500/10 text-cyan-200`}>
               Ver firewalls
             </Link>
@@ -102,8 +98,7 @@ export default async function AdminPage({
             <Link href="/audit" className={adminShortcutLinkClassName}>
               Auditoria
             </Link>
-          </div>
-        </Card>
+        </nav>
       </PageSection>
 
 

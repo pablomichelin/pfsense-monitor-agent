@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PageHero } from '@/components/page-hero';
+import { ActionTabs } from '@/components/ui/action-tabs';
 import { AdminTechnicianTargets } from '@/components/admin-technician-targets';
 import { Alert, Badge, Card, PageSection } from '@/components/ui';
 import {
@@ -113,6 +114,8 @@ export default async function AdminTecnicosPage() {
         </div>
       </PageSection>
 
+      <ActionTabs id="admin-technicians" label="Organização dos técnicos" tabs={[
+        { id: 'accounts', label: 'Contas nos firewalls', description: 'Matriz e estado de sincronização', content: (
       <PageSection
         title="Matriz técnico × firewall"
         description="Um técnico por linha. Expanda para ver em quais firewalls ele tem conta e o status de cada uma."
@@ -209,8 +212,9 @@ export default async function AdminTecnicosPage() {
         )}
       </PageSection>
 
-      {canManageTechnicians || canResetTechnicianPassword ? (
-        <PageSection
+        ) },
+        ...(canManageTechnicians || canResetTechnicianPassword ? [{ id: 'manage', label: 'Gerenciar técnicos', description: 'Cadastro e ações nos firewalls', content: (
+<PageSection
           title="Cadastro e ações em lote"
           description="Selecione explicitamente os firewalls do lote abaixo, dentro do limite informado pelo controlador."
         >
@@ -222,8 +226,8 @@ export default async function AdminTecnicosPage() {
             canManageRegistry={canManageRegistry}
             canResetTechnicianPassword={canResetTechnicianPassword}
           />
-        </PageSection>
-      ) : null}
+        </PageSection>        ) }] : []),
+      ]} />
     </div>
   );
 }

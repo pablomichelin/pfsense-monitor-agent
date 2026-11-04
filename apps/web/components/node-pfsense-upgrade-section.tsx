@@ -613,7 +613,7 @@ export function NodePfsenseUpgradeSection({
   const lastResultAlert = getLastResultAlert(status);
 
   return (
-    <Card className="mt-6">
+    <Card>
       <div className="space-y-4">
         <div>
           <h3 className="font-display text-base text-slate-100">Atualização pfSense OS</h3>

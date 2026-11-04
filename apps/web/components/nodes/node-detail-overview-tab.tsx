@@ -10,6 +10,7 @@ import { NodePfsenseApiPanel } from '@/components/nodes/node-pfsense-api-panel';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ActionTabs } from '@/components/ui/action-tabs';
 import { PageSection } from '@/components/ui/page-section';
 
 type Node = NodeDetailsResponse['node'];
@@ -233,21 +234,19 @@ export function NodeDetailOverviewTab({
           </Alert>
         )}
 
-        <NodePfsenseUpgradeSection
-          nodeId={node.id}
-          nodeEffectiveStatus={node.effective_status}
-          canRunUpgrade={canRunUpgrade}
-          initialStatus={upgradeStatus}
-        />
-
-        <NodePackageUpgradeSection
-          nodeId={node.id}
-          canRunPackageUpgrade={canRunPackageUpgrade}
-          initialStatus={packageUpgradeStatus}
-        />
       </Card>
     </PageSection>
 
+    <PageSection title="Atualizações" description="Escolha entre o agente Monitor e o sistema operacional do firewall.">
+      <ActionTabs id="node-updates" label="Tipo de atualização" tabs={[
+        { id: 'agent', label: 'Agente Monitor', description: 'Pacote de monitoramento', content: <NodePackageUpgradeSection nodeId={node.id} canRunPackageUpgrade={canRunPackageUpgrade} initialStatus={packageUpgradeStatus} /> },
+        { id: 'os', label: 'pfSense OS', description: 'Sistema operacional', content: <NodePfsenseUpgradeSection nodeId={node.id} nodeEffectiveStatus={node.effective_status} canRunUpgrade={canRunUpgrade} initialStatus={upgradeStatus} /> },
+      ]} />
+    </PageSection>
+
+    <details className="border-t border-border py-4">
+      <summary className="cursor-pointer font-display text-lg font-semibold text-fg">Integrações e certificados</summary>
+      <div className="mt-4 space-y-5">
     <NodeCertificatesPanel certificates={node.certificates ?? []} />
     {canViewPfsenseApi && nodeCapabilities ? (
       <NodeCapabilitiesPanel
@@ -263,6 +262,8 @@ export function NodeDetailOverviewTab({
         status={pfsenseApiStatus}
       />
     ) : null}
+      </div>
+    </details>
     </>
   );
 }

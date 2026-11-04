@@ -2,14 +2,14 @@
 
 import type { NodesListResponse } from '@/lib/api';
 
-import { useEffect, useState } from 'react';
+import { ActionTabs } from '@/components/ui/action-tabs';
 import {
   createClientAction,
   createUserAction,
 } from '@/lib/admin';
 import { AgentTokenForm } from '@/components/agent-token-form';
 import { CreateNodeForm } from '@/components/create-node-form';
-import { AdminCollapsibleCard } from '@/components/admin-collapsible-card';
+import { Card } from '@/components/ui/card';
 import { AdminSectionMessage } from '@/components/admin-section-message';
 import { RoleScopeFields } from '@/components/role-scope-fields';
 
@@ -33,18 +33,6 @@ export function AdminCadastroCards({
   status?: string;
   message?: string;
 }) {
-  const [expandedSection, setExpandedSection] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (activeSection) {
-      setExpandedSection(activeSection);
-    }
-  }, [activeSection]);
-
-  const toggle = (section: string) => {
-    setExpandedSection((prev) => (prev === section ? null : section));
-  };
-
   const inputClass =
     'w-full rounded-lg border border-slate-600/80 bg-panel-soft h-11 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500';
   const selectClass =
@@ -54,16 +42,11 @@ export function AdminCadastroCards({
   const noteClass =
     'rounded-xl border border-slate-700/80 bg-panel-soft/50 px-4 py-3 text-xs text-slate-400';
 
-  return (
-    <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 items-stretch">
-      <AdminCollapsibleCard
-        title="Novo cliente"
-        description="Cria a organização raiz para agrupar firewalls."
-        section="client"
-        isExpanded={expandedSection === 'client'}
-        onToggle={() => toggle('client')}
-        actionLabel="Criar cliente"
-      >
+  return <ActionTabs id="admin-cadastro" label="Escolha o cadastro" initialTabId={activeSection} tabs={[
+    { id: 'client', label: 'Cliente', description: 'Criar uma organização', content: (
+      <Card className="p-5">
+        <h2 className="font-display text-xl text-fg">Novo cliente</h2>
+        <p className="mt-1 text-sm text-fg-muted">Cria a organização raiz para agrupar firewalls.</p>
         <AdminSectionMessage
           section="client"
           activeSection={activeSection}
@@ -84,16 +67,12 @@ export function AdminCadastroCards({
             Criar cliente
           </button>
         </form>
-      </AdminCollapsibleCard>
-
-      <AdminCollapsibleCard
-        title="Novo firewall"
-        description="Selecione o cliente; o sistema associa o firewall ao cliente."
-        section="node"
-        isExpanded={expandedSection === 'node'}
-        onToggle={() => toggle('node')}
-        actionLabel="Criar firewall"
-      >
+      </Card>
+    ) },
+    { id: 'node', label: 'Firewall', description: 'Vincular um equipamento', content: (
+      <Card className="p-5">
+        <h2 className="font-display text-xl text-fg">Novo firewall</h2>
+        <p className="mt-1 text-sm text-fg-muted">Selecione o cliente; o sistema associa o firewall ao cliente.</p>
         <CreateNodeForm
           clients={filterOptions.clients}
           sites={[]}
@@ -106,17 +85,13 @@ export function AdminCadastroCards({
             />
           }
         />
-      </AdminCollapsibleCard>
-
-      {canManageUsers ? (
-            <AdminCollapsibleCard
-              title="Novo usuário"
-              description="Cria acesso humano com papel e senha local (superadmin)."
-              section="user"
-              isExpanded={expandedSection === 'user'}
-              onToggle={() => toggle('user')}
-              actionLabel="Criar usuário"
-            >
+      </Card>
+    ) },
+    { id: 'user', label: 'Usuário', description: 'Acesso ao painel', content: (
+      canManageUsers ? (
+            <Card className="p-5">
+        <h2 className="font-display text-xl text-fg">Novo usuário</h2>
+        <p className="mt-1 text-sm text-fg-muted">Cria acesso humano com papel e senha local (superadmin).</p>
               <AdminSectionMessage
                 section="user"
                 activeSection={activeSection}
@@ -157,31 +132,21 @@ export function AdminCadastroCards({
                   Criar usuário
                 </button>
               </form>
-            </AdminCollapsibleCard>
+            </Card>
       ) : (
-        <AdminCollapsibleCard
-          title="Governança de usuários"
-          description="Gestão de usuários reservada ao superadmin."
-          section="user"
-          isExpanded={false}
-          onToggle={() => {}}
-          actionLabel=""
-          collapsible={false}
-        >
+        <Card className="p-5">
+        <h2 className="font-display text-xl text-fg">Governança de usuários</h2>
+        <p className="mt-1 text-sm text-fg-muted">Gestão de usuários reservada ao superadmin.</p>
           <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
             Sua sessão pode operar inventário e bootstrap; criar/editar usuários é em /admin/usuarios (superadmin).
           </div>
-        </AdminCollapsibleCard>
-      )}
-
-      <AdminCollapsibleCard
-        title="Token do agente"
-        description="Emite token auxiliar por firewall (credencial rotacionavel)."
-        section="agent-token"
-        isExpanded={expandedSection === 'agent-token'}
-        onToggle={() => toggle('agent-token')}
-        actionLabel="Emitir token"
-      >
+        </Card>
+      )
+    ) },
+    { id: 'agent-token', unmountOnHide: true, label: 'Token do agente', description: 'Credencial por firewall', content: (
+      <Card className="p-5">
+        <h2 className="font-display text-xl text-fg">Token do agente</h2>
+        <p className="mt-1 text-sm text-fg-muted">Emite token auxiliar por firewall (credencial rotacionavel).</p>
         <AdminSectionMessage
           section="agent-token"
           activeSection={activeSection}
@@ -189,7 +154,7 @@ export function AdminCadastroCards({
           message={message}
         />
         <AgentTokenForm nodes={nodes.items} initialPage={nodes} />
-      </AdminCollapsibleCard>
-    </div>
-  );
+      </Card>
+    ) },
+  ]} />;
 }
