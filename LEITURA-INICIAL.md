@@ -2,7 +2,7 @@
 
 ## Desbloqueio de múltiplos IPs — 03/11/2026
 
-Painel **1.15.4** preparado com até 20 endereços, botão **+ Adicionar IP** e ação principal **Desbloquear IPs**. A confirmação mostra IPs/redes canônicos e firewalls. A ação consulta e remove sequencialmente por firewall as entradas das tabelas dinâmicas sshguard, webConfiguratorlockout, sshlockout, virusprot e snort2c. Consulta manual, seleção de tabelas adicionais e listagem continuam disponíveis. Resultados individuais distinguem sucesso, falha e ausência de confirmação. Oito testes dirigidos aprovados em dois grupos (6+2), typecheck aprovado. Publicação e verificação visual em andamento.
+Painel **1.15.4** publicado com até 20 endereços, botão **+ Adicionar IP** e ação principal **Desbloquear IPs**. A confirmação mostra IPs/redes canônicos e firewalls. A ação consulta e remove sequencialmente por firewall as entradas das tabelas dinâmicas sshguard, webConfiguratorlockout, sshlockout, virusprot e snort2c. Consulta manual, seleção de tabelas adicionais e listagem continuam disponíveis. Resultados individuais distinguem sucesso, falha e ausência de confirmação. Oito testes dirigidos aprovados em dois grupos (6+2), typecheck aprovado. Build único de produção e quatro serviços healthy. Verificação na aba autenticada confirmou adição do segundo IP e revisão dos dois endereços com o firewall selecionado. Imagens exatas cifradas preservadas no 220 em `runtime-web1154.tar.gpg`.
 
 ## Listagem de bloqueios do pfSense — 03/11/2026
 
