@@ -78,7 +78,8 @@ except Exception as error:
   fi
 done
 
-tar -C "$STAGE_DIR" -czf "$ARTIFACT_PATH" pfsense-package
+# Use portable headers so macOS file metadata cannot break extraction on pfSense.
+tar --format ustar -C "$STAGE_DIR" -czf "$ARTIFACT_PATH" pfsense-package
 
 SHA256_VALUE="$(
   sha256sum "$ARTIFACT_PATH" | awk '{print $1}'

@@ -2,7 +2,7 @@
 
 ## Listagem de bloqueios do pfSense — 03/11/2026
 
-O package **0.5.33** inclui a tabela `sshguard` na ação **Listar bloqueios**. A versão anterior consultava essa tabela na busca por endereço, mas a omitia na listagem. No laboratório, um endereço de teste apareceu na lista e na busca e sua remoção individual foi confirmada pelo PF. O bloqueio real foi removido pelo Monitor e a tela de login respondeu a partir do endereço liberado. Implantação direcionada ao firewall deste chamado.
+O package **0.5.34** inclui a tabela `sshguard` na ação **Listar bloqueios**. A versão anterior consultava essa tabela na busca por endereço, mas a omitia na listagem. No laboratório, um endereço de teste apareceu na lista e na busca e sua remoção individual foi confirmada pelo PF. O bloqueio real foi removido pelo Monitor e a tela de login respondeu a partir do endereço liberado. Implantação direcionada ao firewall deste chamado. A versão 0.5.33 foi retirada após falha de extração por metadados do macOS. A 0.5.34 usa formato ustar e passou na extração nativa FreeBSD antes da publicação.
 
 ## Aviso indevido de crash PHP — 03/11/2026
 
