@@ -1,5 +1,9 @@
 # CORTEX
 
+## Listagem de bloqueios do pfSense — 03/11/2026
+
+O package **0.5.33** inclui a tabela `sshguard` na ação **Listar bloqueios**. A versão anterior consultava essa tabela na busca por endereço, mas a omitia na listagem. No laboratório, um endereço de teste apareceu na lista e na busca e sua remoção individual foi confirmada pelo PF. O bloqueio real foi removido pelo Monitor e a tela de login respondeu a partir do endereço liberado. Implantação direcionada ao firewall deste chamado.
+
 ## Aviso indevido de crash PHP — 03/11/2026
 
 Package **0.5.32** publicado e validado no ambiente autorizado. Falhas operacionais tratadas pelo supervisor usam syslog `LOG_DAEMON/LOG_WARNING`, preservando o aviso sem alimentar o relatório de erro PHP. 36 casos dirigidos no PHP nativo aprovados; teste real confirmou o destino do aviso. Autenticação e política de recuperação preservadas. Evidência operacional detalhada mantida na documentação privada. Nenhuma distribuição adicional foi executada, conforme decisão do operador. [Detalhes técnicos](docs/211-AVISO-CRASH-PHP-LOG-SUPERVISOR-2026-11-03.md).

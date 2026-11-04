@@ -135,6 +135,7 @@ function is_block_list_table(string $table): bool
     return in_array(strtolower($table), [
         'webconfiguratorlockout',
         'sshlockout',
+        'sshguard',
         'virusprot',
         'snort2c',
     ], true);
