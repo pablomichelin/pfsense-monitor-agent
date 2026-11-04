@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { requestTableEntryRemoveAction, requestTableListAction, requestTableSearchAction } from '@/lib/operational-actions-actions';
-import { isBlockTable } from '@/lib/pf-block-tables';
-import { interpretTableTarget, tableTargetInput } from '@/lib/table-ip';
+import { useEffect, useRef, useState } from 'react';
+import { requestTableEntryRemoveAction, requestTableListAction, requestTableSearchAction, type TableActionResult } from '@/lib/operational-actions-actions';
+import { isBlockTable, isAutomaticBlockTable } from '@/lib/pf-block-tables';
+import { interpretTableTarget, tableTargetInput, type TableTarget } from '@/lib/table-ip';
 import { fetchNodeCommandDetail } from '@/lib/node-commands-actions';
 import { isAgentVersionAtLeast } from '@/lib/agent-version';
 import { commandStatusLabel } from '@/components/nodes/node-command-progress';
@@ -12,303 +12,266 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
 type Node = { id: string; hostname: string; display_name: string | null; agent_version: string | null };
+type InputRow = { id: number; address: string; prefix: number };
 type BlockGroup = { table: string; entries: string[]; total: number; truncated: boolean };
 type Job = {
+  id: string;
   nodeId: string;
   hostname: string;
-  commandId?: string;
+  target?: TableTarget;
+  table?: string;
+  phase: 'search' | 'remove' | 'list';
   status: string;
   tables: string[];
   blocks?: BlockGroup[];
   error?: string;
+  notice?: string;
 };
+type Match = { node: Node; target: TableTarget; table: string };
+const ACTIVE_STATUSES = ['pending', 'picked_up', 'running'];
+const PREFIXES = [...Array.from({ length: 32 }, (_, index) => 32 - index), 128];
+const FIELD_CLASS = 'h-11 rounded-lg border border-border bg-surface-soft px-3 text-sm text-fg';
 
-function tableResult(value: unknown): string[] {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
-  const tables = (value as Record<string, unknown>).tables;
-  return Array.isArray(tables)
-    ? tables.filter((item): item is string => typeof item === 'string' && isBlockTable(item))
-    : [];
+function matchKey(match: Match) {
+  return JSON.stringify([match.node.id, match.target.target, match.table]);
 }
 
-function blockResult(value: unknown): BlockGroup[] {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
-  const blocks = (value as Record<string, unknown>).blocks;
-  if (!Array.isArray(blocks)) return [];
-  return blocks.flatMap((item) => {
-    if (!item || typeof item !== 'object') return [];
-    const row = item as Record<string, unknown>;
-    if (typeof row.table !== 'string' || !isBlockTable(row.table)) return [];
-    const entries = Array.isArray(row.entries) ? row.entries.filter((entry): entry is string => typeof entry === 'string') : [];
-    return [{
-      table: row.table,
-      entries,
-      total: typeof row.total === 'number' ? row.total : entries.length,
-      truncated: row.truncated === true,
-    }];
+function readTables(value: unknown): string[] {
+  if (!value || typeof value !== 'object') throw new Error('O firewall retornou uma consulta sem resultado.');
+  const tables = (value as Record<string, unknown>).tables;
+  if (!Array.isArray(tables) || tables.some((table) => typeof table !== 'string')) {
+    throw new Error('O firewall retornou uma consulta incompleta. Consulte novamente.');
+  }
+  return [...new Set(tables.filter(isBlockTable))];
+}
+
+function readBlocks(value: unknown): BlockGroup[] {
+  const blocks = value && typeof value === 'object' ? (value as Record<string, unknown>).blocks : null;
+  if (!Array.isArray(blocks)) throw new Error('O firewall retornou uma listagem incompleta.');
+  return blocks.flatMap((value) => {
+    if (!value || typeof value !== 'object') throw new Error('Tabela inválida na resposta do firewall.');
+    const row = value as Record<string, unknown>;
+    if (typeof row.table !== 'string' || !Array.isArray(row.entries) || row.entries.some((entry) => typeof entry !== 'string')) {
+      throw new Error('Tabela incompleta na resposta do firewall.');
+    }
+    if (!isBlockTable(row.table)) return [];
+    return [{ table: row.table, entries: row.entries as string[], total: typeof row.total === 'number' ? row.total : row.entries.length, truncated: row.truncated === true }];
   });
 }
 
-function key(nodeId: string, table: string) {
-  return `${nodeId}\u0000${table}`;
-}
-
-const NETWORK_PREFIXES = Array.from({ length: 32 }, (_, index) => 32 - index);
-const FIELD_CLASS = 'h-11 rounded-lg border border-border bg-surface-soft px-3 text-sm text-fg';
-
 export function FleetPfTablesPanel({ selectedNodes }: { selectedNodes: Node[] }) {
-  // Trocar a seleção descarta também trabalhos e respostas da seleção anterior.
   return <FleetPfTablesQuery key={selectedNodes.map((node) => node.id).sort().join(',')} selectedNodes={selectedNodes} />;
 }
 
 function FleetPfTablesQuery({ selectedNodes }: { selectedNodes: Node[] }) {
-  const [ip, setIp] = useState('');
-  const [prefix, setPrefix] = useState(32);
-  const [queriedIp, setQueriedIp] = useState('');
-  const [queryPrefix, setQueryPrefix] = useState(32);
+  const [rows, setRows] = useState<InputRow[]>([{ id: 1, address: '', prefix: 32 }]);
+  const nextRow = useRef(2);
   const generation = useRef(0);
-  const pollInFlight = useRef(false);
-  const [querySelection, setQuerySelection] = useState('');
-  const [confirmation, setConfirmation] = useState('');
-  const [searches, setSearches] = useState<Job[]>([]);
-  const [listings, setListings] = useState<Job[]>([]);
-  const [removals, setRemovals] = useState<Job[]>([]);
-  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const running = useRef(false);
   const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState('');
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [review, setReview] = useState<'automatic' | 'selected' | null>(null);
 
-  const selectedIds = useMemo(() => new Set(selectedNodes.map((node) => node.id)), [selectedNodes]);
-  const selectedSignature = [...selectedIds].sort().join(',');
+  useEffect(() => () => { generation.current += 1; }, []);
+
+  const parsed = rows.map((row) => interpretTableTarget(row.address, row.prefix));
+  const targets = parsed.filter((value): value is TableTarget => 'target' in value);
+  const uniqueTargets = [...new Map(targets.map((target) => [target.target, target])).values()];
+  const valid = parsed.every((target) => 'target' in target);
   const unsupported = selectedNodes.filter((node) => !isAgentVersionAtLeast(node.agent_version, '0.5.23'));
-  const listUnsupported = selectedNodes.filter((node) => !isAgentVersionAtLeast(node.agent_version, '0.5.25'));
-  const networkUnsupported = [32, 128].includes(prefix) ? [] : selectedNodes.filter((node) => !isAgentVersionAtLeast(node.agent_version, '0.5.24'));
-  const preview = ip.trim() ? interpretTableTarget(ip, prefix) : null;
-  const matches = (querySelection === selectedSignature ? searches : []).flatMap((job) =>
-    job.status === 'succeeded' && selectedIds.has(job.nodeId)
-      ? job.tables.map((table) => ({ nodeId: job.nodeId, hostname: job.hostname, table }))
-      : [],
-  );
-  const selectedMatches = matches.filter((match) => checked.has(key(match.nodeId, match.table)));
-  const active = [...searches, ...listings, ...removals].some((job) => job.commandId && ['pending', 'picked_up', 'running'].includes(job.status));
+  const networkUnsupported = uniqueTargets.some((target) => ![32, 128].includes(target.prefix))
+    && selectedNodes.some((node) => !isAgentVersionAtLeast(node.agent_version, '0.5.24'));
+  const listUnsupported = selectedNodes.some((node) => !isAgentVersionAtLeast(node.agent_version, '0.5.25'));
+  const selectionInvalid = selectedNodes.length === 0 || selectedNodes.length > 20 || unsupported.length > 0;
+  const matches: Match[] = jobs.flatMap((job) => {
+    const node = selectedNodes.find((node) => node.id === job.nodeId);
+    return job.phase === 'search' && job.status === 'succeeded' && job.target && node
+      ? job.tables.map((table) => ({ node, target: job.target!, table })) : [];
+  });
+  const selectedMatches = matches.filter((match) => checked.has(matchKey(match)));
 
-  function invalidateTarget() {
+  function invalidate() {
     generation.current += 1;
-    setBusy(false);
-    setFormError('');
-    setSearches([]);
-    setRemovals([]);
+    setJobs((current) => current.filter((job) => job.phase === 'list'));
     setChecked(new Set());
-    setQueriedIp('');
-    setConfirmation('');
+    setReview(null);
   }
 
-  useEffect(() => () => {
-    generation.current += 1;
-  }, []);
+  function editRow(id: number, address: string, prefix: number) {
+    if (running.current) return;
+    invalidate();
+    const typed = tableTargetInput(address, prefix);
+    setRows((current) => current.map((row) => row.id === id ? { id, ...typed } : row));
+  }
 
-  const refresh = useCallback(async () => {
-    if (pollInFlight.current) return;
-    pollInFlight.current = true;
-    const run = generation.current;
+  function addRow(address = '', prefix = 32) {
+    if (running.current || rows.length >= 20) return;
+    invalidate();
+    const row = { id: nextRow.current++, ...tableTargetInput(address, prefix) };
+    setRows((current) => address.trim() && current.length === 1 && !current[0].address.trim() ? [{ ...row, id: current[0].id }] : [...current, row]);
+  }
+
+  function updateJob(run: number, job: Job) {
+    if (run !== generation.current) return;
+    setJobs((current) => [...current.filter((entry) => entry.id !== job.id), job]);
+  }
+
+  async function execute(run: number, job: Job, request: () => Promise<TableActionResult>) {
+    if (run !== generation.current) return null;
+    updateJob(run, job);
+    let awaitingConfirmation = false;
     try {
-      const update = async (jobs: Job[]) => Promise.all(jobs.map(async (job) => {
-        if (!job.commandId || !['pending', 'picked_up', 'running'].includes(job.status)) return job;
-        try {
-          const { command } = await fetchNodeCommandDetail(job.nodeId, job.commandId);
-          const blocks = blockResult(command.result_json);
-          return {
-            ...job,
-            status: command.status,
-            tables: job.tables.length ? job.tables : tableResult(command.result_json),
-            blocks: blocks.length ? blocks : job.blocks,
-            error: command.error_message ?? undefined,
-          };
-        } catch {
-          return job;
+      const response = await request();
+      if (run !== generation.current) return null;
+      if (!response.ok) throw new Error(response.error);
+      awaitingConfirmation = true;
+      const deadline = Date.now() + 180_000;
+      // Requests on the same firewall are completed sequentially to respect its command limit.
+      while (run === generation.current) {
+        const { command } = await fetchNodeCommandDetail(job.nodeId, response.command_id);
+        if (run !== generation.current) return null;
+        updateJob(run, { ...job, status: command.status });
+        if (!ACTIVE_STATUSES.includes(command.status)) {
+          awaitingConfirmation = false;
+          if (command.status !== 'succeeded') throw new Error(command.error_message || `Comando ${commandStatusLabel(command.status)}.`);
+          const data = command.result_json;
+          if (!data || typeof data !== 'object' || (data as Record<string, unknown>).ok !== true) {
+            throw new Error('O firewall não confirmou o resultado da operação.');
+          }
+          return data;
+        }
+        if (Date.now() >= deadline) throw new Error('Sem confirmação após três minutos. Confira o histórico de comandos antes de tentar novamente.');
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+    } catch (cause) {
+      updateJob(run, { ...job, status: awaitingConfirmation ? 'unconfirmed' : 'failed', error: cause instanceof Error ? cause.message : 'Falha ao executar a operação.' });
+    }
+    return null;
+  }
+
+  function newJob(node: Node, phase: Job['phase'], target?: TableTarget, table?: string): Job {
+    return { id: JSON.stringify([node.id, phase, target?.target, table]), nodeId: node.id, hostname: node.display_name || node.hostname, phase, target, table, status: 'pending', tables: [] };
+  }
+
+  async function removeMatch(run: number, match: Match) {
+    const { node, target, table } = match;
+    const job = newJob(node, 'remove', target, table);
+    const data = await execute(run, job, () => requestTableEntryRemoveAction(node.id, table, target.target, target.target, target.prefix));
+    if (data) updateJob(run, { ...job, status: 'succeeded', notice: 'Desbloqueio confirmado pelo firewall.' });
+  }
+
+  async function searchTarget(run: number, node: Node, target: TableTarget, unlock: boolean) {
+    const job = newJob(node, 'search', target);
+    const data = await execute(run, job, () => requestTableSearchAction(node.id, target.target, target.prefix));
+    if (!data || run !== generation.current) return;
+    try {
+      const tables = readTables(data);
+      const automatic = tables.filter(isAutomaticBlockTable);
+      updateJob(run, { ...job, status: 'succeeded', tables, notice: automatic.length ? undefined : 'Sem bloqueio nas tabelas de proteção consultadas.' });
+      if (unlock) {
+        for (const table of automatic) {
+          if (run !== generation.current) return;
+          await removeMatch(run, { node, target, table });
+        }
+      }
+    } catch (cause) {
+      updateJob(run, { ...job, status: 'failed', error: cause instanceof Error ? cause.message : 'Resposta inválida.' });
+    }
+  }
+
+  async function perform(action: 'consult' | 'unlock' | 'list' | 'selected') {
+    if (running.current || selectionInvalid || (action !== 'list' && (!valid || networkUnsupported))) return;
+    if (action === 'list' && listUnsupported) return;
+    const run = ++generation.current;
+    running.current = true;
+    setBusy(true);
+    setReview(null);
+    if (action !== 'selected') { setJobs([]); setChecked(new Set()); }
+    try {
+      await Promise.all(selectedNodes.map(async (node) => {
+        if (action === 'selected') {
+          for (const match of selectedMatches.filter((match) => match.node.id === node.id)) await removeMatch(run, match);
+        } else if (action === 'list') {
+          const job = newJob(node, 'list');
+          const data = await execute(run, job, () => requestTableListAction(node.id));
+          if (data) {
+            try { updateJob(run, { ...job, status: 'succeeded', blocks: readBlocks(data) }); }
+            catch (cause) { updateJob(run, { ...job, status: 'failed', error: cause instanceof Error ? cause.message : 'Resposta inválida.' }); }
+          }
+        } else {
+          for (const target of uniqueTargets) {
+            if (run !== generation.current) return;
+            await searchTarget(run, node, target, action === 'unlock');
+          }
         }
       }));
-      const [nextSearches, nextListings, nextRemovals] = await Promise.all([update(searches), update(listings), update(removals)]);
-      if (run !== generation.current) return;
-      setSearches(nextSearches);
-      setListings(nextListings);
-      setRemovals(nextRemovals);
     } finally {
-      pollInFlight.current = false;
+      if (run === generation.current) { running.current = false; setBusy(false); }
     }
-  }, [searches, listings, removals]);
-
-  useEffect(() => {
-    if (!active || busy) return;
-    const timer = setInterval(() => { void refresh(); }, 5000);
-    return () => clearInterval(timer);
-  }, [active, busy, refresh]);
-
-  async function consult() {
-    const targetIp = ip.trim();
-    if (!targetIp || selectedNodes.length === 0 || selectedNodes.length > 20 || unsupported.length > 0 || networkUnsupported.length > 0 || busy) return;
-    const interpreted = interpretTableTarget(targetIp, prefix);
-    if ('error' in interpreted) {
-      setFormError(interpreted.error);
-      setSearches([]);
-      setRemovals([]);
-      setChecked(new Set());
-      setQueriedIp('');
-      return;
-    }
-    const run = ++generation.current;
-    setBusy(true);
-    setFormError('');
-    setSearches([]);
-    setRemovals([]);
-    setChecked(new Set());
-    setQueriedIp(interpreted.target);
-    setQuerySelection(selectedSignature);
-    setQueryPrefix(interpreted.prefix);
-    setConfirmation('');
-    const jobs: Job[] = [];
-    for (const node of selectedNodes) {
-      try {
-        const result = await requestTableSearchAction(node.id, interpreted.target, interpreted.prefix);
-        if (run !== generation.current) return;
-        if (!result.ok) {
-          if (result.code === 'invalid_ip') {
-            setFormError(result.error);
-            break;
-          }
-          jobs.push({ nodeId: node.id, hostname: node.display_name || node.hostname, status: 'failed', tables: [], error: result.error });
-        } else {
-          jobs.push({ nodeId: node.id, hostname: node.display_name || node.hostname, commandId: result.command_id, status: result.status, tables: [] });
-        }
-      } catch (cause) {
-        jobs.push({ nodeId: node.id, hostname: node.display_name || node.hostname, status: 'failed', tables: [], error: cause instanceof Error ? cause.message : 'Falha ao solicitar consulta' });
-      }
-      if (run !== generation.current) return;
-      setSearches([...jobs]);
-    }
-    setBusy(false);
-  }
-
-  async function listBlocks() {
-    if (selectedNodes.length === 0 || selectedNodes.length > 20 || unsupported.length > 0 || listUnsupported.length > 0 || busy) return;
-    const run = ++generation.current;
-    setBusy(true);
-    setFormError('');
-    setListings([]);
-    const jobs: Job[] = [];
-    for (const node of selectedNodes) {
-      try {
-        const result = await requestTableListAction(node.id);
-        if (run !== generation.current) return;
-        if (!result.ok) {
-          jobs.push({ nodeId: node.id, hostname: node.display_name || node.hostname, status: 'failed', tables: [], error: result.error });
-        } else {
-          jobs.push({ nodeId: node.id, hostname: node.display_name || node.hostname, commandId: result.command_id, status: result.status, tables: [] });
-        }
-      } catch (cause) {
-        jobs.push({ nodeId: node.id, hostname: node.display_name || node.hostname, status: 'failed', tables: [], error: cause instanceof Error ? cause.message : 'Falha ao solicitar a lista' });
-      }
-      if (run !== generation.current) return;
-      setListings([...jobs]);
-    }
-    setBusy(false);
-  }
-
-  function useListedEntry(entry: string) {
-    invalidateTarget();
-    const typed = tableTargetInput(entry.trim(), 32);
-    setIp(typed.address);
-    setPrefix(typed.prefix);
-  }
-
-  async function remove() {
-    if (confirmation.trim() !== queriedIp || selectedMatches.length === 0 || busy || active || removals.length > 0 || !preview || !('target' in preview) || preview.target !== queriedIp || preview.prefix !== queryPrefix) return;
-    const run = ++generation.current;
-    setBusy(true);
-    setFormError('');
-    setRemovals([]);
-    const jobs: Job[] = [];
-    for (const match of selectedMatches) {
-      try {
-        const result = await requestTableEntryRemoveAction(match.nodeId, match.table, queriedIp, confirmation.trim(), queryPrefix);
-        if (run !== generation.current) return;
-        if (!result.ok) {
-          jobs.push({ nodeId: match.nodeId, hostname: `${match.hostname} · ${match.table}`, status: 'failed', tables: [], error: result.error });
-        } else {
-          jobs.push({ nodeId: match.nodeId, hostname: `${match.hostname} · ${match.table}`, commandId: result.command_id, status: result.status, tables: [] });
-        }
-      } catch (cause) {
-        jobs.push({ nodeId: match.nodeId, hostname: `${match.hostname} · ${match.table}`, status: 'failed', tables: [], error: cause instanceof Error ? cause.message : 'Falha ao solicitar remoção' });
-      }
-      if (run !== generation.current) return;
-      setRemovals([...jobs]);
-    }
-    setConfirmation('');
-    setBusy(false);
   }
 
   return (
-    <Card className="space-y-3 p-4">
+    <Card className="space-y-4 p-4">
       <div>
-        <h3 className="font-display text-base text-fg">Desbloquear IP nos firewalls selecionados</h3>
-        <p className="text-sm text-fg-muted">Listar bloqueios mostra o conteúdo de webConfiguratorlockout, sshlockout, virusprot e snort2c. ips_liberados não entra. Clique num endereço para levá-lo ao campo e desbloquear. Listar exige o agente 0.5.25.</p>
+        <h3 className="font-display text-base text-fg">Desbloquear IPs nos firewalls selecionados</h3>
+        <p className="text-sm text-fg-muted">Adicione os endereços e clique em Desbloquear IPs. A ação consulta cada firewall e remove os bloqueios encontrados nas tabelas de proteção de acesso e IDS/IPS.</p>
+        <p className="mt-1 text-sm text-fg-muted">{selectedNodes.length} firewall(s) selecionado(s) · Até 20 IPs por operação.</p>
       </div>
-      {selectedNodes.length > 20 ? <Alert variant="warning">Selecione no máximo 20 firewalls por consulta.</Alert> : null}
-      {unsupported.length > 0 ? <Alert variant="warning">Agente 0.5.23 ou superior necessário em: {unsupported.map((node) => node.display_name || node.hostname).join(', ')}.</Alert> : null}
-      {networkUnsupported.length > 0 ? <Alert variant="warning">Agente 0.5.24 ou superior necessário para rede IPv4 com máscara menor que /32 em: {networkUnsupported.map((node) => node.display_name || node.hostname).join(', ')}.</Alert> : null}
-      {listUnsupported.length > 0 ? <Alert variant="warning">Agente 0.5.25 ou superior necessário para listar bloqueios em: {listUnsupported.map((node) => node.display_name || node.hostname).join(', ')}.</Alert> : null}
-      {formError ? <Alert variant="warning">{formError}</Alert> : null}
-      {searches.length > 0 && querySelection !== selectedSignature ? <Alert variant="warning">A seleção de firewalls mudou. Consulte novamente antes de desbloquear.</Alert> : null}
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="text-sm text-fg">IP a desbloquear
-          <span className="mt-1 flex items-center gap-1">
-            <input className={`${FIELD_CLASS} w-44`} value={ip} onChange={(event) => { invalidateTarget(); const typed = tableTargetInput(event.target.value, prefix); setIp(typed.address); setPrefix(typed.prefix); }} placeholder="ex.: 203.0.113.10" />
-            <select className={FIELD_CLASS} aria-label="Máscara da rede" value={prefix} onChange={(event) => { invalidateTarget(); setPrefix(Number(event.target.value)); }}>
-              {[...NETWORK_PREFIXES, 128].map((item) => <option key={item} value={item}>/{item}</option>)}
-            </select>
-          </span>
-        </label>
-        <Button type="button" variant="secondary" disabled={busy || !ip.trim() || selectedNodes.length > 20 || unsupported.length > 0 || networkUnsupported.length > 0} onClick={() => { void consult(); }}>Consultar nos selecionados</Button>
-        <Button type="button" variant="secondary" disabled={busy || selectedNodes.length === 0 || selectedNodes.length > 20 || unsupported.length > 0 || listUnsupported.length > 0} onClick={() => { void listBlocks(); }}>Listar bloqueios</Button>
-      </div>
-      {preview && 'target' in preview && ![32, 128].includes(prefix) ? <p className="text-sm text-fg-muted">A consulta usa a rede {preview.target}.</p> : null}
-      {listings.length > 0 ? (
-        <div className="space-y-2 text-sm">
-          {listings.map((job) => <div key={`list-${job.nodeId}`} className="rounded-md border border-slate-700 p-2">
-            <strong>{job.hostname}</strong>: {job.status === 'succeeded' ? (job.blocks?.length ? `${job.blocks.length} tabela(s) com bloqueio` : 'Nenhum bloqueio listado') : commandStatusLabel(job.status)}
-            {job.error ? <span className="text-rose-300"> — {job.error}</span> : null}
-            {job.blocks?.map((block) => <div key={block.table} className="mt-2">
-              <p className="text-fg">{block.table}{block.truncated ? ` (${block.total} entradas, mostrando 80)` : ''}</p>
-              <ul className="mt-1 space-y-1">
-                {block.entries.map((entry) => <li key={entry}>
-                  <button type="button" className="text-primary hover:underline" onClick={() => useListedEntry(entry)}>{entry}</button>
-                </li>)}
-              </ul>
-            </div>)}
-          </div>)}
-        </div>
-      ) : null}
-      {searches.length > 0 ? (
-        <div className="space-y-2 text-sm">
-          {searches.map((job) => <div key={job.nodeId} className="rounded-md border border-slate-700 p-2">
-            <strong>{job.hostname}</strong>: {job.status === 'succeeded' ? (job.tables.length ? `${job.tables.length} tabela(s) de bloqueio` : 'Nenhum bloqueio encontrado') : commandStatusLabel(job.status)}
-            {job.error ? <span className="text-rose-300"> — {job.error}</span> : null}
-            {job.tables.map((table) => <label key={table} className="mt-1 flex items-center gap-2">
-              <input type="checkbox" checked={checked.has(key(job.nodeId, table))} onChange={() => setChecked((current) => { const next = new Set(current); const item = key(job.nodeId, table); if (next.has(item)) next.delete(item); else next.add(item); return next; })} />
-              {table}
-            </label>)}
-          </div>)}
-        </div>
-      ) : null}
-      {matches.length > 0 ? (
-        <div className="space-y-2 border-t border-slate-700 pt-3">
-          <p className="text-sm text-fg-muted">A remoção tira o IP da tabela de bloqueio em memória. ips_liberados fica de fora.</p>
-          <label className="text-sm text-fg">Confirme digitando {queriedIp}
-            <input className="mt-1 block rounded-md border border-slate-700 bg-slate-900 px-3 py-2" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
+      {selectionInvalid ? <Alert variant="warning">Selecione de 1 a 20 firewalls com agente 0.5.23 ou superior.</Alert> : null}
+      {networkUnsupported ? <Alert variant="warning">Para desbloquear redes IPv4, os firewalls precisam do agente 0.5.24 ou superior.</Alert> : null}
+      <div className="space-y-2">
+        {rows.map((row, index) => <div key={row.id} className="flex flex-wrap items-end gap-2">
+          <label className="min-w-0 flex-1 text-sm text-fg">IP {index + 1}
+            <input className={`${FIELD_CLASS} mt-1 w-full`} disabled={busy} value={row.address} onChange={(event) => editRow(row.id, event.target.value, row.prefix)} placeholder="ex.: 203.0.113.10" />
           </label>
-          <Button type="button" variant="danger" disabled={busy || active || removals.length > 0 || selectedMatches.length === 0 || confirmation.trim() !== queriedIp} onClick={() => { void remove(); }}>Desbloquear {selectedMatches.length} entrada(s)</Button>
+          <label className="text-sm text-fg">Máscara
+            <select className={`${FIELD_CLASS} mt-1 block`} aria-label={`Máscara do IP ${index + 1}`} disabled={busy} value={row.prefix} onChange={(event) => editRow(row.id, row.address, Number(event.target.value))}>
+              {PREFIXES.map((prefix) => <option key={prefix} value={prefix}>/{prefix}</option>)}
+            </select>
+          </label>
+          {rows.length > 1 ? <Button type="button" variant="secondary" disabled={busy} aria-label={`Remover IP ${index + 1}`} onClick={() => { if (running.current) return; invalidate(); setRows((current) => current.filter((entry) => entry.id !== row.id)); }}>Remover</Button> : null}
+          {'target' in parsed[index] && ![32, 128].includes(row.prefix) ? <p className="w-full text-sm text-fg-muted">Rede que será utilizada: {(parsed[index] as TableTarget).target}</p> : null}
+          {row.address.trim() && 'error' in parsed[index] ? <p className="w-full text-sm text-rose-300">{(parsed[index] as { error: string }).error}</p> : null}
+        </div>)}
+        <Button type="button" variant="secondary" className="min-h-12 px-5 text-base" disabled={busy || rows.length >= 20} onClick={() => addRow()} aria-label="Adicionar outro IP">+ Adicionar IP</Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+        <Button type="button" variant="danger" disabled={busy || selectionInvalid || !valid || !!networkUnsupported} onClick={() => setReview('automatic')}>Desbloquear IPs ({uniqueTargets.length})</Button>
+        <span role="status" className="text-sm text-fg-muted">{busy ? 'Aguardando confirmação dos firewalls… Mantenha esta tela aberta.' : 'Os resultados aparecem abaixo por IP e firewall.'}</span>
+      </div>
+      {review ? <div role="alertdialog" aria-modal="false" aria-label="Confirmar desbloqueio" className="space-y-3 rounded-lg border border-border p-4">
+        <p className="font-medium text-fg">Confirme os endereços e firewalls para desbloquear</p>
+        <p className="break-words text-sm">{review === 'automatic' ? uniqueTargets.map((target) => target.target).join(', ') : selectedMatches.map((match) => `${match.target.target} · ${match.table}`).join(', ')}</p>
+        <p className="text-sm text-fg-muted">{selectedNodes.map((node) => node.display_name || node.hostname).join(', ')}</p>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="danger" disabled={busy || (review === 'selected' && selectedMatches.length === 0)} onClick={() => { void perform(review === 'automatic' ? 'unlock' : 'selected'); }}>Confirmar desbloqueio</Button>
+          <Button type="button" variant="secondary" disabled={busy} onClick={() => setReview(null)}>Cancelar</Button>
         </div>
-      ) : null}
-      {removals.length > 0 ? <div className="text-sm">{removals.map((job) => <p key={`${job.nodeId}:${job.hostname}`}>{job.hostname}: {commandStatusLabel(job.status)}{job.error ? ` — ${job.error}` : ''}</p>)}</div> : null}
+      </div> : null}
+      <details className="rounded-lg border border-border p-3">
+        <summary className="cursor-pointer text-sm font-medium">Consultar tabelas e listar bloqueios</summary>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" disabled={busy || selectionInvalid || !valid || !!networkUnsupported} onClick={() => { void perform('consult'); }}>Consultar IPs nos selecionados</Button>
+          <Button type="button" variant="secondary" disabled={busy || selectionInvalid || listUnsupported} onClick={() => { void perform('list'); }}>Listar bloqueios</Button>
+        </div>
+        <p className="mt-2 text-sm text-fg-muted">A consulta mostra tabelas associadas aos endereços. Para incluir sshguard em Listar bloqueios, use o agente 0.5.34 ou superior. Clique em uma entrada da lista para adicionar o endereço.</p>
+      </details>
+      {jobs.length > 0 ? <div className="space-y-2 text-sm" aria-live="polite">
+        {jobs.map((job) => <div key={job.id} className="rounded-lg border border-border p-3">
+          <strong>{job.hostname} {job.target ? `· ${job.target.target}` : ''}</strong>
+          <p>{job.phase === 'remove' ? `Desbloqueio · ${job.table}` : job.phase === 'list' ? 'Listagem de bloqueios' : 'Consulta de bloqueios'} · {job.status === 'unconfirmed' ? 'Sem confirmação. Confira o histórico de comandos antes de tentar novamente.' : commandStatusLabel(job.status)}</p>
+          {job.notice ? <p>{job.notice}</p> : null}
+          {job.error ? <p className="text-rose-300">{job.error}</p> : null}
+          {job.phase === 'search' && job.status === 'succeeded' ? job.tables.map((table) => {
+            const match = matches.find((match) => match.node.id === job.nodeId && match.target.target === job.target?.target && match.table === table);
+            return match ? <label key={table} className="mt-2 flex items-center gap-2"><input type="checkbox" disabled={busy} checked={checked.has(matchKey(match))} onChange={() => { setReview(null); setChecked((current) => { const next = new Set(current); const key = matchKey(match); if (next.has(key)) next.delete(key); else next.add(key); return next; }); }} />{table}{isAutomaticBlockTable(table) ? '' : ' · tabela adicional, exige seleção manual'}</label> : null;
+          }) : null}
+          {job.phase === 'list' && job.status === 'succeeded' && !job.blocks?.length ? <p>Sem entradas nas tabelas de proteção listadas.</p> : null}
+          {job.blocks?.map((block) => <div key={block.table} className="mt-2"><p>{block.table} · {block.total} entrada(s){block.truncated ? ' · mostrando 80' : ''}</p><ul className="mt-1 flex flex-wrap gap-2">{block.entries.map((entry) => <li key={entry}><button type="button" className="text-primary hover:underline" disabled={busy || rows.length >= 20} onClick={() => addRow(entry)}>{entry}</button></li>)}</ul></div>)}
+        </div>)}
+      </div> : null}
+      {selectedMatches.length > 0 ? <Button type="button" variant="danger" disabled={busy} onClick={() => setReview('selected')}>Desbloquear entradas selecionadas ({selectedMatches.length})</Button> : null}
     </Card>
   );
 }

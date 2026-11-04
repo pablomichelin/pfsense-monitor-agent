@@ -1,5 +1,9 @@
 # CORTEX
 
+## Desbloqueio de múltiplos IPs — 03/11/2026
+
+Painel **1.15.4** preparado com até 20 endereços, botão **+ Adicionar IP** e ação principal **Desbloquear IPs**. A confirmação mostra IPs/redes canônicos e firewalls. A ação consulta e remove sequencialmente por firewall as entradas das tabelas dinâmicas sshguard, webConfiguratorlockout, sshlockout, virusprot e snort2c. Consulta manual, seleção de tabelas adicionais e listagem continuam disponíveis. Resultados individuais distinguem sucesso, falha e ausência de confirmação. Oito testes dirigidos aprovados em dois grupos (6+2), typecheck aprovado. Publicação e verificação visual em andamento.
+
 ## Listagem de bloqueios do pfSense — 03/11/2026
 
 O package **0.5.34** inclui a tabela `sshguard` na ação **Listar bloqueios**. A versão anterior consultava essa tabela na busca por endereço, mas a omitia na listagem. No laboratório, um endereço de teste apareceu na lista e na busca e sua remoção individual foi confirmada pelo PF. O bloqueio real foi removido pelo Monitor e a tela de login respondeu a partir do endereço liberado. Implantação confirmada no firewall deste chamado. O comando de listagem retornou 60 entradas em `sshguard` depois da atualização. O acesso à tela de login pela origem desbloqueada foi confirmado novamente. A versão 0.5.33 foi retirada após falha de extração por metadados do macOS. A 0.5.34 usa formato ustar e passou na extração nativa FreeBSD antes da publicação.

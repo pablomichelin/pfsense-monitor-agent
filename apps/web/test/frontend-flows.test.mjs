@@ -129,74 +129,104 @@ test('usuários sem gestão permanecem somente leitura e sessões são carregada
 
 function pfHarness(t, overrides = {}) {
   const harness = hookHarness();
-  const timers = new Map();
-  let timerId = 0;
-  t.mock.method(globalThis, 'setInterval', (fn) => { timers.set(++timerId, fn); return timerId; });
-  t.mock.method(globalThis, 'clearInterval', (id) => timers.delete(id));
   const { FleetPfTablesPanel } = sourceLoader({ ...uiMocks, react: harness.react,
-    '@/lib/operational-actions-actions': { requestTableSearchAction: async () => ({ ok: true, command_id: 'cmd', status: 'pending' }), requestTableListAction: async () => ({ ok: true, command_id: 'list', status: 'pending' }), requestTableEntryRemoveAction: () => assert.fail('Nenhuma remoção esperada'), ...overrides.actions },
-    '@/lib/node-commands-actions': { fetchNodeCommandDetail: async () => ({ command: { status: 'succeeded', result_json: { tables: ['sshlockout', 'ips_liberados'] } } }), ...overrides.poll },
+    '@/lib/operational-actions-actions': {
+      requestTableSearchAction: async () => ({ ok: true, command_id: 'search', status: 'pending' }),
+      requestTableListAction: async () => ({ ok: true, command_id: 'list', status: 'pending' }),
+      requestTableEntryRemoveAction: async () => ({ ok: true, command_id: 'remove', status: 'pending' }),
+      ...overrides.actions,
+    },
+    '@/lib/node-commands-actions': { fetchNodeCommandDetail: async () => ({ command: { status: 'succeeded', result_json: { ok: true, tables: ['sshguard', 'ips_liberados', 'ips_systemup'] } } }), ...overrides.poll },
     '@/components/nodes/node-command-progress': { commandStatusLabel: (s) => s },
   })('components/nodes/fleet-pf-tables-panel.tsx');
-  const props = { selectedNodes: [{ id: 'node', hostname: 'synthetic', display_name: null, agent_version: '0.5.25' }] };
+  const props = { selectedNodes: overrides.nodes ?? [{ id: 'node', hostname: 'synthetic', display_name: null, agent_version: '0.5.34' }] };
   const child = FleetPfTablesPanel(props);
   let tree;
   const render = () => tree = harness.render(child.type, child.props);
-  const inputIp = (value) => { elements(tree).find((e) => e.type === 'input' && e.props.placeholder).props.onChange({ target: { value } }); render(); };
-  const click = (label) => elements(tree).find((e) => e.type === 'button' && textOf(e).includes(label)).props.onClick();
+  const inputIp = (value, index = 0) => { elements(tree).filter((e) => e.type === 'input' && e.props.placeholder)[index].props.onChange({ target: { value } }); render(); };
+  const click = (label) => { const button = elements(tree).find((e) => e.type === 'button' && textOf(e).startsWith(label)); assert.ok(button, label); assert.ok(!button.props.disabled, label); return button.props.onClick(); };
   render();
-  return { harness, render, inputIp, click, timers, get tree() { return tree; }, FleetPfTablesPanel, props };
+  return { harness, render, inputIp, click, get tree() { return tree; }, FleetPfTablesPanel, props };
 }
 
-test('pf tables: resposta tardia da consulta não reaparece após editar IP', async (t) => {
+test('pf tables: sair da tela descarta consulta antiga sem executar remoção', async (t) => {
   const response = deferred();
-  const pf = pfHarness(t, { actions: { requestTableSearchAction: () => response.promise } });
+  let writes = 0;
+  const pf = pfHarness(t, { actions: { requestTableSearchAction: () => response.promise, requestTableEntryRemoveAction: () => { writes++; } } });
   pf.inputIp('203.0.113.1');
-  pf.click('Consultar');
-  pf.render();
-  pf.inputIp('203.0.113.2');
+  pf.click('Consultar IPs');
+  pf.harness.unmount();
   response.resolve({ ok: true, command_id: 'old-cmd', status: 'pending' });
   await settle();
-  assert.ok(!textOf(pf.render()).includes('pending'));
-  assert.equal(pf.timers.size, 0);
+  assert.equal(writes, 0);
 });
 
-test('pf tables: polling antigo não repõe matches após mudar máscara; allow table excluída', async (t) => {
-  const poll = deferred();
-  const pf = pfHarness(t, { poll: { fetchNodeCommandDetail: () => poll.promise } });
+test('pf tables: + adiciona linha, valida todas, deduplica e desbloqueia dois IPs após confirmação', async (t) => {
+  const calls = [];
+  const pf = pfHarness(t, { actions: {
+    requestTableSearchAction: async (...args) => { calls.push(['search', ...args]); return { ok: true, command_id: 'search' }; },
+    requestTableEntryRemoveAction: async (...args) => { calls.push(['remove', ...args]); return { ok: true, command_id: 'remove' }; },
+  } });
+  pf.click('+ Adicionar IP'); pf.render();
+  assert.equal(elements(pf.tree).filter((e) => e.props?.placeholder).length, 2);
   pf.inputIp('203.0.113.1');
-  pf.click('Consultar');
-  await settle();
-  pf.render();
-  assert.equal(pf.timers.size, 1);
-  [...pf.timers.values()][0]();
-  elements(pf.tree).find((e) => e.type === 'select').props.onChange({ target: { value: '24' } });
-  pf.render();
-  poll.resolve({ command: { status: 'succeeded', result_json: { tables: ['sshlockout'] } } });
-  await settle();
-  assert.ok(!textOf(pf.render()).includes('1 tabela(s) de bloqueio'));
-  assert.equal(elements(pf.tree).filter((e) => e.props?.type === 'checkbox').length, 0);
+  assert.ok(elements(pf.tree).find((e) => e.type === 'button' && textOf(e).startsWith('Desbloquear IPs')).props.disabled);
+  pf.inputIp('203.0.113.2', 1);
+  pf.click('+ Adicionar IP'); pf.render(); pf.inputIp('203.0.113.1', 2);
+  pf.click('Desbloquear IPs'); pf.render();
+  assert.equal(calls.length, 0);
+  assert.ok(textOf(pf.tree).includes('203.0.113.1, 203.0.113.2'));
+  pf.click('Confirmar desbloqueio'); await settle(); pf.render();
+  assert.deepEqual(calls, [
+    ['search', 'node', '203.0.113.1', 32],
+    ['remove', 'node', 'sshguard', '203.0.113.1', '203.0.113.1', 32],
+    ['search', 'node', '203.0.113.2', 32],
+    ['remove', 'node', 'sshguard', '203.0.113.2', '203.0.113.2', 32],
+  ]);
+  assert.ok(textOf(pf.tree).includes('Desbloqueio confirmado'));
+  assert.ok(textOf(pf.tree).includes('ips_systemup'));
+  assert.ok(!textOf(pf.tree).includes('ips_liberados'));
 });
 
-test('pf tables: IPv6 é consultado com /128; sucesso mantém somente tabelas de bloqueio', async (t) => {
-  const args = [];
-  const pf = pfHarness(t, { actions: { requestTableSearchAction: async (...a) => { args.push(a); return { ok: true, command_id: 'cmd', status: 'pending' }; } } });
-  pf.inputIp('2001:db8::8/128');
-  pf.click('Consultar');
-  await settle();
-  pf.render();
-  assert.deepEqual(args, [['node', '2001:db8::8', 128]]);
-  [...pf.timers.values()][0]();
-  await settle();
-  const tree = pf.render();
-  assert.ok(textOf(tree).includes('sshlockout'));
-  const checks = elements(tree).filter((e) => e.props?.type === 'checkbox');
-  assert.equal(checks.length, 1);
-  const first = pf.FleetPfTablesPanel(pf.props);
+test('pf tables: falha em um IP preserva sucesso do outro e consulta vazia não escreve', async (t) => {
+  const writes = [];
+  const pf = pfHarness(t, { actions: {
+    requestTableSearchAction: async (node, ip) => ip.endsWith('.1') ? { ok: false, error: 'Firewall indisponível' } : { ok: true, command_id: 'empty' },
+    requestTableEntryRemoveAction: async (...args) => { writes.push(args); },
+  }, poll: { fetchNodeCommandDetail: async () => ({ command: { status: 'succeeded', result_json: { ok: true, tables: [] } } }) } });
+  pf.inputIp('203.0.113.1'); pf.click('+ Adicionar IP'); pf.render(); pf.inputIp('203.0.113.2', 1);
+  pf.click('Desbloquear IPs'); pf.render(); pf.click('Confirmar desbloqueio'); await settle(); pf.render();
+  assert.equal(writes.length, 0);
+  assert.ok(textOf(pf.tree).includes('Firewall indisponível'));
+  assert.ok(textOf(pf.tree).includes('Sem bloqueio nas tabelas de proteção'));
+});
+
+test('pf tables: IPv6 /128 e redes canônicas usam confirmação exata na remoção', async (t) => {
+  const calls = [];
+  const pf = pfHarness(t, { actions: { requestTableEntryRemoveAction: async (...args) => { calls.push(args); return { ok: true, command_id: 'remove' }; } } });
+  pf.inputIp('2001:db8::8/128'); pf.click('+ Adicionar IP'); pf.render(); pf.inputIp('203.0.113.59/24', 1);
+  pf.click('Desbloquear IPs'); pf.render(); pf.click('Confirmar desbloqueio'); await settle();
+  assert.deepEqual(calls, [['node', 'sshguard', '2001:db8::8', '2001:db8::8', 128], ['node', 'sshguard', '203.0.113.0/24', '203.0.113.0/24', 24]]);
+});
+
+test('pf tables: resposta malformada nunca vira ausência de bloqueios ou autorização de remoção', async (t) => {
+  let writes = 0;
+  const pf = pfHarness(t, { actions: { requestTableEntryRemoveAction: async () => { writes++; } }, poll: { fetchNodeCommandDetail: async () => ({ command: { status: 'succeeded', result_json: { ok: true } } }) } });
+  pf.inputIp('203.0.113.1'); pf.click('Desbloquear IPs'); pf.render(); pf.click('Confirmar desbloqueio'); await settle(); pf.render();
+  assert.equal(writes, 0);
+  assert.ok(textOf(pf.tree).includes('consulta incompleta'));
+  assert.ok(!textOf(pf.tree).includes('Sem bloqueio'));
+});
+
+test('pf tables: seleção muda identidade e consulta manual mantém tabelas adicionais', async (t) => {
+  const pf = pfHarness(t);
+  pf.inputIp('203.0.113.1'); pf.click('Consultar IPs'); await settle(); pf.render();
+  const checks = elements(pf.tree).filter((e) => e.props?.type === 'checkbox');
+  assert.equal(checks.length, 2);
+  checks[1].props.onChange(); pf.render(); pf.click('Desbloquear entradas selecionadas'); pf.render();
+  assert.ok(textOf(pf.tree).includes('203.0.113.1 · ips_systemup'));
   const changed = pf.FleetPfTablesPanel({ selectedNodes: [{ ...pf.props.selectedNodes[0], id: 'other-node' }] });
-  assert.notEqual(first.key, changed.key);
-  pf.harness.unmount();
-  assert.equal(pf.timers.size, 0);
+  assert.notEqual(pf.FleetPfTablesPanel(pf.props).key, changed.key);
 });
 
 test('SSE distingue conexão/reconexão/fim, filtra node e mantém refresh final no throttle', (t) => {
@@ -408,4 +438,37 @@ test('técnico com apenas reset de senha começa em reset, sem provisionamento/c
   const buttons = elements(tree).filter((e) => e.type === 'button').map(textOf);
   assert.ok(buttons.some((text) => text.includes('Alterar senha')));
   assert.ok(!buttons.some((text) => text.includes('Provisionar') || text.includes('Novo técnico') || text.includes('Remover')));
+});
+
+test('pf tables additional: cada firewall conclui busca e remoção antes do IP seguinte', async (t) => {
+  const first = deferred();
+  const searches = [];
+  const removals = [];
+  const pf = pfHarness(t, { nodes: ['A', 'B'].map((id) => ({ id, hostname: id, agent_version: '0.5.34', display_name: null })), actions: {
+    requestTableSearchAction: async (node, ip) => { searches.push([node, ip]); return { ok: true, command_id: `${node}:${ip}` }; },
+    requestTableEntryRemoveAction: async (node, table, ip) => { removals.push([node, ip]); return { ok: true, command_id: `remove:${node}:${ip}` }; },
+  }, poll: { fetchNodeCommandDetail: async (node, id) => {
+    if (id === 'A:203.0.113.1') return first.promise;
+    return { command: { status: 'succeeded', result_json: { ok: true, tables: ['sshguard'] } } };
+  } } });
+  pf.inputIp('203.0.113.1'); pf.click('+ Adicionar IP'); pf.render(); pf.inputIp('203.0.113.2', 1);
+  pf.click('Desbloquear IPs'); pf.render(); pf.click('Confirmar desbloqueio'); await settle(); pf.render();
+  assert.ok(searches.some(([node, ip]) => node === 'B' && ip === '203.0.113.2'));
+  assert.ok(!searches.some(([node, ip]) => node === 'A' && ip === '203.0.113.2'));
+  assert.ok(!removals.some(([node]) => node === 'A'));
+  assert.ok(elements(pf.tree).filter((e) => e.props?.placeholder).every((e) => e.props.disabled));
+  first.resolve({ command: { status: 'succeeded', result_json: { ok: true, tables: ['sshguard'] } } });
+  await settle(); pf.render();
+  assert.equal(removals.length, 4);
+});
+
+test('pf tables additional: falha ao confirmar remoção fica indeterminada sem reenviar', async (t) => {
+  let writes = 0;
+  const pf = pfHarness(t, { actions: { requestTableEntryRemoveAction: async () => { writes++; return { ok: true, command_id: 'write' }; } }, poll: {
+    fetchNodeCommandDetail: async (node, id) => { if (id === 'write') throw Error('Conexão interrompida'); return { command: { status: 'succeeded', result_json: { ok: true, tables: ['sshguard'] } } }; },
+  } });
+  pf.inputIp('203.0.113.1'); pf.click('Desbloquear IPs'); pf.render(); pf.click('Confirmar desbloqueio'); await settle(); pf.render();
+  assert.equal(writes, 1);
+  assert.ok(textOf(pf.tree).includes('Sem confirmação. Confira o histórico'));
+  assert.ok(!textOf(pf.tree).includes('Desbloqueio confirmado'));
 });

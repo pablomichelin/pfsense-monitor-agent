@@ -1,5 +1,9 @@
 # Leitura Inicial
 
+## Desbloqueio de múltiplos IPs — 03/11/2026
+
+Painel **1.15.4** preparado com até 20 endereços, botão **+ Adicionar IP** e ação principal **Desbloquear IPs**. A confirmação mostra IPs/redes canônicos e firewalls. A ação consulta e remove sequencialmente por firewall as entradas das tabelas dinâmicas sshguard, webConfiguratorlockout, sshlockout, virusprot e snort2c. Consulta manual, seleção de tabelas adicionais e listagem continuam disponíveis. Resultados individuais distinguem sucesso, falha e ausência de confirmação. Oito testes dirigidos aprovados em dois grupos (6+2), typecheck aprovado. Publicação e verificação visual em andamento.
+
 ## Listagem de bloqueios do pfSense — 03/11/2026
 
 O package **0.5.34** inclui a tabela `sshguard` na ação **Listar bloqueios**. A versão anterior consultava essa tabela na busca por endereço, mas a omitia na listagem. No laboratório, um endereço de teste apareceu na lista e na busca e sua remoção individual foi confirmada pelo PF. O bloqueio real foi removido pelo Monitor e a tela de login respondeu a partir do endereço liberado. Implantação confirmada no firewall deste chamado. O comando de listagem retornou 60 entradas em `sshguard` depois da atualização. O acesso à tela de login pela origem desbloqueada foi confirmado novamente. A versão 0.5.33 foi retirada após falha de extração por metadados do macOS. A 0.5.34 usa formato ustar e passou na extração nativa FreeBSD antes da publicação.
@@ -107,7 +111,7 @@ Próximo passo: avaliar destino externo e recuperação completa dos backups, di
 | Componente | Versão | Referência |
 |------------|--------|------------|
 | API | `0.14.2` | servidor 192.168.100.221 |
-| Painel web | `1.15.3` | servidor 192.168.100.221 |
+| Painel web | `1.15.4` | servidor 192.168.100.221 |
 | Package pfSense | `0.5.31` | 50 confirmados com supervisor ativo; oito pendentes em 0.5.27; oito excluídos em 0.5.26 |
 
 **Última entrega (2026-09-18):** endurecimento de segurança API + web (proteção zip-bomb no ingest de backup, fail-fast de `TRUSTED_PROXY_IPS`, fail-closed 503 no middleware, `MONITOR_API_BASE_URL` obrigatória). API **0.11.2**, painel **1.12.7**, package **0.5.20 sem mudança**. Ver `docs/185-ENTREGA-ENDURECIMENTO-SEGURANCA-API-WEB-2026-09-18.md`.
