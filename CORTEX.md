@@ -2,7 +2,7 @@
 
 ## Organização das ações da seleção — 03/11/2026
 
-Painel **1.15.5** preparado. Seleção em faixa própria e ações em quatro abas independentes — Desbloquear IPs, Atualizar pacote, Backups e Técnicos. Um formulário visível por vez, sem moldura externa envolvendo todos os painéis. Componentes permanecem montados ao trocar a aba, preservando campos e acompanhamento. Backup da página separado das ações da seleção. Cores semânticas para os temas claro/escuro e navegação por setas/Home/End. Três testes dirigidos e typecheck aprovados. Publicação e inspeção visual pendentes.
+Painel **1.15.5** publicado. Seleção em faixa própria e ações em quatro abas independentes — Desbloquear IPs, Atualizar pacote, Backups e Técnicos. Um formulário visível por vez, sem moldura externa envolvendo todos os painéis. Componentes permanecem montados ao trocar a aba, preservando campos e acompanhamento. Backup da página separado das ações da seleção. Cores semânticas para os temas claro/escuro e navegação por setas/Home/End. Três testes dirigidos e typecheck aprovados. Build único PASS, quatro serviços healthy. Inspeção autenticada das quatro abas e screenshots dos temas claro e escuro aprovados; campo preservado na troca real entre abas. Tema escuro original restaurado. Imagens de execução cifradas preservadas no 220 em `runtime-web1155.tar.gpg`.
 
 ## Desbloqueio de múltiplos IPs — 03/11/2026
 
