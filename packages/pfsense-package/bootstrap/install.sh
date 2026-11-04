@@ -294,17 +294,31 @@ if [ "$INSTALL_ROOT" = "/" ] && [ -x /usr/local/bin/php ] && [ -f /etc/inc/confi
   # Upgrade da frota passa por este install.sh (nao pelo pkg-install POST-INSTALL).
   repair_orphaned_local_users || true
 
-  # Durante upgrade remoto o wrapper reinicia o serviço após post-command-result.
-  if [ "${MONITOR_PACKAGE_UPGRADE_MODE:-}" != "1" ]; then
-    if [ -n "$CONTROLLER_URL" ] && [ -n "$NODE_UID" ] && [ -n "$NODE_SECRET" ] && [ -n "$CUSTOMER_CODE" ]; then
-      if [ -f /usr/local/etc/rc.d/monitor_pfsense_agent ]; then
-        /usr/sbin/sysrc monitor_pfsense_agent_enable=YES 2>/dev/null || true
-        /usr/sbin/service monitor_pfsense_agent restart 2>/dev/null \
-          || /usr/sbin/service monitor_pfsense_agent start 2>/dev/null \
-          || true
+  # Check lifecycle here as well: an OLD wrapper can otherwise swallow restart
+  # failures and report success after installing the new files.
+  if [ "$(/usr/sbin/sysrc -n monitor_pfsense_agent_enable 2>/dev/null || true)" = "YES" ]; then
+    /usr/sbin/service monitor_pfsense_agent restart || exit 1
+    /usr/sbin/service monitor_pfsense_agent status || exit 1
+    heartbeat_since=$(date +%s)
+    heartbeat_deadline=$(( $(date +%s) + 120 ))
+    heartbeat_ok=0
+    while [ "$(date +%s)" -lt "$heartbeat_deadline" ]; do
+      if /usr/local/bin/php -r '
+        $v = json_decode(@file_get_contents("/var/db/monitor-pfsense-agent/light-heartbeat-state.json"), true);
+        exit(is_array($v) && strtotime($v["updated_at"] ?? "") > (int)$argv[1] ? 0 : 1);
+      ' "$heartbeat_since"; then
+        heartbeat_ok=1
+        break
       fi
+      sleep 3
+    done
+    if [ "$heartbeat_ok" != 1 ]; then
+      echo "Installed files but fresh heartbeat was not confirmed within 120s" >&2
+      exit 1
     fi
+    /usr/sbin/service monitor_pfsense_agent status || exit 1
   fi
+
 fi
 
 cat <<EOF

@@ -234,11 +234,11 @@ if [ "$install_code" -ne 0 ]; then
   exit 1
 fi
 
-if [ -f /usr/local/etc/rc.d/monitor_pfsense_agent ]; then
-  /usr/sbin/sysrc monitor_pfsense_agent_enable=YES 2>/dev/null || true
-  /usr/sbin/service monitor_pfsense_agent restart >>"$UPGRADE_LOG" 2>&1 \
-    || /usr/sbin/service monitor_pfsense_agent start >>"$UPGRADE_LOG" 2>&1 \
-    || true
+# install.sh has already restarted and validated the service. Do not restart
+# again. The installer also requires a fresh accepted heartbeat.
+if ! /usr/sbin/service monitor_pfsense_agent status >>"$UPGRADE_LOG" 2>&1; then
+  post_command_failed "installed files but agent service is not running"
+  exit 1
 fi
 
 log_msg "package upgrade succeeded target=$TARGET_VERSION"

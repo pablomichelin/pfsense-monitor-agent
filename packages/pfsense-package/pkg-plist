@@ -29,3 +29,4 @@ www/config_systemup_monitor.php
 www/status_systemup_monitor.php
 libexec/monitor-pfsense-agent/recovery_channel.php
 libexec/monitor-pfsense-agent/recovery_service.php
+libexec/monitor-pfsense-agent/service_pid_migration.sh
