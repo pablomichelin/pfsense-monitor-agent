@@ -1,5 +1,9 @@
 # Leitura Inicial
 
+## Organização das ações da seleção — 03/11/2026
+
+Painel **1.15.5** preparado. Seleção em faixa própria e ações em quatro abas independentes — Desbloquear IPs, Atualizar pacote, Backups e Técnicos. Um formulário visível por vez, sem moldura externa envolvendo todos os painéis. Componentes permanecem montados ao trocar a aba, preservando campos e acompanhamento. Backup da página separado das ações da seleção. Cores semânticas para os temas claro/escuro e navegação por setas/Home/End. Três testes dirigidos e typecheck aprovados. Publicação e inspeção visual pendentes.
+
 ## Desbloqueio de múltiplos IPs — 03/11/2026
 
 Painel **1.15.4** publicado com até 20 endereços, botão **+ Adicionar IP** e ação principal **Desbloquear IPs**. A confirmação mostra IPs/redes canônicos e firewalls. A ação consulta e remove sequencialmente por firewall as entradas das tabelas dinâmicas sshguard, webConfiguratorlockout, sshlockout, virusprot e snort2c. Consulta manual, seleção de tabelas adicionais e listagem continuam disponíveis. Resultados individuais distinguem sucesso, falha e ausência de confirmação. Oito testes dirigidos aprovados em dois grupos (6+2), typecheck aprovado. Build único de produção e quatro serviços healthy. Verificação na aba autenticada confirmou adição do segundo IP e revisão dos dois endereços com o firewall selecionado. Imagens exatas cifradas preservadas no 220 em `runtime-web1154.tar.gpg`. Checksum/decriptação/importação aprovados. Backup `dr-20261104T023808Z-95096306cdec410e` e restauração integral da stack PASS, com limpeza. O primeiro ensaio de stack retornou falha genérica; repetido somente esse ensaio com indicação das etapas, passou sem mudança de produto. Grupos de testes já aprovados preservados. Destino na mesma LAN.
@@ -111,7 +115,7 @@ Próximo passo: avaliar destino externo e recuperação completa dos backups, di
 | Componente | Versão | Referência |
 |------------|--------|------------|
 | API | `0.14.2` | servidor 192.168.100.221 |
-| Painel web | `1.15.4` | servidor 192.168.100.221 |
+| Painel web | `1.15.5` | servidor 192.168.100.221 |
 | Package pfSense | `0.5.31` | 50 confirmados com supervisor ativo; oito pendentes em 0.5.27; oito excluídos em 0.5.26 |
 
 **Última entrega (2026-09-18):** endurecimento de segurança API + web (proteção zip-bomb no ingest de backup, fail-fast de `TRUSTED_PROXY_IPS`, fail-closed 503 no middleware, `MONITOR_API_BASE_URL` obrigatória). API **0.11.2**, painel **1.12.7**, package **0.5.20 sem mudança**. Ver `docs/185-ENTREGA-ENDURECIMENTO-SEGURANCA-API-WEB-2026-09-18.md`.
