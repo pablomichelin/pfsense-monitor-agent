@@ -210,3 +210,21 @@ test('SMTP normalizes mixed message line endings and transmits leading dots inta
   assert.deepEqual(result, { ok: true });
   assert.equal(receivedBody, '..First\r\nSecond\r\nThird\r\n...Last');
 });
+
+test('SMTP bounds the full attempt even while the connection remains open', { timeout: 2000 }, async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const connected = Promise.withResolvers();
+  let resolved = false;
+  const pending = withSmtpServer(t, (socket) => {
+    connected.resolve(socket);
+  }, (config) => new EmailNotificationProvider().send(config, {}, message)).then((result) => {
+    resolved = true;
+    return result;
+  });
+
+  const peer = await connected.promise;
+  t.mock.timers.tick(30_000);
+  await new Promise((resolve) => setImmediate(resolve));
+  if (!resolved) peer.end();
+  assert.deepEqual(await pending, { ok: false, error: 'smtp timeout' });
+});

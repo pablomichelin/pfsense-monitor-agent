@@ -136,14 +136,16 @@ export class EmailNotificationProvider implements NotificationProvider {
         }
       });
 
-      socket.on('error', handleConnectionFailure);
-      socket.once('close', () => {
-        handleConnectionFailure(new Error('smtp connection closed before completion'));
-      });
-
-      socket.setTimeout(10_000, () => {
+      const handleTimeout = () => {
         socket.destroy();
         handleConnectionFailure(new Error('smtp timeout'));
+      };
+      const deadline = setTimeout(handleTimeout, 30_000);
+      socket.setTimeout(10_000, handleTimeout);
+      socket.on('error', handleConnectionFailure);
+      socket.once('close', () => {
+        clearTimeout(deadline);
+        handleConnectionFailure(new Error('smtp connection closed before completion'));
       });
     });
   }

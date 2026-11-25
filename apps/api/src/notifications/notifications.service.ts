@@ -30,6 +30,10 @@ import {
   UpdateNotificationRuleDto,
 } from './dto/notifications.dto';
 
+// Longer than the outer deadline of each provider. A redispatch can recover a
+// stale claim, but it cannot establish whether a crashed attempt was delivered.
+const STALE_DELIVERY_MS = 60_000;
+
 @Injectable()
 export class NotificationsDispatcherService {
   private readonly logger = new Logger(NotificationsDispatcherService.name);
@@ -183,24 +187,37 @@ export class NotificationsDispatcherService {
       return;
     }
 
+    const waitMs = delivery.status === NotificationDeliveryStatus.failed
+      ? appConfig.notifications.retryDelayMs
+      : delivery.status === NotificationDeliveryStatus.sending ? STALE_DELIVERY_MS : null;
+    const readyBefore = waitMs === null ? null : new Date(Date.now() - waitMs);
+    if (readyBefore && delivery.updatedAt > readyBefore) return;
+
+    const claim = {
+      id: delivery.id,
+      status: delivery.status,
+      attemptCount: delivery.attemptCount,
+      ...(readyBefore ? { updatedAt: { lte: readyBefore } } : {}),
+    };
     if (delivery.attemptCount >= appConfig.notifications.maxAttempts) {
-      await this.prisma.notificationDelivery.update({
-        where: { id: delivery.id },
-        data: {
-          status: NotificationDeliveryStatus.failed,
-          lastError: 'max attempts reached',
-        },
-      });
+      if (delivery.status !== NotificationDeliveryStatus.failed) {
+        await this.prisma.notificationDelivery.updateMany({
+          where: claim,
+          data: { status: NotificationDeliveryStatus.failed, lastError: 'max attempts reached' },
+        });
+      }
       return;
     }
 
-    await this.prisma.notificationDelivery.update({
-      where: { id: delivery.id },
+    const started = await this.prisma.notificationDelivery.updateMany({
+      where: claim,
       data: {
         status: NotificationDeliveryStatus.sending,
         attemptCount: { increment: 1 },
       },
     });
+    if (started.count !== 1) return;
+    const attempt = delivery.attemptCount + 1;
 
     const alert = delivery.alert;
     const message: NotificationMessage = {
@@ -217,10 +234,12 @@ export class NotificationsDispatcherService {
       alertId: alert.id,
     };
 
-    const result = await this.sendThroughChannel(delivery.channel, message);
+    const result = await this.sendThroughChannel(delivery.channel, message).catch(() => ({
+      ok: false, error: 'notification provider failed',
+    }));
 
-    await this.prisma.notificationDelivery.update({
-      where: { id: delivery.id },
+    const finished = await this.prisma.notificationDelivery.updateMany({
+      where: { id: delivery.id, status: NotificationDeliveryStatus.sending, attemptCount: attempt },
       data: result.ok
         ? {
             status: NotificationDeliveryStatus.delivered,
@@ -233,10 +252,7 @@ export class NotificationsDispatcherService {
           },
     });
 
-    if (
-      !result.ok &&
-      delivery.attemptCount + 1 < appConfig.notifications.maxAttempts
-    ) {
+    if (finished.count === 1 && !result.ok && attempt < appConfig.notifications.maxAttempts) {
       setTimeout(() => {
         void this.processDelivery(delivery.id).catch(() => {
           this.logger.warn(`notification delivery retry failed delivery_id=${delivery.id}`);

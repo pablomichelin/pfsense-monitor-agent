@@ -13,7 +13,7 @@ test('a failed deferred delivery read is reported and does not escape the timer'
   let sends = 0;
   const warned = Promise.withResolvers();
   const delivery = {
-    id: 'qa-delivery', status: 'pending', attemptCount: 0,
+    id: 'qa-delivery', status: 'pending', attemptCount: 0, updatedAt: new Date(),
     channel: { type: 'webhook', configPublicJson: {}, secretsEncrypted: null },
     alert: {
       id: 'qa-alert', severity: 'warning', title: 'Synthetic alert', type: 'agent_error',
@@ -26,9 +26,14 @@ test('a failed deferred delivery read is reported and does not escape the timer'
       findUnique: async () => {
         reads++;
         if (reads === 2) throw new Error('synthetic transient read failure');
-        return delivery;
+        return { ...delivery };
       },
-      update: async () => {},
+      updateMany: async ({ data }) => {
+        delivery.status = data.status;
+        delivery.attemptCount += data.attemptCount?.increment ?? 0;
+        delivery.updatedAt = new Date();
+        return { count: 1 };
+      },
     },
   };
   const provider = { send: async () => ({ ok: ++sends > 1 }) };
@@ -40,6 +45,7 @@ test('a failed deferred delivery read is reported and does not escape the timer'
   assert.match(message, /notification delivery retry failed.*qa-delivery/);
   assert.equal(reads, 2);
   assert.equal(sends, 1);
+  await delay(6);
   await dispatcher.processDelivery(delivery.id);
   assert.equal(sends, 2);
 });
