@@ -63,6 +63,24 @@ type BatchTechnicianResultItem = {
 
 type BatchRevokeResultItem = BatchTechnicianResultItem;
 
+const accountDetailInclude = {
+  node: { select: { hostname: true, displayName: true } },
+} satisfies Prisma.TechnicianNodeAccountInclude;
+
+function technicianAccountDetail(account: Prisma.TechnicianNodeAccountGetPayload<{ include: typeof accountDetailInclude }>) {
+  return {
+    id: account.id,
+    node_id: account.nodeId,
+    hostname: account.node.hostname,
+    display_name: account.node.displayName,
+    pfsense_username: account.pfsenseUsername,
+    privilege_profile: account.privilegeProfile,
+    status: account.status,
+    last_synced_at: account.lastSyncedAt?.toISOString() ?? null,
+    last_error: account.lastError,
+  };
+}
+
 @Injectable()
 export class TechniciansService {
   constructor(
@@ -211,32 +229,53 @@ export class TechniciansService {
    * Default: apenas `active` (removidos não aparecem na matriz/painéis).
    * Passe `'all'` para incluir soft-deletes históricos ainda no banco.
    */
-  async listTechnicians(actor: AccessActor, status: TechnicianStatus | 'all' = TechnicianStatus.active) {
+  async listTechnicians(
+    actor: AccessActor,
+    status: TechnicianStatus | 'all' = TechnicianStatus.active,
+    includeAccounts = false,
+  ) {
     const scope = await this.technicianScope(actor);
     const accountScope = { node: await this.accessPolicy.mergeNodeWhere(actor) };
-    const technicians = await this.prisma.technician.findMany({
+    const listQuery = {
       where: { ...scope, ...(status === 'all' ? {} : { status }) },
       orderBy: [{ status: 'asc' }, { fullName: 'asc' }],
       include: {
-        _count: {
-          select: { nodeAccounts: { where: accountScope } },
-        },
+        _count: { select: { nodeAccounts: { where: accountScope } } },
       },
+    } satisfies Prisma.TechnicianFindManyArgs;
+    const showNotes = this.accessPolicy.hasGlobalClientScope(actor);
+    const summarize = (technician: Technician & { _count: { nodeAccounts: number } }) => ({
+      id: technician.id,
+      full_name: technician.fullName,
+      login_username: technician.loginUsername,
+      status: technician.status,
+      notes: showNotes ? technician.notes : null,
+      node_account_count: technician._count.nodeAccounts,
+      created_at: technician.createdAt.toISOString(),
+      revoked_at: technician.revokedAt?.toISOString() ?? null,
     });
+
+    const items = includeAccounts
+      ? (await this.prisma.technician.findMany({
+          ...listQuery,
+          include: {
+            ...listQuery.include,
+            nodeAccounts: {
+              where: accountScope,
+              include: accountDetailInclude,
+              orderBy: { updatedAt: 'desc' },
+            },
+          },
+        })).map((technician) => ({
+          ...summarize(technician),
+          node_accounts: technician.nodeAccounts.map(technicianAccountDetail),
+        }))
+      : (await this.prisma.technician.findMany(listQuery)).map(summarize);
 
     return {
       generated_at: new Date().toISOString(),
       batch_max_size: appConfig.technicianAccounts.batchMaxSize,
-      items: technicians.map((technician) => ({
-        id: technician.id,
-        full_name: technician.fullName,
-        login_username: technician.loginUsername,
-        status: technician.status,
-        notes: this.accessPolicy.hasGlobalClientScope(actor) ? technician.notes : null,
-        node_account_count: technician._count.nodeAccounts,
-        created_at: technician.createdAt.toISOString(),
-        revoked_at: technician.revokedAt?.toISOString() ?? null,
-      })),
+      items,
     };
   }
 
@@ -246,17 +285,7 @@ export class TechniciansService {
       include: {
         nodeAccounts: {
           where: { node: await this.accessPolicy.mergeNodeWhere(actor) },
-          include: {
-            node: {
-              select: {
-                id: true,
-                hostname: true,
-                displayName: true,
-                agentVersion: true,
-                lastSeenAt: true,
-              },
-            },
-          },
+          include: accountDetailInclude,
           orderBy: { updatedAt: 'desc' },
         },
       },
@@ -276,17 +305,7 @@ export class TechniciansService {
         notes: this.accessPolicy.hasGlobalClientScope(actor) ? technician.notes : null,
         created_at: technician.createdAt.toISOString(),
         revoked_at: technician.revokedAt?.toISOString() ?? null,
-        node_accounts: technician.nodeAccounts.map((account) => ({
-          id: account.id,
-          node_id: account.nodeId,
-          hostname: account.node.hostname,
-          display_name: account.node.displayName,
-          pfsense_username: account.pfsenseUsername,
-          privilege_profile: account.privilegeProfile,
-          status: account.status,
-          last_synced_at: account.lastSyncedAt?.toISOString() ?? null,
-          last_error: account.lastError,
-        })),
+        node_accounts: technician.nodeAccounts.map(technicianAccountDetail),
       },
     };
   }

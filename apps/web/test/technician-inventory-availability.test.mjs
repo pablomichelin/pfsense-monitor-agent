@@ -9,8 +9,10 @@ class ApiError extends Error {
   }
 }
 
-function fixture(permissions, detailFailure) {
+function fixture(permissions, detailFailure, { expanded = false } = {}) {
   const reads = [];
+  const listRequests = [];
+  const detailRequests = [];
   const node = { id: 'qa-firewall' };
   const technician = {
     id: 'qa-tech', full_name: 'Técnico sintético', login_username: 'qa-tech', status: 'active',
@@ -25,8 +27,17 @@ function fixture(permissions, detailFailure) {
     '@/lib/api': {
       ApiError,
       getSession: async () => ({ permissions, has_global_client_scope: true }),
-      getTechnicians: async () => ({ items: detailFailure ? [technician, otherTechnician] : [technician], batch_max_size: 100 }),
+      getTechnicians: async (...args) => {
+        listRequests.push(args);
+        const items = expanded
+          ? [technician, { ...otherTechnician, node_accounts: [] }]
+          : (detailFailure ? [technician, otherTechnician] : [technician]).map(
+            ({ node_accounts, ...summary }) => summary,
+          );
+        return { items, batch_max_size: 100 };
+      },
       getTechnician: async (id) => {
+        detailRequests.push(id);
         if (id === otherTechnician.id && detailFailure) throw new ApiError(detailFailure);
         return { technician };
       },
@@ -37,7 +48,7 @@ function fixture(permissions, detailFailure) {
       },
     },
   })('app/admin/tecnicos/page.tsx').default;
-  return { route, reads, node };
+  return { route, reads, node, listRequests, detailRequests };
 }
 
 test('the technician matrix opens for readers without inventory access', async () => {
@@ -75,4 +86,13 @@ test('the management tab preserves inventory pagination and API batch limit', as
   assert.deepEqual(targets.props.initialPage, { items: [node], total: 123 });
   assert.equal(targets.props.batchMaxSize, 100);
   assert.equal(targets.props.canManageRegistry, true);
+});
+
+test('the technician matrix uses one expanded list and keeps an empty account list intact', async () => {
+  const { route, listRequests, detailRequests } = fixture(['technicians.view'], undefined, { expanded: true });
+  const tree = await route();
+  const tabs = elements(tree).find((item) => item.type === 'action-tabs').props.tabs;
+  assert.match(textOf(tabs[0].content), /Segunda técnica sintética.*Sem contas visíveis/);
+  assert.deepEqual(listRequests, [['active', { includeAccounts: true }]]);
+  assert.deepEqual(detailRequests, []);
 });

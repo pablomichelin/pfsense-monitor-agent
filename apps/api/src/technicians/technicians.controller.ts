@@ -31,16 +31,17 @@ export class TechniciansController {
 
   @Get()
   @RequirePermissions('technicians.view')
-  async list(@Req() request: AuthenticatedRequest, @Query('status') status?: string) {
-    const actor = getAccessActor(request);
-    // Default: só ativos — removidos do cadastro não poluem a matriz.
-    if (status === 'all') {
-      return this.techniciansService.listTechnicians(actor, 'all');
-    }
-    if (status === TechnicianStatus.revoked) {
-      return this.techniciansService.listTechnicians(actor, TechnicianStatus.revoked);
-    }
-    return this.techniciansService.listTechnicians(actor, TechnicianStatus.active);
+  async list(
+    @Req() request: AuthenticatedRequest,
+    @Query('status') status?: string,
+    @Query('include_accounts') includeAccounts?: string,
+  ) {
+    const filter = status === 'all' || status === TechnicianStatus.revoked
+      ? status
+      : TechnicianStatus.active;
+    return this.techniciansService.listTechnicians(
+      getAccessActor(request), filter, includeAccounts === '1',
+    );
   }
 
   @Post()

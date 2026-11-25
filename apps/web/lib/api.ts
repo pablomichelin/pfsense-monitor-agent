@@ -2538,6 +2538,7 @@ export type TechnicianListItem = {
   node_account_count: number;
   created_at: string;
   revoked_at: string | null;
+  node_accounts?: TechnicianNodeAccountDetail[];
 };
 
 export type TechniciansListResponse = {
@@ -2584,8 +2585,12 @@ export type TechnicianFleetRevokeResponse = TechnicianBatchRevokeResponse & {
 
 export async function getTechnicians(
   status?: 'active' | 'revoked',
+  { includeAccounts = false }: { includeAccounts?: boolean } = {},
 ): Promise<TechniciansListResponse> {
-  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (includeAccounts) params.set('include_accounts', '1');
+  const query = params.size > 0 ? `?${params}` : '';
   return apiFetch(`/api/v1/technicians${query}`);
 }
 

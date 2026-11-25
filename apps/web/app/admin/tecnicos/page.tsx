@@ -68,7 +68,7 @@ export default async function AdminTecnicosPage() {
 
   try {
     const [techniciansList, nodesList] = await Promise.all([
-      getTechnicians('active'),
+      getTechnicians('active', { includeAccounts: true }),
       canViewFirewalls ? getNodesList({ limit: NODE_LIST_LIMIT }) : null,
     ]);
 
@@ -77,6 +77,8 @@ export default async function AdminTecnicosPage() {
 
     technicianDetails = await Promise.all(
       techniciansList.items.map(async (item) => {
+        if (item.node_accounts !== undefined) return { ...item, node_accounts: item.node_accounts };
+        // Older controllers return summaries even when expanded accounts are requested.
         try {
           return (await getTechnician(item.id)).technician;
         } catch (error) {
