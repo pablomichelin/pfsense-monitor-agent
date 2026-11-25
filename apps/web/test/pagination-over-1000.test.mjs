@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
 import { apiSourceLoader, syntheticDb, scopedPolicy, matches } from './pagination-api-harness.mjs';
 import { sourceLoader, uiMocks, elements, textOf, hookHarness, deferred, settle } from './source-harness.mjs';
 
@@ -27,7 +26,11 @@ const nodes = Array.from({ length: 1540 }, (_, i) => {
     nodeCommands: i % 11 === 0 ? [{ requestedAt: time, completedAt: time }] : [],
   };
 });
-function nodeService() { const fixture = syntheticDb(nodes); return { ...fixture, service: new NodesService(fixture.db, scopedPolicy()) }; }
+function nodeService() {
+  const fixture = syntheticDb(nodes);
+  const packageRelease = { getPublishedVersion: () => config.packageRelease.version };
+  return { ...fixture, service: new NodesService(fixture.db, scopedPolicy(), packageRelease) };
+}
 async function allPages(service, query, access = actor) {
   const pages = []; let cursor;
   do {
@@ -152,7 +155,7 @@ test('alerts: DB pages beyond 1000, filtered totals, deterministic ties and lega
 });
 
 test('HTTP DTOs reject fractional/oversized paging and preserve optional legacy queries', async () => {
-  const apiRequire = createRequire(resolve('apps/api/package.json'));
+  const apiRequire = createRequire(new URL('../../api/package.json', import.meta.url));
   const { validate } = apiRequire('class-validator');
   const { plainToInstance } = apiRequire('class-transformer');
   for (const [file, symbol] of [['nodes/dto/list-nodes-query.dto', 'ListNodesQueryDto'], ['alerts/dto/list-alerts-query.dto', 'ListAlertsQueryDto']]) {
