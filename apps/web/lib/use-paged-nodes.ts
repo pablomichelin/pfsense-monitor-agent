@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { NodesListResponse } from './api';
 import { searchNodeOptions } from './node-options-action';
 
@@ -11,13 +11,15 @@ export function usePagedNodes(initialPage?: NodesListResponse, clientId?: string
   const [loading, setLoading] = useState(!initialPage);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
+  const [hasInitialPage] = useState(() => Boolean(initialPage));
   const generation = useRef(0);
   const firstEffect = useRef(true);
+  const invalidatePendingRead = useCallback(() => { generation.current++; }, []);
 
   useEffect(() => {
     if (firstEffect.current) {
       firstEffect.current = false;
-      if (initialPage && !clientId) return;
+      if (hasInitialPage && !clientId) return;
     }
     const current = ++generation.current;
     setLoading(true);
@@ -33,13 +35,18 @@ export function usePagedNodes(initialPage?: NodesListResponse, clientId?: string
       else { setResult(undefined); setError(response.error); }
       setLoading(false);
     }, 250);
-    return () => { clearTimeout(timer); generation.current++; };
-  }, [search, cursor, clientId, retry]);
+    return () => { clearTimeout(timer); invalidatePendingRead(); };
+  }, [search, cursor, clientId, retry, hasInitialPage, invalidatePendingRead]);
 
-  const invalidate = () => { generation.current++; setLoading(true); setError(null); };
+  const invalidate = () => { invalidatePendingRead(); setLoading(true); setError(null); };
   return {
     result, search, loading, error,
-    setSearch(value: string) { invalidate(); setSearchValue(value); setCursor(undefined); },
+    setSearch(value: string) {
+      if (value === search && cursor === undefined) return;
+      invalidate();
+      setSearchValue(value);
+      setCursor(undefined);
+    },
     navigate(value: string | null) { invalidate(); setCursor(value ?? undefined); setRetry((v) => v + 1); },
   };
 }

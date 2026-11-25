@@ -248,6 +248,35 @@ test('async node search discards stale replies, resets cursor on search and repo
   hooks.unmount();
 });
 
+test('reapplying the active search keeps an in-flight inventory read valid', async (t) => {
+  const timers = new Map();
+  let id = 0;
+  t.mock.method(globalThis, 'setTimeout', (callback) => {
+    timers.set(++id, callback);
+    return id;
+  });
+  t.mock.method(globalThis, 'clearTimeout', (key) => timers.delete(key));
+  const pending = deferred();
+  const hooks = hookHarness();
+  const { usePagedNodes } = sourceLoader({
+    react: hooks.react,
+    './node-options-action': { searchNodeOptions: () => pending.promise },
+  })('lib/use-paged-nodes.ts');
+  const render = () => hooks.render(() => usePagedNodes());
+  const browser = render();
+  browser.setSearch('qa');
+  render();
+  const read = [...timers.values()].at(-1)();
+  render().setSearch('qa');
+  render();
+  pending.resolve({ ok: true, result: pageFixture([42]) });
+  await read;
+  const settled = render();
+  assert.equal(settled.loading, false);
+  assert.equal(settled.result.items[0].id, 'node-42');
+  hooks.unmount();
+});
+
 test('group editing preserves 1201 off-page memberships and an explicit target beyond 1000', async () => {
   const hooks = hookHarness(); const browser = browserMock(pageFixture([1301])); let saved;
   const { GroupMemberPicker } = sourceLoader({ ...uiMocks, './ui': uiMocks['@/components/ui'], react: hooks.react,
