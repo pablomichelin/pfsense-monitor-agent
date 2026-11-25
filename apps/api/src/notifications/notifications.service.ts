@@ -102,21 +102,22 @@ export class NotificationsDispatcherService {
       },
     });
 
-    const clientId = alert.node.site.clientId;
-    const matchingRules = rules.filter(
-      (rule) =>
-        rule.channel.status === NotificationChannelStatus.active &&
-        ruleMatchesAlert(rule, {
-          severity: alert.severity,
-          alertType: alert.type,
-          clientId,
-        }),
-    );
+    const match = {
+      severity: alert.severity,
+      alertType: alert.type,
+      clientId: alert.node.site.clientId,
+    };
+    const matchingChannelIds = new Set<string>();
+    for (const rule of rules) {
+      if (rule.channel.status === NotificationChannelStatus.active && ruleMatchesAlert(rule, match)) {
+        matchingChannelIds.add(rule.channelId);
+      }
+    }
 
-    for (const rule of matchingRules) {
+    for (const channelId of matchingChannelIds) {
       const idempotencyKey = buildNotificationIdempotencyKey(
         alert.id,
-        rule.channelId,
+        channelId,
         alert.openedAt,
       );
 
@@ -124,7 +125,7 @@ export class NotificationsDispatcherService {
         where: { idempotencyKey },
         create: {
           alertId: alert.id,
-          channelId: rule.channelId,
+          channelId,
           idempotencyKey,
           status: NotificationDeliveryStatus.pending,
         },
