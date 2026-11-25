@@ -78,7 +78,11 @@ test('batch controller checks client and every node before enqueueing', async ()
   const checks = []; let calls = 0;
   const controller = new CommandBatchesController({ createBatch: async () => { calls += 1; } }, {
     assertRequestedClientFilter: async (_actor, id) => { checks.push(id); },
-    assertNodeAccess: async (_actor, id) => { checks.push(id); if (id === 'forbidden') throw new Error('node out of scope'); },
+    assertNodeAccess: async (_actor, id) => {
+      checks.push(id);
+      if (id === 'forbidden') throw new Error('node out of scope');
+      return 'client';
+    },
   }, { assertPermission: async () => {} });
   await assert.rejects(controller.createBatch({ command_type: 'config_backup_now', node_ids: [nodeId, 'forbidden'], client_id: 'client' }, { auth }), /out of scope/);
   assert.deepEqual(checks, ['client', nodeId, 'forbidden']);
