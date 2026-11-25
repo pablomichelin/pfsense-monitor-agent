@@ -5,28 +5,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PACKAGE_DIR="$ROOT_DIR/packages/pfsense-package"
 DIST_DIR="$ROOT_DIR/dist/pfsense-package"
-VERSION="${1:-}"
-
-read_env_value() {
-  local key="$1"
-  local env_file="${2:-$ROOT_DIR/.env.api}"
-
-  if [[ ! -f "$env_file" ]]; then
-    return 1
-  fi
-
-  awk -F= -v target="$key" '$1 == target { sub(/^[^=]*=/, ""); print; exit }' "$env_file"
-}
-
-if [[ -z "$VERSION" ]]; then
-  VERSION="$(read_env_value SYSTEM_VERSION 2>/dev/null || true)"
-fi
-
-if [[ -z "$VERSION" ]]; then
-  VERSION="0.1.0"
-fi
-
 MAKEFILE_VERSION="$(grep -E '^PORTVERSION=' "$PACKAGE_DIR/Makefile" | sed 's/^PORTVERSION=[[:space:]]*//' | tr -d '\r')"
+VERSION="${1:-$MAKEFILE_VERSION}"
 INC_FILE="$PACKAGE_DIR/files/usr/local/pkg/systemup_monitor.inc"
 INC_AGENT_VERSION="$(grep 'define("SYSTEMUP_MONITOR_AGENT_VERSION"' "$INC_FILE" | sed 's/.*"\([^"]*\)".*/\1/')"
 if [[ "$INC_AGENT_VERSION" != "$MAKEFILE_VERSION" ]]; then
@@ -38,9 +18,6 @@ if [[ "$VERSION" != "$MAKEFILE_VERSION" ]]; then
   exit 1
 fi
 
-STAGE_DIR="$(mktemp -d)"
-trap 'rm -rf "$STAGE_DIR"' EXIT
-
 ARTIFACT_NAME="monitor-pfsense-package-v${VERSION}.tar.gz"
 ARTIFACT_PATH="$DIST_DIR/$ARTIFACT_NAME"
 CHECKSUM_PATH="$DIST_DIR/${ARTIFACT_NAME}.sha256"
@@ -50,6 +27,8 @@ if [[ -e "$ARTIFACT_PATH" || -e "$CHECKSUM_PATH" ]]; then
   exit 1
 fi
 mkdir -p "$DIST_DIR"
+STAGE_DIR="$(mktemp -d "$DIST_DIR/.pfsense-package.XXXXXX")"
+trap 'rm -rf "$STAGE_DIR"' EXIT
 cp -R "$PACKAGE_DIR" "$STAGE_DIR/pfsense-package"
 printf 'v%s\n' "$VERSION" > "$STAGE_DIR/pfsense-package/VERSION"
 
@@ -80,12 +59,39 @@ PY
 done
 
 # Use portable headers so macOS file metadata cannot break extraction on pfSense.
-COPYFILE_DISABLE=1 tar --format ustar -C "$STAGE_DIR" -czf "$ARTIFACT_PATH" pfsense-package
+COPYFILE_DISABLE=1 tar --format ustar -C "$STAGE_DIR" -czf "$STAGE_DIR/$ARTIFACT_NAME" pfsense-package
 
-SHA256_VALUE="$(
-  sha256sum "$ARTIFACT_PATH" | awk '{print $1}'
-)"
-printf '%s  %s\n' "$SHA256_VALUE" "$ARTIFACT_NAME" > "$CHECKSUM_PATH"
+# Publish only complete files. Hard links reject concurrent builds of the same version.
+python3 - "$STAGE_DIR" "$DIST_DIR" "$ARTIFACT_NAME" <<'PYTHON'
+import hashlib
+import os
+from pathlib import Path
+import sys
+
+stage_dir, dist_dir = (Path(value) for value in sys.argv[1:3])
+name = sys.argv[3]
+archive = stage_dir / name
+sidecar = stage_dir / f"{name}.sha256"
+published = dist_dir / name
+
+digest = hashlib.sha256()
+with archive.open("rb") as stream:
+    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+        digest.update(chunk)
+sidecar.write_text(f"{digest.hexdigest()}  {name}\n", encoding="ascii")
+
+linked_archive = False
+try:
+    os.link(archive, published)
+    linked_archive = True
+    os.link(sidecar, dist_dir / sidecar.name)
+except OSError as error:
+    if linked_archive and published.exists() and published.samefile(archive):
+        published.unlink()
+    if isinstance(error, FileExistsError):
+        sys.exit(f"Release artifact {name} already exists; use a new version.")
+    raise
+PYTHON
 
 echo "Artifact created: $ARTIFACT_PATH"
 echo "Checksum created: $CHECKSUM_PATH"
