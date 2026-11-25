@@ -68,6 +68,25 @@ export function deferred() {
   return { promise, resolve, reject };
 }
 
+export function installBrowserFixture(t, { confirm = () => true } = {}) {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const window = Object.assign(new EventTarget(), {
+    confirm,
+    location: { href: 'https://qa.example.test/admin' },
+    history: { state: null, pushState() {} },
+  });
+  globalThis.window = window;
+  globalThis.document = new EventTarget();
+  t.after(() => {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  });
+  return window;
+}
+
 export async function settle() {
   for (let i = 0; i < 16; i++) await Promise.resolve();
 }

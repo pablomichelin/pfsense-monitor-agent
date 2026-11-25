@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sourceLoader, uiMocks, hookHarness, elements, textOf, settle } from './source-harness.mjs';
+import { sourceLoader, uiMocks, hookHarness, elements, textOf, settle, installBrowserFixture, deferred } from './source-harness.mjs';
 
 const findButton = (tree, label) => elements(tree).find((element) =>
   element.type === 'button' && textOf(element).includes(label));
+const editUserForm = (tree) => elements(tree).find((element) =>
+  element.type === 'form' && elements(element).some((input) => input.props?.name === 'user_id'));
 
 test('backups incluem páginas além de 1000, sem duplicar IDs durante alterações concorrentes', async () => {
   const { collectBackupFleetPages } = sourceLoader()('lib/backup-fleet-helpers.ts');
@@ -57,7 +59,8 @@ test('selecionar todos preserva vínculo indisponível até remoção explícita
   assert.equal(changed, 2);
 });
 
-test('cliente com permissão de excluir e sem permissão de editar mantém exclusão disponível', () => {
+test('cliente com permissão de excluir e sem permissão de editar mantém exclusão disponível', (t) => {
+  installBrowserFixture(t);
   const hooks = hookHarness();
   const { AdminClientsList } = sourceLoader({ ...uiMocks, react: hooks.react,
     '@/components/client-delete-button': { ClientDeleteButton: 'delete-client' },
@@ -72,13 +75,14 @@ test('cliente com permissão de excluir e sem permissão de editar mantém exclu
   assert.equal(elements(tree).filter((element) => element.type === 'delete-client').length, 0);
 });
 
-function userFixture({ activeSection, sessionRevision } = {}) {
+function userFixture({ activeSection, sessionRevision, readSessions = async () => ({ ok: true, items: [] }) } = {}) {
   const hooks = hookHarness();
   const fetched = [];
   const { AdminUsuariosTabs } = sourceLoader({ ...uiMocks, react: hooks.react,
+    'next/navigation': { useRouter: () => ({ push() {}, replace() {} }) },
     '@/components/confirm-dialog': { ConfirmDialog: 'confirm-dialog' },
     '@/components/role-scope-fields': { RoleScopeFields: 'scope-fields' },
-    '@/lib/admin-user-sessions-actions': { getAdminUserSessionsAction: async (id) => { fetched.push(id); return { ok: true, items: [] }; } },
+    '@/lib/admin-user-sessions-actions': { getAdminUserSessionsAction: async (id) => { fetched.push(id); return readSessions(id); } },
     '@/lib/admin': { deleteUserAction: async () => {}, updateUserAction: async () => {}, revokeUserSessionAdminAction: async () => {} },
   })('components/admin-usuarios-tabs.tsx');
   const users = ['u1', 'u2'].map((id) => ({ id, email: `${id}@example.test`, display_name: id, role: 'admin', status: 'active', client_ids: ['old'], client_id: null }));
@@ -94,15 +98,14 @@ function userFixture({ activeSection, sessionRevision } = {}) {
 
 test('escopo alterado bloqueia troca de usuário e vínculo inválido bloqueia submissão', (t) => {
   const fixture = userFixture();
-  const previousWindow = globalThis.window;
-  globalThis.window = { confirm: () => false };
+  installBrowserFixture(t, { confirm: () => false });
   const NativeFormData = globalThis.FormData;
   globalThis.FormData = class {
     constructor(form) { this.values = form.values; }
     get(key) { return this.values[key] ?? null; }
     getAll(key) { return this.values[key] instanceof Array ? this.values[key] : []; }
   };
-  t.after(() => { globalThis.window = previousWindow; globalThis.FormData = NativeFormData; });
+  t.after(() => { globalThis.FormData = NativeFormData; });
   let tree = fixture.render();
   const scope = elements(tree).find((element) => element.type === 'scope-fields');
   scope.props.onScopeChange();
@@ -112,14 +115,17 @@ test('escopo alterado bloqueia troca de usuário e vínculo inválido bloqueia s
   assert.match(textOf(tree), /Perfil:\s+Administrador/);
   assert.ok(elements(tree).find((element) => element.type === 'input' && element.props.name === 'user_id' && element.props.value === 'u1'));
   let prevented = false;
-  const form = elements(tree).find((element) => element.type === 'form' && element.props.action);
+  const form = editUserForm(tree);
   form.props.onSubmit({ currentTarget: { values: { role: 'admin', client_ids: ['old'] } }, preventDefault: () => prevented = true });
+  assert.equal(prevented, false, 'unchanged legacy scope must remain editable');
+  form.props.onSubmit({ currentTarget: { values: { role: 'admin', client_ids: ['active', 'old'] } }, preventDefault: () => prevented = true });
   tree = fixture.render();
   assert.equal(prevented, true);
   assert.match(textOf(tree), /Remova-os explicitamente/);
 });
 
-test('revogação de sessão dispara nova busca ao mudar o identificador da ação', async () => {
+test('revogação de sessão dispara nova busca ao mudar o identificador da ação', async (t) => {
+  installBrowserFixture(t);
   const fixture = userFixture({ activeSection: 'user-sessions', sessionRevision: 'A' });
   fixture.render();
   await settle();
@@ -129,21 +135,43 @@ test('revogação de sessão dispara nova busca ao mudar o identificador da aç�
   assert.deepEqual(fixture.fetched, ['u1', 'u1']);
 });
 
-test('permissão de excluir usuário não depende da permissão de editar', () => {
+test('trocar de usuário invalida a resposta antiga antes de executar o próximo efeito', async (t) => {
+  installBrowserFixture(t);
+  const first = deferred();
+  const second = deferred();
+  const fixture = userFixture({
+    activeSection: 'user-sessions',
+    readSessions: (id) => id === 'u1' ? first.promise : second.promise,
+  });
+  const initialTree = fixture.render();
+  const userSelect = elements(initialTree).find((item) => item.type === 'select');
+  userSelect.props.onChange({ target: { value: 'u2' } });
+  first.resolve({ ok: true, items: [{
+    id: 'qa-old-session', user_agent: 'Sessão anterior sintética', current: false,
+    created_at: '2026-11-25T22:00:00Z', expires_at: '2099-01-01T00:00:00Z',
+  }] });
+  await settle();
+  assert.doesNotMatch(textOf(fixture.render()), /Sessão anterior sintética/);
+  second.resolve({ ok: true, items: [] });
+  await settle();
+  assert.match(textOf(fixture.render()), /Nenhuma sessão registrada/);
+  fixture.hooks.unmount();
+});
+
+test('permissão de excluir usuário não depende da permissão de editar', (t) => {
+  installBrowserFixture(t);
   const fixture = userFixture();
   let tree = fixture.render({ canManageUsers: false, canDeleteUsers: true });
-  assert.equal(elements(tree).filter((el) => el.type === 'form').length, 0);
+  assert.equal(editUserForm(tree), undefined);
   assert.ok(findButton(tree, 'Excluir usuário'));
   tree = fixture.render({ canManageUsers: true, canDeleteUsers: false });
   assert.equal(findButton(tree, 'Excluir usuário'), undefined);
-  assert.ok(elements(tree).some((el) => el.type === 'form' && el.props.action));
+  assert.ok(editUserForm(tree)?.props.action);
 });
 
 test('navegação entre ativos e inativos protege edição; URL de seleção sincroniza ficha', (t) => {
   const fixture = userFixture();
-  const previousWindow = globalThis.window;
-  globalThis.window = { confirm: () => false };
-  t.after(() => { globalThis.window = previousWindow; });
+  installBrowserFixture(t, { confirm: () => false });
   let tree = fixture.render();
   elements(tree).find((element) => element.type === 'scope-fields').props.onScopeChange();
   tree = fixture.render();

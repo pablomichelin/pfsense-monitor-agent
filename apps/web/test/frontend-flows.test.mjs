@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sourceLoader, uiMocks, elements, textOf, deferred, settle, hookHarness } from './source-harness.mjs';
+import { sourceLoader, uiMocks, elements, textOf, deferred, settle, hookHarness, installBrowserFixture } from './source-harness.mjs';
 
 const load = sourceLoader();
 const { interpretTableTarget, tableTargetInput } = load('lib/table-ip.ts');
@@ -164,17 +164,19 @@ test('reconhecer e resolver em Todos preserva filtros e página de alertas', asy
   ]);
 });
 
-test('usuários sem gestão permanecem somente leitura e sessões são carregadas sob demanda', async () => {
+test('usuários sem gestão permanecem somente leitura e sessões são carregadas sob demanda', async (t) => {
+  installBrowserFixture(t);
   for (const canManageUsers of [false, true]) {
     const harness = hookHarness();
     const { AdminUsuariosTabs } = sourceLoader({ ...uiMocks, react: harness.react,
+      'next/navigation': { useRouter: () => ({ push() {}, replace() {} }) },
       '@/lib/admin': {}, '@/components/role-scope-fields': { RoleScopeFields: 'role-fields' },
       '@/components/confirm-dialog': { ConfirmDialog: 'dialog' },
       '@/lib/admin-user-sessions-actions': { getAdminUserSessionsAction: async () => ({ ok: true, items: [{ id: 'session', current: false, created_at: '2026-10-01', expires_at: '2099-01-01T00:00:00Z', revoked_at: null, ip_address: null, last_seen_at: null, user_agent: null }] }) },
     })('components/admin-usuarios-tabs.tsx');
     const props = { users: [{ id: 'user', email: 'synthetic@example.invalid', role: 'readonly', status: 'active', client_ids: [] }], clients: [], roles: [], canManageUsers, initialUserId: 'user', SectionMessage: 'message' };
     let tree = harness.render(AdminUsuariosTabs, props);
-    assert.equal(elements(tree).some((e) => e.type === 'form'), canManageUsers);
+    assert.equal(elements(tree).some((e) => e.type === 'form' && elements(e).some((input) => input.props?.name === 'user_id')), canManageUsers);
     assert.equal(textOf(tree).includes('Excluir usuário'), canManageUsers);
     assert.equal(elements(tree).some((e) => e.props?.name === 'password'), canManageUsers);
     elements(tree).find((e) => e.type === 'button' && textOf(e) === 'Sessões').props.onClick();
@@ -182,6 +184,7 @@ test('usuários sem gestão permanecem somente leitura e sessões são carregada
     await settle();
     tree = harness.render(AdminUsuariosTabs, props);
     assert.equal(textOf(tree).includes('Revogar'), canManageUsers);
+    harness.unmount();
   }
 });
 
@@ -408,14 +411,16 @@ test('técnico restrito mantém operações por firewall, sem cadastro global; c
 test('admin técnicos calcula cadastro apenas com escopo global explícito + manage', async () => {
   for (const globalScope of [undefined, false, true]) {
     for (const manage of [false, true]) {
-      const perms = ['technicians.view', 'technicians.password_reset.run', ...(manage ? ['technicians.manage'] : [])];
+    const perms = ['technicians.view', 'technicians.password_reset.run', 'firewalls.view', ...(manage ? ['technicians.manage'] : [])];
       const page = sourceLoader({ ...uiMocks,
         '@/components/admin-technician-targets': { AdminTechnicianTargets: 'technicians-panel' },
+      '@/components/ui/action-tabs': { ActionTabs: 'tech-tabs' },
         '@/lib/api': { getSession: async () => ({ permissions: perms, has_global_client_scope: globalScope }), getTechnicians: async () => ({ items: [] }), getNodesList: async () => ({ items: [{ id: 'node' }] }) },
         'next/navigation': { redirect },
       })('app/admin/tecnicos/page.tsx').default;
       const tree = await page();
-      const panel = elements(tree).find((e) => e.type === 'technicians-panel');
+    const tabs = elements(tree).find((e) => e.type === 'tech-tabs').props.tabs;
+    const panel = elements(tabs.find((tab) => tab.id === 'manage').content).find((e) => e.type === 'technicians-panel');
       assert.equal(panel.props.canManageRegistry, globalScope === true && manage);
       assert.equal(panel.props.canManageTechnicians, manage);
       assert.equal(panel.props.canResetTechnicianPassword, true);
@@ -449,7 +454,7 @@ test('detalhe do firewall distingue falha de carga de histórico vazio/desligado
     assert.equal(textOf(tree).includes('Não foi possível carregar'), failureStatus === 500);
     assert.equal(tabs.props.metrics.type, 'NodeDetailMetricsTab');
     assert.equal(tabs.props.metrics.props.metricsHistory === null, failureStatus === 500);
-    assert.equal(elements(tabs.props.overview).some((e) => e.type === 'NodeCommandHistoryPanel'), failureStatus !== 500);
+    assert.equal(elements(tabs.props.history).some((e) => e.type === 'NodeCommandHistoryPanel'), failureStatus !== 500);
   }
 });
 

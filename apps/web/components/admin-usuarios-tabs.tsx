@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAdminDraftGuard } from '@/components/admin-clients-list';
@@ -109,6 +109,7 @@ export function AdminUsuariosTabs({
   const [sessionsCursor, setSessionsCursor] = useState<string | null>(null);
   const [moreLoading, setMoreLoading] = useState(false);
   const sessionGeneration = useRef(0);
+  const invalidateSessionReads = useCallback(() => { sessionGeneration.current++; }, []);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
@@ -142,6 +143,7 @@ export function AdminUsuariosTabs({
       return;
     }
     draftGuard.current = false;
+    invalidateSessionReads();
     setSelectedUserId(nextId); setTab(urlTab);
     setHasUnsavedChanges(false); setScopeChanged(false);
     setScopeValidationError(null); setSessions([]); setSessionsCursor(null);
@@ -155,19 +157,23 @@ export function AdminUsuariosTabs({
     const generation = ++sessionGeneration.current;
     setMoreLoading(false);
     if (tab !== 'sessoes' || !selectedUserId) return;
-    let cancelled = false;
     setSessionsLoading(true);
     setSessions([]); setSessionsCursor(null);
     setSessionsError(null);
     getAdminUserSessionsAction(selectedUserId, { limit: 50 }).then((result) => {
-      if (cancelled || generation !== sessionGeneration.current) return;
+      if (generation !== sessionGeneration.current) return;
       if (result.ok) { setSessions(result.items); setSessionsCursor(result.next_cursor); }
       else { setSessions([]); setSessionsError(result.error); }
     }).catch(() => {
-      if (!cancelled) { setSessions([]); setSessionsError('Falha ao buscar sessões.'); }
-    }).finally(() => { if (!cancelled) setSessionsLoading(false); });
-    return () => { cancelled = true; sessionGeneration.current++; };
-  }, [selectedUserId, tab, sessionsRetry, sessionRevision]);
+      if (generation === sessionGeneration.current) {
+        setSessions([]);
+        setSessionsError('Falha ao buscar sessões.');
+      }
+    }).finally(() => {
+      if (generation === sessionGeneration.current) setSessionsLoading(false);
+    });
+    return invalidateSessionReads;
+  }, [selectedUserId, tab, sessionsRetry, sessionRevision, invalidateSessionReads]);
 
   const loadMoreSessions = async () => {
     if (!selectedUserId || !sessionsCursor || moreLoading) return;
@@ -190,6 +196,7 @@ export function AdminUsuariosTabs({
   };
   const switchUser = (userId: string) => {
     if (userId === selectedUserId || !allowLeaveDraft()) return;
+    invalidateSessionReads();
     setSelectedUserId(userId || null);
     setScopeChanged(false);
     router.push(navigationHref(userId || null), { scroll: false });
@@ -202,6 +209,7 @@ export function AdminUsuariosTabs({
   };
   const switchTab = (next: 'usuarios' | 'sessoes') => {
     if (next === tab || !allowLeaveDraft()) return;
+    invalidateSessionReads();
     setTab(next);
     setScopeChanged(false);
     router.push(navigationHref(selectedUserId, next), { scroll: false });

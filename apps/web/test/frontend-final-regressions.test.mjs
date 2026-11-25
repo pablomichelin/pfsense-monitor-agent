@@ -6,13 +6,20 @@ const findButton = (tree, label) => elements(tree).find((e) => e.type === 'butto
 
 function tablesFixture(t) {
   const hooks = hookHarness();
-  let interval;
-  t.mock.method(globalThis, 'setInterval', (fn) => { interval = fn; return 1; });
-  t.mock.method(globalThis, 'clearInterval', () => { interval = undefined; });
+  const timers = [];
+  t.mock.method(globalThis, 'setTimeout', (resolve, ms) => {
+    assert.equal(ms, 3000);
+    timers.push(resolve);
+    return timers.length;
+  });
   const requests = [];
+  const queriedTargets = [];
   const { FleetPfTablesPanel } = sourceLoader({ ...uiMocks, react: hooks.react,
     '@/components/nodes/node-command-progress': { commandStatusLabel: (s) => s },
-    '@/lib/operational-actions-actions': { requestTableSearchAction: async () => ({ ok: true, command_id: 'synthetic', status: 'pending' }) },
+    '@/lib/operational-actions-actions': { requestTableSearchAction: async (_, target) => {
+      queriedTargets.push(target);
+      return { ok: true, command_id: 'synthetic', status: 'pending' };
+    } },
     '@/lib/node-commands-actions': { fetchNodeCommandDetail: () => { const job = deferred(); requests.push(job); return job.promise; } },
   })('components/nodes/fleet-pf-tables-panel.tsx');
   const child = FleetPfTablesPanel({ selectedNodes: [{ id: 'synthetic', hostname: 'Synthetic', agent_version: '0.5.25' }] });
@@ -20,52 +27,57 @@ function tablesFixture(t) {
   const render = () => tree = hooks.render(child.type, child.props);
   render();
   const ip = (value) => { elements(tree).find((e) => e.type === 'input' && e.props.placeholder).props.onChange({ target: { value } }); render(); };
-  return { hooks, requests, render, ip, tick: () => interval?.(), get tree() { return tree; } };
+  return { hooks, requests, queriedTargets, render, ip, tick: () => timers.shift()?.(), get tree() { return tree; } };
 }
 
-test('polling de 6s atravessa o tick de 5s sem sobreposição nem descarte infinito', async (t) => {
+test('consulta lenta só agenda o próximo polling depois de concluir a leitura anterior', async (t) => {
   const pf = tablesFixture(t);
   pf.ip('203.0.113.2');
   findButton(pf.tree, 'Consultar').props.onClick();
   await settle();
   pf.render();
-  pf.tick(); // t=5s: começa a primeira leitura.
-  pf.tick(); // t=10s: ainda aguardando os 6s da primeira; não começa outra.
+  pf.tick();
+  pf.tick();
   assert.equal(pf.requests.length, 1);
-  pf.requests[0].resolve({ command: { status: 'running', result_json: {} } }); // t=11s.
+  pf.requests[0].resolve({ command: { status: 'running', result_json: {} } });
   await settle();
   assert.match(textOf(pf.render()), /running/);
   pf.tick();
+  await settle();
   pf.tick();
   assert.equal(pf.requests.length, 2);
-  pf.requests[1].resolve({ command: { status: 'succeeded', result_json: { tables: ['synthetic_block'] } } });
+  pf.requests[1].resolve({ command: { status: 'succeeded', result_json: { ok: true, tables: ['sshguard'] } } });
   await settle();
-  assert.match(textOf(pf.render()), /synthetic_block/);
+  assert.match(textOf(pf.render()), /sshguard/i);
   assert.equal(elements(pf.tree).filter((e) => e.props?.type === 'checkbox').length, 1);
   pf.hooks.unmount();
 });
 
-test('polling serial continua rejeitando geração anterior após editar o alvo', async (t) => {
+test('uma consulta em andamento bloqueia edição e a próxima consulta usa somente o novo alvo', async (t) => {
   const pf = tablesFixture(t);
   pf.ip('203.0.113.2');
   findButton(pf.tree, 'Consultar').props.onClick();
   await settle();
   pf.render();
-  pf.tick();
+  assert.ok(elements(pf.tree).find((item) => item.props.placeholder).props.disabled);
   pf.ip('203.0.113.3');
   findButton(pf.tree, 'Consultar').props.onClick();
   await settle();
-  pf.render();
-  pf.tick();
-  assert.equal(pf.requests.length, 1, 'a geração nova também aguarda a leitura em andamento');
-  pf.requests[0].resolve({ command: { status: 'succeeded', result_json: { tables: ['old_result'] } } });
+  assert.deepEqual(pf.queriedTargets, ['203.0.113.2']);
+  assert.equal(pf.requests.length, 1);
+  pf.requests[0].resolve({ command: { status: 'succeeded', result_json: { ok: true, tables: ['sshguard'] } } });
   await settle();
-  assert.ok(!textOf(pf.render()).includes('old_result'));
-  pf.tick();
+  assert.match(textOf(pf.render()), /sshguard/i);
+  assert.equal(elements(pf.tree).filter((item) => item.props?.type === 'checkbox').length, 1);
+  pf.ip('203.0.113.3');
+  assert.equal(elements(pf.tree).filter((item) => item.props?.type === 'checkbox').length, 0);
+  findButton(pf.tree, 'Consultar').props.onClick();
+  await settle();
   assert.equal(pf.requests.length, 2);
-  pf.requests[1].resolve({ command: { status: 'succeeded', result_json: { tables: ['current_result'] } } });
+  assert.deepEqual(pf.queriedTargets, ['203.0.113.2', '203.0.113.3']);
+  pf.requests[1].resolve({ command: { status: 'succeeded', result_json: { ok: true, tables: ['snort2c'] } } });
   await settle();
-  assert.match(textOf(pf.render()), /current_result/);
+  assert.match(textOf(pf.render()), /snort2c/i);
   pf.hooks.unmount();
 });
 
@@ -73,9 +85,11 @@ test('admin técnicos passa o limite da API ao seletor e não entrega inventári
   const nodes = Array.from({ length: 101 }, (_, i) => ({ id: `node-${i}`, hostname: `Synthetic ${i}`, client: { name: 'Lab' } }));
   const page = sourceLoader({ ...uiMocks,
     '@/components/admin-technician-targets': { AdminTechnicianTargets: 'targets' },
-    '@/lib/api': { getSession: async () => ({ permissions: ['technicians.view', 'technicians.manage'], has_global_client_scope: true }), getTechnicians: async () => ({ items: [], batch_max_size: 100 }), getNodesList: async () => ({ items: nodes }) },
+    '@/components/ui/action-tabs': { ActionTabs: 'tech-tabs' },
+    '@/lib/api': { getSession: async () => ({ permissions: ['technicians.view', 'technicians.manage', 'firewalls.view'], has_global_client_scope: true }), getTechnicians: async () => ({ items: [], batch_max_size: 100 }), getNodesList: async () => ({ items: nodes }) },
   })('app/admin/tecnicos/page.tsx').default;
-  const selector = elements(await page()).find((e) => e.type === 'targets');
+  const tabs = elements(await page()).find((e) => e.type === 'tech-tabs').props.tabs;
+  const selector = elements(tabs.find((tab) => tab.id === 'manage').content).find((e) => e.type === 'targets');
   assert.equal(selector.props.batchMaxSize, 100);
   assert.equal(selector.props.nodes.length, 101);
   assert.equal(selector.props.nodeIds, undefined);
@@ -207,8 +221,9 @@ test('usuarios/page nega não-superadmin antes de qualquer leitura administrativ
     const page = sourceLoader({ ...uiMocks,
       '@/components/admin-usuarios-tabs': { AdminUsuariosTabs: 'users-tabs' },
       '@/lib/api': {
+        ApiError: class extends Error {},
         getSession: async () => ({ user: { role, id: 'synthetic' }, permissions: ['users.view'] }),
-        getUsersList: () => read({ items: [] }), getNodesFilters: () => read({ clients: [] }), getRolesList: () => read({ items: [] }),
+        getUsersList: () => read({ items: [] }), getAdminClientsList: () => read({ items: [], total_pages: 1 }), getRolesList: () => read({ items: [] }),
       },
       'next/navigation': { redirect: (url) => { const error = new Error('Synthetic redirect'); error.url = url; throw error; } },
     })('app/admin/usuarios/page.tsx').default;
