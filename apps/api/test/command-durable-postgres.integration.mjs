@@ -52,7 +52,7 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
   assert.ok(!url.searchParams.has('host'), 'socket/host overrides are forbidden');
   assert.ok(!url.searchParams.has('schema'), 'schema overrides are forbidden');
   const selectedCase = process.env.COMMAND_RECOVERY_PG_CASE;
-  assert.ok(!selectedCase || ['disconnect', 'capacity'].includes(selectedCase), 'unknown PG case selector');
+  assert.ok(!selectedCase || ['disconnect', 'capacity', 'batch-sweep'].includes(selectedCase), 'unknown PG case selector');
   url.searchParams.set('connection_limit', '4');
   url.searchParams.set('connect_timeout', '5');
   url.searchParams.set('pool_timeout', '5');
@@ -90,6 +90,7 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
   assert.equal(guard.length, 1); assert.equal(guard[0].purpose, sentinel);
 
   const { NodeCommandsService } = appRequire('/app/dist/node-commands/node-commands.service.js');
+  const { CommandWorkerService } = appRequire('/app/dist/commands/command-worker.service.js');
   const { CommandOrchestratorService } = appRequire('/app/dist/commands/command-orchestrator.service.js');
   const { TechnicianBackupFollowUpService } = appRequire('/app/dist/technicians/technician-backup-followup.service.js');
   const { TechniciansService } = appRequire('/app/dist/technicians/technicians.service.js');
@@ -161,8 +162,38 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
   const runCase = (name, work) => {
     if (selectedCase === 'disconnect' && !name.startsWith('server terminates')) return Promise.resolve();
     if (selectedCase === 'capacity' && !name.startsWith('upgrade capacity')) return Promise.resolve();
+    if (selectedCase === 'batch-sweep' && !name.startsWith('periodic batch sweep')) return Promise.resolve();
     return t.test(name, work);
   };
+
+  await runCase('periodic batch sweep progresses beyond legacy empty and long-running batches', async () => {
+    const old = new Date(Date.now() - 300_000);
+    const emptyIds = Array.from({ length: 20 }, () => randomUUID());
+    const visibleIds = Array.from({ length: 25 }, () => randomUUID());
+    const allIds = [...emptyIds, ...visibleIds];
+    await a.jobBatch.createMany({ data: allIds.map((id) => ({
+      id, commandType: 'table_search', status: 'running', requestedAt: old, updatedAt: old,
+    })) });
+    try {
+      for (const [index, batchId] of visibleIds.entries()) {
+        await fixture({
+          type: 'table_search', batchId, payloadJson: {},
+          status: index === visibleIds.length - 1 ? 'succeeded' : 'running',
+        });
+      }
+      const worker = new CommandWorkerService(a, {}, sa.orchestrator);
+      await worker.reconcileOpenBatches(new Set());
+      const reconciled = { id: { in: visibleIds }, updatedAt: { gt: old } };
+      assert.equal(await a.jobBatch.count({ where: reconciled }), 20);
+      await worker.reconcileOpenBatches(new Set());
+      assert.equal(await a.jobBatch.count({ where: reconciled }), 25);
+      assert.equal((await a.jobBatch.findUnique({ where: { id: visibleIds.at(-1) } })).status, 'completed');
+      assert.equal(await a.jobBatch.count({ where: { id: { in: emptyIds }, updatedAt: old } }), 20);
+    } finally {
+      await a.nodeCommand.updateMany({ where: { batchId: { in: allIds } }, data: { batchId: null } });
+      await a.jobBatch.deleteMany({ where: { id: { in: allIds } } });
+    }
+  });
 
   await runCase('upgrade capacity reserves one slot and respects a scheduled pickup time', async () => {
     const first = await fixture({ type: 'package_upgrade', payloadJson: {} });

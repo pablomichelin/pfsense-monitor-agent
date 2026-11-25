@@ -317,7 +317,9 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
         status: {
           in: ['pending', 'running'],
         },
+        commands: { some: {} },
       },
+      orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
       select: {
         id: true,
       },
