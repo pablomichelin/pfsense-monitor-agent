@@ -6,6 +6,7 @@
  * Example INSIDE monitor-pfsense-qa-api (parent prepares/migrates the isolated PG):
  *   MONITOR_QA_POSTGRES_INTEGRATION=1 MONITOR_QA_CONTAINER_NAME=monitor-pfsense-qa-api \
  *   PAGINATION_QA_DATABASE_URL=postgres://qa@db:5432/monitor_qa PAGINATION_API_ROOT=/app \
+ *   PAGINATION_QA_API_VERSION=0.14.4 \
  *   PAGINATION_QA_KEEP_SEED=1 PAGINATION_QA_MANIFEST=/qa/pagination-qa-seed.json \
  *     node --test /qa/pagination-postgres.integration.mjs
  *
@@ -177,7 +178,8 @@ async function loadRuntime(url) {
   const root = resolve(process.env.PAGINATION_API_ROOT || join(dirname(fileURLToPath(import.meta.url)), '..'));
   const require = createRequire(join(root, 'package.json'));
   const packageInfo = require(join(root, 'package.json'));
-  assert.equal(packageInfo.version, '0.13.0', 'This QA block requires the final API 0.13.0 image, never 0.12.0');
+  const expectedVersion = process.env.PAGINATION_QA_API_VERSION || '0.13.0';
+  assert.equal(packageInfo.version, expectedVersion, 'Build the exact API version selected for this QA run');
   const compiled = (path) => require(join(root, 'dist', path));
   const { PrismaClient } = require('@prisma/client');
   const { NodesService } = compiled('nodes/nodes.service.js');
@@ -191,7 +193,13 @@ async function loadRuntime(url) {
   const db = new PrismaClient({ datasources: { db: { url: url.toString() } }, log: [{ emit: 'event', level: 'query' }] });
   const permissions = new PermissionsService(db);
   const policy = new AccessPolicyService(db, permissions);
-  return { db, permissions, policy, nodes: new NodesService(db, policy), alerts: new AlertsService(db, policy), compareListNodes };
+  const release = { getPublishedVersion: () => appConfig.packageRelease.version };
+  return {
+    db, permissions, policy, compareListNodes,
+    apiVersion: packageInfo.version,
+    nodes: new NodesService(db, policy, release),
+    alerts: new AlertsService(db, policy),
+  };
 }
 
 async function assertDatabase(db) {
@@ -274,7 +282,7 @@ async function runPg(t, url, cleanupOnly) {
   const keep = process.env.PAGINATION_QA_KEEP_SEED === '1';
   if (keep && !path && !cleanupOnly) fail('KEEP_SEED requires PAGINATION_QA_MANIFEST for later cleanup');
   const runtime = await loadRuntime(url);
-  const { db, nodes, alerts, compareListNodes } = runtime;
+  const { db, nodes, alerts, compareListNodes, apiVersion } = runtime;
   let m, seeded = false, success = false;
   const metrics = { calls: 0, query_count: 0, max_call_ms: 0, max_rss: 0, max_heap: 0 };
   db.$on('query', () => { metrics.query_count++; }); // no query SQL, parameters or connection string logged
@@ -288,7 +296,7 @@ async function runPg(t, url, cleanupOnly) {
     }
     const run = `pagination-qa-${randomUUID()}`;
     m = { version: 1, run, database: 'monitor_qa', state: 'planned', created_at: new Date().toISOString(),
-      api_version: '0.13.0', selected_phases: [...selectedPhases], phase_results: {},
+      api_version: apiVersion, selected_phases: [...selectedPhases], phase_results: {},
       clients: ['A', 'B', 'C'].map((c) => ({ id: randomUUID(), code: `${run}-${c}` })),
       users: Array.from({ length: 4 }, (_, i) => ({ id: randomUUID(), email: `user-${i}@${run}.invalid` })),
     };
@@ -400,8 +408,17 @@ async function runPg(t, url, cleanupOnly) {
     });
     await phase('alerts', '1105 real PG alerts, both orderings, complete totals, later pages, filters and legacy contract', async () => {
       const expectedAlerts = f.alerts.slice(0, COUNT);
-      const expectedTotals = { open: 0, acknowledged: 0, resolved: 0, critical: 0, warning: 0, info: 0 };
-      for (const alert of expectedAlerts) { expectedTotals[alert.status]++; expectedTotals[alert.severity]++; }
+      const expectedTotals = {
+        open: 0, acknowledged: 0, resolved: 0, critical: 0, critical_pending: 0,
+        critical_resolved: 0, warning: 0, info: 0,
+      };
+      for (const alert of expectedAlerts) {
+        expectedTotals[alert.status]++;
+        expectedTotals[alert.severity]++;
+        if (alert.severity === 'critical') {
+          expectedTotals[alert.status === 'resolved' ? 'critical_resolved' : 'critical_pending']++;
+        }
+      }
       for (const sort_by of ['legacy', 'attention']) {
         const seen = new Set();
         const expectedOrder = await db.alert.findMany({ where: { node: { site: { clientId: m.clients[0].id } } },
