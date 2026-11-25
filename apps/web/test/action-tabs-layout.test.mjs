@@ -147,7 +147,10 @@ test('técnicos separam consulta e gestão de acordo com o perfil', async () => 
       '@/components/admin-technician-targets': { AdminTechnicianTargets: 'targets' },
       '@/lib/api': {
         ApiError: class extends Error {},
-        getSession: async () => ({ permissions: ['technicians.view', ...(manage ? ['technicians.manage'] : [])], has_global_client_scope: manage }),
+        getSession: async () => ({
+          permissions: ['technicians.view', ...(manage ? ['technicians.manage', 'firewalls.view'] : [])],
+          has_global_client_scope: manage,
+        }),
         getTechnicians: async () => ({ items: [], batch_max_size: 20 }),
         getNodesList: async () => ({ items: [], total: 0 }),
         getTechnician: () => assert.fail(),
