@@ -237,7 +237,9 @@ export class NotificationsDispatcherService {
       delivery.attemptCount + 1 < appConfig.notifications.maxAttempts
     ) {
       setTimeout(() => {
-        void this.processDelivery(delivery.id);
+        void this.processDelivery(delivery.id).catch(() => {
+          this.logger.warn(`notification delivery retry failed delivery_id=${delivery.id}`);
+        });
       }, appConfig.notifications.retryDelayMs);
     }
   }

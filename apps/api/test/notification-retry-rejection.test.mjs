@@ -1,0 +1,45 @@
+import './synthetic-env.mjs';
+import assert from 'node:assert/strict';
+import { setTimeout as delay } from 'node:timers/promises';
+import test from 'node:test';
+
+process.env.NOTIFICATIONS_ENABLED = 'true';
+process.env.NOTIFICATIONS_MAX_ATTEMPTS = '2';
+process.env.NOTIFICATIONS_RETRY_DELAY_MS = '5';
+const { NotificationsDispatcherService } = await import('../dist/notifications/notifications.service.js');
+
+test('a failed deferred delivery read is reported and does not escape the timer', async () => {
+  let reads = 0;
+  let sends = 0;
+  const warned = Promise.withResolvers();
+  const delivery = {
+    id: 'qa-delivery', status: 'pending', attemptCount: 0,
+    channel: { type: 'webhook', configPublicJson: {}, secretsEncrypted: null },
+    alert: {
+      id: 'qa-alert', severity: 'warning', title: 'Synthetic alert', type: 'agent_error',
+      description: 'QA', openedAt: new Date(),
+      node: { hostname: 'qa.example.test', nodeUid: 'qa', site: { client: { name: 'QA' } } },
+    },
+  };
+  const prisma = {
+    notificationDelivery: {
+      findUnique: async () => {
+        reads++;
+        if (reads === 2) throw new Error('synthetic transient read failure');
+        return delivery;
+      },
+      update: async () => {},
+    },
+  };
+  const provider = { send: async () => ({ ok: ++sends > 1 }) };
+  const dispatcher = new NotificationsDispatcherService(prisma, {}, {}, provider, {});
+  dispatcher.logger.warn = (message) => warned.resolve(message);
+
+  await dispatcher.processDelivery(delivery.id);
+  const message = await Promise.race([warned.promise, delay(250, null, { ref: false })]);
+  assert.match(message, /notification delivery retry failed.*qa-delivery/);
+  assert.equal(reads, 2);
+  assert.equal(sends, 1);
+  await dispatcher.processDelivery(delivery.id);
+  assert.equal(sends, 2);
+});
