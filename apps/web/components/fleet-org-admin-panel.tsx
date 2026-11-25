@@ -25,6 +25,7 @@ type Props = {
   groupMemberIds: Record<string, string[]>;
   canManageTags: boolean;
   canManageGroups: boolean;
+  canEditGroupMembers: boolean;
 };
 
 function DeleteTagButton({
@@ -118,6 +119,7 @@ export function FleetOrgAdminPanel({
   groupMemberIds,
   canManageTags,
   canManageGroups,
+  canEditGroupMembers,
 }: Props) {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
@@ -168,7 +170,7 @@ export function FleetOrgAdminPanel({
             </p>
           </div>
 
-          {canManageTags ? (
+          {canManageTags && clients.length > 0 ? (
             <form action={handleCreateTag} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
               <select
                 name="client_id"
@@ -237,7 +239,7 @@ export function FleetOrgAdminPanel({
             </p>
           </div>
 
-          {canManageGroups ? (
+          {canManageGroups && clients.length > 0 ? (
             <form action={handleCreateGroup} className="grid gap-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <select
@@ -284,13 +286,15 @@ export function FleetOrgAdminPanel({
                 {groups.map((group) => (
                   <tr key={group.id} className="border-b border-slate-900/80 text-slate-200">
                     <td className="px-3 py-2">
-                      <button
-                        type="button"
-                        className="text-left hover:text-cyan-200"
-                        onClick={() => setSelectedGroupId(group.id)}
-                      >
-                        {group.name}
-                      </button>
+                      {canEditGroupMembers ? (
+                        <button
+                          type="button"
+                          className="text-left hover:text-cyan-200"
+                          onClick={() => setSelectedGroupId(group.id)}
+                        >
+                          {group.name}
+                        </button>
+                      ) : group.name}
                     </td>
                     <td className="px-3 py-2">{group.client_name}</td>
                     <td className="px-3 py-2">{group.member_count}</td>
@@ -314,7 +318,7 @@ export function FleetOrgAdminPanel({
         </Card>
       </div>
 
-      {canManageGroups && selectedGroup ? (
+      {canEditGroupMembers && selectedGroup ? (
         <Card className="space-y-4 p-6">
           <div>
             <h3 className="font-display text-lg text-fg">

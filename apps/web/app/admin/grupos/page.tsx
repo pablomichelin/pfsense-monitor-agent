@@ -25,15 +25,18 @@ export default async function AdminGruposPage() {
     handlePageApiError(error);
   }
 
-  const canViewTags = hasPermission(session.permissions ?? [], 'tags.view');
-  const canViewGroups = hasPermission(session.permissions ?? [], 'groups.view');
+  const permissions = session.permissions ?? [];
+  const canViewTags = hasPermission(permissions, 'tags.view');
+  const canViewGroups = hasPermission(permissions, 'groups.view');
 
   if (!canViewTags && !canViewGroups) {
     redirect('/conta?access=denied');
   }
 
-  const canManageTags = hasPermission(session.permissions ?? [], 'tags.manage');
-  const canManageGroups = hasPermission(session.permissions ?? [], 'groups.manage');
+  const canManageTags = hasPermission(permissions, 'tags.manage');
+  const canManageGroups = hasPermission(permissions, 'groups.manage');
+  const canViewFirewalls = hasPermission(permissions, 'firewalls.view');
+  const canEditGroupMembers = canManageGroups && canViewFirewalls;
 
   let tags;
   let groups;
@@ -43,16 +46,16 @@ export default async function AdminGruposPage() {
     [tags, groups, filterOptions] = await Promise.all([
       canViewTags ? listFleetTags() : Promise.resolve({ items: [], generated_at: '' }),
       canViewGroups ? listFleetGroups() : Promise.resolve({ items: [], generated_at: '' }),
-      getNodesFilters(),
+      (canManageTags || canManageGroups) && canViewFirewalls ? getNodesFilters() : null,
     ]);
   } catch (error) {
     handlePageApiError(error);
   }
 
-  const activeClients = filterOptions.clients.filter((client) => client.status === 'active');
+  const activeClients = (filterOptions?.clients ?? []).filter((client) => client.status === 'active');
 
   const groupMemberIds: Record<string, string[]> = {};
-  if (canManageGroups && groups.items.length > 0) {
+  if (canEditGroupMembers && groups.items.length > 0) {
     const details = await Promise.all(
       groups.items.map((group) => getFleetGroup(group.id)),
     );
@@ -73,11 +76,13 @@ export default async function AdminGruposPage() {
         ]}
       />
 
-      <PageSection title="Navegação">
-        <Link href="/admin/notificacoes" className={adminNavLinkClassName}>
-          ← Notificações
-        </Link>
-      </PageSection>
+      {hasPermission(permissions, 'notifications.view') ? (
+        <PageSection title="Navegação">
+          <Link href="/admin/notificacoes" className={adminNavLinkClassName}>
+            ← Notificações
+          </Link>
+        </PageSection>
+      ) : null}
 
       <FleetOrgAdminPanel
         tags={tags.items}
@@ -89,6 +94,7 @@ export default async function AdminGruposPage() {
         groupMemberIds={groupMemberIds}
         canManageTags={canManageTags}
         canManageGroups={canManageGroups}
+        canEditGroupMembers={canEditGroupMembers}
       />
     </div>
   );

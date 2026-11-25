@@ -747,6 +747,9 @@ function RuleFormFields({
           <label className={labelClass}>Cliente (opcional)</label>
           <select name="client_id" defaultValue={rule?.client_id ?? ''} className={selectClass}>
             <option value="">Todos os clientes</option>
+            {rule?.client_id && !clients.some((client) => client.id === rule.client_id) ? (
+              <option value={rule.client_id}>{rule.client_name ?? 'Cliente vinculado'} (indisponível na lista)</option>
+            ) : null}
             {clients.map((client) => (
               <option key={client.id} value={client.id}>
                 {client.name} ({client.code})

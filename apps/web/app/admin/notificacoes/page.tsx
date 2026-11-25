@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { NotificationsAdminPanel } from '@/components/notifications-admin-panel';
 import { PageHero } from '@/components/page-hero';
 import { PageSection } from '@/components/ui';
-import { getSession } from '@/lib/api';
+import { getNodesFilters, getSession } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
 import {
@@ -12,7 +12,6 @@ import {
   listNotificationDeliveries,
   listNotificationRules,
 } from '@/lib/notifications';
-import { getNodesFilters } from '@/lib/api';
 import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 
 export const dynamic = 'force-dynamic';
@@ -26,12 +25,13 @@ export default async function AdminNotificacoesPage() {
     handlePageApiError(error);
   }
 
-  if (!hasPermission(session.permissions ?? [], 'notifications.view')) {
+  const permissions = session.permissions ?? [];
+  if (!hasPermission(permissions, 'notifications.view')) {
     redirect('/conta?access=denied');
   }
 
-  const canManage = hasPermission(session.permissions ?? [], 'notifications.manage');
-  const canTest = hasPermission(session.permissions ?? [], 'notifications.test');
+  const canManage = hasPermission(permissions, 'notifications.manage');
+  const canTest = hasPermission(permissions, 'notifications.test');
 
   let status;
   let channels;
@@ -45,13 +45,13 @@ export default async function AdminNotificacoesPage() {
       listNotificationChannels(),
       listNotificationRules(),
       listNotificationDeliveries(),
-      getNodesFilters(),
+      canManage && hasPermission(permissions, 'firewalls.view') ? getNodesFilters() : null,
     ]);
   } catch (error) {
     handlePageApiError(error);
   }
 
-  const activeClients = filterOptions.clients.filter((client) => client.status === 'active');
+  const activeClients = (filterOptions?.clients ?? []).filter((client) => client.status === 'active');
 
   return (
     <div className="space-y-section">
@@ -66,11 +66,13 @@ export default async function AdminNotificacoesPage() {
         ]}
       />
 
-      <PageSection title="Navegação">
-        <Link href="/admin/usuarios" className={adminNavLinkClassName}>
-          ← Usuários
-        </Link>
-      </PageSection>
+      {hasPermission(permissions, 'users.view') ? (
+        <PageSection title="Navegação">
+          <Link href="/admin/usuarios" className={adminNavLinkClassName}>
+            ← Usuários
+          </Link>
+        </PageSection>
+      ) : null}
 
       <NotificationsAdminPanel
         status={status}
