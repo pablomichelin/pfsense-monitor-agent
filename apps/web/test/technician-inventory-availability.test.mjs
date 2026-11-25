@@ -9,7 +9,7 @@ class ApiError extends Error {
   }
 }
 
-function fixture(permissions, detailFailure, { expanded = false } = {}) {
+function fixture(permissions, detailFailure, { expanded = false, inventoryFailure } = {}) {
   const reads = [];
   const listRequests = [];
   const detailRequests = [];
@@ -44,6 +44,7 @@ function fixture(permissions, detailFailure, { expanded = false } = {}) {
       getNodesList: async (query) => {
         reads.push(query);
         if (!permissions.includes('firewalls.view')) throw new ApiError(403);
+        if (inventoryFailure) throw new ApiError(inventoryFailure);
         return { items: [node], total: 123 };
       },
     },
@@ -95,4 +96,17 @@ test('the technician matrix uses one expanded list and keeps an empty account li
   assert.match(textOf(tabs[0].content), /Segunda técnica sintética.*Sem contas visíveis/);
   assert.deepEqual(listRequests, [['active', { includeAccounts: true }]]);
   assert.deepEqual(detailRequests, []);
+});
+
+
+test('an inventory outage preserves the technician matrix with no batch actions', async () => {
+  const permissions = ['technicians.view', 'technicians.manage', 'firewalls.view'];
+  const { route } = fixture(permissions, undefined, { inventoryFailure: 503 });
+  const tree = await route();
+  assert.match(textOf(tree), /Não foi possível consultar o inventário/);
+  const tabs = elements(tree).find((item) => item.type === 'action-tabs').props.tabs;
+  assert.deepEqual(tabs.map((tab) => tab.id), ['accounts']);
+  assert.match(textOf(tabs[0].content), /Técnico sintético/);
+  const expired = fixture(permissions, undefined, { inventoryFailure: 401 });
+  await assert.rejects(expired.route, { url: '/login' });
 });

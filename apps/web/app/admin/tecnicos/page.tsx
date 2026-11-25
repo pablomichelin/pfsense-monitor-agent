@@ -65,11 +65,16 @@ export default async function AdminTecnicosPage() {
   let technicianDetails: TechnicianRow[];
   let nodePage: NodesListResponse | null;
   let batchMaxSize = 0;
+  let inventoryUnavailable = false;
 
   try {
     const [techniciansList, nodesList] = await Promise.all([
       getTechnicians('active', { includeAccounts: true }),
-      canViewFirewalls ? getNodesList({ limit: NODE_LIST_LIMIT }) : null,
+      canViewFirewalls ? getNodesList({ limit: NODE_LIST_LIMIT }).catch((error) => {
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) throw error;
+        inventoryUnavailable = true;
+        return null;
+      }) : null,
     ]);
 
     nodePage = nodesList;
@@ -118,6 +123,9 @@ export default async function AdminTecnicosPage() {
       />
 
       {!canManageRegistry ? <Alert variant="info">O cadastro global de técnicos é reservado a administradores com escopo global. Para o primeiro vínculo de um técnico, procure um administrador global.</Alert> : null}
+      {inventoryUnavailable ? (
+        <Alert variant="warning">Não foi possível consultar o inventário de firewalls. Recarregue a página para recuperar os dados e as ações em lote.</Alert>
+      ) : null}
       {!canViewFirewalls && (canManageTechnicians || canResetTechnicianPassword) ? (
         <Alert variant="info">As operações em lote precisam de acesso ao inventário de firewalls.</Alert>
       ) : null}

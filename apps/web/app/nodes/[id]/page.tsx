@@ -149,12 +149,9 @@ export default async function NodeDetailsPage({
       }
     }
 
-    const configBackups = canViewBackups
-      ? await optionalSection('Backups de configuração', getNodeConfigBackups(id))
-      : null;
-
-    const [upgradeStatus, packageUpgradeStatus, fleetTags, metricsHistory, commandHistory, operationalStatus, nodeCapabilities, pfsenseApiStatus, technicianAccounts] =
+    const [configBackups, upgradeStatus, packageUpgradeStatus, fleetTags, metricsHistory, commandHistory, operationalStatus, nodeCapabilities, pfsenseApiStatus, technicianAccounts] =
       await Promise.all([
+        canViewBackups ? optionalSection('Backups de configuração', getNodeConfigBackups(id)) : null,
         optionalSection('Atualização do pfSense OS', getPfsenseUpgradeStatus(id)),
         optionalSection('Atualização do agente Monitor', getPackageUpgradeStatus(id)),
         canManageFleetMetadata && canViewTags ? optionalSection('Tags disponíveis', listFleetTags({ client_id: node.client.id })) : null,
@@ -168,12 +165,15 @@ export default async function NodeDetailsPage({
 
     let bootstrap = null;
     if (canExecuteBootstrap) {
-      bootstrap = await getNodeBootstrapCommandIfAllowed(
-        id,
-        releaseBaseUrl,
-        controllerUrl,
-        heartbeatMode,
-        configBackupInstallMode === 'default' ? undefined : configBackupInstallMode,
+      bootstrap = await optionalSection(
+        'Comando de instalação',
+        getNodeBootstrapCommandIfAllowed(
+          id,
+          releaseBaseUrl,
+          controllerUrl,
+          heartbeatMode,
+          configBackupInstallMode === 'default' ? undefined : configBackupInstallMode,
+        ),
       );
     }
 
