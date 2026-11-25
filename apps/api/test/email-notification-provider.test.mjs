@@ -148,3 +148,65 @@ test('SMTP returns the server rejection without sending another command', { time
   assert.deepEqual(result, { ok: false, error: 'smtp error: 421 Service unavailable' });
   assert.deepEqual(received, []);
 });
+
+test('SMTP fails when DATA finishes without a message acceptance reply', { timeout: 2000 }, async (t) => {
+  let sentQuit = false;
+  const result = await withSmtpServer(t, (socket) => {
+    let buffered = '';
+    let readingMessage = false;
+    socket.on('data', (chunk) => {
+      buffered += chunk.toString();
+      if (!buffered.endsWith(readingMessage ? '\r\n.\r\n' : '\r\n')) return;
+      const command = buffered.trimEnd();
+      buffered = '';
+      if (readingMessage) {
+        readingMessage = false;
+        socket.write('354 Still waiting for message data\r\n');
+      } else if (command === 'DATA') {
+        readingMessage = true;
+        socket.write('354 Send data\r\n');
+      } else if (command === 'QUIT') {
+        sentQuit = true;
+        socket.write('221 Bye\r\n');
+      } else {
+        socket.write('250 OK\r\n');
+      }
+    });
+    socket.write('220 qa.example.test SMTP ready\r\n');
+  }, (config) => new EmailNotificationProvider().send(config, {}, message));
+
+  assert.deepEqual(result, { ok: false, error: 'smtp error: 354 Still waiting for message data' });
+  assert.equal(sentQuit, false);
+});
+
+test('SMTP normalizes mixed message line endings and transmits leading dots intact', { timeout: 2000 }, async (t) => {
+  let receivedBody;
+  const result = await withSmtpServer(t, (socket) => {
+    let buffered = '';
+    let readingMessage = false;
+    socket.on('data', (chunk) => {
+      buffered += chunk.toString();
+      if (!buffered.endsWith(readingMessage ? '\r\n.\r\n' : '\r\n')) return;
+      const command = buffered.trimEnd();
+      buffered = '';
+      if (readingMessage) {
+        readingMessage = false;
+        receivedBody = command.split('\r\n\r\n')[1];
+        socket.write('250 Message queued\r\n');
+      } else if (command === 'DATA') {
+        readingMessage = true;
+        socket.write('354 Send data\r\n');
+      } else if (command === 'QUIT') {
+        socket.write('221 Bye\r\n');
+      } else {
+        socket.write(command.startsWith('RCPT') ? '251 Forwarding recipient\r\n' : '250 OK\r\n');
+      }
+    });
+    socket.write('220 qa.example.test SMTP ready\r\n');
+  }, (config) => new EmailNotificationProvider().send(config, {}, {
+    ...message, body: '.First\nSecond\rThird\r\n..Last',
+  }));
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(receivedBody, '..First\r\nSecond\r\nThird\r\n...Last');
+});

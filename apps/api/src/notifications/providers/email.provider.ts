@@ -28,7 +28,7 @@ export class EmailNotificationProvider implements NotificationProvider {
       `Subject: ${message.subject}`,
       'Content-Type: text/plain; charset=utf-8',
       '',
-      message.body,
+      message.body.replace(/\r\n|\r|\n/g, '\r\n').replace(/^\./gm, '..'),
       '',
     ].join('\r\n');
 
@@ -65,26 +65,29 @@ export class EmailNotificationProvider implements NotificationProvider {
   }): Promise<void> {
     return new Promise((resolve, reject) => {
       const socket = connect({ host: input.host, port: input.port });
-      const commands: string[] = ['EHLO monitor-pfsense'];
+      const commands: Array<{ line: string; replies: number[]; acceptsMessage?: boolean }> = [
+        { line: 'EHLO monitor-pfsense', replies: [250] },
+      ];
 
       if (input.user && input.password) {
         commands.push(
-          'AUTH LOGIN',
-          Buffer.from(input.user).toString('base64'),
-          Buffer.from(input.password).toString('base64'),
+          { line: 'AUTH LOGIN', replies: [334] },
+          { line: Buffer.from(input.user).toString('base64'), replies: [334] },
+          { line: Buffer.from(input.password).toString('base64'), replies: [235] },
         );
       }
 
       commands.push(
-        `MAIL FROM:<${input.from}>`,
-        `RCPT TO:<${input.to}>`,
-        'DATA',
-        `${input.payload}\r\n.`,
-        'QUIT',
+        { line: `MAIL FROM:<${input.from}>`, replies: [250] },
+        { line: `RCPT TO:<${input.to}>`, replies: [250, 251] },
+        { line: 'DATA', replies: [354] },
+        { line: `${input.payload}\r\n.`, replies: [250], acceptsMessage: true },
+        { line: 'QUIT', replies: [221] },
       );
 
       let index = 0;
       let response = '';
+      let expectedReplies = [220];
       let messageAccepted = false;
 
       const handleConnectionFailure = (error: Error) => {
@@ -104,7 +107,8 @@ export class EmailNotificationProvider implements NotificationProvider {
         }
 
         index += 1;
-        socket.write(`${command}\r\n`);
+        expectedReplies = command.replies;
+        socket.write(`${command.line}\r\n`);
       };
 
       socket.setEncoding('utf8');
@@ -116,14 +120,14 @@ export class EmailNotificationProvider implements NotificationProvider {
           response = response.slice(endOfLine + 1);
           endOfLine = response.indexOf('\n');
           const reply = /^(\d{3})([- ]|$)/.exec(line);
-          if (!reply || Number(reply[1]) >= 400) {
+          if (!reply || !expectedReplies.includes(Number(reply[1]))) {
             socket.destroy();
             handleConnectionFailure(new Error(`smtp error: ${line}`));
             return;
           }
 
           if (reply[2] !== '-') {
-            if (commands[index] === 'QUIT' && reply[1] === '250') {
+            if (commands[index - 1]?.acceptsMessage) {
               // DATA has succeeded. A later QUIT failure must not resend the message.
               messageAccepted = true;
             }
