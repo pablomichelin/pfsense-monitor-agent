@@ -291,88 +291,33 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
-      const weightedSamples = hourlyRows.reduce(
-        (acc, row) => acc + row.sampleCount,
-        0,
-      );
-      const weightedAvailability =
-        weightedSamples > 0
-          ? hourlyRows.reduce((acc, row) => {
-              if (row.availabilityPct == null) {
-                return acc;
-              }
-              return acc + row.availabilityPct * row.sampleCount;
-            }, 0) / weightedSamples
-          : null;
-
-      const cpuValues = hourlyRows
-        .flatMap((row) =>
-          row.cpuAvg != null ? [{ value: row.cpuAvg, weight: row.sampleCount }] : [],
-        )
-        .filter((entry) => entry.weight > 0);
-      const memoryValues = hourlyRows
-        .flatMap((row) =>
-          row.memoryAvg != null
-            ? [{ value: row.memoryAvg, weight: row.sampleCount }]
-            : [],
-        )
-        .filter((entry) => entry.weight > 0);
-      const diskValues = hourlyRows
-        .flatMap((row) =>
-          row.diskAvg != null ? [{ value: row.diskAvg, weight: row.sampleCount }] : [],
-        )
-        .filter((entry) => entry.weight > 0);
-      const latencyValues = hourlyRows
-        .flatMap((row) =>
-          row.latencyAvg != null
-            ? [{ value: row.latencyAvg, weight: row.sampleCount }]
-            : [],
-        )
-        .filter((entry) => entry.weight > 0);
+      const metricAverage = (field: 'cpuAvg' | 'memoryAvg' | 'diskAvg' | 'latencyAvg' | 'availabilityPct') =>
+        weightedAverage(hourlyRows.flatMap((row) => {
+          const value = row[field];
+          return value != null && row.sampleCount > 0 ? [{ value, weight: row.sampleCount }] : [];
+        }));
+      const metrics = {
+        sampleCount: hourlyRows.reduce((sum, row) => sum + row.sampleCount, 0),
+        cpuAvg: metricAverage('cpuAvg'),
+        cpuMin: minNullable(hourlyRows.map((row) => row.cpuMin)),
+        cpuMax: maxNullable(hourlyRows.map((row) => row.cpuMax)),
+        memoryAvg: metricAverage('memoryAvg'),
+        memoryMin: minNullable(hourlyRows.map((row) => row.memoryMin)),
+        memoryMax: maxNullable(hourlyRows.map((row) => row.memoryMax)),
+        diskAvg: metricAverage('diskAvg'),
+        diskMin: minNullable(hourlyRows.map((row) => row.diskMin)),
+        diskMax: maxNullable(hourlyRows.map((row) => row.diskMax)),
+        latencyAvg: metricAverage('latencyAvg'),
+        latencyMin: minNullable(hourlyRows.map((row) => row.latencyMin)),
+        latencyMax: maxNullable(hourlyRows.map((row) => row.latencyMax)),
+        availabilityPct: metricAverage('availabilityPct'),
+      };
+      const key = { nodeId: entry.nodeId, bucketStart };
 
       await this.prisma.nodeMetricRollupDaily.upsert({
-        where: {
-          nodeId_bucketStart: {
-            nodeId: entry.nodeId,
-            bucketStart,
-          },
-        },
-        create: {
-          nodeId: entry.nodeId,
-          bucketStart,
-          sampleCount: weightedSamples,
-          cpuAvg: weightedAverage(cpuValues),
-          cpuMin: minNullable(hourlyRows.map((row) => row.cpuMin)),
-          cpuMax: maxNullable(hourlyRows.map((row) => row.cpuMax)),
-          memoryAvg: weightedAverage(memoryValues),
-          memoryMin: minNullable(hourlyRows.map((row) => row.memoryMin)),
-          memoryMax: maxNullable(hourlyRows.map((row) => row.memoryMax)),
-          diskAvg: weightedAverage(diskValues),
-          diskMin: minNullable(hourlyRows.map((row) => row.diskMin)),
-          diskMax: maxNullable(hourlyRows.map((row) => row.diskMax)),
-          latencyAvg: weightedAverage(latencyValues),
-          latencyMin: minNullable(hourlyRows.map((row) => row.latencyMin)),
-          latencyMax: maxNullable(hourlyRows.map((row) => row.latencyMax)),
-          availabilityPct:
-            weightedAvailability != null ? round2(weightedAvailability) : null,
-        },
-        update: {
-          sampleCount: weightedSamples,
-          cpuAvg: weightedAverage(cpuValues),
-          cpuMin: minNullable(hourlyRows.map((row) => row.cpuMin)),
-          cpuMax: maxNullable(hourlyRows.map((row) => row.cpuMax)),
-          memoryAvg: weightedAverage(memoryValues),
-          memoryMin: minNullable(hourlyRows.map((row) => row.memoryMin)),
-          memoryMax: maxNullable(hourlyRows.map((row) => row.memoryMax)),
-          diskAvg: weightedAverage(diskValues),
-          diskMin: minNullable(hourlyRows.map((row) => row.diskMin)),
-          diskMax: maxNullable(hourlyRows.map((row) => row.diskMax)),
-          latencyAvg: weightedAverage(latencyValues),
-          latencyMin: minNullable(hourlyRows.map((row) => row.latencyMin)),
-          latencyMax: maxNullable(hourlyRows.map((row) => row.latencyMax)),
-          availabilityPct:
-            weightedAvailability != null ? round2(weightedAvailability) : null,
-        },
+        where: { nodeId_bucketStart: key },
+        create: { ...key, ...metrics },
+        update: metrics,
       });
 
       upserts += 1;

@@ -137,3 +137,32 @@ test('the daily cycle fills the final UTC hour before reading aggregates', async
   await new MetricsRollupService(prisma, lock).runDailyRollupCycle('manual');
   assert.deepEqual(events, ['fill hourly', 'read hourly']);
 });
+
+test('daily availability counts only hourly rows with a measured availability', async () => {
+  const measurements = [
+    [{ sampleCount: 12, availabilityPct: 100 }, { sampleCount: 12, availabilityPct: null }],
+    [{ sampleCount: 12, availabilityPct: null }],
+    [{ sampleCount: 12, availabilityPct: 0 }, { sampleCount: 12, availabilityPct: null }],
+  ];
+  for (const [index, hourly] of measurements.entries()) {
+    const writes = [];
+    const service = new MetricsRollupService({
+      nodeMetricRollupHourly: {
+        findMany: async ({ where }) => where.nodeId ? hourly : [{ nodeId: 'synthetic-node' }],
+      },
+      nodeMetricRollupDaily: {
+        upsert: async (args) => { writes.push(args); },
+      },
+    }, lock);
+
+    const bucket = new Date('2026-01-01T00:00:00Z');
+    assert.equal(await service.rollupDailyBucket(bucket), 1);
+    const [{ create, update }] = writes;
+    const { nodeId, bucketStart, ...created } = create;
+    assert.equal(nodeId, 'synthetic-node');
+    assert.deepEqual(bucketStart, bucket);
+    assert.deepEqual(created, update);
+    assert.equal(update.sampleCount, hourly.reduce((sum, row) => sum + row.sampleCount, 0));
+    assert.equal(update.availabilityPct, [100, null, 0][index]);
+  }
+});
