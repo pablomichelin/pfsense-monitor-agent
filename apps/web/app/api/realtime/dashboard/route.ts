@@ -5,20 +5,36 @@ export const dynamic = 'force-dynamic';
 
 const apiBaseUrl = process.env.MONITOR_API_BASE_URL?.trim();
 const streamRetryDelaysMs = [250, 1000];
+const upstreamHandshakeTimeoutMs = 5000;
+const transientStatuses = new Set([502, 503, 504]);
 
 async function connectUpstream(
   url: string,
   headers: Headers,
   signal: AbortSignal,
 ): Promise<Response | null> {
-  const connect = () =>
-    fetch(url, { method: 'GET', headers, cache: 'no-store', signal }).catch(() => null);
+  const connect = async () => {
+    const handshake = new AbortController();
+    const timeout = globalThis.setTimeout(() => handshake.abort(), upstreamHandshakeTimeoutMs);
+    try {
+      return await fetch(url, {
+        method: 'GET',
+        headers,
+        cache: 'no-store',
+        signal: AbortSignal.any([signal, handshake.signal]),
+      });
+    } catch {
+      return null;
+    } finally {
+      globalThis.clearTimeout(timeout);
+    }
+  };
 
   let response = await connect();
   for (const delay of streamRetryDelaysMs) {
-    if (signal.aborted || (response && response.status !== 502)) break;
+    if (signal.aborted || (response && !transientStatuses.has(response.status))) break;
 
-    // An HTTP 502 closes EventSource permanently once sent to the browser.
+    // A transient HTTP response ends the browser stream once sent downstream.
     await response?.body?.cancel().catch(() => {});
     const retry = await setTimeout(delay, true, { signal }).catch(() => false);
     if (!retry) return null;
@@ -59,7 +75,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   if (!response.ok || !response.headers.get('content-type')?.toLowerCase().startsWith('text/event-stream')) {
-    await response.body?.cancel();
+    await response.body?.cancel().catch(() => {});
     return new Response('upstream stream unavailable', {
       status: response.ok ? 502 : response.status,
       headers: { 'Cache-Control': 'no-store' },

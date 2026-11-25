@@ -20,7 +20,7 @@ function makeRoute(t, connect, wait) {
     assert.equal(options.headers.get('cookie'), requestHeaders.get('cookie'));
     assert.equal(options.headers.get('last-event-id'), 'qa-1');
     assert.equal(options.cache, 'no-store');
-    return connect();
+    return connect(options);
   });
   const { GET } = sourceLoader({
     'next/headers': { headers: async () => requestHeaders },
@@ -81,4 +81,53 @@ test('client abort cancels the failed body and interrupts retry delay', { timeou
   assert.equal((await pending).status, 502);
   assert.equal(fetch.mock.callCount(), 1);
   assert.equal(cancelled, 1);
+});
+
+
+test('transient HTTP 503 and 504 responses are retried before closing EventSource', async (t) => {
+  let cancelled = 0;
+  const results = [503, 504].map((status) => () => response(status, () => { cancelled++; }));
+  results.push(() => new Response('event: connected\ndata: {}\n\n', {
+    headers: { 'content-type': 'text/event-stream' },
+  }));
+  const { GET, fetch } = makeRoute(t, () => results.shift()(), async (_ms, value) => value);
+  const stream = await GET(new Request(origin + '/api/realtime/dashboard'));
+  assert.equal(stream.status, 200);
+  assert.equal(cancelled, 2);
+  assert.equal(fetch.mock.callCount(), 3);
+  await stream.body.cancel();
+});
+
+test('a stalled stream handshake times out without timing out an established SSE stream', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const client = new AbortController();
+  const opening = deferred();
+  const stalled = deferred();
+  let initialSignal;
+  let streamingSignal;
+  const { GET } = makeRoute(t, ({ signal }) => {
+    if (!initialSignal) {
+      initialSignal = signal;
+      signal.addEventListener('abort', () => stalled.reject(signal.reason), { once: true });
+      opening.resolve();
+      return stalled.promise;
+    }
+    streamingSignal = signal;
+    return new Response('event: connected\ndata: {}\n\n', {
+      headers: { 'content-type': 'text/event-stream' },
+    });
+  }, async (_ms, value) => value);
+  const pending = GET(new Request(origin + '/api/realtime/dashboard', { signal: client.signal }));
+  await opening.promise;
+  t.mock.timers.tick(5000);
+  if (!initialSignal.aborted) stalled.reject(new Error('fixture releases an unbounded handshake'));
+  const stream = await pending;
+
+  assert.equal(initialSignal.aborted, true);
+  assert.equal(stream.status, 200);
+  t.mock.timers.tick(15000);
+  assert.equal(streamingSignal.aborted, false);
+  client.abort();
+  assert.equal(streamingSignal.aborted, true);
+  await stream.body.cancel();
 });
