@@ -7,6 +7,7 @@ import { MetricsHistoryPeriodDto } from './dto/metrics-history-query.dto';
 import { resolveHistoryWindow } from './metrics-rollup.util';
 
 const HISTORY_CACHE_TTL_MS = 30_000;
+const HISTORY_CACHE_MAX_ENTRIES = 256;
 
 type RollupPoint = {
   bucket_start: string;
@@ -67,8 +68,12 @@ export class MetricsHistoryService {
     const cacheKey = `${actor.userId}:${nodeId}:${period}`;
     const nowMs = Date.now();
     const cached = this.cache.get(cacheKey);
-    if (cached && cached.expiresAt > nowMs) {
-      return cached.data;
+    if (cached) {
+      this.cache.delete(cacheKey);
+      if (cached.expiresAt > nowMs) {
+        this.cache.set(cacheKey, cached);
+        return cached.data;
+      }
     }
 
     const now = new Date();
@@ -106,6 +111,11 @@ export class MetricsHistoryService {
       summary: summarizePoints(points),
     };
 
+    this.cache.delete(cacheKey);
+    if (this.cache.size >= HISTORY_CACHE_MAX_ENTRIES) {
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey !== undefined) this.cache.delete(oldestKey);
+    }
     this.cache.set(cacheKey, {
       data: response,
       expiresAt: nowMs + HISTORY_CACHE_TTL_MS,
