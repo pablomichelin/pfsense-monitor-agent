@@ -70,11 +70,13 @@ const parseList = (value: string | undefined): string[] => {
     .filter((entry) => entry.length > 0);
 };
 
+const { version: packageVersion } = require('../../package.json') as { version: string };
+
 export const appConfig = Object.freeze({
   nodeEnv: process.env.NODE_ENV?.trim() || 'development',
   port: parseNumber(process.env.PORT, 8088, 'PORT'),
   databaseUrl: requireEnv('DATABASE_URL'),
-  systemVersion: process.env.SYSTEM_VERSION?.trim() || '0.1.0',
+  systemVersion: process.env.SYSTEM_VERSION?.trim() || packageVersion,
   trustProxy: parseBoolean(process.env.TRUST_PROXY, false),
   trustedProxyIps: parseList(process.env.TRUSTED_PROXY_IPS),
   // Fail-fast: TRUSTED_PROXY_IPS só tem efeito com TRUST_PROXY=true;
