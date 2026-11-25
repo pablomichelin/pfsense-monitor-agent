@@ -1,4 +1,5 @@
 import { BootstrapNodePicker } from '@/components/bootstrap-node-picker';
+import { ClientScopedFilterSelect, InventoryAlertsFilterForm } from '@/components/inventory-alerts-filter-form';
 import { NodePagination } from '@/components/node-pagination';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -134,9 +135,6 @@ export default async function BootstrapPage({
     ? `/nodes/${nodeId}`
     : buildBootstrapHref({ clientId, siteId, search, bucket, cursor, nodeId, releaseBaseUrl, controllerUrl, heartbeatMode });
 
-  const sites = clientId
-    ? filterOptions.sites.filter((site) => site.client_id === clientId)
-    : filterOptions.sites;
   const hasActiveFilters = Boolean(clientId || siteId || search || bucket);
   const resultSummary = `${items.length} firewalls nesta página de ${nodes.total} ${bucket ? 'no estado selecionado' : 'nos filtros atuais'}`;
   // An explicit selection must never silently fall back to another firewall.
@@ -239,7 +237,11 @@ export default async function BootstrapPage({
       </ol>
       <PageSection title="Filtros" description="Busque em toda a frota por nome, cliente, local ou situação.">
         <Card className="p-3">
-        <form className="flex flex-wrap items-center gap-2">
+        <InventoryAlertsFilterForm
+          key={JSON.stringify([clientId, siteId])}
+          clientId={clientId}
+          className="flex flex-wrap items-center gap-2"
+        >
           {releaseBaseUrl ? <input type="hidden" name="release_base_url" value={releaseBaseUrl} /> : null}
           {controllerUrl ? <input type="hidden" name="controller_url" value={controllerUrl} /> : null}
           <input type="hidden" name="heartbeat_mode" value={heartbeatMode} />
@@ -249,24 +251,27 @@ export default async function BootstrapPage({
             className={formSelectClassName}
           >
             <option value="">Todos os clientes</option>
+            {clientId && !filterOptions.clients.some((client) => client.id === clientId) ? (
+              <option value={clientId}>Cliente da consulta (indisponível na lista)</option>
+            ) : null}
             {filterOptions.clients.map((client) => (
               <option key={client.id} value={client.id}>
                 {client.name} ({client.node_count})
               </option>
             ))}
           </select>
-          <select
-            name="site_id" aria-label="Local"
-            defaultValue={siteId ?? ''}
+          <ClientScopedFilterSelect
+            name="site_id"
+            aria-label="Local"
+            defaultValue={siteId}
             className={formSelectClassName}
-          >
-            <option value="">Todos</option>
-            {sites.map((site) => (
-              <option key={site.id} value={site.id}>
-                {site.client_name} — {site.name} ({site.node_count})
-              </option>
-            ))}
-          </select>
+            placeholder="Todos"
+            options={filterOptions.sites.map((site) => ({
+              id: site.id,
+              clientId: site.client_id,
+              label: `${site.client_name} — ${site.name} (${site.node_count})`,
+            }))}
+          />
           <select
             name="bucket" aria-label="Situação da instalação"
             defaultValue={bucket ?? ''}
@@ -288,7 +293,7 @@ export default async function BootstrapPage({
           <Link href="/bootstrap" className={secondaryLinkClassName}>
             Limpar
           </Link>
-        </form>
+        </InventoryAlertsFilterForm>
         </Card>
       </PageSection>
 

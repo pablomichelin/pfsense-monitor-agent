@@ -15,7 +15,7 @@ test('evidence excludes both command representations and strips URL credentials'
   assert.equal(shellQuote("a'b"), "'a'\\''b'");
 });
 
-function fixture(permissions, errorStatus, listResponse = {}) {
+function fixture(permissions, errorStatus, listResponse = {}, filters = { clients: [], sites: [] }) {
   let revealCount = 0;
   let inventoryReads = 0;
   let bootstrapReads = 0;
@@ -27,7 +27,6 @@ function fixture(permissions, errorStatus, listResponse = {}) {
     artifact_url: null, installer_url: null, checksum_url: null, release_base_url: null, controller_url: 'https://pfs-monitor.systemup.inf.br' },
     package_command: 'synthetic secret command', command: null, verification: { command_block: 'status' } };
   const list = { items: [node], total: 1, next_cursor: null, ...listResponse };
-  const filters = { clients: [], sites: [] };
   const { default: Page } = sourceLoader({ ...uiMocks,
     '@/lib/api': { ApiError, getSession: async () => ({ permissions }),
       getNodesList: async (input) => {
@@ -166,4 +165,23 @@ test('bootstrap counts fall back explicitly to current page without summary', as
   assert.deepEqual(hero.props.stats.map((s) => s.value), ['0', '1', '0']);
   assert.ok(hero.props.stats.every((s) => s.label.includes('na página')));
   assert.match(textOf(tree), /Nesta página — resumo completo indisponível/);
+});
+
+
+test('installation filter keeps a saved site and sends all scoped options to the client picker', async () => {
+  const { Page } = fixture(['bootstrap.view', 'firewalls.view'], undefined, {}, {
+    clients: [{ id: 'a', name: 'QA North', node_count: 1 }, { id: 'b', name: 'QA South', node_count: 2 }],
+    sites: [
+      { id: 'north', name: 'Hill', client_id: 'a', client_name: 'QA North', node_count: 1 },
+      { id: 'south', name: 'Coast', client_id: 'b', client_name: 'QA South', node_count: 2 },
+    ],
+  });
+  const tree = await Page({ searchParams: Promise.resolve({ client_id: 'a', site_id: 'north' }) });
+  const site = elements(tree).find((item) =>
+    item.type?.name === 'ClientScopedFilterSelect' && item.props.name === 'site_id');
+  assert.ok(site);
+  assert.equal(site.props.defaultValue, 'north');
+  assert.deepEqual(site.props.options.map(({ id, clientId }) => [id, clientId]), [
+    ['north', 'a'], ['south', 'b'],
+  ]);
 });
