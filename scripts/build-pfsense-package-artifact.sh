@@ -52,9 +52,6 @@ fi
 mkdir -p "$DIST_DIR"
 cp -R "$PACKAGE_DIR" "$STAGE_DIR/pfsense-package"
 printf 'v%s\n' "$VERSION" > "$STAGE_DIR/pfsense-package/VERSION"
-sed -i "s/%%PKGVERSION%%/${VERSION}/g" \
-  "$STAGE_DIR/pfsense-package/files/usr/local/share/pfSense-pkg-systemup-monitor/info.xml" \
-  "$STAGE_DIR/pfsense-package/files/usr/local/pkg/systemup_monitor.xml"
 
 # Guard: XMLs precisam ser bem formados (& sem escape quebra parse_xml_config_pkg
 # no pfSense — pkg.php/pkg_edit.php viram "Package / Editor" vazio e
@@ -62,24 +59,28 @@ sed -i "s/%%PKGVERSION%%/${VERSION}/g" \
 for xml_file in \
   "$STAGE_DIR/pfsense-package/files/usr/local/share/pfSense-pkg-systemup-monitor/info.xml" \
   "$STAGE_DIR/pfsense-package/files/usr/local/pkg/systemup_monitor.xml"; do
-  if ! python3 -c "
+  if ! python3 - "$xml_file" "$VERSION" <<'PY'
+from pathlib import Path
 import sys
 import xml.parsers.expat
-parser = xml.parsers.expat.ParserCreate()
+
+path = Path(sys.argv[1])
 try:
-    with open(sys.argv[1], 'rb') as handle:
-        parser.ParseFile(handle)
+    payload = path.read_bytes().replace(b"%%PKGVERSION%%", sys.argv[2].encode("utf-8"))
+    xml.parsers.expat.ParserCreate().Parse(payload, True)
+    path.write_bytes(payload)
 except Exception as error:
-    print(f'XML invalido: {sys.argv[1]}: {error}', file=sys.stderr)
+    print(f"XML invalido: {path}: {error}", file=sys.stderr)
     sys.exit(1)
-" "$xml_file"; then
+PY
+  then
     echo "Erro: XML mal formado impede o build: $xml_file" >&2
     exit 1
   fi
 done
 
 # Use portable headers so macOS file metadata cannot break extraction on pfSense.
-tar --format ustar -C "$STAGE_DIR" -czf "$ARTIFACT_PATH" pfsense-package
+COPYFILE_DISABLE=1 tar --format ustar -C "$STAGE_DIR" -czf "$ARTIFACT_PATH" pfsense-package
 
 SHA256_VALUE="$(
   sha256sum "$ARTIFACT_PATH" | awk '{print $1}'
