@@ -84,6 +84,16 @@ export class EmailNotificationProvider implements NotificationProvider {
       );
 
       let index = 0;
+      let response = '';
+      let messageAccepted = false;
+
+      const handleConnectionFailure = (error: Error) => {
+        if (messageAccepted) {
+          resolve();
+        } else {
+          reject(error);
+        }
+      };
 
       const sendNext = () => {
         const command = commands[index];
@@ -97,36 +107,39 @@ export class EmailNotificationProvider implements NotificationProvider {
         socket.write(`${command}\r\n`);
       };
 
-      socket.on('data', (chunk) => {
-        const lines = chunk.toString('utf8').split(/\r?\n/).filter(Boolean);
-        for (const line of lines) {
-          const code = Number(line.slice(0, 3));
-          if (!Number.isFinite(code) || code >= 400) {
+      socket.setEncoding('utf8');
+      socket.on('data', (chunk: string) => {
+        response += chunk;
+        let endOfLine = response.indexOf('\n');
+        while (endOfLine !== -1) {
+          const line = response.slice(0, endOfLine).replace(/\r$/, '');
+          response = response.slice(endOfLine + 1);
+          endOfLine = response.indexOf('\n');
+          const reply = /^(\d{3})([- ]|$)/.exec(line);
+          if (!reply || Number(reply[1]) >= 400) {
             socket.destroy();
-            reject(new Error(`smtp error: ${line}`));
+            handleConnectionFailure(new Error(`smtp error: ${line}`));
             return;
           }
-        }
 
-        sendNext();
+          if (reply[2] !== '-') {
+            if (commands[index] === 'QUIT' && reply[1] === '250') {
+              // DATA has succeeded. A later QUIT failure must not resend the message.
+              messageAccepted = true;
+            }
+            sendNext();
+          }
+        }
       });
 
-      socket.on('error', (error) => {
-        reject(error);
+      socket.on('error', handleConnectionFailure);
+      socket.once('close', () => {
+        handleConnectionFailure(new Error('smtp connection closed before completion'));
       });
 
       socket.setTimeout(10_000, () => {
         socket.destroy();
-        reject(new Error('smtp timeout'));
-      });
-
-      socket.on('connect', () => {
-        // servidor envia greeting 220 antes do primeiro comando
-      });
-
-      // primeiro comando apos greeting inicial
-      socket.once('data', () => {
-        sendNext();
+        handleConnectionFailure(new Error('smtp timeout'));
       });
     });
   }
