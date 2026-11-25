@@ -33,6 +33,10 @@ for arg in "$@"; do
       echo "  --no-push  Só faz build e atualiza config; não faz commit nem push"
       exit 0
       ;;
+    *)
+      printf 'Opção desconhecida: %s\n' "$arg" >&2
+      exit 2
+      ;;
   esac
 done
 
