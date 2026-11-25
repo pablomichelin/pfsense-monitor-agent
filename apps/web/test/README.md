@@ -1,5 +1,21 @@
 # Testes sintéticos do frontend
 
+## Validação em ambiente limpo
+
+Use uma versão atualizada do Node 22 para reproduzir a imagem do projeto.
+O ESLint 10 exige Node 22.13+ na linha 22.
+
+No diretório `apps/api`, execute `npm ci` e `npm run prisma:generate` antes
+dos testes do painel. A suíte que atravessa API e painel importa os DTOs e
+as fontes da API e usa um banco sintético em memória. A geração do cliente
+Prisma deve terminar antes dessa suíte.
+
+No diretório `apps/web`, execute `npm ci`, `npm run lint`, `npm run typecheck`
+e `npm test`. O lint usa as regras do Next e dos hooks React sem abrir
+um menu de configuração.
+
+## Rodada histórica
+
 Da raiz do repositório, com as dependências já disponíveis:
 
 ```sh
