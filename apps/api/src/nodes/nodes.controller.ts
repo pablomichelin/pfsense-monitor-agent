@@ -48,6 +48,39 @@ export class NodesController {
     return { generated_at, clients, sites };
   }
 
+  @Get('bootstrap-inventory')
+  @RequirePermissions('bootstrap.view')
+  async getBootstrapInventory(@Query() query: ListNodesQueryDto, @Req() request: AuthenticatedRequest) {
+    const actor = getAccessActor(request);
+    const { client_id, site_id, search, bootstrap_bucket, limit, cursor } = query;
+    const [{ items, ...page }, { clients, sites }] = await Promise.all([
+      this.nodesService.listNodes(actor, { client_id, site_id, search, bootstrap_bucket, limit, cursor }),
+      this.nodesService.getFilters(actor),
+    ]);
+    return {
+      nodes: {
+        ...page,
+        items: items.map((node) => ({
+          id: node.id,
+          node_uid: node.node_uid,
+          node_uid_status: node.node_uid_status,
+          hostname: node.hostname,
+          display_name: node.display_name,
+          client: { name: node.client.name },
+          site: { name: node.site.name },
+          pfsense_version: node.pfsense_version,
+          agent_version: node.agent_version,
+          last_seen_at: node.last_seen_at,
+        })),
+      },
+      filters: {
+        clients: clients.map(({ id, name, node_count }) => ({ id, name, node_count })),
+        sites: sites.map(({ id, name, client_id, client_name, node_count }) =>
+          ({ id, name, client_id, client_name, node_count })),
+      },
+    };
+  }
+
   @Get(':id')
   @RequirePermissions('firewalls.view')
   getNodeById(

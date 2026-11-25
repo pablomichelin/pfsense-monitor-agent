@@ -1062,6 +1062,30 @@ export async function getNodesList(query?: {
   return apiFetch<NodesListResponse>(`/api/v1/nodes${suffix}`);
 }
 
+type BootstrapInventoryResponse = {
+  nodes: Omit<NodesListResponse, 'items'> & {
+    items: Array<Pick<NodesListResponse['items'][number],
+      'id' | 'node_uid' | 'node_uid_status' | 'hostname' | 'display_name' | 'pfsense_version' | 'agent_version' | 'last_seen_at'
+    > & { client: { name: string }; site: { name: string } }>;
+  };
+  filters: {
+    clients: Array<Pick<NodesFiltersResponse['clients'][number], 'id' | 'name' | 'node_count'>>;
+    sites: Array<Pick<NodesFiltersResponse['sites'][number], 'id' | 'name' | 'client_id' | 'client_name' | 'node_count'>>;
+  };
+};
+
+export async function getBootstrapInventory(
+  query: Pick<NonNullable<Parameters<typeof getNodesList>[0]>,
+    'client_id' | 'site_id' | 'search' | 'bootstrap_bucket' | 'limit' | 'cursor'>,
+): Promise<BootstrapInventoryResponse> {
+  const params = new URLSearchParams();
+  for (const [name, value] of Object.entries(query)) {
+    if (value !== undefined && value !== '') params.set(name, String(value));
+  }
+  const suffix = params.size > 0 ? `?${params}` : '';
+  return apiFetch(`/api/v1/nodes/bootstrap-inventory${suffix}`);
+}
+
 export async function getNodesFilters(): Promise<NodesFiltersResponse> {
   return apiFetch<NodesFiltersResponse>('/api/v1/nodes/filters');
 }

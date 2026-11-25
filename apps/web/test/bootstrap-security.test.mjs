@@ -17,6 +17,8 @@ test('evidence excludes both command representations and strips URL credentials'
 
 function fixture(permissions, errorStatus, listResponse = {}) {
   let revealCount = 0;
+  let inventoryReads = 0;
+  let bootstrapReads = 0;
   let query;
   class ApiError extends Error { constructor(status) { super('synthetic'); this.status = status; } }
   const node = { id: 'fw1', hostname: 'lab', node_uid: 'uid1', node_uid_status: 'active', agent_version: '0.5.26',
@@ -24,17 +26,35 @@ function fixture(permissions, errorStatus, listResponse = {}) {
   const bootstrap = { node, heartbeat_mode: 'normal', release: { version: '0.5.26', artifact_name: 'release',
     artifact_url: null, installer_url: null, checksum_url: null, release_base_url: null, controller_url: 'https://pfs-monitor.systemup.inf.br' },
     package_command: 'synthetic secret command', command: null, verification: { command_block: 'status' } };
+  const list = { items: [node], total: 1, next_cursor: null, ...listResponse };
+  const filters = { clients: [], sites: [] };
   const { default: Page } = sourceLoader({ ...uiMocks,
     '@/lib/api': { ApiError, getSession: async () => ({ permissions }),
-      getNodesList: async (input) => { query = input; return { items: [node], total: 1, next_cursor: null, ...listResponse }; },
-      getNodesFilters: async () => ({ clients: [], sites: [] }),
+      getNodesList: async (input) => {
+        inventoryReads++;
+        if (!permissions.includes('firewalls.view')) throw new ApiError(403);
+        query = input;
+        return list;
+      },
+      getNodesFilters: async () => filters,
+      getBootstrapInventory: async (input) => {
+        bootstrapReads++;
+        query = input;
+        return { nodes: list, filters };
+      },
       getNodeBootstrapCommand: async () => { revealCount++; if (errorStatus) throw new ApiError(errorStatus); return bootstrap; } },
     '@/lib/handle-page-api-error': { handlePageApiError: (e) => { throw e; } },
     'next/navigation': { redirect: () => { throw new Error('redirect'); } },
     '@/components/node-pagination': { NodePagination: 'pagination' },
     '@/components/nodes/installation-badge': { InstallationBadge: 'installation' },
   })('app/bootstrap/page.tsx');
-  return { Page, get query() { return query; }, get revealCount() { return revealCount; } };
+  return {
+    Page,
+    get query() { return query; },
+    get revealCount() { return revealCount; },
+    get inventoryReads() { return inventoryReads; },
+    get bootstrapReads() { return bootstrapReads; },
+  };
 }
 
 test('view-only selection keeps context and never requests the credential', async () => {
@@ -43,6 +63,17 @@ test('view-only selection keeps context and never requests the credential', asyn
   assert.equal(f.revealCount, 0);
   assert.match(textOf(tree), /bootstrap.execute/);
   assert.doesNotMatch(textOf(tree), /synthetic secret command/);
+});
+
+test('bootstrap readers can select a firewall without general inventory access', async () => {
+  const f = fixture(['bootstrap.view']);
+  const tree = await f.Page({ searchParams: Promise.resolve({ node_id: 'fw1', bucket: 'active' }) });
+  assert.equal(f.revealCount, 0);
+  assert.equal(f.inventoryReads, 0);
+  assert.equal(f.bootstrapReads, 1);
+  assert.equal(f.query.bootstrap_bucket, 'active');
+  assert.match(textOf(tree), /Firewall:\s+lab/);
+  assert.ok(!elements(tree).some((element) => element.props?.href?.startsWith('/nodes/')));
 });
 
 test('execute selection passes bucket to server; offline registered node is called installed', async () => {

@@ -1,7 +1,7 @@
 import type { NodesListResponse } from '@/lib/api';
 
 export function NodePagination({ result, basePath, params = {} }: {
-  result: Pick<NodesListResponse, 'total' | 'items' | 'next_cursor' | 'previous_cursor'>;
+  result: Pick<NodesListResponse, 'total' | 'next_cursor' | 'previous_cursor'> & { items: readonly unknown[] };
   basePath: string;
   params?: Record<string, string | undefined>;
 }) {

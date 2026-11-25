@@ -13,6 +13,7 @@ import {
 } from '@/lib/form-field-styles';
 import {
   ApiError,
+  getBootstrapInventory,
   getNodeBootstrapCommand,
   getNodesFilters,
   getNodesList,
@@ -89,26 +90,26 @@ export default async function BootstrapPage({
   let filterOptions;
   let selectedBootstrap = null;
   let canExecuteBootstrap = false;
+  let canViewFirewalls = false;
   let bootstrapError: string | null = null;
 
   try {
     const session = await getSession();
-    if (!hasPermission(session.permissions ?? [], 'bootstrap.view')) {
+    const permissions = session.permissions ?? [];
+    if (!hasPermission(permissions, 'bootstrap.view')) {
       redirect('/conta?access=denied');
     }
 
-    canExecuteBootstrap = hasPermission(session.permissions ?? [], 'bootstrap.execute');
-    [nodes, filterOptions] = await Promise.all([
-      getNodesList({
-        client_id: clientId,
-        site_id: siteId,
-        search,
-        bootstrap_bucket: bucket,
-        limit: 50,
-        cursor,
-      }),
-      getNodesFilters(),
-    ]);
+    canExecuteBootstrap = hasPermission(permissions, 'bootstrap.execute');
+    canViewFirewalls = hasPermission(permissions, 'firewalls.view');
+    const query = { client_id: clientId, site_id: siteId, search, bootstrap_bucket: bucket, limit: 50, cursor };
+    if (canViewFirewalls) {
+      [nodes, filterOptions] = await Promise.all([getNodesList(query), getNodesFilters()]);
+    } else {
+      const inventory = await getBootstrapInventory(query);
+      nodes = inventory.nodes;
+      filterOptions = inventory.filters;
+    }
   } catch (error) {
     handlePageApiError(error);
   }
@@ -128,6 +129,10 @@ export default async function BootstrapPage({
   const countsContext = bootstrapSummary
     ? 'Nos filtros atuais — todos os estados'
     : 'Nesta página — resumo completo indisponível';
+
+  const nodeCardHref = (nodeId: string) => canViewFirewalls
+    ? `/nodes/${nodeId}`
+    : buildBootstrapHref({ clientId, siteId, search, bucket, cursor, nodeId, releaseBaseUrl, controllerUrl, heartbeatMode });
 
   const sites = clientId
     ? filterOptions.sites.filter((site) => site.client_id === clientId)
@@ -353,9 +358,11 @@ export default async function BootstrapPage({
                 <Alert variant="warning">{!canExecuteBootstrap ? 'Você tem acesso somente à consulta. Revelar o comando e a credencial exige a permissão bootstrap.execute.' : bootstrapError ?? 'O comando de instalação não está disponível para este firewall. Consulte os diagnósticos ou revise a configuração do release.'}</Alert>
               )}
               <div className="flex flex-col gap-3 lg:flex-row">
-                <Link href={`/nodes/${selectedNode.id}`} className={secondaryLinkClassName}>
-                  Abrir firewall
-                </Link>
+                {canViewFirewalls ? (
+                  <Link href={`/nodes/${selectedNode.id}`} className={secondaryLinkClassName}>
+                    Abrir firewall
+                  </Link>
+                ) : null}
                 {selectedNodeScopeHref ? (
                   <Link
                     href={selectedNodeScopeHref}
@@ -626,7 +633,7 @@ export default async function BootstrapPage({
               pending.map((node) => (
                 <Link
                   key={node.id}
-                  href={`/nodes/${node.id}`}
+                  href={nodeCardHref(node.id)}
                   className="block rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 transition hover:border-cyan-400/40"
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -659,7 +666,7 @@ export default async function BootstrapPage({
               {active.slice(0, 6).map((node) => (
                 <Link
                   key={node.id}
-                  href={`/nodes/${node.id}`}
+                  href={nodeCardHref(node.id)}
                   className="block rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 transition hover:border-cyan-400/40"
                 >
                   <div className="flex items-center justify-between gap-4">
@@ -690,7 +697,7 @@ export default async function BootstrapPage({
               {blocked.slice(0, 6).map((node) => (
                 <Link
                   key={node.id}
-                  href={`/nodes/${node.id}`}
+                  href={nodeCardHref(node.id)}
                   className="block rounded-xl border border-slate-800 bg-panel-soft/60 px-4 py-4 transition hover:border-rose-400/40"
                 >
                   <div className="flex items-center justify-between gap-4">
