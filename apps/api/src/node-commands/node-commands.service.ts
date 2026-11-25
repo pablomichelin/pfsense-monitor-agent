@@ -234,7 +234,7 @@ export interface UpgradePayloadJson {
 export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(NodeCommandsService.name);
   private timer?: NodeJS.Timeout;
-  private readonly warnedStuckCommandIds = new Set<string>();
+  private readonly warnedStuckCommands = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -1001,31 +1001,36 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async warnStuckPendingCommands(): Promise<void> {
-    const pendingSince = new Date(Date.now() - 90_000);
+    const now = new Date();
+    const pendingSince = new Date(now.getTime() - 90_000);
+    for (const [id, expiresAt] of this.warnedStuckCommands) {
+      if (expiresAt <= now.getTime()) this.warnedStuckCommands.delete(id);
+    }
     const stuck = await this.prisma.nodeCommand.findMany({
       where: {
+        id: { notIn: [...this.warnedStuckCommands.keys()] },
         status: NodeCommandStatus.pending,
         requestedAt: { lte: pendingSince },
-        expiresAt: { gt: new Date() },
+        expiresAt: { gt: now },
+        OR: [{ nextRetryAt: null }, { nextRetryAt: { lte: pendingSince } }],
       },
+      orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
       select: {
         id: true,
         nodeId: true,
         type: true,
         requestedAt: true,
+        nextRetryAt: true,
+        expiresAt: true,
       },
       take: 50,
     });
 
     for (const command of stuck) {
-      if (this.warnedStuckCommandIds.has(command.id)) {
-        continue;
-      }
-
-      this.warnedStuckCommandIds.add(command.id);
-      const ageSeconds = Math.floor(
-        (Date.now() - command.requestedAt.getTime()) / 1000,
-      );
+      if (this.warnedStuckCommands.has(command.id)) continue;
+      this.warnedStuckCommands.set(command.id, command.expiresAt.getTime());
+      const readyAt = Math.max(command.requestedAt.getTime(), command.nextRetryAt?.getTime() ?? 0);
+      const ageSeconds = Math.floor((now.getTime() - readyAt) / 1000);
       this.logger.warn(
         `command still pending after ${ageSeconds}s command=${command.id} node=${command.nodeId} type=${command.type}`,
       );
