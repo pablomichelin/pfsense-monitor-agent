@@ -1,8 +1,7 @@
 import { headers } from 'next/headers';
+import { csrfCookieName } from './auth-cookie-names';
 
 const apiBaseUrl = process.env.MONITOR_API_BASE_URL?.trim();
-const csrfCookieName =
-  process.env.MONITOR_AUTH_CSRF_COOKIE_NAME?.trim() || 'monitor_pfsense_csrf';
 
 const requireEnv = (value: string | undefined, key: string): string => {
   if (!value) {

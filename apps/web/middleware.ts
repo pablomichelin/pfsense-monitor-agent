@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { evaluateRouteAccess, resolveDefaultAuthenticatedPath } from '@/lib/route-policy';
 import { sanitizeInternalPath } from '@/lib/internal-path';
+import { sessionCookieName } from '@/lib/auth-cookie-names';
 
-const SESSION_COOKIE = 'monitor_pfsense_session';
 const PUBLIC_PATHS = new Set(['/login']);
 
 const MFA_ALLOWED_PREFIXES = ['/conta', '/sessions', '/login'];
@@ -34,7 +34,7 @@ function resolveApiBaseUrl(): string {
 
 async function fetchSession(request: NextRequest): Promise<FetchSessionResult> {
   const cookieHeader = request.headers.get('cookie');
-  if (!cookieHeader?.includes(`${SESSION_COOKIE}=`)) {
+  if (!cookieHeader || !request.cookies.has(sessionCookieName)) {
     return { kind: 'unauthenticated' };
   }
 
@@ -44,6 +44,7 @@ async function fetchSession(request: NextRequest): Promise<FetchSessionResult> {
         cookie: cookieHeader,
       },
       cache: 'no-store',
+      signal: AbortSignal.timeout(8_000),
     });
 
     if (response.status === 401) {
@@ -104,7 +105,7 @@ export async function middleware(request: NextRequest) {
 
   if (result.kind !== 'ok' || !result.session?.authenticated || !result.session.user?.role) {
     const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('next', pathname);
+    loginUrl.searchParams.set('next', pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 

@@ -6,12 +6,9 @@ import { revalidatePath } from 'next/cache';
 import { revokeAuthSession } from './api';
 import { sanitizeInternalPath } from './internal-path';
 import { loginErrorCode } from './login-error';
+import { csrfCookieName, sessionCookieName } from './auth-cookie-names';
 
 const apiBaseUrl = process.env.MONITOR_API_BASE_URL?.trim();
-const sessionCookieName =
-  process.env.MONITOR_AUTH_SESSION_COOKIE_NAME?.trim() || 'monitor_pfsense_session';
-const csrfCookieName =
-  process.env.MONITOR_AUTH_CSRF_COOKIE_NAME?.trim() || 'monitor_pfsense_csrf';
 // C-MFA: cookie transitorio (httpOnly) que guarda o token do desafio entre as
 // duas etapas do login. Curta duracao; nunca trafega na URL.
 const mfaChallengeCookieName = 'monitor_pfsense_mfa_challenge';
