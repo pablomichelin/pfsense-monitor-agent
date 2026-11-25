@@ -38,20 +38,25 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    await this.runHourlyRollupCycle('startup');
-    await this.runDailyRollupCycle('startup');
-
-    this.hourlyTimer = setInterval(() => {
-      void this.runHourlyRollupCycle('interval').catch((error) => {
+    const runHourly = (reason: 'startup' | 'interval') =>
+      this.runHourlyRollupCycle(reason).catch((error) => {
         this.logger.warn(`hourly metric rollup failed: ${String(error)}`);
       });
+    const runDaily = (reason: 'startup' | 'interval') =>
+      this.runDailyRollupCycle(reason).catch((error) => {
+        this.logger.warn(`daily metric rollup failed: ${String(error)}`);
+      });
+
+    await runHourly('startup');
+    await runDaily('startup');
+
+    this.hourlyTimer = setInterval(() => {
+      void runHourly('interval');
     }, appConfig.metricRollups.hourlyRollupIntervalSeconds * 1000);
     this.hourlyTimer.unref?.();
 
     this.dailyTimer = setInterval(() => {
-      void this.runDailyRollupCycle('interval').catch((error) => {
-        this.logger.warn(`daily metric rollup failed: ${String(error)}`);
-      });
+      void runDaily('interval');
     }, appConfig.metricRollups.dailyRollupIntervalSeconds * 1000);
     this.dailyTimer.unref?.();
   }

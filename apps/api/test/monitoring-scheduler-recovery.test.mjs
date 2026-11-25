@@ -77,6 +77,34 @@ for (const { name, start, timerIndex = 0 } of jobs) {
       provider.onModuleDestroy();
     }
   });
+
+  test(`${name} schedules subsequent ticks when the startup cycle fails`, async ({ mock }) => {
+    const callbacks = [];
+    mock.method(globalThis, 'setInterval', (callback) => {
+      callbacks.push(callback);
+      return { unref() {} };
+    });
+    mock.method(globalThis, 'clearInterval', () => {});
+    const warn = mock.method(Logger.prototype, 'warn', () => {});
+    let reads = 0;
+    const provider = start({ findMany: async () => {
+      reads += 1;
+      if (reads === 1) throw new Error('synthetic startup read failure');
+      return [];
+    } });
+
+    try {
+      await provider.onModuleInit();
+      callbacks[timerIndex]();
+      await setImmediate();
+
+      assert.equal(reads, 2);
+      assert.equal(warn.mock.callCount(), 1);
+      assert.equal(warn.mock.calls[0].arguments[0], `${name} failed: Error: synthetic startup read failure`);
+    } finally {
+      provider.onModuleDestroy();
+    }
+  });
 }
 
 test('the daily cycle fills the final UTC hour before reading aggregates', async () => {

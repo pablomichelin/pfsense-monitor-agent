@@ -32,12 +32,14 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.reconcileStatuses('startup');
-
-    this.timer = setInterval(() => {
-      void this.reconcileStatuses('interval').catch((error) => {
+    const run = (reason: 'startup' | 'interval') =>
+      this.reconcileStatuses(reason).catch((error) => {
         this.logger.warn(`node lifecycle reconciliation failed: ${String(error)}`);
       });
+
+    await run('startup');
+    this.timer = setInterval(() => {
+      void run('interval');
     }, appConfig.nodeStatus.reconcileIntervalSeconds * 1000);
 
     this.timer.unref?.();
