@@ -6,6 +6,7 @@ import test from 'node:test';
 import { command, fixture, nodeId } from './command-test-fixtures.mjs';
 
 process.env.COMMAND_WORKER_ENABLED = 'true';
+process.env.PACKAGE_UPGRADE_MAX_CONCURRENT = '3';
 process.env.CONFIG_BACKUP_COMMAND_RETRY_BACKOFF_MS_1 = '30000';
 
 const require = createRequire(import.meta.url);
@@ -177,4 +178,32 @@ test('worker schedules the eligible failure after fifty older blocked failures',
   assert.equal(state.audit.length, 1);
   assert.equal(state.audit[0].targetId, eligible.id);
   assert.equal(state.audit[0].action, 'backup.config.request_retry_scheduled');
+});
+
+test('worker frees a capacity-deferred upgrade without bypassing a retry backoff', async () => {
+  const now = Date.now();
+  const retryAt = new Date(now + 180_000);
+  const queued = {
+    type: 'package_upgrade', status: 'pending', expiresAt: new Date(now + 600_000),
+  };
+  const retry = command({ ...queued, nextRetryAt: retryAt, retryCount: 1, resultJson: { retry_scheduled: true } });
+  const deferred = command({ ...queued, nextRetryAt: new Date(now + 30_000) });
+  const expired = command({ ...queued, nextRetryAt: new Date(now + 30_000), expiresAt: new Date(now - 1) });
+  const { db, state } = fixture([retry, deferred, expired]);
+
+  await new CommandWorkerService(db, {}, {}).processDeferredCommands();
+
+  assert.deepEqual(state.commands.map((row) => row.nextRetryAt), [retryAt, null, expired.nextRetryAt]);
+});
+
+test('worker preserves a changed deferral when another writer updates it after selection', async () => {
+  const now = Date.now();
+  const later = new Date(now + 90_000);
+  const deferred = command({ type: 'package_upgrade', nextRetryAt: new Date(now + 30_000) });
+  const { db, state, hooks } = fixture([deferred]);
+  hooks.beforeUpdate = async () => { state.commands[0].nextRetryAt = later; };
+
+  await new CommandWorkerService(db, {}, {}).processDeferredCommands();
+
+  assert.deepEqual(state.commands[0].nextRetryAt, later);
 });

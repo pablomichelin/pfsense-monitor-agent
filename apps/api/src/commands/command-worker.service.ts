@@ -252,9 +252,10 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
           where: {
             type,
             status: NodeCommandStatus.pending,
-            nextRetryAt: {
-              gt: now,
-            },
+            expiresAt: { gt: now },
+            // Only first attempts can be released before their capacity delay.
+            retryCount: 0,
+            nextRetryAt: { gt: now },
           },
           orderBy: {
             nextRetryAt: 'asc',
@@ -264,7 +265,13 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
 
         for (const command of deferred) {
           await this.prisma.nodeCommand.updateMany({
-            where: { id: command.id, status: NodeCommandStatus.pending },
+            where: {
+              id: command.id,
+              status: NodeCommandStatus.pending,
+              expiresAt: { gt: now },
+              retryCount: 0,
+              nextRetryAt: command.nextRetryAt,
+            },
             data: {
               nextRetryAt: null,
             },
@@ -289,7 +296,11 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
 
       for (const command of overflow) {
         await this.prisma.nodeCommand.updateMany({
-          where: { id: command.id, status: NodeCommandStatus.pending },
+          where: {
+            id: command.id,
+            status: NodeCommandStatus.pending,
+            nextRetryAt: command.nextRetryAt,
+          },
           data: {
             nextRetryAt: new Date(now.getTime() + 30_000),
           },
