@@ -55,15 +55,16 @@ export default async function AdminTecnicosPage() {
   const canManageTechnicians = hasPermission(permissions, 'technicians.manage');
   const canManageRegistry = session.has_global_client_scope === true && canManageTechnicians;
   const canResetTechnicianPassword = hasPermission(permissions, 'technicians.password_reset.run');
+  const canViewFirewalls = hasPermission(permissions, 'firewalls.view');
 
   let technicianDetails: TechnicianDetailResponse['technician'][] = [];
-  let nodePage: NodesListResponse;
+  let nodePage: NodesListResponse | null;
   let batchMaxSize = 0;
 
   try {
     const [techniciansList, nodesList] = await Promise.all([
       getTechnicians('active'),
-      getNodesList({ limit: NODE_LIST_LIMIT }),
+      canViewFirewalls ? getNodesList({ limit: NODE_LIST_LIMIT }) : null,
     ]);
 
     nodePage = nodesList;
@@ -97,20 +98,25 @@ export default async function AdminTecnicosPage() {
         stats={[
           { label: 'Técnicos no escopo', value: String(technicianDetails.length) },
           { label: 'Contas ativas no escopo', value: String(totalActiveAccounts) },
-          { label: 'Firewalls no inventário', value: String(nodePage.total) },
+          ...(nodePage ? [{ label: 'Firewalls no inventário', value: String(nodePage.total) }] : []),
         ]}
       />
 
       {!canManageRegistry ? <Alert variant="info">O cadastro global de técnicos é reservado a administradores com escopo global. Para o primeiro vínculo de um técnico, procure um administrador global.</Alert> : null}
+      {!canViewFirewalls && (canManageTechnicians || canResetTechnicianPassword) ? (
+        <Alert variant="info">As operações em lote precisam de acesso ao inventário de firewalls.</Alert>
+      ) : null}
 
       <PageSection title="Navegação">
         <div className="flex flex-wrap gap-3">
           <Link href="/admin" className={adminNavLinkClassName}>
             ← Cadastro
           </Link>
-          <Link href="/nodes" className={adminNavLinkClassName}>
-            Firewalls (inventário)
-          </Link>
+          {canViewFirewalls ? (
+            <Link href="/nodes" className={adminNavLinkClassName}>
+              Firewalls (inventário)
+            </Link>
+          ) : null}
         </div>
       </PageSection>
 
@@ -177,12 +183,14 @@ export default async function AdminTecnicosPage() {
                                 className="border-b border-slate-900/80 text-slate-300 last:border-0"
                               >
                                 <td className="px-3 py-2">
-                                  <Link
-                                    href={`/nodes/${account.node_id}`}
-                                    className="text-cyan-400 hover:text-cyan-300"
-                                  >
-                                    {account.display_name ?? account.hostname}
-                                  </Link>
+                                  {canViewFirewalls ? (
+                                    <Link
+                                      href={`/nodes/${account.node_id}`}
+                                      className="text-cyan-400 hover:text-cyan-300"
+                                    >
+                                      {account.display_name ?? account.hostname}
+                                    </Link>
+                                  ) : (account.display_name ?? account.hostname)}
                                 </td>
                                 <td className="px-3 py-2 font-mono text-xs">
                                   {account.pfsense_username}
@@ -213,7 +221,7 @@ export default async function AdminTecnicosPage() {
       </PageSection>
 
         ) },
-        ...(canManageTechnicians || canResetTechnicianPassword ? [{ id: 'manage', label: 'Gerenciar técnicos', description: 'Cadastro e ações nos firewalls', content: (
+        ...(nodePage && (canManageTechnicians || canResetTechnicianPassword) ? [{ id: 'manage', label: 'Gerenciar técnicos', description: 'Cadastro e ações nos firewalls', content: (
 <PageSection
           title="Cadastro e ações em lote"
           description="Selecione explicitamente os firewalls do lote abaixo, dentro do limite informado pelo controlador."
