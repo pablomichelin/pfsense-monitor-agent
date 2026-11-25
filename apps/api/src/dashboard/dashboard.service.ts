@@ -21,7 +21,8 @@ import {
 } from './fleet-aggregation.util';
 import { FleetQueryDto } from './dto/fleet-query.dto';
 
-const SUMMARY_CACHE_TTL_MS = 20000;
+const SUMMARY_CACHE_TTL_MS = 20_000;
+const CACHE_MAX_ENTRIES = 256;
 
 type CacheEntry<T> = { data: T; expiresAt: number; revision: number };
 
@@ -79,12 +80,9 @@ export class DashboardService {
 
   async getSummary(actor: AccessActor): Promise<DashboardSummary> {
     const cacheKey = await this.buildActorCacheKey(actor, 'summary');
-    const now = Date.now();
     const revision = this.realtimeService.getDashboardRevision();
-    const cached = this.summaryCache.get(cacheKey);
-    if (cached && cached.revision === revision && cached.expiresAt > now) {
-      return cached.data;
-    }
+    const cached = this.readCache(this.summaryCache, cacheKey, revision);
+    if (cached) return cached;
 
     const nowDate = new Date();
     const nodeWhere = await this.accessPolicy.mergeNodeWhere(actor);
@@ -128,11 +126,7 @@ export class DashboardService {
       },
     };
 
-    this.summaryCache.set(cacheKey, {
-      data: result,
-      expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS,
-      revision,
-    });
+    this.writeCache(this.summaryCache, cacheKey, result, revision);
 
     return result;
   }
@@ -145,12 +139,9 @@ export class DashboardService {
       actor,
       `fleet:${query.client_id ?? ''}:${query.site_id ?? ''}:${query.status ?? ''}`,
     );
-    const nowMs = Date.now();
     const revision = this.realtimeService.getDashboardRevision();
-    const cached = this.fleetCache.get(cacheKey);
-    if (cached && cached.revision === revision && cached.expiresAt > nowMs) {
-      return cached.data;
-    }
+    const cached = this.readCache(this.fleetCache, cacheKey, revision);
+    if (cached) return cached;
 
     const nowDate = new Date();
     await this.accessPolicy.assertRequestedClientFilter(actor, query.client_id);
@@ -166,7 +157,14 @@ export class DashboardService {
     const [nodes, alertGroups] = await Promise.all([
       this.prisma.node.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          status: true,
+          maintenanceMode: true,
+          lastSeenAt: true,
+          pfsenseVersion: true,
+          agentVersion: true,
+          configBackupPolicyJson: true,
           site: {
             select: {
               timezone: true,
@@ -277,13 +275,28 @@ export class DashboardService {
       version_matrix: aggregated.version_matrix,
     };
 
-    this.fleetCache.set(cacheKey, {
-      data: result,
-      expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS,
-      revision,
-    });
+    this.writeCache(this.fleetCache, cacheKey, result, revision);
 
     return result;
+  }
+
+  private readCache<T>(cache: Map<string, CacheEntry<T>>, key: string, revision: number): T | undefined {
+    const entry = cache.get(key);
+    if (!entry) return undefined;
+    cache.delete(key);
+    if (entry.revision !== revision || entry.expiresAt <= Date.now()) return undefined;
+    cache.set(key, entry);
+    return entry.data;
+  }
+
+  private writeCache<T>(cache: Map<string, CacheEntry<T>>, key: string, data: T, revision: number): void {
+    if (revision !== this.realtimeService.getDashboardRevision()) return;
+    cache.delete(key);
+    if (cache.size >= CACHE_MAX_ENTRIES) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey !== undefined) cache.delete(oldestKey);
+    }
+    cache.set(key, { data, expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, revision });
   }
 
   private async buildActorCacheKey(

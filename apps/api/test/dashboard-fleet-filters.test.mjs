@@ -20,8 +20,12 @@ test('fleet alert totals follow tenant, site and derived status filters', async 
     { site: { clientId: { in: [query.client_id] } } },
   ] };
   const service = new DashboardService({
-    node: { findMany: async ({ where }) => {
+    node: { findMany: async ({ where, select }) => {
       assert.equal(where, scopedWhere);
+      assert.deepEqual(Object.keys(select ?? {}).sort(), [
+        'agentVersion', 'configBackupPolicyJson', 'configBackups', 'id', 'lastSeenAt',
+        'maintenanceMode', 'nodeCommands', 'pfsenseVersion', 'site', 'status',
+      ]);
       return [makeNode('online-node', 'online'), makeNode('degraded-node', 'degraded')];
     } },
     alert: { groupBy: async ({ by, where, _count }) => {
@@ -111,11 +115,37 @@ test('a read started before a refresh cannot populate the current dashboard cach
   realtimeService.publishDashboardRefresh({
     source: 'node_reconciled', occurred_at: new Date().toISOString(),
   });
-  delayed.resolve([makeNode('node', 'online')]);
-  assert.equal((await oldResponse).totals.online, 1);
-
   const current = await service.getFleet(actor);
   assert.equal(current.totals.online, 0);
   assert.equal(current.totals.degraded, 1);
+
+  delayed.resolve([makeNode('node', 'online')]);
+  assert.equal((await oldResponse).totals.online, 1);
+  assert.equal(await service.getFleet(actor), current);
   assert.equal(calls, 2);
+});
+
+
+test('dashboard caches remain bounded and retain recent accesses', async () => {
+  let reads = 0;
+  const service = new DashboardService({
+    node: { findMany: async () => { reads++; return []; } },
+    alert: { count: async () => 0, groupBy: async () => [] },
+  }, {
+    getAllowedClientIds: async () => null,
+    assertRequestedClientFilter: async () => {},
+    mergeNodeWhere: async (_user, where = {}) => where,
+    mergeAlertWhere: async (_user, where) => where,
+  }, { getPublishedVersion: () => null }, new RealtimeService());
+  const load = (index) => {
+    const user = { ...actor, userId: `qa-user-${index}` };
+    return Promise.all([service.getSummary(user), service.getFleet(user)]);
+  };
+  for (let i = 0; i < 256; i++) await load(i);
+  await load(0);
+  await load(256);
+  await load(0);
+  assert.equal(reads, 514);
+  await load(1);
+  assert.equal(reads, 516);
 });
