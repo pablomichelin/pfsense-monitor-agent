@@ -25,6 +25,19 @@ const parseNumber = (
   return parsed;
 };
 
+const parseIntervalSeconds = (
+  input: string | undefined,
+  fallback: number,
+  fieldName: string,
+): number => {
+  const seconds = parseNumber(input, fallback, fieldName);
+  const delayMs = seconds * 1000;
+  if (delayMs < 1 || delayMs > 2_147_483_647) {
+    throw new Error(`${fieldName} must be between 0.001 and 2147483.647 seconds`);
+  }
+  return seconds;
+};
+
 const parseBoolean = (input: string | undefined, fallback: boolean): boolean => {
   if (input === undefined || input.trim() === '') {
     return fallback;
@@ -110,7 +123,7 @@ export const appConfig = Object.freeze({
       300,
       'NODE_OFFLINE_AFTER_SECONDS',
     ),
-    reconcileIntervalSeconds: parseNumber(
+    reconcileIntervalSeconds: parseIntervalSeconds(
       process.env.NODE_RECONCILE_INTERVAL_SECONDS,
       60,
       'NODE_RECONCILE_INTERVAL_SECONDS',
@@ -265,7 +278,7 @@ export const appConfig = Object.freeze({
   },
   metricRollups: {
     enabled: parseBoolean(process.env.METRIC_ROLLUPS_ENABLED, false),
-    sampleIntervalSeconds: parseNumber(
+    sampleIntervalSeconds: parseIntervalSeconds(
       process.env.METRIC_SAMPLE_INTERVAL_SECONDS,
       300,
       'METRIC_SAMPLE_INTERVAL_SECONDS',
@@ -275,12 +288,12 @@ export const appConfig = Object.freeze({
       72,
       'METRIC_SAMPLE_RETENTION_HOURS',
     ),
-    hourlyRollupIntervalSeconds: parseNumber(
+    hourlyRollupIntervalSeconds: parseIntervalSeconds(
       process.env.METRIC_HOURLY_ROLLUP_INTERVAL_SECONDS,
       3600,
       'METRIC_HOURLY_ROLLUP_INTERVAL_SECONDS',
     ),
-    dailyRollupIntervalSeconds: parseNumber(
+    dailyRollupIntervalSeconds: parseIntervalSeconds(
       process.env.METRIC_DAILY_ROLLUP_INTERVAL_SECONDS,
       86400,
       'METRIC_DAILY_ROLLUP_INTERVAL_SECONDS',
@@ -298,7 +311,7 @@ export const appConfig = Object.freeze({
   },
   commands: {
     workerEnabled: parseBoolean(process.env.COMMAND_WORKER_ENABLED, false),
-    workerIntervalSeconds: parseNumber(
+    workerIntervalSeconds: parseIntervalSeconds(
       process.env.COMMAND_WORKER_INTERVAL_SECONDS,
       30,
       'COMMAND_WORKER_INTERVAL_SECONDS',
