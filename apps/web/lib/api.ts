@@ -916,9 +916,8 @@ async function apiFetch<T>(path: string, options?: ApiFetchOptions): Promise<T> 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  let response: Response;
   try {
-    response = await fetch(
+    const response = await fetch(
       `${requireEnv(apiBaseUrl, 'MONITOR_API_BASE_URL')}${path}`,
       {
         method,
@@ -928,44 +927,45 @@ async function apiFetch<T>(path: string, options?: ApiFetchOptions): Promise<T> 
         signal: controller.signal,
       },
     );
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (err instanceof Error && err.name === 'AbortError') {
+
+    if (!response.ok) {
+      let message = `API request failed with status ${response.status}`;
+
+      let code: string | undefined;
+      try {
+        const payload = (await response.json()) as {
+          message?: string | string[] | { message?: string; code?: string };
+          code?: string;
+        };
+        if (Array.isArray(payload.message)) {
+          message = payload.message.join(', ');
+        } else if (typeof payload.message === 'string') {
+          message = payload.message;
+        } else if (payload.message && typeof payload.message.message === 'string') {
+          message = payload.message.message;
+          code = payload.message.code;
+        }
+        code = payload.code ?? code;
+      } catch (error) {
+        if (controller.signal.aborted) throw error;
+        // Keep the HTTP status and default message if the server sends non-JSON.
+      }
+
+      throw new ApiError(message, response.status, code);
+    }
+
+    return (await response.json()) as T;
+  } catch (error) {
+    if (controller.signal.aborted) {
       throw new ApiError(
         `A requisição demorou mais de ${timeoutMs / 1000}s e foi cancelada. O servidor pode estar lento.`,
         408,
       );
     }
-    throw err;
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  clearTimeout(timeoutId);
-
-  if (!response.ok) {
-    let message = `API request failed with status ${response.status}`;
-
-    let code: string | undefined;
-    try {
-      const payload = (await response.json()) as {
-        message?: string | string[] | { message?: string; code?: string };
-        code?: string;
-      };
-      if (Array.isArray(payload.message)) {
-        message = payload.message.join(', ');
-      } else if (typeof payload.message === 'string') {
-        message = payload.message;
-      } else if (payload.message && typeof payload.message.message === 'string') {
-        message = payload.message.message;
-        code = payload.message.code;
-      }
-      code = payload.code ?? code;
-    } catch {
-      // keep default message
-    }
-
-    throw new ApiError(message, response.status, code);
-  }
-
-  return (await response.json()) as T;
 }
 
 export async function getDashboardSummary(): Promise<SummaryResponse> {
