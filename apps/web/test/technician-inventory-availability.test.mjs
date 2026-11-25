@@ -9,22 +9,27 @@ class ApiError extends Error {
   }
 }
 
-function fixture(permissions) {
+function fixture(permissions, detailFailure) {
   const reads = [];
   const node = { id: 'qa-firewall' };
   const technician = {
     id: 'qa-tech', full_name: 'Técnico sintético', login_username: 'qa-tech', status: 'active',
     node_accounts: [{ id: 'qa-account', node_id: node.id, hostname: 'qa.example.test', status: 'active' }],
   };
+  const otherTechnician = { ...technician, id: 'qa-other', full_name: 'Segunda técnica sintética' };
   const route = sourceLoader({
     ...uiMocks,
     '@/components/ui/action-tabs': { ActionTabs: 'action-tabs' },
     '@/components/admin-technician-targets': { AdminTechnicianTargets: 'targets' },
+    'next/navigation': { redirect: (url) => { throw Object.assign(new Error('Redirect'), { url }); } },
     '@/lib/api': {
       ApiError,
       getSession: async () => ({ permissions, has_global_client_scope: true }),
-      getTechnicians: async () => ({ items: [technician], batch_max_size: 100 }),
-      getTechnician: async () => ({ technician }),
+      getTechnicians: async () => ({ items: detailFailure ? [technician, otherTechnician] : [technician], batch_max_size: 100 }),
+      getTechnician: async (id) => {
+        if (id === otherTechnician.id && detailFailure) throw new ApiError(detailFailure);
+        return { technician };
+      },
       getNodesList: async (query) => {
         reads.push(query);
         if (!permissions.includes('firewalls.view')) throw new ApiError(403);
@@ -43,6 +48,22 @@ test('the technician matrix opens for readers without inventory access', async (
   assert.deepEqual(tabs.map((tab) => tab.id), ['accounts']);
   assert.match(textOf(tabs[0].content), /Técnico sintético.*qa\.example\.test/);
   assert.ok(!elements(tabs[0].content).some((item) => item.type === 'a' && item.props.href === '/nodes/qa-firewall'));
+});
+
+test('one failed technician detail keeps the other accounts and discloses partial coverage', async () => {
+  const { route } = fixture(['technicians.view'], 503);
+  const tree = await route();
+  const tabs = elements(tree).find((item) => item.type === 'action-tabs').props.tabs;
+  const matrix = textOf(tabs[0].content);
+  assert.match(matrix, /Técnico sintético.*qa\.example\.test/);
+  assert.match(matrix, /Segunda técnica sintética.*Contas indisponíveis/);
+  const totals = elements(tree).find((item) => item.type === 'hero').props.stats;
+  assert.deepEqual(totals.map((item) => item.value), ['2', '1 confirmada(s)']);
+});
+
+test('detail read still redirects on session expiry', async () => {
+  const { route } = fixture(['technicians.view'], 401);
+  await assert.rejects(route, { url: '/login' });
 });
 
 test('the management tab preserves inventory pagination and API batch limit', async () => {

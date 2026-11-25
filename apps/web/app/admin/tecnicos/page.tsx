@@ -26,7 +26,12 @@ export const dynamic = 'force-dynamic';
 
 const NODE_LIST_LIMIT = 50;
 
-function countByStatus(nodeAccounts: TechnicianDetailResponse['technician']['node_accounts']) {
+type TechnicianDetail = TechnicianDetailResponse['technician'];
+type TechnicianRow = Omit<TechnicianDetail, 'node_accounts'> & {
+  node_accounts: TechnicianDetail['node_accounts'] | null;
+};
+
+function countByStatus(nodeAccounts: TechnicianDetail['node_accounts']) {
   return nodeAccounts.reduce(
     (acc, account) => {
       acc[account.status] = (acc[account.status] ?? 0) + 1;
@@ -57,7 +62,7 @@ export default async function AdminTecnicosPage() {
   const canResetTechnicianPassword = hasPermission(permissions, 'technicians.password_reset.run');
   const canViewFirewalls = hasPermission(permissions, 'firewalls.view');
 
-  let technicianDetails: TechnicianDetailResponse['technician'][] = [];
+  let technicianDetails: TechnicianRow[];
   let nodePage: NodesListResponse | null;
   let batchMaxSize = 0;
 
@@ -70,12 +75,16 @@ export default async function AdminTecnicosPage() {
     nodePage = nodesList;
     batchMaxSize = techniciansList.batch_max_size;
 
-    const details = await Promise.all(
-      techniciansList.items.map((item) =>
-        getTechnician(item.id).then((response) => response.technician),
-      ),
+    technicianDetails = await Promise.all(
+      techniciansList.items.map(async (item) => {
+        try {
+          return (await getTechnician(item.id)).technician;
+        } catch (error) {
+          if (error instanceof ApiError && (error.status === 401 || error.status === 403)) throw error;
+          return { ...item, node_accounts: null };
+        }
+      }),
     );
-    technicianDetails = details;
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       redirect('/login');
@@ -85,9 +94,10 @@ export default async function AdminTecnicosPage() {
 
   const totalActiveAccounts = technicianDetails.reduce(
     (sum, technician) =>
-      sum + technician.node_accounts.filter((account) => account.status === 'active').length,
+      sum + (technician.node_accounts?.filter((account) => account.status === 'active').length ?? 0),
     0,
   );
+  const hasUnavailableDetails = technicianDetails.some((technician) => technician.node_accounts === null);
 
   return (
     <div className="space-y-section">
@@ -97,7 +107,10 @@ export default async function AdminTecnicosPage() {
         description="Técnicos e contas locais visíveis no seu escopo, com provisionamento por firewall."
         stats={[
           { label: 'Técnicos no escopo', value: String(technicianDetails.length) },
-          { label: 'Contas ativas no escopo', value: String(totalActiveAccounts) },
+          {
+            label: 'Contas ativas no escopo',
+            value: hasUnavailableDetails ? `${totalActiveAccounts} confirmada(s)` : String(totalActiveAccounts),
+          },
           ...(nodePage ? [{ label: 'Firewalls no inventário', value: String(nodePage.total) }] : []),
         ]}
       />
@@ -133,7 +146,8 @@ export default async function AdminTecnicosPage() {
         ) : (
           <div className="space-y-3">
             {technicianDetails.map((technician) => {
-              const counts = countByStatus(technician.node_accounts);
+              const accounts = technician.node_accounts;
+              const counts = countByStatus(accounts ?? []);
               return (
                 <details
                   key={technician.id}
@@ -148,7 +162,9 @@ export default async function AdminTecnicosPage() {
                         </span>
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {technician.node_accounts.length === 0
+                        {accounts === null
+                          ? 'Contas indisponíveis'
+                          : accounts.length === 0
                           ? 'Sem contas visíveis neste escopo'
                           : `${counts.active ?? 0} ativa(s), ${counts.pending_create ?? 0} provisionando, ${
                               counts.disabled ?? 0
@@ -160,7 +176,9 @@ export default async function AdminTecnicosPage() {
                     </Badge>
                   </summary>
                   <div className="border-t border-slate-800 px-4 py-3">
-                    {technician.node_accounts.length === 0 ? (
+                    {accounts === null ? (
+                      <Alert variant="warning">Não foi possível consultar as contas deste técnico. Recarregue a página para tentar novamente.</Alert>
+                    ) : accounts.length === 0 ? (
                       <p className="text-sm text-slate-500">
                         Este técnico não tem conta provisionada visível neste escopo.
                       </p>
@@ -177,7 +195,7 @@ export default async function AdminTecnicosPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {technician.node_accounts.map((account) => (
+                            {accounts.map((account) => (
                               <tr
                                 key={account.id}
                                 className="border-b border-slate-900/80 text-slate-300 last:border-0"
