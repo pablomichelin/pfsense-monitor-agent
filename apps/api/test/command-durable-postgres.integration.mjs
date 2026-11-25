@@ -20,6 +20,7 @@ process.env.TRUST_PROXY = 'false';
 process.env.TECHNICIAN_ACCOUNTS_ENABLED = 'true';
 process.env.TECHNICIAN_ACCOUNT_CREATE_ENABLED = 'true';
 process.env.TECHNICIAN_ACCOUNT_PASSWORD_RESET_ENABLED = 'true';
+process.env.PACKAGE_UPGRADE_MAX_CONCURRENT = '1';
 
 const sentinel = 'pfs-command-recovery-qa-only-20261101';
 const deferred = () => {
@@ -51,7 +52,7 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
   assert.ok(!url.searchParams.has('host'), 'socket/host overrides are forbidden');
   assert.ok(!url.searchParams.has('schema'), 'schema overrides are forbidden');
   const selectedCase = process.env.COMMAND_RECOVERY_PG_CASE;
-  assert.ok(!selectedCase || selectedCase === 'disconnect', 'unknown PG case selector');
+  assert.ok(!selectedCase || ['disconnect', 'capacity'].includes(selectedCase), 'unknown PG case selector');
   url.searchParams.set('connection_limit', '4');
   url.searchParams.set('connect_timeout', '5');
   url.searchParams.set('pool_timeout', '5');
@@ -124,9 +125,10 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
     await a.technicianNodeAccount.update({ where: { id: account.id }, data: { lastCommandId: command.id } });
     return { node, account, credential, command };
   };
-  const ack = (services, f, attempt = f.command.retryCount) => services.service.acknowledgeCommand({
-    nodeId: f.node.id, credentialId: run, commandId: f.command.id, status: 'running', deliveryAttempt: attempt,
-  });
+  const ack = (services, f, attempt = f.command.retryCount, status = 'running') =>
+    services.service.acknowledgeCommand({
+      nodeId: f.node.id, credentialId: run, commandId: f.command.id, status, deliveryAttempt: attempt,
+    });
   const followIntent = f => ({ follow_up_technician_provision: {
     action: 'local_user_set_password', account_id: f.account.id, technician_id: technician.id,
     pfsense_username: technician.loginUsername, password: 'Synthetic-only-pass!', requested_by_user_id: run,
@@ -158,8 +160,36 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
   };
   const runCase = (name, work) => {
     if (selectedCase === 'disconnect' && !name.startsWith('server terminates')) return Promise.resolve();
+    if (selectedCase === 'capacity' && !name.startsWith('upgrade capacity')) return Promise.resolve();
     return t.test(name, work);
   };
+
+  await runCase('upgrade capacity reserves one slot and respects a scheduled pickup time', async () => {
+    const first = await fixture({ type: 'package_upgrade', payloadJson: {} });
+    const second = await fixture({ type: 'package_upgrade', payloadJson: {} });
+    const pickup = (services, f) => ack(services, f, f.command.retryCount, 'picked_up');
+    const outcomes = await Promise.allSettled([pickup(sa, first), pickup(sb, second)]);
+    assert.equal(outcomes.filter((outcome) => outcome.status === 'fulfilled').length, 1);
+    const refused = outcomes.find((outcome) => outcome.status === 'rejected');
+    assert.equal(refused.reason.getStatus(), 409);
+    assert.match(refused.reason.message, /concurrency limit/);
+
+    const [winner, queued] = outcomes[0].status === 'fulfilled' ? [first, second] : [second, first];
+    assert.equal((await pickup(sb, winner)).status, 'picked_up');
+    assert.equal(await a.auditLog.count({ where: { targetId: winner.command.id } }), 1);
+    assert.equal((await b.nodeCommand.findUnique({ where: { id: queued.command.id } })).status, 'pending');
+    await a.nodeCommand.update({
+      where: { id: winner.command.id }, data: { status: 'succeeded', completedAt: new Date() },
+    });
+    assert.equal((await pickup(sb, queued)).status, 'picked_up');
+
+    const later = await fixture({ type: 'package_upgrade', payloadJson: {},
+      nextRetryAt: new Date(Date.now() + 180_000) }, '0.5.25');
+    await assert.rejects(pickup(sa, later), (error) =>
+      error.getStatus() === 409 && /scheduled for later/.test(error.message));
+    assert.equal((await b.nodeCommand.findUnique({ where: { id: later.command.id } })).status, 'pending');
+    assert.equal(await a.auditLog.count({ where: { targetId: later.command.id } }), 0);
+  });
 
   await runCase('two independent running ACKs grant execution once and scrub once', async () => {
     const f = await fixture();

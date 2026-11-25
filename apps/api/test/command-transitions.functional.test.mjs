@@ -121,3 +121,15 @@ test('retry worker cannot overwrite cancellation from a stale failed snapshot', 
   assert.equal(state.commands[0].retryCount, 0);
   assert.equal(state.audit.length, 0);
 });
+
+test('a pickup cannot overwrite a defer committed after the command was read', async () => {
+  const row = command();
+  const { db, state, hooks } = fixture([row]);
+  const readyAt = new Date(Date.now() + 120_000);
+  hooks.beforeUpdate = async () => { state.commands[0].nextRetryAt = readyAt; };
+
+  await assert.rejects(service(db).acknowledgeCommand(input(row, 'picked_up')), (error) =>
+    error.getStatus() === 409 && /scheduled for later/.test(error.message));
+  assert.equal(state.commands[0].status, 'pending');
+  assert.equal(state.audit.length, 0);
+});

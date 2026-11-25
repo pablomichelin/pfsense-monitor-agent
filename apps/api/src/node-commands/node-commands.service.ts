@@ -64,6 +64,12 @@ export function assertMatchingDeliveryAttempt(
   }
 }
 
+function assertCommandReady(command: NodeCommand, now: Date): void {
+  if (command.status === NodeCommandStatus.pending && command.nextRetryAt && command.nextRetryAt > now) {
+    throw new ConflictException('command is scheduled for later');
+  }
+}
+
 const LATE_RESULT_COMMAND_TYPES: NodeCommandType[] = [
   NodeCommandType.pfsense_upgrade,
   NodeCommandType.local_user_create,
@@ -429,10 +435,16 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
   }): Promise<CommandAckResponse> {
     const durableDelivery = await this.supportsDurableDelivery(input.nodeId);
     return this.prisma.$transaction(async (tx) => {
-      const command = await tx.nodeCommand.findFirst({
-        where: { id: input.commandId, nodeId: input.nodeId },
-      });
+      const where = { id: input.commandId, nodeId: input.nodeId };
+      let command = await tx.nodeCommand.findFirst({ where });
       if (!command) throw new NotFoundException('command not found');
+      const maxConcurrent = getCommandDefinition(command.type).maxConcurrentGlobal;
+      if (command.status === NodeCommandStatus.pending && maxConcurrent > 0) {
+        // A transaction-scoped lock coordinates capacity checks across replicas.
+        await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(20261125, hashtext(${command.type}))`;
+        command = await tx.nodeCommand.findFirst({ where });
+        if (!command) throw new NotFoundException('command not found');
+      }
       assertMatchingDeliveryAttempt(command, input.deliveryAttempt, durableDelivery);
       if (!ACTIVE_STATUSES.includes(command.status)) {
         // Legacy agents treat any 2xx as permission to execute, ignoring status.
@@ -453,6 +465,15 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       // Repeated ACK is a read. Only the first running CAS grants execution;
       // losing its HTTP response requires local reconciliation, never replay.
       if (command.status === input.status) return this.ackResponse(command, durableDelivery);
+      assertCommandReady(command, now);
+      if (command.status === NodeCommandStatus.pending && maxConcurrent > 0) {
+        const occupied = await tx.nodeCommand.count({
+          where: { type: command.type, status: { in: ['picked_up', 'running'] } },
+        });
+        if (occupied >= maxConcurrent) {
+          throw new ConflictException('global command concurrency limit reached');
+        }
+      }
       const changed = await tx.nodeCommand.updateMany({
         where: {
           id: command.id, nodeId: input.nodeId, retryCount: command.retryCount,
@@ -460,6 +481,11 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
             ? [NodeCommandStatus.pending, NodeCommandStatus.picked_up]
             : [NodeCommandStatus.pending] },
           expiresAt: { gt: now },
+          OR: [
+            { status: NodeCommandStatus.picked_up },
+            { nextRetryAt: null },
+            { nextRetryAt: { lte: now } },
+          ],
         },
         data: {
           status: input.status,
@@ -473,6 +499,7 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       if (!current) throw new NotFoundException('command not found');
       if (changed.count === 0) {
         assertMatchingDeliveryAttempt(current, input.deliveryAttempt, durableDelivery);
+        assertCommandReady(current, now);
         if (!durableDelivery && !ACTIVE_STATUSES.includes(current.status)) {
           throw new NotFoundException('active command not found');
         }
@@ -495,7 +522,7 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
         },
       });
       return this.ackResponse(current, durableDelivery, input.status === 'running');
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
 
   async reportCommandResult(input: {
