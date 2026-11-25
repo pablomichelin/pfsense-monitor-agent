@@ -16,6 +16,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist/pfsense-package"
 PACKAGE_DIR="$ROOT_DIR/packages/pfsense-package"
 VERSION="${1:-}"
+SMOKE_CONTROLLER_URL='https://127.0.0.1:9'
 
 read_env_value() {
   local key="$1"
@@ -37,11 +38,7 @@ if [[ -z "$VERSION" ]]; then
 fi
 
 if [[ -z "$VERSION" ]]; then
-  VERSION="$(read_env_value SYSTEM_VERSION 2>/dev/null || true)"
-fi
-
-if [[ -z "$VERSION" ]]; then
-  VERSION="0.1.0"
+  VERSION="$(awk -F= '$1 == "PORTVERSION" { sub(/^[^=]*=[[:space:]]*/, ""); print; exit }' "$PACKAGE_DIR/Makefile")"
 fi
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -58,6 +55,7 @@ UNINSTALL_SOURCE="$PACKAGE_DIR/bootstrap/uninstall.sh"
 STAGE_DIR="$(mktemp -d)"
 INSTALL_ROOT="$(mktemp -d)"
 SERVER_LOG="$(mktemp)"
+PORT_FILE="$(mktemp)"
 STDERR_LOG="$(mktemp)"
 SERVER_PID=""
 
@@ -67,7 +65,7 @@ cleanup() {
     wait "$SERVER_PID" >/dev/null 2>&1 || true
   fi
   rm -rf "$STAGE_DIR" "$INSTALL_ROOT"
-  rm -f "$SERVER_LOG" "$STDERR_LOG"
+  rm -f "$SERVER_LOG" "$PORT_FILE" "$STDERR_LOG"
 }
 
 trap cleanup EXIT
@@ -84,7 +82,13 @@ echo "[2/9] Validando arquivos de release e checksum"
 [[ -f "$UNINSTALL_SOURCE" ]]
 
 EXPECTED_SHA256="$(awk '{print $1}' "$CHECKSUM_PATH")"
-ACTUAL_SHA256="$(sha256sum "$ARTIFACT_PATH" | awk '{print $1}')"
+ACTUAL_SHA256="$(python3 - "$ARTIFACT_PATH" <<'PYTHON'
+import hashlib
+from pathlib import Path
+import sys
+print(hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest())
+PYTHON
+)"
 [[ "$EXPECTED_SHA256" == "$ACTUAL_SHA256" ]]
 
 echo "[3/9] Publicando release por HTTP local temporario"
@@ -92,18 +96,29 @@ cp "$ARTIFACT_PATH" "$STAGE_DIR/$ARTIFACT_NAME"
 cp "$CHECKSUM_PATH" "$STAGE_DIR/${ARTIFACT_NAME}.sha256"
 cp "$INSTALLER_SOURCE" "$STAGE_DIR/install-from-release.sh"
 
-PORT="$(python3 - <<'PY'
-import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
-PY
-)"
+python3 - "$STAGE_DIR" "$PORT_FILE" >"$SERVER_LOG" 2>&1 <<'PYTHON' &
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+import sys
 
-python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$STAGE_DIR" >"$SERVER_LOG" 2>&1 &
-SERVER_PID="$!"
-sleep 1
+handler = partial(SimpleHTTPRequestHandler, directory=sys.argv[1])
+with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
+    Path(sys.argv[2]).write_text(str(server.server_port), encoding="ascii")
+    server.serve_forever()
+PYTHON
+SERVER_PID=$!
+for attempt in {1..40}; do
+  [[ -s "$PORT_FILE" ]] && break
+  kill -0 "$SERVER_PID" 2>/dev/null || break
+  sleep 0.05
+done
+if [[ ! -s "$PORT_FILE" ]]; then
+  echo 'Servidor temporário do package não iniciou.' >&2
+  cat "$SERVER_LOG" >&2
+  exit 1
+fi
+PORT="$(cat "$PORT_FILE")"
 
 RELEASE_BASE_URL="http://127.0.0.1:$PORT"
 RELEASE_URL="$RELEASE_BASE_URL/$ARTIFACT_NAME"
@@ -147,7 +162,7 @@ env -u MONITOR_UPDATE_NODE_SECRET INSTALL_ROOT="$INSTALL_ROOT" "$DOWNLOADED_INST
   --release-url "$RELEASE_URL" \
   --sha256 "$EXPECTED_SHA256" \
   --secret-file "$SECRET_FILE" \
-  --controller-url "https://pfs-monitor.systemup.inf.br" \
+  --controller-url "$SMOKE_CONTROLLER_URL" \
   --node-uid "release-smoke-node" \
   --customer-code "REL-SMOKE" \
   --heartbeat-mode "normal"
@@ -179,7 +194,7 @@ chmod 600 "$SECRET_STORE"
 
 CONFIG_FILE="$INSTALL_ROOT/usr/local/etc/monitor-pfsense-agent.conf"
 cat >"$CONFIG_FILE" <<EOF
-CONTROLLER_URL="https://pfs-monitor.systemup.inf.br"
+CONTROLLER_URL="$SMOKE_CONTROLLER_URL"
 NODE_UID="release-smoke-node"
 CUSTOMER_CODE="REL-SMOKE"
 NODE_SECRET_FILE="$SECRET_STORE"
@@ -199,7 +214,7 @@ env -u MONITOR_UPDATE_NODE_SECRET INSTALL_ROOT="$INSTALL_ROOT" "$DOWNLOADED_INST
   --release-url "$RELEASE_URL" \
   --sha256 "$EXPECTED_SHA256" \
   --node-secret "release-smoke-secret" \
-  --controller-url "https://pfs-monitor.systemup.inf.br" \
+  --controller-url "$SMOKE_CONTROLLER_URL" \
   --node-uid "release-smoke-node" \
   --customer-code "REL-SMOKE" \
   >/dev/null 2>"$STDERR_LOG"
@@ -212,4 +227,4 @@ INSTALL_ROOT="$INSTALL_ROOT" "$UNINSTALL_SOURCE" >/dev/null
 [[ ! -e "$INC_FILE" ]]
 [[ ! -e "$INSTALL_ROOT/var/db/monitor-pfsense-agent" ]]
 
-echo "Smoke agent release OK: package 0.4.0, pin --sha256, contrato B1 do segredo (env/--secret-file/--node-secret) e ciclo install/uninstall validados."
+echo "Smoke agent release OK: package $VERSION, pin --sha256, opções --secret-file/--node-secret e ciclo install/uninstall validados."
