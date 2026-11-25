@@ -246,6 +246,9 @@ export default async function AlertsPage({
                     className={formSelectClassName}
                   >
                     <option value="">Todos os clientes</option>
+                    {clientId && !filterOptions.clients.some((client) => client.id === clientId) ? (
+                      <option value={clientId}>Cliente da consulta (indisponível na lista)</option>
+                    ) : null}
                     {filterOptions.clients.map((client) => (
                       <option key={client.id} value={client.id}>
                         {client.name} ({client.node_count})

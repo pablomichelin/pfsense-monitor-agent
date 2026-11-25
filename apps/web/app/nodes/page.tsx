@@ -322,6 +322,9 @@ export default async function NodesPage({
             className="mt-1 h-11 w-full rounded-lg border border-border bg-surface-soft px-4 text-sm text-fg outline-none"
           >
             <option value="">Todos os clientes</option>
+            {clientId && !filterOptions.clients.some((client) => client.id === clientId) ? (
+              <option value={clientId}>Cliente da consulta (indisponível na lista)</option>
+            ) : null}
             {filterOptions.clients.map((client) => (
               <option key={client.id} value={client.id}>
                 {client.name} ({client.node_count})

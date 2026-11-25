@@ -42,17 +42,21 @@ export function ClientScopedFilterSelect({
   defaultValue?: string;
 }) {
   const clientId = useContext(FilterClientContext);
-  const [value, setValue] = useState(defaultValue ?? '');
+  const [selection, setSelection] = useState({ value: defaultValue ?? '', clientId });
+  const { value } = selection;
   const visibleOptions = clientId ? options.filter((option) => option.clientId === clientId) : options;
-  const visibleValue = visibleOptions.some((option) => option.id === value) ? value : '';
+  const unavailable = value !== '' && (!clientId || clientId === selection.clientId)
+    && !options.some((option) => option.id === value);
+  const visibleValue = unavailable || visibleOptions.some((option) => option.id === value) ? value : '';
 
   if (value !== visibleValue) {
-    setValue(visibleValue);
+    setSelection({ value: visibleValue, clientId });
   }
 
   return (
-    <select {...props} value={visibleValue} onChange={(event) => setValue(event.target.value)}>
+    <select {...props} value={visibleValue} onChange={(event) => setSelection({ value: event.target.value, clientId })}>
       <option value="">{placeholder}</option>
+      {unavailable ? <option value={visibleValue}>Opção da consulta (indisponível na lista)</option> : null}
       {visibleOptions.map((option) => (
         <option key={option.id} value={option.id}>{option.label}</option>
       ))}
