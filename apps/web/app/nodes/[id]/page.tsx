@@ -155,8 +155,8 @@ export default async function NodeDetailsPage({
 
     const [upgradeStatus, packageUpgradeStatus, fleetTags, metricsHistory, commandHistory, operationalStatus, nodeCapabilities, pfsenseApiStatus, technicianAccounts] =
       await Promise.all([
-        getPfsenseUpgradeStatus(id),
-        getPackageUpgradeStatus(id),
+        optionalSection('Atualização do pfSense OS', getPfsenseUpgradeStatus(id)),
+        optionalSection('Atualização do agente Monitor', getPackageUpgradeStatus(id)),
         canManageFleetMetadata && canViewTags ? optionalSection('Tags disponíveis', listFleetTags({ client_id: node.client.id })) : null,
         optionalSection('Histórico de métricas', getNodeMetricsHistory(id, metricsPeriod)),
         optionalSection('Histórico de comandos', getNodeCommandHistory(id)),
@@ -283,10 +283,6 @@ export default async function NodeDetailsPage({
                 <NodeDetailOverviewTab
                   node={node}
                   canManageNode={canManageNode}
-                  canRunUpgrade={canRunUpgrade}
-                  canRunPackageUpgrade={canRunPackageUpgrade}
-                  upgradeStatus={upgradeStatus}
-                  packageUpgradeStatus={packageUpgradeStatus}
                   nodeCapabilities={nodeCapabilities}
                   pfsenseApiStatus={pfsenseApiStatus}
                   canManagePfsenseCredentials={canManagePfsenseCredentials}
@@ -299,6 +295,7 @@ export default async function NodeDetailsPage({
               <NodeUpdatesSection node={node} canRunUpgrade={canRunUpgrade} canRunPackageUpgrade={canRunPackageUpgrade} upgradeStatus={upgradeStatus} packageUpgradeStatus={packageUpgradeStatus} />
                 {(canRestartService || canRebootNode) && operationalStatus?.enabled ? (
                   <NodeOperationalActionsSection
+                    key={node.id}
                     nodeId={node.id}
                     hostname={node.hostname}
                     canRestartService={canRestartService}
@@ -310,6 +307,7 @@ export default async function NodeDetailsPage({
                 ) : null}
             </div>}
             history={<>                {commandHistory ? <NodeCommandHistoryPanel
+                  key={node.id}
                   nodeId={node.id}
                   initialHistory={commandHistory}
                   canCancelBackup={canRequestBackup}

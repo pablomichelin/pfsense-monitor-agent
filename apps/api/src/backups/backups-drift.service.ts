@@ -1,7 +1,8 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ConfigBackupStatus } from '@prisma/client';
+import { ConfigBackupStatus, type Prisma } from '@prisma/client';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
+import { lockBackupPolicyRow } from './backups-policy-lock.util';
 import {
   detectConfigDrift,
   extractTopLevelSections,
@@ -91,50 +92,26 @@ export class BackupsDriftService {
       return;
     }
 
-    const node = await this.prisma.node.findUnique({
-      where: { id: nodeId },
-      select: {
-        configBackupPolicyJson: true,
-      },
-    });
-
-    if (!node) {
-      return;
-    }
-
-    const storedRecords = await this.prisma.nodeConfigBackup.findMany({
+    const pairQuery = {
       where: {
         nodeId,
         status: ConfigBackupStatus.stored,
-        storagePath: {
-          not: null,
-        },
+        storagePath: { not: null },
       },
-      orderBy: {
-        receivedAt: 'desc',
-      },
+      orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
       take: 2,
+    } satisfies Prisma.NodeConfigBackupFindManyArgs;
+    const [current, previous] = await this.prisma.nodeConfigBackup.findMany({
+      ...pairQuery,
+      select: { id: true, configSha256: true, storagePath: true },
     });
 
-    const current = storedRecords.find((record) => record.id === storedBackupId);
-    const previous = storedRecords.find((record) => record.id !== storedBackupId);
-
-    if (!current?.storagePath) {
+    if (!current?.storagePath || current.id !== storedBackupId) {
       return;
     }
 
-    let nextState: StoredDriftState | null = null;
-
-    if (!previous?.storagePath) {
-      nextState = {
-        active: false,
-        baseline_sha256: current.configSha256,
-        baseline_backup_id: current.id,
-        current_sha256: current.configSha256,
-        changed_sections: [],
-        sensitive_changed_sections: [],
-      };
-    } else {
+    let detectedDrift: StoredDriftState | null = null;
+    if (previous?.storagePath) {
       const [previousXml, currentXml] = await Promise.all([
         this.storage.decryptFromFile(previous.storagePath),
         this.storage.decryptFromFile(current.storagePath),
@@ -147,67 +124,71 @@ export class BackupsDriftService {
         currentSha256: current.configSha256,
       });
 
-      const existing = parseDriftState(node.configBackupPolicyJson);
-      const alertKey = `${previous.configSha256}:${current.configSha256}`;
-
       if (drift.drift) {
-        const duplicateAlert =
-          existing?.active === true && existing.alert_key === alertKey;
-
-        nextState = {
+        detectedDrift = {
           active: true,
-          detected_at: duplicateAlert
-            ? existing?.detected_at ?? new Date().toISOString()
-            : new Date().toISOString(),
           baseline_sha256: previous.configSha256,
           baseline_backup_id: previous.id,
           current_sha256: current.configSha256,
           changed_sections: drift.changed_sections,
           sensitive_changed_sections: drift.sensitive_changed_sections,
-          alert_key: alertKey,
-        };
-
-        if (!duplicateAlert) {
-          await this.prisma.auditLog.create({
-            data: {
-              actorType: 'system',
-              action: 'backup.config.drift_detected',
-              targetType: 'node',
-              targetId: nodeId,
-              metadataJson: {
-                backup_id: current.id,
-                previous_backup_id: previous.id,
-                changed_sections: drift.changed_sections,
-                sensitive_changed_sections: drift.sensitive_changed_sections,
-              },
-            },
-          });
-
-          this.logger.warn(
-            `config drift detected node_id=${nodeId} sections=${drift.sensitive_changed_sections.join(',')}`,
-          );
-        }
-      } else {
-        nextState = {
-          active: false,
-          baseline_sha256: current.configSha256,
-          baseline_backup_id: current.id,
-          current_sha256: current.configSha256,
-          changed_sections: drift.changed_sections,
-          sensitive_changed_sections: [],
+          alert_key: `${previous.configSha256}:${current.configSha256}`,
         };
       }
     }
 
-    await this.prisma.node.update({
-      where: { id: nodeId },
-      data: {
-        configBackupPolicyJson: mergeDriftStateJson(
-          node.configBackupPolicyJson,
-          nextState?.active ? nextState : null,
-        ),
-      },
+    const detectedSections = await this.prisma.$transaction(async (tx) => {
+      const node = await lockBackupPolicyRow(tx, nodeId);
+      if (!node) return null;
+
+      // The latest pair may have changed while the artifacts were being read.
+      const [latest, baseline] = await tx.nodeConfigBackup.findMany({
+        ...pairQuery,
+        select: { id: true },
+      });
+      if (latest?.id !== current.id || baseline?.id !== previous?.id) {
+        return null;
+      }
+
+      const existing = parseDriftState(node.configBackupPolicyJson);
+      const duplicateAlert = detectedDrift !== null &&
+        existing?.active === true && existing.alert_key === detectedDrift.alert_key;
+      const nextState = detectedDrift ? {
+        ...detectedDrift,
+        detected_at: (duplicateAlert ? existing?.detected_at : undefined) ?? new Date().toISOString(),
+      } : null;
+
+      await tx.node.update({
+        where: { id: nodeId },
+        data: {
+          configBackupPolicyJson: mergeDriftStateJson(node.configBackupPolicyJson, nextState),
+        },
+      });
+
+      if (!nextState || duplicateAlert) return null;
+
+      await tx.auditLog.create({
+        data: {
+          actorType: 'system',
+          action: 'backup.config.drift_detected',
+          targetType: 'node',
+          targetId: nodeId,
+          metadataJson: {
+            backup_id: current.id,
+            previous_backup_id: nextState.baseline_backup_id,
+            changed_sections: nextState.changed_sections,
+            sensitive_changed_sections: nextState.sensitive_changed_sections,
+          },
+        },
+      });
+      return nextState.sensitive_changed_sections;
     });
+
+    if (detectedSections) {
+      this.logger.warn(
+        `config drift detected node_id=${nodeId} sections=${detectedSections.join(',')}`,
+      );
+    }
   }
 
   async acknowledgeDrift(input: {
@@ -218,47 +199,35 @@ export class BackupsDriftService {
   }) {
     this.assertDriftEnabled();
 
-    const node = await this.prisma.node.findUnique({
-      where: { id: input.nodeId },
-      select: {
-        configBackupPolicyJson: true,
-      },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const node = await lockBackupPolicyRow(tx, input.nodeId);
+      const driftState = parseDriftState(node?.configBackupPolicyJson);
+      if (!node || !driftState?.active) {
+        return { ok: true, cleared: false };
+      }
 
-    if (!node) {
-      return { ok: true, cleared: false };
-    }
-
-    const driftState = parseDriftState(node.configBackupPolicyJson);
-    if (!driftState?.active) {
-      return { ok: true, cleared: false };
-    }
-
-    await this.prisma.node.update({
-      where: { id: input.nodeId },
-      data: {
-        configBackupPolicyJson: mergeDriftStateJson(
-          node.configBackupPolicyJson,
-          null,
-        ),
-      },
-    });
-
-    await this.prisma.auditLog.create({
-      data: {
-        actorType: 'user_session',
-        actorId: input.userId,
-        actorRole: input.actorRole,
-        action: 'backup.config.drift_acknowledged',
-        targetType: 'node',
-        targetId: input.nodeId,
-        ipAddress: input.ipAddress,
-        metadataJson: {
-          previous_state: driftState,
+      await tx.node.update({
+        where: { id: input.nodeId },
+        data: {
+          configBackupPolicyJson: mergeDriftStateJson(node.configBackupPolicyJson, null),
         },
-      },
-    });
+      });
 
-    return { ok: true, cleared: true };
+      await tx.auditLog.create({
+        data: {
+          actorType: 'user_session',
+          actorId: input.userId,
+          actorRole: input.actorRole,
+          action: 'backup.config.drift_acknowledged',
+          targetType: 'node',
+          targetId: input.nodeId,
+          metadataJson: {
+            previous_state: driftState,
+          },
+        },
+      });
+
+      return { ok: true, cleared: true };
+    });
   }
 }

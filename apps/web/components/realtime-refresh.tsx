@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
-import { DISPLAY_TIME_ZONE } from '@/lib/format';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { DISPLAY_TIME_ZONE } from '@/lib/format';
 
 type DashboardRefreshEvent = {
   event_id: string;
@@ -17,6 +18,7 @@ type RealtimeRefreshProps = {
   scope?: 'all' | 'node';
   nodeId?: string;
   renderedAt?: string;
+  realtimeEnabled?: boolean;
 };
 
 type StreamState = 'connecting' | 'live' | 'reconnecting' | 'closed';
@@ -38,6 +40,7 @@ export function RealtimeRefresh({
   scope = 'all',
   nodeId,
   renderedAt,
+  realtimeEnabled = true,
 }: RealtimeRefreshProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -48,10 +51,27 @@ export function RealtimeRefresh({
 
   const REFRESH_THROTTLE_MS = 30000;
 
+  const refreshPanel = useCallback(() => {
+    lastRefreshAtRef.current = Date.now();
+    startTransition(() => {
+      router.refresh();
+    });
+  }, [router, startTransition]);
+
+  const handleManualRefresh = () => {
+    if (refreshTimerRef.current !== null) {
+      window.clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+    refreshPanel();
+  };
+
   useEffect(() => {
     setStreamState('connecting');
     setLastEvent(null);
     lastRefreshAtRef.current = 0;
+    if (!realtimeEnabled) return;
+
     const eventSource = new EventSource('/api/realtime/dashboard');
 
     const scheduleRefresh = (payload: DashboardRefreshEvent | null) => {
@@ -65,10 +85,7 @@ export function RealtimeRefresh({
 
       refreshTimerRef.current = window.setTimeout(() => {
         refreshTimerRef.current = null;
-        lastRefreshAtRef.current = Date.now();
-        startTransition(() => {
-          router.refresh();
-        });
+        refreshPanel();
       }, Math.max(1200, REFRESH_THROTTLE_MS - (Date.now() - lastRefreshAtRef.current)));
     };
 
@@ -121,31 +138,33 @@ export function RealtimeRefresh({
       eventSource.removeEventListener('error', handleError);
       eventSource.close();
     };
-  }, [nodeId, router, scope, startTransition]);
+  }, [nodeId, realtimeEnabled, refreshPanel, scope]);
 
+  const displayState = realtimeEnabled ? streamState : 'manual';
   const statusLabel =
-    streamState === 'connecting' ? 'Tempo real conectando'
-      : streamState === 'reconnecting' ? 'Tempo real reconectando'
-        : streamState === 'closed' ? 'Tempo real desconectado'
-          : isPending ? 'Atualizando painel' : 'Tempo real ativo';
+    displayState === 'manual' ? 'Atualização manual'
+      : displayState === 'connecting' ? 'Tempo real conectando'
+        : displayState === 'reconnecting' ? 'Tempo real reconectando'
+          : displayState === 'closed' ? 'Tempo real desconectado'
+            : isPending ? 'Atualizando painel' : 'Tempo real ativo';
 
   return (
     <div className="inline-flex flex-wrap items-center gap-3 text-xs text-fg-muted">
       <div className="flex items-center gap-2">
         <span
           className={`status-dot ${
-            streamState === 'live'
+            displayState === 'live'
               ? isPending
                 ? 'bg-amber-300'
                 : 'bg-cyan-400'
-              : streamState === 'reconnecting' || streamState === 'closed'
+              : displayState === 'reconnecting' || displayState === 'closed'
                 ? 'bg-rose-400'
                 : 'bg-slate-500'
           }`}
         />
         <span>{statusLabel}</span>
       </div>
-      {lastEvent ? (
+      {realtimeEnabled && lastEvent ? (
         <div className="text-right font-mono text-[11px] text-fg-muted">
           <div>
             {sourceLabel[lastEvent.source]} {formatClock(lastEvent.occurred_at)}
@@ -156,6 +175,11 @@ export function RealtimeRefresh({
         <span className="font-mono text-[11px] text-fg-muted">
           Atualizado {formatClock(renderedAt)} (Brasília)
         </span>
+      ) : null}
+      {displayState === 'manual' || displayState === 'closed' ? (
+        <Button variant="secondary" size="sm" loading={isPending} onClick={handleManualRefresh}>
+          Atualizar agora
+        </Button>
       ) : null}
     </div>
   );

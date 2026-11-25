@@ -1,4 +1,7 @@
+import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+
+const commandFields = { maxRetries: Symbol('NodeCommand.maxRetries') };
 
 export const nodeId = '10000000-0000-4000-8000-000000000001';
 export const userId = '20000000-0000-4000-8000-000000000001';
@@ -21,9 +24,16 @@ function matches(row, where = {}) {
     const actual = row[key];
     if (value && typeof value === 'object' && !(value instanceof Date)) {
       if ('in' in value) return value.in.includes(actual);
+      if ('path' in value) {
+        const atPath = value.path.reduce((entry, part) => entry?.[part], actual);
+        if (value.equals === Prisma.AnyNull) return atPath == null;
+        if (value.not === true) return atPath != null && atPath !== true;
+        throw new Error(`Unimplemented fixture JSON predicate ${key}`);
+      }
       if ('equals' in value) return JSON.stringify(actual) === JSON.stringify(value.equals);
       return Object.entries(value).every(([operator, expected]) => {
         if (operator === 'gt') return actual > expected;
+        if (operator === 'lt' && expected === commandFields.maxRetries) return actual < row.maxRetries;
         if (operator === 'lte') return actual <= expected;
         throw new Error(`Unimplemented fixture predicate ${key}.${operator}`);
       });
@@ -43,10 +53,18 @@ export function fixture(initial = [], { rollback = false } = {}) {
   const db = {
     $queryRaw: async () => [{ id: nodeId }],
     nodeCommand: {
+      fields: commandFields,
       findFirst: async ({ where }) => structuredClone(state.commands.find((row) => matches(row, where)) ?? null),
       findUnique: async ({ where }) => structuredClone(state.commands.find((row) => matches(row, where)) ?? null),
-      findMany: async ({ where } = {}) => {
-        const rows = structuredClone(state.commands.filter((row) => matches(row, where)));
+      findMany: async ({ where, orderBy, take } = {}) => {
+        const matching = state.commands.filter((row) => matches(row, where));
+        let selected = matching;
+        if (where?.status === 'failed' && orderBy?.completedAt === 'asc') {
+          const completedTime = (row) => row.completedAt?.getTime() ?? Infinity;
+          matching.sort((left, right) => completedTime(left) - completedTime(right));
+          selected = matching.slice(0, take);
+        }
+        const rows = structuredClone(selected);
         if (hooks.afterFindMany) await hooks.afterFindMany(rows);
         return rows;
       },

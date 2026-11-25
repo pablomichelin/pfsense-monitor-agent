@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { BackupScopeSelects } from '@/components/backups/backup-scope-selects';
 import { BackupsFleetTable } from '@/components/backups/backups-fleet-table';
 import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
@@ -52,9 +53,10 @@ export default async function BackupsPage({
   }
 
   const isClientProfile = isClientRole(session.user.role);
-  const sites = clientId
-    ? filterOptions.sites.filter((site) => site.client_id === clientId)
-    : filterOptions.sites;
+  const canViewFirewalls = hasPermission(session.permissions ?? [], 'firewalls.view');
+  const selectedSite = filterOptions.sites.find((site) => site.id === siteId);
+  const mismatchedSite = Boolean(clientId && selectedSite && selectedSite.client_id !== clientId);
+  const filterSiteId = mismatchedSite ? undefined : siteId;
 
   const totalPages = nodes.total_pages;
   const currentPage = nodes.page;
@@ -62,7 +64,7 @@ export default async function BackupsPage({
   const backupPageHref = (nextPage: number) => {
     const next = new URLSearchParams();
     if (clientId) next.set('client_id', clientId);
-    if (siteId) next.set('site_id', siteId);
+    if (filterSiteId) next.set('site_id', filterSiteId);
     if (backupStatus) next.set('backup_status', backupStatus);
     if (search) next.set('search', search);
     next.set('sort_by', sortBy);
@@ -75,7 +77,7 @@ export default async function BackupsPage({
   const backupStatusHref = (nextStatus: string) => {
     const next = new URLSearchParams();
     if (clientId) next.set('client_id', clientId);
-    if (siteId) next.set('site_id', siteId);
+    if (filterSiteId) next.set('site_id', filterSiteId);
     if (search) next.set('search', search);
     next.set('backup_status', nextStatus);
     next.set('sort_by', sortBy);
@@ -116,7 +118,7 @@ export default async function BackupsPage({
             tone: summary.never > 0 ? 'default' : 'default',
           },
         ]}
-        aside={<RealtimeRefresh renderedAt={nodes.generated_at} />}
+        aside={<RealtimeRefresh renderedAt={nodes.generated_at} realtimeEnabled={canViewFirewalls} />}
       />
 
       <PageSection
@@ -124,31 +126,19 @@ export default async function BackupsPage({
         description="Clique nos indicadores acima para filtrar por situação."
       >
         <Card className="p-3">
+          {mismatchedSite ? (
+            <Alert variant="info" className="mb-3">
+              O local da consulta pertence a outro cliente. Selecione um local deste cliente ou aplique os filtros com todos os seus sites.
+            </Alert>
+          ) : null}
           <form className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <select
-              name="client_id" aria-label="Cliente"
-              defaultValue={clientId ?? ''}
-              className="h-11 min-w-0 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
-            >
-              <option value="">Todos os clientes</option>
-              {filterOptions.clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name} ({client.node_count})
-                </option>
-              ))}
-            </select>
-            <select
-              name="site_id" aria-label="Local"
-              defaultValue={siteId ?? ''}
-              className="h-11 min-w-0 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
-            >
-              <option value="">Todos os sites</option>
-              {sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.client_name} / {site.name} ({site.node_count})
-                </option>
-              ))}
-            </select>
+            <BackupScopeSelects
+              key={`${clientId ?? ''}/${filterSiteId ?? ''}`}
+              clients={filterOptions.clients}
+              sites={filterOptions.sites}
+              initialClientId={clientId}
+              initialSiteId={filterSiteId}
+            />
             <select
               name="backup_status" aria-label="Situação do backup"
               defaultValue={backupStatus ?? ''}
@@ -205,7 +195,7 @@ export default async function BackupsPage({
               Nenhum firewall encontrado com os filtros atuais.
             </Alert>
           ) : (
-            <BackupsFleetTable nodes={visibleNodes} canViewFirewall={hasPermission(session.permissions ?? [], 'firewalls.view')} />
+            <BackupsFleetTable nodes={visibleNodes} canViewFirewall={canViewFirewalls} />
           )}
         </Card>
         <div className="mt-4 flex items-center justify-between gap-3 text-sm text-fg-muted">

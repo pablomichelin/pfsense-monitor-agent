@@ -73,7 +73,9 @@ function harness(n, allowed = ['client-a']) {
     } },
     $transaction: async (fn, options) => { transactions.push(options); return fn(prisma); },
   };
-  const service = new NodesService(prisma, new AccessPolicyService(prisma, {}));
+  const service = new NodesService(prisma, new AccessPolicyService(prisma, {}), {
+    getPublishedVersion: () => null,
+  });
   return { rows, calls, transactions, service };
 }
 for (const size of [1105, 5105]) {
@@ -142,6 +144,58 @@ test('backup client scope, requested foreign client, search/site intersections a
   assert.deepEqual(empty.summary, { total: 0, ok: 0, late: 0, never: 0, failed: 0 });
   assert.deepEqual(empty.items, []);
 });
+function setBackupAges(rows, agesInMinutes) {
+  rows.forEach((row, index) => {
+    const age = agesInMinutes[index];
+    row.nodeCommands = [];
+    row.configBackups = age === null ? [] : [{
+      status: 'stored', configSha256: 'synthetic', receivedAt: new Date(now - age * 60_000),
+    }];
+  });
+}
+
+for (const [direction, expectedAges] of [['asc', [1, 2, 3]], ['desc', [3, 2, 1]]]) {
+  test(`backup age orders elapsed minutes ${direction}`, async () => {
+    const { rows, service } = harness(3);
+    setBackupAges(rows, [2, 3, 1]);
+    const { items } = await service.getBackupFleet(actor, { sort_by: 'backup_age', sort_order: direction });
+    assert.deepEqual(items.map(item => (now - Date.parse(item.latest_backup_received_at)) / 60_000), expectedAges);
+  });
+}
+
+test('backup age preserves never-sent placement and ID ties across pages', async () => {
+  const { rows, service } = harness(12);
+  setBackupAges(rows, [null, 3, 1, 2, null, 3, 3, 3, 3, 3, 3, 3]);
+  const expectedPages = {
+    asc: [[0, 4, 2, 3, 1, 5, 6, 7, 8, 9], [10, 11]],
+    desc: [[1, 5, 6, 7, 8, 9, 10, 11, 3, 2], [0, 4]],
+  };
+  for (const [direction, pages] of Object.entries(expectedPages)) {
+    for (const [index, expectedIds] of pages.entries()) {
+      const page = index + 1;
+      const result = await service.getBackupFleet(actor, { sort_by: 'backup_age', sort_order: direction, page, per_page: 10 });
+      assert.equal(result.page, page);
+      assert.equal(result.total, 12);
+      assert.equal(result.total_pages, 2);
+      assert.deepEqual(result.items.map(item => item.id), expectedIds.map(id => rows[id].id), `${direction} page ${page}`);
+    }
+  }
+});
+
+test('backup priority retains timestamp tie-breaks and name retains display-name ordering', async () => {
+  const { rows, service } = harness(4);
+  setBackupAges(rows, [2, 1, 2, null]);
+  rows[3].displayName = 'Alpha';
+  rows[2].displayName = rows[1].hostname.toUpperCase();
+  for (const [sortBy, direction, expectedIds] of [
+    ['backup_priority', 'asc', [3, 0, 2, 1]], ['backup_priority', 'desc', [1, 0, 2, 3]],
+    ['name', 'asc', [3, 0, 1, 2]], ['name', 'desc', [1, 2, 0, 3]],
+  ]) {
+    const { items } = await service.getBackupFleet(actor, { sort_by: sortBy, sort_order: direction });
+    assert.deepEqual(items.map(item => item.id), expectedIds.map(id => rows[id].id), `${sortBy} ${direction}`);
+  }
+});
+
 test('backup all sorts/directions, clamped page and empty filter', async () => {
   const { service } = harness(1105);
   for (const sort_by of ['name', 'backup_priority', 'backup_age']) {

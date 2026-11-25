@@ -35,7 +35,9 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
     await this.reconcileStatuses('startup');
 
     this.timer = setInterval(() => {
-      void this.reconcileStatuses('interval');
+      void this.reconcileStatuses('interval').catch((error) => {
+        this.logger.warn(`node lifecycle reconciliation failed: ${String(error)}`);
+      });
     }, appConfig.nodeStatus.reconcileIntervalSeconds * 1000);
 
     this.timer.unref?.();
@@ -87,29 +89,40 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
       for (const node of nodes) {
         const effectiveStatus = deriveEffectiveNodeStatus(node, now);
         const heartbeatAlert = node.alerts[0];
-        const hasActiveUpgrade = activeUpgradeNodeIds.has(node.id);
-        const shouldKeepHeartbeatAlertOpen =
-          !node.maintenanceMode &&
-          !hasActiveUpgrade &&
-          effectiveStatus === NodeStatus.offline;
-        const shouldOpenHeartbeatAlert =
-          shouldKeepHeartbeatAlertOpen &&
-          (!heartbeatAlert || heartbeatAlert.status === AlertStatus.resolved);
-        const shouldResolveHeartbeatAlert =
-          heartbeatAlert && heartbeatAlert.status !== AlertStatus.resolved
-            ? !shouldKeepHeartbeatAlertOpen
-            : false;
+        const isOffline = !node.maintenanceMode && effectiveStatus === NodeStatus.offline;
+        const hasOpenHeartbeatAlert = !!heartbeatAlert && heartbeatAlert.status !== AlertStatus.resolved;
+        const shouldKeepHeartbeatAlertOpen = isOffline && !activeUpgradeNodeIds.has(node.id);
         const shouldUpdateNodeStatus = node.status !== effectiveStatus;
 
-        if (
-          !shouldUpdateNodeStatus &&
-          !shouldOpenHeartbeatAlert &&
-          !shouldResolveHeartbeatAlert
-        ) {
+        if (!shouldUpdateNodeStatus && hasOpenHeartbeatAlert === shouldKeepHeartbeatAlertOpen) {
           continue;
         }
 
         await this.prisma.$transaction(async (tx) => {
+          const [current] = await tx.$queryRaw<Array<{
+            status: NodeStatus;
+            maintenance_mode: boolean;
+            last_seen_at: Date | null;
+          }>>`
+            SELECT status, maintenance_mode, last_seen_at
+            FROM nodes WHERE id = ${node.id}::uuid FOR UPDATE
+          `;
+          // The scan may have waited behind an accepted heartbeat or maintenance update.
+          // Leave that node for the next scan instead of publishing an obsolete state.
+          if (
+            !current ||
+            current.status !== node.status ||
+            current.maintenance_mode !== node.maintenanceMode ||
+            current.last_seen_at?.getTime() !== node.lastSeenAt?.getTime()
+          ) {
+            return;
+          }
+
+          const currentUpgradeIds = isOffline
+            ? await this.nodeCommandsService.loadActivePfsenseUpgradeNodeIds(now, { nodeId: node.id, db: tx })
+            : undefined;
+          const keepHeartbeatAlertOpen = isOffline && !currentUpgradeIds?.has(node.id);
+
           if (shouldUpdateNodeStatus) {
             await tx.node.update({
               where: {
@@ -123,7 +136,7 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
             changedNodes += 1;
           }
 
-          if (shouldOpenHeartbeatAlert) {
+          if (keepHeartbeatAlertOpen && !hasOpenHeartbeatAlert) {
             const openedAlertId = await this.openHeartbeatMissingAlert(
               tx,
               node.id,
@@ -136,10 +149,11 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
             }
           }
 
-          if (shouldResolveHeartbeatAlert && heartbeatAlert) {
-            await tx.alert.update({
+          if (!keepHeartbeatAlertOpen && hasOpenHeartbeatAlert) {
+            const resolved = await tx.alert.updateMany({
               where: {
                 id: heartbeatAlert.id,
+                status: { not: AlertStatus.resolved },
               },
               data: {
                 status: AlertStatus.resolved,
@@ -148,7 +162,7 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
               },
             });
 
-            resolvedAlerts += 1;
+            resolvedAlerts += resolved.count;
           }
         });
       }
@@ -208,11 +222,14 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
       return created.id;
     }
 
-    const wasResolved = existing.status === AlertStatus.resolved;
+    if (existing.status !== AlertStatus.resolved) {
+      return null;
+    }
 
-    await tx.alert.update({
+    const reopened = await tx.alert.updateMany({
       where: {
         id: existing.id,
+        status: AlertStatus.resolved,
       },
       data: {
         severity: AlertSeverity.critical,
@@ -224,14 +241,14 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
           last_seen_at: lastSeenAt?.toISOString() ?? null,
           offline_after_seconds: appConfig.nodeStatus.offlineAfterSeconds,
         },
-        openedAt: wasResolved ? observedAt : existing.openedAt,
-        acknowledgedAt: wasResolved ? null : existing.acknowledgedAt,
-        acknowledgedBy: wasResolved ? null : existing.acknowledgedBy,
+        openedAt: observedAt,
+        acknowledgedAt: null,
+        acknowledgedBy: null,
         resolvedAt: null,
         resolutionNote: null,
       },
     });
 
-    return wasResolved ? existing.id : null;
+    return reopened.count === 1 ? existing.id : null;
   }
 }

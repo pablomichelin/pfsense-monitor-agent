@@ -1,6 +1,7 @@
 import { NodePagination } from '@/components/node-pagination';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { ClientScopedFilterSelect, InventoryAlertsFilterForm } from '@/components/inventory-alerts-filter-form';
 import { FleetInventorySection } from '@/components/nodes/fleet-inventory-section';
 import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
@@ -235,6 +236,8 @@ export default async function NodesPage({
     for (const [key, item] of Object.entries(inventoryQueryParams)) {
       if (item && key !== 'status' && key !== 'preset') query.set(key, item);
     }
+    if (sortBy !== 'name') query.set('sort_by', sortBy);
+    if (sortOrder !== 'asc') query.set('sort_order', sortOrder);
     if (value) query.set('preset', value);
     const serialized = query.toString();
     return serialized ? `/nodes?${serialized}` : '/nodes';
@@ -303,7 +306,13 @@ export default async function NodesPage({
         ))}
       </div>
 
-      <form className="space-y-2" role="search" aria-label="Filtrar inventário de firewalls">
+      <InventoryAlertsFilterForm
+        key={JSON.stringify([clientId, siteId, tagId, groupId])}
+        clientId={clientId}
+        className="space-y-2"
+        role="search"
+        aria-label="Filtrar inventário de firewalls"
+      >
         <div className="glass-panel flex flex-col gap-2 rounded-xl p-3 sm:flex-row sm:flex-wrap sm:items-end">
         <label className="min-w-[12rem] flex-1 text-sm text-fg-muted">
           Cliente
@@ -376,19 +385,18 @@ export default async function NodesPage({
         </summary>
         <div className="border-t border-slate-800 px-4 py-4 sm:px-6">
           <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end xl:gap-4">
-            <select
+            <ClientScopedFilterSelect
               name="site_id"
               aria-label="Filtrar por site"
-              defaultValue={siteId ?? ''}
+              defaultValue={siteId}
               className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
-            >
-              <option value="">Todos os sites</option>
-              {sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.client_name} / {site.name} ({site.node_count})
-                </option>
-              ))}
-            </select>
+              placeholder="Todos os sites"
+              options={filterOptions.sites.map((site) => ({
+                id: site.id,
+                clientId: site.client_id,
+                label: `${site.client_name} / ${site.name} (${site.node_count})`,
+              }))}
+            />
             <select
               name="criticality"
               aria-label="Filtrar por criticidade"
@@ -400,32 +408,30 @@ export default async function NodesPage({
               <option value="standard">Padrão</option>
               <option value="lab">Lab</option>
             </select>
-            <select
+            <ClientScopedFilterSelect
               name="tag_id"
               aria-label="Filtrar por tag"
-              defaultValue={tagId ?? ''}
+              defaultValue={tagId}
               className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
-            >
-              <option value="">Todas as tags</option>
-              {tags.map((tag) => (
-                <option key={tag.id} value={tag.id}>
-                  {tag.client_name} / {tag.name} ({tag.node_count})
-                </option>
-              ))}
-            </select>
-            <select
+              placeholder="Todas as tags"
+              options={(filterOptions.tags ?? []).map((tag) => ({
+                id: tag.id,
+                clientId: tag.client_id,
+                label: `${tag.client_name} / ${tag.name} (${tag.node_count})`,
+              }))}
+            />
+            <ClientScopedFilterSelect
               name="group_id"
               aria-label="Filtrar por grupo"
-              defaultValue={groupId ?? ''}
+              defaultValue={groupId}
               className="h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
-            >
-              <option value="">Todos os grupos</option>
-              {groups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.client_name} / {group.name} ({group.member_count})
-                </option>
-              ))}
-            </select>
+              placeholder="Todos os grupos"
+              options={(filterOptions.groups ?? []).map((group) => ({
+                id: group.id,
+                clientId: group.client_id,
+                label: `${group.client_name} / ${group.name} (${group.member_count})`,
+              }))}
+            />
             <select
               name="sort_by"
               aria-label="Ordenar inventário por"
@@ -452,7 +458,7 @@ export default async function NodesPage({
           </div>
         </div>
       </details>
-      </form>
+      </InventoryAlertsFilterForm>
 
       <NodePagination result={nodes} basePath="/nodes" params={{ ...inventoryQueryParams, sort_by: sortBy, sort_order: sortOrder }} />
       {displayedInventoryNodes.length === 0 ? (

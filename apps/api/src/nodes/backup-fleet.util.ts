@@ -16,13 +16,15 @@ export function compareBackupFleetItems(
   a: BackupFleetItem, b: BackupFleetItem,
   sortBy: 'name' | 'backup_priority' | 'backup_age', sortOrder: 'asc' | 'desc',
 ): number {
-  const age = (value: string | null) => value ? new Date(value).getTime() : 0;
-  const byAge = age(a.latest_backup_received_at) - age(b.latest_backup_received_at);
+  const timestamp = (value: string | null) => value ? new Date(value).getTime() : 0;
+  const byReceivedAt = timestamp(a.latest_backup_received_at) - timestamp(b.latest_backup_received_at);
+  // Never-sent backups stay first in ascending order and last in descending order.
+  const byBackupPresence = Number(a.latest_backup_received_at !== null) - Number(b.latest_backup_received_at !== null);
   const result = sortBy === 'name'
     ? (a.display_name ?? a.hostname).toLowerCase().localeCompare((b.display_name ?? b.hostname).toLowerCase(), 'pt-BR')
     : sortBy === 'backup_priority'
-      ? priority[a.backup_status] - priority[b.backup_status] || byAge
-      : byAge;
+      ? priority[a.backup_status] - priority[b.backup_status] || byReceivedAt
+      : byBackupPresence || -byReceivedAt;
   return result * (sortOrder === 'desc' ? -1 : 1) || a.id.localeCompare(b.id);
 }
 

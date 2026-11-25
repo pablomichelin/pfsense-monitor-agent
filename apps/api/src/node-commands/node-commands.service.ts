@@ -13,11 +13,11 @@ import {
   NodeCommand,
   NodeCommandStatus,
   NodeCommandType,
-  JobBatchStatus,
   Prisma,
   TechnicianNodeAccountStatus,
 } from '@prisma/client';
 import { restoreCommandMaintenance } from './command-maintenance';
+import { reconcileCommandBatchStatus } from '../commands/command-batch-status';
 import { getCommandDefinition } from '../commands/command-registry';
 import { appConfig } from '../config/app-config';
 import { isAgentVersionAtLeast } from '../common/agent-version';
@@ -237,14 +237,21 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    void this.expireStaleCommands('startup');
-    void this.warnStuckPendingCommands();
+    this.runScheduledChecks('startup');
 
     this.timer = setInterval(() => {
-      void this.expireStaleCommands('interval');
-      void this.warnStuckPendingCommands();
+      this.runScheduledChecks('interval');
     }, 60_000);
     this.timer.unref?.();
+  }
+
+  private runScheduledChecks(reason: 'startup' | 'interval'): void {
+    void this.expireStaleCommands(reason).catch((error) => {
+      this.logger.warn(`command expiry failed reason=${reason}: ${String(error)}`);
+    });
+    void this.warnStuckPendingCommands().catch((error) => {
+      this.logger.warn(`command pending check failed reason=${reason}: ${String(error)}`);
+    });
   }
 
   onModuleDestroy(): void {
@@ -553,6 +560,12 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
 
     // Hold the conditional update's row lock through all terminal side effects.
     const updated = (await tx.nodeCommand.findUnique({ where: { id: command.id } }))!;
+    if (command.type !== NodeCommandType.config_backup_now || input.status === 'failed') {
+      await tx.nodeCommand.update({
+        where: { id: command.id },
+        data: { payloadJson: scrubSensitiveCommandPayload(updated.payloadJson) as Prisma.InputJsonValue },
+      });
+    }
     await restoreCommandMaintenance(tx, updated, completedAt);
     await tx.auditLog.create({
       data: {
@@ -569,14 +582,8 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
         },
       },
     });
-    if (command.batchId) await this.reconcileBatchStatus(command.batchId, tx);
     await this.reconcileTechnicianNodeAccount(updated, input.status, error ?? undefined, tx);
-    if (command.type !== NodeCommandType.config_backup_now || input.status === 'failed') {
-      await tx.nodeCommand.update({
-        where: { id: command.id },
-        data: { payloadJson: scrubSensitiveCommandPayload(updated.payloadJson) as Prisma.InputJsonValue },
-      });
-    }
+    if (command.batchId) await reconcileCommandBatchStatus(tx, command.batchId);
     return {
       ok: true,
       command_id: command.id,
@@ -679,69 +686,6 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async reconcileBatchStatus(batchId: string, db: Prisma.TransactionClient = this.prisma): Promise<void> {
-    const commands = await db.nodeCommand.findMany({
-      where: { batchId },
-      select: { status: true },
-    });
-
-    if (commands.length === 0) {
-      return;
-    }
-
-    const counts = {
-      succeeded: 0,
-      failed: 0,
-      cancelled: 0,
-      expired: 0,
-      active: 0,
-    };
-
-    for (const entry of commands) {
-      switch (entry.status) {
-        case NodeCommandStatus.succeeded:
-          counts.succeeded += 1;
-          break;
-        case NodeCommandStatus.failed:
-          counts.failed += 1;
-          break;
-        case NodeCommandStatus.cancelled:
-          counts.cancelled += 1;
-          break;
-        case NodeCommandStatus.expired:
-          counts.expired += 1;
-          break;
-        default:
-          counts.active += 1;
-      }
-    }
-
-    let status: JobBatchStatus = JobBatchStatus.running;
-    if (counts.active === 0) {
-      if (counts.succeeded === commands.length) {
-        status = JobBatchStatus.completed;
-      } else if (counts.failed > 0) {
-        status = JobBatchStatus.failed;
-      } else if (counts.cancelled === commands.length) {
-        status = JobBatchStatus.cancelled;
-      } else {
-        status = JobBatchStatus.completed;
-      }
-    }
-
-    await db.jobBatch.update({
-      where: { id: batchId },
-      data: {
-        status,
-        succeededCount: counts.succeeded,
-        failedCount: counts.failed,
-        cancelledCount: counts.cancelled,
-        expiredCount: counts.expired,
-        completedAt: counts.active === 0 ? new Date() : null,
-      },
-    });
-  }
-
   async countActiveUpgradeCommandsGlobal(): Promise<number> {
     return this.prisma.nodeCommand.count({
       where: {
@@ -770,12 +714,17 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
     return active != null;
   }
 
-  async loadActivePfsenseUpgradeNodeIds(now: Date): Promise<Set<string>> {
+  async loadActivePfsenseUpgradeNodeIds(
+    now: Date,
+    options?: { nodeId: string; db: Prisma.TransactionClient },
+  ): Promise<Set<string>> {
     const graceMinutes = appConfig.pfsenseUpgrade.offlineGraceMinutes;
     const graceMs = graceMinutes * 60_000;
 
-    const commands = await this.prisma.nodeCommand.findMany({
+    const db = options?.db ?? this.prisma;
+    const commands = await db.nodeCommand.findMany({
       where: {
+        nodeId: options?.nodeId,
         type: NodeCommandType.pfsense_upgrade,
         status: {
           in: [NodeCommandStatus.picked_up, NodeCommandStatus.running],
@@ -903,7 +852,7 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
     );
 
     if (command.batchId) {
-      await this.reconcileBatchStatus(command.batchId, tx);
+      await reconcileCommandBatchStatus(tx, command.batchId);
     }
 
 
@@ -962,14 +911,14 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const transitioned: NodeCommand[] = [];
+    let transitionedCount = 0;
     for (const candidate of expired) {
-      const command = await this.prisma.$transaction(async (tx) => {
+      const transitioned = await this.prisma.$transaction(async (tx) => {
         const changed = await tx.nodeCommand.updateMany({
           where: { id: candidate.id, status: { in: ACTIVE_STATUSES }, expiresAt: { lte: now } },
           data: { status: NodeCommandStatus.expired, completedAt: now },
         });
-        if (changed.count === 0) return null;
+        if (changed.count === 0) return false;
         const current = (await tx.nodeCommand.findUnique({ where: { id: candidate.id } }))!;
         await tx.auditLog.create({
           data: {
@@ -980,15 +929,14 @@ export class NodeCommandsService implements OnModuleInit, OnModuleDestroy {
             metadataJson: { node_id: current.nodeId, reason, command_type: current.type },
           },
         });
-        await restoreCommandMaintenance(tx, current, now);
         await this.reconcileExpiredTechnicianSideEffects(current, tx);
-        return current;
+        await restoreCommandMaintenance(tx, current, now);
+        if (current.batchId) await reconcileCommandBatchStatus(tx, current.batchId);
+        return true;
       });
-      if (command) transitioned.push(command);
+      if (transitioned) transitionedCount += 1;
     }
-    const batchIds = new Set(transitioned.map((command) => command.batchId).filter((id): id is string => id != null));
-    for (const batchId of batchIds) await this.reconcileBatchStatus(batchId);
-    this.logger.log(`expired ${transitioned.length} node commands reason=${reason}`);
+    this.logger.log(`expired ${transitionedCount} node commands reason=${reason}`);
   }
 
   private async reconcileExpiredTechnicianSideEffects(

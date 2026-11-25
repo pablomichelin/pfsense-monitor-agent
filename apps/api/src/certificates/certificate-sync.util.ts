@@ -191,13 +191,15 @@ export async function syncCertificateExpirationAlerts(
         severity: alert.severity,
         title: alert.title,
         description: alert.description,
-        status: AlertStatus.open,
         metadataJson: alert.metadataJson,
-        openedAt: wasResolved ? observedAt : existing.openedAt,
-        acknowledgedAt: wasResolved ? null : existing.acknowledgedAt,
-        acknowledgedBy: wasResolved ? null : existing.acknowledgedBy,
-        resolvedAt: null,
-        resolutionNote: null,
+        ...(wasResolved ? {
+          status: AlertStatus.open,
+          openedAt: observedAt,
+          acknowledgedAt: null,
+          acknowledgedBy: null,
+          resolvedAt: null,
+          resolutionNote: null,
+        } : {}),
       },
     });
 

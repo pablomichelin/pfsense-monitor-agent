@@ -12,6 +12,7 @@ import {
 import {
   buildActiveCertificateAlerts,
   normalizeHeartbeatCertificates,
+  syncCertificateExpirationAlerts,
 } from '../dist/certificates/certificate-sync.util.js';
 
 test('normalizeHeartbeatCertificate parses ISO dates', () => {
@@ -140,4 +141,36 @@ test('summarizeCertificateExpiryBadge maps tones', () => {
   assert.equal(summarizeCertificateExpiryBadge(20).tone, 'warning');
   assert.equal(summarizeCertificateExpiryBadge(5).tone, 'danger');
   assert.equal(summarizeCertificateExpiryBadge(0).label, 'Expirado');
+});
+
+
+test('certificate refresh keeps acknowledgment and only reopens a resolved incident', async () => {
+  const nodeId = 'node-1';
+  const observedAt = new Date('2026-06-01T00:00:00.000Z');
+  const certificates = [{
+    certKey: 'cert:soon', subject: 'CN=soon', issuer: null, usageDescriptor: 'Web GUI',
+    notBefore: new Date('2025-01-01T00:00:00.000Z'),
+    notAfter: new Date('2026-06-24T00:00:00.000Z'),
+  }];
+  const fingerprint = buildCertificateExpirationFingerprint({ nodeId, certKey: 'cert:soon', thresholdDays: 30 });
+  for (const status of ['acknowledged', 'open', 'resolved']) {
+    const updated = [];
+    const notifications = await syncCertificateExpirationAlerts({ alert: {
+      findMany: async () => [{ id: 'cert-alert', fingerprint, status }],
+      update: async ({ data }) => { updated.push(data); },
+    } }, nodeId, certificates, observedAt);
+
+    assert.equal(updated.length, 1);
+    if (status === 'resolved') {
+      assert.equal(updated[0].status, 'open');
+      assert.equal(updated[0].openedAt, observedAt);
+      assert.equal(updated[0].acknowledgedAt, null);
+      assert.deepEqual(notifications, ['cert-alert']);
+    } else {
+      assert.equal('status' in updated[0], false);
+      assert.equal('acknowledgedAt' in updated[0], false);
+      assert.equal('resolvedAt' in updated[0], false);
+      assert.deepEqual(notifications, []);
+    }
+  }
 });

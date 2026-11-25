@@ -78,8 +78,12 @@ function matches(row, where = {}) {
 function recoveryFixture(rows = [], version = '0.5.26') {
   const f = fixture(rows, { rollback: true });
   f.state.node.agentVersion = version;
-  // Extend only this new group's predicates; leave previously passed suites alone.
+  // Reuse the shared fixture for retry selection. This group also models follow-up queries.
+  const findMany = f.db.nodeCommand.findMany;
   f.db.nodeCommand.findMany = async ({ where, orderBy, take } = {}) => {
+    if (where?.status === 'failed' && orderBy?.completedAt === 'asc') {
+      return findMany({ where, orderBy, take });
+    }
     let rows = f.state.commands.filter(row => matches(row, where));
     if (orderBy?.id) rows = rows.toSorted((a,b) => a.id.localeCompare(b.id));
     if (take) rows = rows.slice(0, take);

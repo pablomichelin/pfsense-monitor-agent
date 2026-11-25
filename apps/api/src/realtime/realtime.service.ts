@@ -15,15 +15,21 @@ export type DashboardRefreshEvent = {
 export class RealtimeService {
   private readonly dashboardEvents = new Subject<DashboardRefreshEvent>();
   private nextEventId = 0;
+  private dashboardRevision = 0;
 
   private buildEventId(scope: 'connected' | 'dashboard' | 'keepalive'): string {
     this.nextEventId += 1;
     return `${scope}-${this.nextEventId}`;
   }
 
+  getDashboardRevision(): number {
+    return this.dashboardRevision;
+  }
+
   publishDashboardRefresh(
     event: Omit<DashboardRefreshEvent, 'event_id'>,
   ): void {
+    this.dashboardRevision += 1;
     this.dashboardEvents.next({
       event_id: this.buildEventId('dashboard'),
       ...event,

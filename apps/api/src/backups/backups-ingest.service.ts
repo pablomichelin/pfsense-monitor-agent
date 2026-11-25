@@ -1,21 +1,26 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   Logger,
+  NotFoundException,
   PayloadTooLargeException,
 } from '@nestjs/common';
-import { ConfigBackupStatus, Prisma } from '@prisma/client';
+import { ConfigBackupStatus, type NodeConfigBackup, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { isAgentVersionAtLeast } from '../common/agent-version';
 import { gunzipSync } from 'zlib';
 import { appConfig } from '../config/app-config';
 import { NodeRequestAuthService, type AuthenticatedNodeRequest } from '../common/node-request-auth.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveBackupArtifactUid } from './backups-artifact-uid.util';
 import { BackupsCommandService } from './backups-command.service';
+import { lockBackupPolicyRow } from './backups-policy-lock.util';
 import { BackupsRetentionService } from './backups-retention.service';
 import { BackupsStorageService } from './backups-storage.service';
 import { BackupsDriftService } from './backups-drift.service';
 import {
+  mergeBackupSchedulePolicy,
   normalizeBackupSchedulePolicy,
   toStoredBackupPolicyJson,
 } from '../nodes/backup-policy.util';
@@ -59,10 +64,31 @@ type BackupIngestResponse = {
     duplicate: boolean;
     sha256: string;
   };
+type ValidatedBackup = {
+  attemptId: string;
+  configSha256: string;
+  configSize: number;
+  isGzip: boolean;
+  xmlBytes: Buffer;
+};
+type BackupAdmission = {
+  priorAttempt: NodeConfigBackup | null;
+  latestStored: NodeConfigBackup | null;
+  needsFile: boolean;
+};
+type BackupFile = {
+  absolutePath: string;
+  relativePath: string;
+  storedBackupUid: string;
+};
 type BackupIngestContext = {
   db: Prisma.TransactionClient;
   deliveryAttempt?: number;
+  scheduledBackupRecordId?: string;
+  scheduledStaging?: BackupFile;
+  scheduledInsertStarted?: boolean;
   afterCommit: Array<() => Promise<unknown>>;
+  auditAfterRollback?: () => Promise<unknown>;
   createdPaths: Set<string>;
 };
 
@@ -100,11 +126,51 @@ export class BackupsIngestService {
     const context: BackupIngestContext = {
       db: this.prisma, afterCommit: [], createdPaths: new Set(),
     };
+    const scheduled = !request.headerCommandId;
     let preparedResponse: BackupIngestResponse | undefined;
     let callbackReturned = false;
+    const prepare = async (
+      tx: Prisma.TransactionClient,
+      payload?: ValidatedBackup,
+      admission?: BackupAdmission,
+    ) => {
+      context.db = tx;
+      preparedResponse = await this.ingestAuthenticatedBackup(
+        request, authenticated, receivedAt, context, payload, admission,
+      );
+      return preparedResponse;
+    };
+
     let response: BackupIngestResponse;
     try {
-      if (request.headerCommandId && isAgentVersionAtLeast(authenticated.node.agentVersion, '0.5.26')) {
+      if (scheduled) {
+        const payload = this.validateBackup(request);
+        const readAdmission = (db: Prisma.TransactionClient) =>
+          this.readBackupAdmission(db, authenticated.node.id, request, receivedAt, payload);
+        const stage = () => this.writeBackupFile(request, authenticated, receivedAt, payload, context);
+        const publish = () => this.prisma.$transaction(async (tx) => {
+          if (!await lockBackupPolicyRow(tx, authenticated.node.id)) {
+            throw new NotFoundException('node not found');
+          }
+          const admission = await readAdmission(tx);
+          if (admission.needsFile && !context.scheduledStaging) return undefined;
+
+          const prepared = await prepare(tx, payload, admission);
+          callbackReturned = true;
+          return prepared;
+        }, { timeout: 30_000 });
+
+        // The preliminary read is only an optimization. A manual upload or a
+        // concurrent retry may change the answer before the node lock is held.
+        if ((await readAdmission(this.prisma)).needsFile) await stage();
+        let published = await publish();
+        if (!published) {
+          await stage();
+          published = await publish();
+        }
+        if (!published) throw new InternalServerErrorException('scheduled backup was not prepared');
+        response = published;
+      } else if (request.headerCommandId && isAgentVersionAtLeast(authenticated.node.agentVersion, '0.5.26')) {
         if (!UUID_V4_REGEX.test(request.headerCommandId)) {
           throw new BadRequestException('X-Command-Id must be a UUID v4');
         }
@@ -117,11 +183,7 @@ export class BackupsIngestService {
         response = await this.commandService.withBackupDeliveryAttempt({
           nodeId: authenticated.node.id, commandId: request.headerCommandId,
           deliveryAttempt: context.deliveryAttempt,
-        }, async (tx) => {
-          context.db = tx;
-          preparedResponse = await this.ingestAuthenticatedBackup(request, authenticated, receivedAt, context);
-          return preparedResponse;
-        }, () => { callbackReturned = true; });
+        }, prepare, () => { callbackReturned = true; });
       } else {
         response = await this.ingestAuthenticatedBackup(request, authenticated, receivedAt, context);
       }
@@ -131,14 +193,24 @@ export class BackupsIngestService {
       let committed = false;
       if (preparedResponse && callbackReturned) {
         try {
-          committed = !!await this.prisma.nodeConfigBackup.findFirst({
-            where: {
-              nodeId: authenticated.node.id, commandId: request.headerCommandId,
-              attemptId: request.headerBackupId,
-              configSha256: request.headerConfigSha256?.toLowerCase(),
-              metadataJson: { path: ['delivery_attempt'], equals: context.deliveryAttempt },
-            },
-          });
+          if (scheduled && context.scheduledBackupRecordId) {
+            committed = !!await this.prisma.nodeConfigBackup.findFirst({
+              where: {
+                id: context.scheduledBackupRecordId,
+                nodeId: authenticated.node.id,
+                configSha256: preparedResponse.sha256,
+              },
+            });
+          } else if (!scheduled) {
+            committed = !!await this.prisma.nodeConfigBackup.findFirst({
+              where: {
+                nodeId: authenticated.node.id, commandId: request.headerCommandId,
+                attemptId: request.headerBackupId,
+                configSha256: request.headerConfigSha256?.toLowerCase(),
+                metadataJson: { path: ['delivery_attempt'], equals: context.deliveryAttempt },
+              },
+            });
+          }
         } catch { /* Unknown commit outcome: retain encrypted files for recovery. */ }
       }
       if (committed && preparedResponse) {
@@ -148,18 +220,31 @@ export class BackupsIngestService {
         // prepared, an uncertain COMMIT must leave files intact, never dangling.
         if (!callbackReturned) {
           for (const path of context.createdPaths) {
+            if (scheduled && !context.scheduledInsertStarted) continue;
             try {
               const referenced = await this.prisma.nodeConfigBackup.findFirst({ where: { storagePath: path } });
               if (!referenced) await this.storage.removeFile(path);
             } catch { /* Retain ciphertext if the database cannot prove ownership. */ }
           }
+          await context.auditAfterRollback?.();
         }
         throw error;
       }
+    } finally {
+      if (context.scheduledStaging && !context.scheduledInsertStarted) {
+        // This unique path never reached an insert, even if the transaction's
+        // reply for reusing another backup was lost.
+        await this.storage.removeFile(context.scheduledStaging.absolutePath);
+      }
     }
+    // A discarded staging can still have confirmed duplicate accounting.
     for (const afterCommit of context.afterCommit) {
-      try { await afterCommit(); }
-      catch { this.logger.warn('committed backup post-processing pending; ingest remains successful'); }
+      if (scheduled) {
+        await afterCommit();
+      } else {
+        try { await afterCommit(); }
+        catch { this.logger.warn('committed backup post-processing pending; ingest remains successful'); }
+      }
     }
     return response;
   }
@@ -169,120 +254,30 @@ export class BackupsIngestService {
     { headerNodeUid, node, credential }: AuthenticatedNodeRequest,
     receivedAt: Date,
     context: BackupIngestContext,
+    payload = this.validateBackup(request),
+    admission?: BackupAdmission,
   ): Promise<BackupIngestResponse> {
     const db = context.db;
-    const transactional = context.deliveryAttempt != null;
-    const configSha256 = this.requireHeader(
-      'X-Config-Sha256',
-      request.headerConfigSha256,
-    ).toLowerCase();
-    const configSize = this.parsePositiveInt(
-      this.requireHeader('X-Config-Size', request.headerConfigSize),
-      'X-Config-Size',
+    const scheduled = !request.headerCommandId;
+    const durableCommand = context.deliveryAttempt != null;
+    const transactional = scheduled || durableCommand;
+    const { attemptId, configSha256, configSize, isGzip } = payload;
+    const { priorAttempt, latestStored } = admission ?? await this.readBackupAdmission(
+      db, node.id, request, receivedAt, payload, context.deliveryAttempt,
     );
-    const attemptId = this.requireHeader('X-Backup-Id', request.headerBackupId);
-    if (!UUID_V4_REGEX.test(attemptId)) {
-      throw new BadRequestException('X-Backup-Id must be a UUID v4');
-    }
-
-    if (!request.headerCommandId) {
-      const latestStoredEarly = await db.nodeConfigBackup.findFirst({
-        where: {
-          nodeId: node.id,
-          status: ConfigBackupStatus.stored,
-        },
-        orderBy: {
-          receivedAt: 'desc',
-        },
-      });
-
-      if (
-        latestStoredEarly !== null &&
-        latestStoredEarly.configSha256 === configSha256
-      ) {
-        return this.suppressScheduledDuplicate({
-          nodeId: node.id,
-          headerNodeUid,
-          credentialId: credential.id,
-          configSha256,
-          backupUid: latestStoredEarly.backupUid,
-          receivedAt,
-          clientIp: request.clientIp,
-          agentVersion: request.headerAgentVersion,
-        });
-      }
-    }
-
-    const compression = request.headerConfigCompression?.trim().toLowerCase();
-    const isGzip =
-      compression === 'gzip' ||
-      request.contentType?.toLowerCase() === 'application/gzip';
-
-    if (request.rawBody.byteLength === 0) {
-      throw new BadRequestException('backup payload cannot be empty');
-    }
-
-    const payloadSha256 = this.storage.sha256Hex(request.rawBody);
-    let xmlBytes = request.rawBody;
-    if (isGzip) {
-      // Zip-bomb protection: reject before decompressing when the declared
-      // size (X-Config-Size) exceeds the configured limit.
-      if (configSize > appConfig.configBackup.maxBytes) {
-        throw new PayloadTooLargeException(
-          `config backup decompressed size exceeds ${appConfig.configBackup.maxBytes} bytes`,
-        );
-      }
-      try {
-        xmlBytes = gunzipSync(request.rawBody, {
-          maxOutputLength: appConfig.configBackup.maxBytes,
-        });
-      } catch {
-        throw new BadRequestException('invalid or oversized gzip payload');
-      }
-    }
-
-    if (xmlBytes.byteLength !== configSize) {
-      throw new BadRequestException('X-Config-Size does not match payload');
-    }
-
-    const computedSha256 = this.storage.sha256Hex(xmlBytes);
-    if (computedSha256 !== configSha256) {
-      throw new BadRequestException('X-Config-Sha256 does not match payload');
-    }
-
-    const idempotencySince = new Date(
-      receivedAt.getTime() -
-        appConfig.configBackup.attemptIdempotencyHours * 60 * 60 * 1000,
-    );
-    const priorAttempt = await db.nodeConfigBackup.findFirst({
-      where: {
-        nodeId: node.id,
-        attemptId,
-        ...(transactional ? {
-          commandId: request.headerCommandId,
-          metadataJson: { path: ['delivery_attempt'], equals: context.deliveryAttempt },
-        } : {}),
-        configSha256,
-        receivedAt: {
-          gte: idempotencySince,
-        },
-        status: {
-          in: [ConfigBackupStatus.stored, ConfigBackupStatus.duplicate],
-        },
-      },
-      orderBy: {
-        receivedAt: 'desc',
-      },
-    });
 
     if (priorAttempt) {
+      if (scheduled) context.scheduledBackupRecordId = priorAttempt.id;
+      const backupUid = resolveBackupArtifactUid(priorAttempt);
+      const duplicate = priorAttempt.status === ConfigBackupStatus.duplicate;
+
       if (request.headerCommandId) {
         await this.commandService.markCommandSucceeded({
           nodeId: node.id,
           commandId: request.headerCommandId,
-          duplicate: priorAttempt.status === ConfigBackupStatus.duplicate,
+          duplicate,
           sha256: configSha256,
-          backupUid: priorAttempt.backupUid,
+          backupUid,
           deliveryAttempt: context.deliveryAttempt,
         }, transactional ? db : undefined);
       }
@@ -295,46 +290,35 @@ export class BackupsIngestService {
       return {
         ok: true,
         server_time: receivedAt.toISOString(),
-        backup_id: priorAttempt.backupUid,
-        stored: priorAttempt.status === ConfigBackupStatus.stored,
-        duplicate: true,
+        backup_id: backupUid,
+        stored: !duplicate,
+        duplicate,
         sha256: configSha256,
       };
     }
 
-    const latestStored = await db.nodeConfigBackup.findFirst({
-      where: {
-        nodeId: node.id,
-        status: ConfigBackupStatus.stored,
-      },
-      orderBy: {
-        receivedAt: 'desc',
-      },
-    });
-
     const isDuplicate =
       latestStored !== null && latestStored.configSha256 === configSha256;
+    if (isDuplicate && scheduled) {
+      context.scheduledBackupRecordId = latestStored.id;
+      return this.suppressScheduledDuplicate({
+        nodeId: node.id,
+        headerNodeUid,
+        credentialId: credential.id,
+        configSha256,
+        backupUid: latestStored.backupUid,
+        receivedAt,
+        clientIp: request.clientIp,
+        agentVersion: request.headerAgentVersion,
+      }, context);
+    }
+
     const source = request.headerCommandId ? 'manual_request' : 'scheduled';
-    const storageNonce = transactional ? randomUUID() : undefined;
-    const storedBackupUid = this.buildBackupUid(receivedAt, configSha256) +
-      (storageNonce ? `_${storageNonce}` : '');
+    const payloadSha256 = isGzip ? this.storage.sha256Hex(request.rawBody) : configSha256;
 
     if (isDuplicate) {
-      if (!request.headerCommandId) {
-        return this.suppressScheduledDuplicate({
-          nodeId: node.id,
-          headerNodeUid,
-          credentialId: credential.id,
-          configSha256,
-          backupUid: latestStored?.backupUid ?? '',
-          receivedAt,
-          clientIp: request.clientIp,
-          agentVersion: request.headerAgentVersion,
-        });
-      }
-
       const duplicateBackupUid = `cfgbdup_${attemptId.replace(/-/g, '')}` +
-        (transactional ? `_a${context.deliveryAttempt}` : '');
+        (durableCommand ? `_a${context.deliveryAttempt}` : '');
       const duplicateRecord = await db.nodeConfigBackup.create({
         data: {
           nodeId: node.id,
@@ -353,7 +337,7 @@ export class BackupsIngestService {
           pfsenseVersion: request.headerPfsenseVersion ?? null,
           metadataJson: {
             duplicate_of: latestStored?.backupUid ?? null,
-            ...(transactional ? { delivery_attempt: context.deliveryAttempt } : {}),
+            ...(durableCommand ? { delivery_attempt: context.deliveryAttempt } : {}),
           },
         },
       });
@@ -406,39 +390,12 @@ export class BackupsIngestService {
       };
     }
 
-    const storagePath = this.storage.buildStoragePath(
-      headerNodeUid,
-      receivedAt,
-      configSha256,
+    const file = scheduled ? context.scheduledStaging : await this.writeBackupFile(
+      request, { headerNodeUid, node, credential }, receivedAt, payload, context,
     );
-
-    // A fresh nonce avoids overwriting any prior path, even two uploads in the
-    // same second. Cleanup after rollback owns only this newly allocated path.
-    const relativePath = storageNonce
-      ? storagePath.relativePath.replace(/\.enc$/, `.${storageNonce}.enc`) : storagePath.relativePath;
-    const absolutePath = storageNonce
-      ? storagePath.absolutePath.replace(/\.enc$/, `.${storageNonce}.enc`) : storagePath.absolutePath;
-    if (transactional) context.createdPaths.add(absolutePath);
-    try {
-      await this.storage.encryptToFile(xmlBytes, absolutePath);
-    } catch (error) {
-      await this.storage.removeFile(absolutePath);
-      await db.auditLog.create({
-        data: {
-          actorType: 'node_credential',
-          actorId: credential.id,
-          action: 'backup.config.failure',
-          targetType: 'node',
-          targetId: node.id,
-          ipAddress: request.clientIp,
-          metadataJson: {
-            node_uid: headerNodeUid,
-            reason: 'encryption_failed',
-          },
-        },
-      });
-      throw error;
-    }
+    if (!file) throw new InternalServerErrorException('scheduled backup file was not staged');
+    if (scheduled) context.scheduledInsertStarted = true;
+    const { absolutePath, relativePath, storedBackupUid } = file;
 
     const storedRecord = await db.nodeConfigBackup.create({
       data: {
@@ -458,7 +415,7 @@ export class BackupsIngestService {
         encryptionVersion: appConfig.configBackup.encryptionVersion,
         agentVersion: request.headerAgentVersion ?? null,
         pfsenseVersion: request.headerPfsenseVersion ?? null,
-        ...(transactional ? { metadataJson: { delivery_attempt: context.deliveryAttempt } } : {}),
+        ...(durableCommand ? { metadataJson: { delivery_attempt: context.deliveryAttempt } } : {}),
       },
     });
 
@@ -507,7 +464,9 @@ export class BackupsIngestService {
       headerBackupScheduleTime: request.headerBackupScheduleTime,
       headerBackupScheduleDow: request.headerBackupScheduleDow,
       headerBackupScheduleDom: request.headerBackupScheduleDom,
-    }, db);
+    }, transactional ? db : undefined);
+
+    if (scheduled) context.scheduledBackupRecordId = storedRecord.id;
 
     if (transactional) {
       context.afterCommit.push(() => this.retention.enforceRetention(node.id));
@@ -531,6 +490,159 @@ export class BackupsIngestService {
     };
   }
 
+  private validateBackup(request: ConfigBackupRequest): ValidatedBackup {
+    const configSha256 = this.requireHeader(
+      'X-Config-Sha256',
+      request.headerConfigSha256,
+    ).toLowerCase();
+    const configSize = this.parsePositiveInt(
+      this.requireHeader('X-Config-Size', request.headerConfigSize),
+      'X-Config-Size',
+    );
+    const attemptId = this.requireHeader('X-Backup-Id', request.headerBackupId);
+    if (!UUID_V4_REGEX.test(attemptId)) {
+      throw new BadRequestException('X-Backup-Id must be a UUID v4');
+    }
+
+    const compression = request.headerConfigCompression?.trim().toLowerCase();
+    const isGzip =
+      compression === 'gzip' ||
+      request.contentType?.toLowerCase() === 'application/gzip';
+
+    if (request.rawBody.byteLength === 0) {
+      throw new BadRequestException('backup payload cannot be empty');
+    }
+
+    let xmlBytes = request.rawBody;
+    if (isGzip) {
+      // Zip-bomb protection: reject before decompressing when the declared
+      // size (X-Config-Size) exceeds the configured limit.
+      if (configSize > appConfig.configBackup.maxBytes) {
+        throw new PayloadTooLargeException(
+          `config backup decompressed size exceeds ${appConfig.configBackup.maxBytes} bytes`,
+        );
+      }
+      try {
+        xmlBytes = gunzipSync(request.rawBody, {
+          maxOutputLength: appConfig.configBackup.maxBytes,
+        });
+      } catch {
+        throw new BadRequestException('invalid or oversized gzip payload');
+      }
+    }
+
+    if (xmlBytes.byteLength !== configSize) {
+      throw new BadRequestException('X-Config-Size does not match payload');
+    }
+
+    const computedSha256 = this.storage.sha256Hex(xmlBytes);
+    if (computedSha256 !== configSha256) {
+      throw new BadRequestException('X-Config-Sha256 does not match payload');
+    }
+
+    return { attemptId, configSha256, configSize, isGzip, xmlBytes };
+  }
+
+  private async readBackupAdmission(
+    db: Prisma.TransactionClient,
+    nodeId: string,
+    request: ConfigBackupRequest,
+    receivedAt: Date,
+    { attemptId, configSha256 }: ValidatedBackup,
+    deliveryAttempt?: number,
+  ): Promise<BackupAdmission> {
+    const idempotencySince = new Date(
+      receivedAt.getTime() -
+        appConfig.configBackup.attemptIdempotencyHours * 60 * 60 * 1000,
+    );
+    const priorAttempt = await db.nodeConfigBackup.findFirst({
+      where: {
+        nodeId,
+        attemptId,
+        commandId: request.headerCommandId ?? null,
+        ...(deliveryAttempt != null ? {
+          metadataJson: { path: ['delivery_attempt'], equals: deliveryAttempt },
+        } : {}),
+        configSha256,
+        receivedAt: {
+          gte: idempotencySince,
+        },
+        status: {
+          in: [ConfigBackupStatus.stored, ConfigBackupStatus.duplicate],
+        },
+      },
+      orderBy: {
+        receivedAt: 'desc',
+      },
+    });
+    const latestStored = priorAttempt ? null : await db.nodeConfigBackup.findFirst({
+      where: {
+        nodeId,
+        status: ConfigBackupStatus.stored,
+      },
+      orderBy: {
+        receivedAt: 'desc',
+      },
+    });
+
+    return { priorAttempt, latestStored, needsFile: !priorAttempt && latestStored?.configSha256 !== configSha256 };
+  }
+
+  private async writeBackupFile(
+    request: ConfigBackupRequest,
+    { headerNodeUid, node, credential }: AuthenticatedNodeRequest,
+    receivedAt: Date,
+    { configSha256, xmlBytes }: ValidatedBackup,
+    context: BackupIngestContext,
+  ): Promise<BackupFile> {
+    const scheduled = !request.headerCommandId;
+    const durableCommand = context.deliveryAttempt != null;
+    const transactional = scheduled || durableCommand;
+    const storageNonce = transactional ? randomUUID() : undefined;
+    const storedBackupUid = this.buildBackupUid(receivedAt, configSha256) +
+      (durableCommand && storageNonce ? `_${storageNonce}` : '');
+    const storagePath = this.storage.buildStoragePath(
+      headerNodeUid,
+      receivedAt,
+      configSha256,
+    );
+
+    // A fresh nonce avoids overwriting any prior path, even two uploads in the
+    // same second. Cleanup after rollback owns only this newly allocated path.
+    const relativePath = storageNonce
+      ? storagePath.relativePath.replace(/\.enc$/, `.${storageNonce}.enc`) : storagePath.relativePath;
+    const absolutePath = storageNonce
+      ? storagePath.absolutePath.replace(/\.enc$/, `.${storageNonce}.enc`) : storagePath.absolutePath;
+    const file = { absolutePath, relativePath, storedBackupUid };
+    if (scheduled) context.scheduledStaging = file;
+    if (transactional) context.createdPaths.add(absolutePath);
+    try {
+      await this.storage.encryptToFile(xmlBytes, absolutePath);
+    } catch (error) {
+      const failureAudit = {
+        actorType: 'node_credential',
+        actorId: credential.id,
+        action: 'backup.config.failure',
+        targetType: 'node',
+        targetId: node.id,
+        ipAddress: request.clientIp,
+        metadataJson: {
+          node_uid: headerNodeUid,
+          reason: 'encryption_failed',
+        },
+      };
+      if (scheduled) {
+        context.auditAfterRollback = () => this.prisma.auditLog.create({ data: failureAudit });
+      } else {
+        await this.storage.removeFile(absolutePath);
+        await context.db.auditLog.create({ data: failureAudit });
+      }
+      throw error;
+    }
+
+    return file;
+  }
+
   private async suppressScheduledDuplicate(input: {
     nodeId: string;
     headerNodeUid: string;
@@ -540,22 +652,17 @@ export class BackupsIngestService {
     receivedAt: Date;
     clientIp?: string;
     agentVersion?: string;
-  }): Promise<{
-    ok: true;
-    server_time: string;
-    backup_id: string;
-    stored: boolean;
-    duplicate: boolean;
-    sha256: string;
-  }> {
-    await this.prisma.nodeCredential.update({
+  }, context: BackupIngestContext): Promise<BackupIngestResponse> {
+    await context.db.nodeCredential.update({
       where: { id: input.credentialId },
       data: { lastUsedAt: input.receivedAt },
     });
 
-    this.trackScheduledDuplicateFlood(input.nodeId, input.headerNodeUid, {
-      agentVersion: input.agentVersion,
-      sha256: input.configSha256,
+    context.afterCommit.push(async () => {
+      this.trackScheduledDuplicateFlood(input.nodeId, input.headerNodeUid, {
+        agentVersion: input.agentVersion,
+        sha256: input.configSha256,
+      });
     });
 
     return {
@@ -643,7 +750,7 @@ export class BackupsIngestService {
     headerBackupScheduleTime?: string;
     headerBackupScheduleDow?: string;
     headerBackupScheduleDom?: string;
-  }, db: Prisma.TransactionClient = this.prisma): Promise<void> {
+  }, uploadTransaction?: Prisma.TransactionClient): Promise<void> {
     if (
       input.headerBackupScheduleMode == null &&
       input.headerBackupEnabled == null
@@ -664,14 +771,32 @@ export class BackupsIngestService {
       return;
     }
 
-    await db.node.update({
-      where: { id: input.nodeId },
-      data: {
-        configBackupPolicyJson: toStoredBackupPolicyJson(
-          policy,
-          input.receivedAt,
-        ),
-      },
-    });
+    const reportedSchedule = toStoredBackupPolicyJson(policy, input.receivedAt);
+    const save = async (tx: Prisma.TransactionClient) => {
+      // The upload transaction already holds the node lock.
+      const node = uploadTransaction
+        ? await tx.node.findUnique({
+            where: { id: input.nodeId },
+            select: { configBackupPolicyJson: true },
+          })
+        : await lockBackupPolicyRow(tx, input.nodeId);
+      if (!node) throw new NotFoundException('node not found');
+
+      await tx.node.update({
+        where: { id: input.nodeId },
+        data: {
+          configBackupPolicyJson: mergeBackupSchedulePolicy(
+            node.configBackupPolicyJson,
+            reportedSchedule,
+          ),
+        },
+      });
+    };
+
+    if (uploadTransaction) {
+      await save(uploadTransaction);
+    } else {
+      await this.prisma.$transaction(save);
+    }
   }
 }

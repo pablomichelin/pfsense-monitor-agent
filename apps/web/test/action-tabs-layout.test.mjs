@@ -90,7 +90,7 @@ test('atualizações saem da identidade e preservam permissões e dados por oper
     '@/components/nodes/node-capabilities-panel': { NodeCapabilitiesPanel: 'capabilities' },
     '@/components/nodes/node-pfsense-api-panel': { NodePfsenseApiPanel: 'aliases' },
   })('components/nodes/node-detail-overview-tab.tsx');
-  const tree = NodeDetailOverviewTab({ node: { id: 'lab', client: { name: 'Test' }, site: { name: 'Test' } }, canManageNode: false, canRunUpgrade: false, canRunPackageUpgrade: true, upgradeStatus: { marker: 'os' }, packageUpgradeStatus: { marker: 'agent' } });
+  const tree = NodeDetailOverviewTab({ node: { id: 'lab', client: { name: 'Test' }, site: { name: 'Test' } }, canManageNode: false });
   const updateTree = NodeUpdatesSection({ node: { id: 'lab' }, canRunUpgrade: false, canRunPackageUpgrade: true, upgradeStatus: { marker: 'os' }, packageUpgradeStatus: { marker: 'agent' } });
   const tabs = elements(updateTree).find((e) => e.type === 'task-tabs');
   assert.equal(tabs.props.tabs.length, 2);
@@ -101,6 +101,18 @@ test('atualizações saem da identidade e preservam permissões e dados por oper
   const identity = elements(tree).find((e) => e.props?.title === 'Visão geral');
   assert.ok(identity);
   assert.ok(!elements(identity).some((e) => e.type === 'agent-update' || e.type === 'os-update'));
+  for (const failedType of ['agent', 'os']) {
+    const updateWithFailure = NodeUpdatesSection({
+      node: { id: 'lab' }, canRunUpgrade: true, canRunPackageUpgrade: true,
+      upgradeStatus: failedType === 'os' ? null : { marker: 'os' },
+      packageUpgradeStatus: failedType === 'agent' ? null : { marker: 'agent' },
+    });
+    const results = elements(updateWithFailure).find((e) => e.type === 'task-tabs').props.tabs;
+    const failed = results.find((tab) => tab.id === failedType);
+    const available = results.find((tab) => tab.id !== failedType);
+    assert.match(textOf(failed.content), /consulta .* está indisponível/);
+    assert.equal(available.content.type, `${available.id}-update`);
+  }
 });
 
 test('backup separa histórico, comparação e retenção sem mudar permissões ou dados', () => {

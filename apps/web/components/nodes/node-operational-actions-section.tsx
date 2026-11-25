@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import type { OperationalActionsStatusResponse } from '@/lib/api';
 import {
   fetchOperationalActionsStatus,
@@ -56,24 +56,43 @@ export function NodeOperationalActionsSection({
   const [acknowledgeHaRisk, setAcknowledgeHaRisk] = useState(false);
   const [showRebootDialog, setShowRebootDialog] = useState(false);
   const [pending, startTransition] = useTransition();
+  const activeRead = useRef<symbol | null>(null);
+  const nodeScope = useRef<{ nodeId: string } | null>(null);
 
   const haNode =
     Boolean(status.ha_role?.trim()) || status.ha_detected_from_agent === true;
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ afterSubmission = false } = {}) => {
+    // A read after submission takes precedence over a periodic read.
+    if (nodeScope.current?.nodeId !== nodeId || (activeRead.current && !afterSubmission)) return;
+    const read = Symbol();
+    activeRead.current = read;
     try {
       const next = await fetchOperationalActionsStatus(nodeId);
+      if (activeRead.current !== read) return;
       setStatus(next);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao atualizar status');
+      if (activeRead.current === read) {
+        setError(err instanceof Error ? err.message : 'Falha ao atualizar status');
+      }
+    } finally {
+      if (activeRead.current === read) activeRead.current = null;
     }
   }, [nodeId]);
 
   useEffect(() => {
-    const hasActive =
-      status.active_service_restart != null || status.active_reboot != null;
-    if (!hasActive) {
+    nodeScope.current = { nodeId };
+    return () => {
+      nodeScope.current = null;
+      activeRead.current = null;
+    };
+  }, [nodeId]);
+
+  const hasActiveCommand =
+    status.active_service_restart != null || status.active_reboot != null;
+  useEffect(() => {
+    if (!hasActiveCommand) {
       return;
     }
 
@@ -82,7 +101,7 @@ export function NodeOperationalActionsSection({
     }, 12_000);
 
     return () => clearInterval(timer);
-  }, [status.active_reboot, status.active_service_restart, refresh]);
+  }, [hasActiveCommand, refresh]);
 
   const rebootReady = useMemo(() => {
     if (!confirmationMatches(hostname, rebootConfirm)) {
@@ -191,11 +210,19 @@ export function NodeOperationalActionsSection({
                 status.active_service_restart != null
               }
               onClick={() => {
+                const scope = nodeScope.current;
+                if (scope?.nodeId !== nodeId) return;
                 startTransition(async () => {
                   try {
-                    await requestServiceRestartAction(nodeId, selectedService);
-                    await refresh();
+                    const { command_id, status } = await requestServiceRestartAction(nodeId, selectedService);
+                    if (nodeScope.current !== scope) return;
+                    setStatus((current) => ({
+                      ...current,
+                      active_service_restart: { command_id, status, payload_json: null },
+                    }));
+                    await refresh({ afterSubmission: true });
                   } catch (err) {
+                    if (nodeScope.current !== scope) return;
                     setError(
                       err instanceof Error ? err.message : 'Falha ao solicitar reinício',
                     );
@@ -302,18 +329,26 @@ export function NodeOperationalActionsSection({
                     variant="danger"
                     disabled={pending || !rebootReady}
                     onClick={() => {
+                      const scope = nodeScope.current;
+                      if (scope?.nodeId !== nodeId) return;
                       startTransition(async () => {
                         try {
-                          await requestNodeRebootAction(nodeId, {
+                          const { command_id, status } = await requestNodeRebootAction(nodeId, {
                             confirm_hostname: rebootConfirm,
                             delay_seconds: Number(rebootDelay),
                             enable_maintenance_mode: enableMaintenance,
                             acknowledge_ha_risk: acknowledgeHaRisk,
                           });
+                          if (nodeScope.current !== scope) return;
+                          setStatus((current) => ({
+                            ...current,
+                            active_reboot: { command_id, status, payload_json: null },
+                          }));
                           setShowRebootDialog(false);
                           setRebootConfirm('');
-                          await refresh();
+                          await refresh({ afterSubmission: true });
                         } catch (err) {
+                          if (nodeScope.current !== scope) return;
                           setError(
                             err instanceof Error ? err.message : 'Falha ao solicitar reboot',
                           );

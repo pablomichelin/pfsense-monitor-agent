@@ -12,6 +12,15 @@ export type StoredBackupPolicy = BackupSchedulePolicy & {
 };
 
 const SCHEDULE_MODE_SET = new Set<string>(BACKUP_SCHEDULE_MODES);
+const SCHEDULE_JSON_KEYS = new Set([
+  'enabled',
+  'schedule_mode',
+  'interval_hours',
+  'schedule_time',
+  'schedule_dow',
+  'schedule_dom',
+  'reported_at',
+]);
 
 const normalizeScheduleMode = (value: unknown): BackupScheduleMode => {
   const normalized = String(value ?? 'hours').trim().toLowerCase();
@@ -114,7 +123,7 @@ export function toStoredBackupPolicyJson(
     last_checked_at?: string;
     config_sha256?: string;
   },
-): Prisma.InputJsonValue {
+): Prisma.InputJsonObject {
   const lastCheckedAt = extras?.last_checked_at?.trim();
   const configSha256 = extras?.config_sha256?.trim().toLowerCase();
   return {
@@ -128,6 +137,30 @@ export function toStoredBackupPolicyJson(
     ...(lastCheckedAt ? { last_checked_at: lastCheckedAt } : {}),
     ...(configSha256 && /^[a-f0-9]{64}$/.test(configSha256)
       ? { config_sha256: configSha256 }
+      : {}),
+  };
+}
+
+export function mergeBackupSchedulePolicy(
+  existing: Prisma.JsonValue | null,
+  reportedSchedule: Prisma.InputJsonObject,
+): Prisma.InputJsonObject {
+  const current = existing && typeof existing === 'object' && !Array.isArray(existing)
+    ? existing
+    : {};
+  const schedule = Object.fromEntries(
+    Object.entries(reportedSchedule).filter(([key, value]) =>
+      SCHEDULE_JSON_KEYS.has(key) && value != null,
+    ),
+  );
+  const { config_sha256, last_checked_at } = reportedSchedule;
+
+  // Hash e horário formam uma única evidência. Não misture relatos diferentes.
+  return {
+    ...current,
+    ...schedule,
+    ...(typeof config_sha256 === 'string' && typeof last_checked_at === 'string'
+      ? { config_sha256, last_checked_at }
       : {}),
   };
 }

@@ -22,6 +22,7 @@ import {
 import {
   normalizeCommandHistoryLimit,
 } from './command-registry.util';
+import { reconcileCommandBatchStatus, summarizeCommandBatch } from './command-batch-status';
 import { restoreCommandMaintenance } from '../node-commands/command-maintenance';
 import { scrubSensitiveCommandPayload } from '../technicians/technician-accounts.util';
 
@@ -218,11 +219,8 @@ export class CommandOrchestratorService {
           },
         },
       });
+      if (current.batchId) await reconcileCommandBatchStatus(tx, current.batchId);
     });
-
-    if (command.batchId) {
-      await this.reconcileBatchStatus(command.batchId);
-    }
 
     return {
       ok: true as const,
@@ -386,20 +384,40 @@ export class CommandOrchestratorService {
       throw new NotFoundException('batch not found');
     }
 
+    const batchIsOpen = batch.status === JobBatchStatus.pending || batch.status === JobBatchStatus.running;
+    const hasActiveRetry = batch.status === JobBatchStatus.failed && batch.commands.some(
+      (command) => command.retryCount > 0 && ACTIVE_STATUSES.includes(command.status),
+    );
+    const observedSummary = batchIsOpen || hasActiveRetry ? summarizeCommandBatch(batch.commands) : null;
+    const projectedSummary = observedSummary && (hasActiveRetry || observedSummary.status !== JobBatchStatus.running)
+      ? observedSummary
+      : null;
+    const summary = projectedSummary ?? batch;
+    let completedAt = batch.completedAt;
+    if (projectedSummary) {
+      completedAt = projectedSummary.status === JobBatchStatus.running ? null : batch.commands.reduce<Date | null>(
+        (latest, command) => {
+          const recordedAt = command.completedAt;
+          return recordedAt && (!latest || recordedAt > latest) ? recordedAt : latest;
+        },
+        null,
+      );
+    }
+
     return {
       generated_at: new Date().toISOString(),
       batch: {
         batch_id: batch.id,
         command_type: batch.commandType,
-        status: batch.status,
+        status: summary.status,
         label: batch.label,
         requested_at: batch.requestedAt.toISOString(),
-        completed_at: batch.completedAt?.toISOString() ?? null,
+        completed_at: completedAt?.toISOString() ?? null,
         total_count: batch.totalCount,
-        succeeded_count: batch.succeededCount,
-        failed_count: batch.failedCount,
-        cancelled_count: batch.cancelledCount,
-        expired_count: batch.expiredCount,
+        succeeded_count: summary.succeededCount,
+        failed_count: summary.failedCount,
+        cancelled_count: summary.cancelledCount,
+        expired_count: summary.expiredCount,
       },
       nodes: batch.commands.map((command) => ({
         node_id: command.nodeId,
@@ -412,66 +430,7 @@ export class CommandOrchestratorService {
   }
 
   async reconcileBatchStatus(batchId: string): Promise<void> {
-    const commands = await this.prisma.nodeCommand.findMany({
-      where: { batchId },
-      select: { status: true },
-    });
-
-    if (commands.length === 0) {
-      return;
-    }
-
-    const counts = {
-      succeeded: 0,
-      failed: 0,
-      cancelled: 0,
-      expired: 0,
-      active: 0,
-    };
-
-    for (const command of commands) {
-      switch (command.status) {
-        case NodeCommandStatus.succeeded:
-          counts.succeeded += 1;
-          break;
-        case NodeCommandStatus.failed:
-          counts.failed += 1;
-          break;
-        case NodeCommandStatus.cancelled:
-          counts.cancelled += 1;
-          break;
-        case NodeCommandStatus.expired:
-          counts.expired += 1;
-          break;
-        default:
-          counts.active += 1;
-      }
-    }
-
-    let status: JobBatchStatus = JobBatchStatus.running;
-    if (counts.active === 0) {
-      if (counts.succeeded === commands.length) {
-        status = JobBatchStatus.completed;
-      } else if (counts.failed > 0) {
-        status = JobBatchStatus.failed;
-      } else if (counts.cancelled === commands.length) {
-        status = JobBatchStatus.cancelled;
-      } else {
-        status = JobBatchStatus.completed;
-      }
-    }
-
-    await this.prisma.jobBatch.update({
-      where: { id: batchId },
-      data: {
-        status,
-        succeededCount: counts.succeeded,
-        failedCount: counts.failed,
-        cancelledCount: counts.cancelled,
-        expiredCount: counts.expired,
-        completedAt: counts.active === 0 ? new Date() : null,
-      },
-    });
+    await this.prisma.$transaction((tx) => reconcileCommandBatchStatus(tx, batchId));
   }
 
   async enqueueCommand(input: {

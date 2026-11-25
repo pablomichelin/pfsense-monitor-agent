@@ -86,27 +86,19 @@ export class MfaService {
     email: string;
     ipAddress?: string;
   }): Promise<MfaEnrollmentStart> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: input.userId },
-    });
-    if (!user) {
-      throw new UnauthorizedException('user not found');
-    }
+    const { user, secret, otpauthUri } = await this.prisma.$transaction(async (tx) => {
+      const user = await this.readLockedEnrollmentUser(tx, input.userId);
+      if (user.mfaEnabled) {
+        throw new BadRequestException('MFA already enabled; disable it first');
+      }
 
-    if (user.mfaEnabled) {
-      throw new BadRequestException('MFA already enabled; disable it first');
-    }
-
-    const secret = authenticator.generateSecret();
-    const otpauthUri = authenticator.keyuri(
-      input.email,
-      appConfig.mfa.issuer,
-      secret,
-    );
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { mfaSecret: this.nodeSecretCrypto.encrypt(secret) },
+      const secret = authenticator.generateSecret();
+      const otpauthUri = authenticator.keyuri(input.email, appConfig.mfa.issuer, secret);
+      await tx.user.update({
+        where: { id: user.id },
+        data: { mfaSecret: this.nodeSecretCrypto.encrypt(secret) },
+      });
+      return { user, secret, otpauthUri };
     });
 
     const qrDataUrl = await QRCode.toDataURL(otpauthUri, { margin: 1 });
@@ -136,31 +128,21 @@ export class MfaService {
     code: string;
     ipAddress?: string;
   }): Promise<{ recovery_codes: string[] }> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: input.userId },
-    });
-    if (!user) {
-      throw new UnauthorizedException('user not found');
-    }
+    const { user, recoveryCodes } = await this.prisma.$transaction(async (tx) => {
+      const user = await this.readLockedEnrollmentUser(tx, input.userId);
+      if (user.mfaEnabled) {
+        throw new BadRequestException('MFA already enabled');
+      }
+      if (!user.mfaSecret) {
+        throw new BadRequestException('no pending MFA enrollment; start first');
+      }
 
-    if (user.mfaEnabled) {
-      throw new BadRequestException('MFA already enabled');
-    }
+      const secret = this.nodeSecretCrypto.decrypt(user.mfaSecret);
+      if (!this.verifyTotp(secret, input.code)) {
+        throw new UnauthorizedException('invalid TOTP code');
+      }
 
-    if (!user.mfaSecret) {
-      throw new BadRequestException('no pending MFA enrollment; start first');
-    }
-
-    const secret = this.nodeSecretCrypto.decrypt(user.mfaSecret);
-    if (!this.verifyTotp(secret, input.code)) {
-      throw new UnauthorizedException('invalid TOTP code');
-    }
-
-    const recoveryCodes = this.generateRecoveryCodes(
-      appConfig.mfa.recoveryCodeCount,
-    );
-
-    await this.prisma.$transaction(async (tx) => {
+      const recoveryCodes = this.generateRecoveryCodes(appConfig.mfa.recoveryCodeCount);
       await tx.mfaRecoveryCode.deleteMany({ where: { userId: user.id } });
       await tx.mfaRecoveryCode.createMany({
         data: recoveryCodes.map((code) => ({
@@ -177,6 +159,7 @@ export class MfaService {
           mfaFailedWindowStart: null,
         },
       });
+      return { user, recoveryCodes };
     });
 
     await this.auditService.record({
@@ -189,6 +172,16 @@ export class MfaService {
     });
 
     return { recovery_codes: recoveryCodes };
+  }
+
+  private async readLockedEnrollmentUser(tx: Prisma.TransactionClient, userId: string) {
+    // Share the user lock used by MFA verification and disable, before reading the pending secret.
+    await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+    const user = await tx.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('user not found');
+    }
+    return user;
   }
 
   /** Desativa o MFA exigindo um fator valido (TOTP ou codigo de recuperacao). */

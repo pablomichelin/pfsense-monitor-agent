@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
+import { lockBackupPolicyRow } from './backups-policy-lock.util';
 import {
   mergeRetentionPolicyJson,
   resolveRetentionPolicy,
@@ -62,33 +63,21 @@ export class BackupsPolicyService {
     retention_count?: number | null;
     retention_max_bytes?: number | null;
   }) {
-    const node = await this.prisma.node.findUnique({
-      where: { id: input.nodeId },
-      select: {
-        id: true,
-        configBackupPolicyJson: true,
-        site: {
-          select: {
-            clientId: true,
-          },
-        },
-      },
-    });
+    const { nextPolicyJson, clientId } = await this.prisma.$transaction(async (tx) => {
+      const node = await lockBackupPolicyRow(tx, input.nodeId);
+      if (!node) throw new NotFoundException('node not found');
 
-    if (!node) {
-      throw new NotFoundException('node not found');
-    }
+      const nextPolicyJson = mergeRetentionPolicyJson(node.configBackupPolicyJson, {
+        retention_count: input.retention_count,
+        retention_max_bytes: input.retention_max_bytes,
+      });
+      const updated = await tx.node.update({
+        where: { id: input.nodeId },
+        data: { configBackupPolicyJson: nextPolicyJson },
+        select: { site: { select: { clientId: true } } },
+      });
 
-    const nextPolicyJson = mergeRetentionPolicyJson(node.configBackupPolicyJson, {
-      retention_count: input.retention_count,
-      retention_max_bytes: input.retention_max_bytes,
-    });
-
-    await this.prisma.node.update({
-      where: { id: input.nodeId },
-      data: {
-        configBackupPolicyJson: nextPolicyJson,
-      },
+      return { nextPolicyJson, clientId: updated.site.clientId };
     });
 
     const deletedBackupUids = await this.retention.enforceRetention(input.nodeId);
@@ -100,7 +89,7 @@ export class BackupsPolicyService {
       actorType: 'user_session',
       actorId: input.userId,
       actorRole: input.actorRole,
-      clientId: node.site.clientId,
+      clientId,
       action: 'backup.config.retention_policy_update',
       targetType: 'node',
       targetId: input.nodeId,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import type {
   CommandBatchResponse,
   PackageUpgradeBatchResponse,
@@ -108,22 +108,36 @@ export function FleetBatchPackageUpgradePanel({
     useState<PackageUpgradeBatchResponse | null>(null);
   const [batchStatus, setBatchStatus] = useState<CommandBatchResponse | null>(null);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const activePoll = useRef<{ batchId: string; pending: boolean } | null>(null);
+
   const confirmEnabled = confirmText.trim().toUpperCase() === 'CONFIRMAR';
 
   const batchId = initialResponse?.batch?.batch_id ?? null;
 
   const refreshBatchStatus = useCallback(async () => {
-    if (!batchId) {
+    const poll = activePoll.current;
+    if (!poll || poll.batchId !== batchId || poll.pending) {
       return;
     }
 
+    poll.pending = true;
+    setRefreshing(true);
     try {
-      const next = await pollCommandBatchStatusAction(batchId);
+      const next = await pollCommandBatchStatusAction(poll.batchId);
+      if (activePoll.current !== poll) return;
       setBatchStatus(next);
       setPollError(null);
       setUpdatedAt(new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
     } catch {
-      setPollError('Não foi possível atualizar o acompanhamento. Os últimos resultados foram mantidos; isso não significa falha da atualização do pacote.');
+      if (activePoll.current === poll) {
+        setPollError('Não foi possível atualizar o acompanhamento. Os últimos resultados foram mantidos; isso não significa falha da atualização do pacote.');
+      }
+    } finally {
+      if (activePoll.current === poll) {
+        poll.pending = false;
+        setRefreshing(false);
+      }
     }
   }, [batchId]);
 
@@ -132,13 +146,17 @@ export function FleetBatchPackageUpgradePanel({
       return;
     }
 
+    activePoll.current = { batchId, pending: false };
     void refreshBatchStatus();
 
     const timer = window.setInterval(() => {
       void refreshBatchStatus();
     }, POLL_INTERVAL_MS);
 
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      activePoll.current = null;
+    };
   }, [batchId, refreshBatchStatus]);
 
   const liveStatusByNodeId = useMemo(() => {
@@ -212,7 +230,17 @@ export function FleetBatchPackageUpgradePanel({
 
           {pollError ? <Alert variant="warning">{pollError}</Alert> : null}
           <div className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
-            <Button type="button" variant="secondary" size="sm" onClick={() => void refreshBatchStatus()}>Atualizar resultados</Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              loading={refreshing}
+              aria-busy={refreshing}
+              disabled={!batchId || refreshing}
+              onClick={() => void refreshBatchStatus()}
+            >
+              Atualizar resultados
+            </Button>
             {updatedAt ? <span>Última consulta: {updatedAt} (Brasília)</span> : null}
           </div>
           <ul className="divide-y divide-border rounded-lg border border-border" aria-label="Resultado atual por firewall">
@@ -238,8 +266,12 @@ export function FleetBatchPackageUpgradePanel({
                 type="button"
                 variant="secondary"
                 onClick={() => {
+                  activePoll.current = null;
                   setInitialResponse(null);
                   setBatchStatus(null);
+                  setRefreshing(false);
+                  setPollError(null);
+                  setUpdatedAt(null);
                   setShowConfirm(false);
                   setConfirmText('');
                   onClearSelection?.();

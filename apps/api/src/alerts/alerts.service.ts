@@ -280,22 +280,13 @@ export class AlertsService {
     const acknowledgedAt = new Date();
     const acknowledgedBy = actor.email?.trim() || actor.userId || 'unknown';
 
-    await this.prisma.alert.update({
-      where: {
-        id: alertId,
-      },
-      data: {
-        status: AlertStatus.acknowledged,
-        acknowledgedAt,
-        acknowledgedBy,
-      },
-    });
-
-    await this.writeAuditLog({
+    await this.updateActiveAlert(alertId, {
+      status: AlertStatus.acknowledged,
+      acknowledgedAt,
+      acknowledgedBy,
+    }, 'resolved alert cannot be acknowledged', {
       actorId: actor.userId,
       action: 'alert.acknowledge',
-      targetType: 'alert',
-      targetId: alertId,
       ipAddress: actorIp,
       metadataJson: {
         acknowledged_by: acknowledgedBy,
@@ -353,22 +344,13 @@ export class AlertsService {
     const resolvedAt = new Date();
     const resolutionNote = input.resolution_note?.trim() || null;
 
-    await this.prisma.alert.update({
-      where: {
-        id: alertId,
-      },
-      data: {
-        status: AlertStatus.resolved,
-        resolvedAt,
-        resolutionNote,
-      },
-    });
-
-    await this.writeAuditLog({
+    await this.updateActiveAlert(alertId, {
+      status: AlertStatus.resolved,
+      resolvedAt,
+      resolutionNote,
+    }, 'alert already resolved', {
       actorId: actor.userId,
       action: 'alert.resolve',
-      targetType: 'alert',
-      targetId: alertId,
       ipAddress: actorIp,
       metadataJson: {
         resolution_note: resolutionNote,
@@ -384,24 +366,39 @@ export class AlertsService {
     };
   }
 
-  private async writeAuditLog(input: {
-    actorId?: string;
-    action: string;
-    targetType: string;
-    targetId?: string;
-    ipAddress?: string;
-    metadataJson?: Prisma.JsonObject;
-  }): Promise<void> {
-    await this.prisma.auditLog.create({
-      data: {
-        actorType: input.actorId ? 'user' : 'system',
-        actorId: input.actorId,
-        action: input.action,
-        targetType: input.targetType,
-        targetId: input.targetId,
-        ipAddress: input.ipAddress,
-        metadataJson: input.metadataJson,
-      },
+  private async updateActiveAlert(
+    alertId: string,
+    changes: Prisma.AlertUpdateManyMutationInput,
+    conflictMessage: string,
+    audit: {
+      actorId?: string;
+      action: string;
+      ipAddress?: string;
+      metadataJson: Prisma.JsonObject;
+    },
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.alert.updateMany({
+        where: { id: alertId, status: { not: AlertStatus.resolved } },
+        data: changes,
+      });
+      if (updated.count === 0) {
+        const exists = await tx.alert.findUnique({ where: { id: alertId }, select: { id: true } });
+        if (!exists) throw new NotFoundException('alert not found');
+        throw new ConflictException(conflictMessage);
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorType: audit.actorId ? 'user' : 'system',
+          actorId: audit.actorId,
+          action: audit.action,
+          targetType: 'alert',
+          targetId: alertId,
+          ipAddress: audit.ipAddress,
+          metadataJson: audit.metadataJson,
+        },
+      });
     });
   }
 }

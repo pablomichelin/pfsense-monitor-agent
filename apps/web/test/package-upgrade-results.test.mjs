@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sourceLoader, uiMocks, hookHarness, elements, textOf, settle } from './source-harness.mjs';
+import { sourceLoader, uiMocks, hookHarness, elements, textOf, settle, deferred } from './source-harness.mjs';
 
 test('resultados atuais visíveis, pendência explícita e erro de consulta preserva sucesso sem reenviar', async () => {
   global.window = {setInterval: () => 1, clearInterval() {}};
@@ -42,4 +42,80 @@ test('consulta um lote existente sem criar comandos nem inventar ignorados', asy
   tree=harness.render(Component,props);
   assert.match(textOf(tree),/Firewall A/);assert.match(textOf(tree),/Concluído/);assert.match(textOf(tree),/ignorados não fazem parte do lote/);
   harness.unmount();delete global.window;
+});
+
+test('acompanha uma consulta por vez e ignora a resposta de um lote fechado', async (t) => {
+  const timers = new Set();
+  global.window = {
+    setInterval(callback) { timers.add(callback); return callback; },
+    clearInterval(callback) { timers.delete(callback); },
+  };
+  const harness = hookHarness();
+  t.after(() => {
+    harness.unmount();
+    delete global.window;
+  });
+  const requests = [];
+  const snapshot = (batchId, status) => ({
+    generated_at: '2026-11-04T00:00:00Z',
+    batch: { batch_id: batchId, command_type: 'package_upgrade', status: status === 'succeeded' ? 'completed' : 'running' },
+    nodes: [{ node_id: 'a', command_id: batchId + '-command', status }],
+  });
+  const { FleetBatchPackageUpgradePanel: Component } = sourceLoader({
+    ...uiMocks,
+    react: harness.react,
+    '@/lib/package-upgrade': {
+      createPackageUpgradeBatchAction: () => assert.fail('consulta não deve criar comandos'),
+      pollCommandBatchStatusAction: (batchId) => {
+        const request = { batchId, ...deferred() };
+        requests.push(request);
+        return request.promise;
+      },
+    },
+  })('components/nodes/fleet-batch-package-upgrade-panel.tsx');
+  const props = {
+    selectedNodes: [{ id: 'a', hostname: 'Firewall sintético' }],
+    canRunPackageUpgrade: true,
+    targetPackageVersion: '0.5.34',
+  };
+  let tree;
+  const render = () => { tree = harness.render(Component, props); };
+  const button = (label) => elements(tree).find((element) => element.type === 'button' && textOf(element) === label);
+  const results = () => textOf(elements(tree).find((element) => element.props?.['aria-label'] === 'Resultado atual por firewall'));
+  const open = async (batchId) => {
+    elements(tree).find((element) => element.type === 'input').props.onChange({ target: { value: batchId } });
+    render();
+    button('Consultar lote').props.onClick();
+    requests.at(-1).resolve(snapshot(batchId, 'succeeded'));
+    await settle();
+    render();
+  };
+
+  render();
+  await open('lote-a');
+  render(); // Aplica a mudança de estado feita pelo efeito de polling.
+  const oldPoll = requests.at(-1);
+  const manual = button('Atualizar resultados');
+  const unavailableDuringPoll = manual.props.disabled;
+  for (const tick of timers) tick();
+  manual.props.onClick();
+
+  button('Limpar resultado').props.onClick();
+  render();
+  await open('lote-b');
+  const newPoll = requests.at(-1);
+  assert.match(results(), /Concluído/);
+
+  oldPoll.resolve(snapshot('lote-a', 'pending'));
+  await settle();
+  render();
+  assert.match(results(), /Concluído/, 'uma resposta do lote A não deve substituir o resultado do lote B');
+  assert.equal(requests.filter((request) => request.batchId === 'lote-a').length, 2, 'uma consulta inicial e uma atualização pendente');
+  assert.equal(unavailableDuringPoll, true);
+  assert.equal(button('Atualizar resultados').props.disabled, true, 'uma resposta obsoleta não deve liberar a consulta atual');
+
+  newPoll.resolve(snapshot('lote-b', 'succeeded'));
+  await settle();
+  render();
+  assert.equal(button('Atualizar resultados').props.disabled, false);
 });

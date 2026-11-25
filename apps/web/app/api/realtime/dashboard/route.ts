@@ -1,16 +1,31 @@
 import { headers } from 'next/headers';
+import { setTimeout } from 'node:timers/promises';
 
 export const dynamic = 'force-dynamic';
 
 const apiBaseUrl = process.env.MONITOR_API_BASE_URL?.trim();
+const streamRetryDelaysMs = [250, 1000];
 
-const requireEnv = (value: string | undefined, key: string): string => {
-  if (!value) {
-    throw new Error(`${key} is required`);
+async function connectUpstream(
+  url: string,
+  headers: Headers,
+  signal: AbortSignal,
+): Promise<Response | null> {
+  const connect = () =>
+    fetch(url, { method: 'GET', headers, cache: 'no-store', signal }).catch(() => null);
+
+  let response = await connect();
+  for (const delay of streamRetryDelaysMs) {
+    if (signal.aborted || (response && response.status !== 502)) break;
+
+    // An HTTP 502 closes EventSource permanently once sent to the browser.
+    await response?.body?.cancel().catch(() => {});
+    const retry = await setTimeout(delay, true, { signal }).catch(() => false);
+    if (!retry) return null;
+    response = await connect();
   }
-
-  return value;
-};
+  return response;
+}
 
 export async function GET(request: Request): Promise<Response> {
   const requestHeaders = await headers();
@@ -36,18 +51,10 @@ export async function GET(request: Request): Promise<Response> {
     upstreamHeaders.set('last-event-id', lastEventId);
   }
 
-  let response: Response;
-  try {
-    response = await fetch(
-      `${requireEnv(apiBaseUrl, 'MONITOR_API_BASE_URL')}/api/v1/dashboard/events`,
-      {
-        method: 'GET',
-        headers: upstreamHeaders,
-        cache: 'no-store',
-        signal: request.signal,
-      },
-    );
-  } catch {
+  const response = apiBaseUrl
+    ? await connectUpstream(`${apiBaseUrl}/api/v1/dashboard/events`, upstreamHeaders, request.signal)
+    : null;
+  if (!response) {
     return new Response('upstream stream unavailable', { status: 502 });
   }
 

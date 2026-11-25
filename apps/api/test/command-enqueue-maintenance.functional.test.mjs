@@ -83,7 +83,7 @@ for (const terminal of ['failed', 'cancelled', 'expired']) {
     const { db, state } = fixture();
     const response = await reboot(db).requestNodeReboot(nodeId, userId, { confirm_hostname: 'synthetic-fw' });
     const svc = resultService(db);
-    if (terminal === 'failed') await svc.reportCommandResult({ nodeId, commandId: response.command_id, credentialId: 'credential', status: 'failed' });
+    if (terminal === 'failed') await svc.reportCommandResult({ nodeId, commandId: response.command_id, credentialId: 'credential', deliveryAttempt: 0, status: 'failed' });
     if (terminal === 'cancelled') await new CommandOrchestratorService(db).cancelCommand({ nodeId, commandId: response.command_id, cancelledByUserId: userId });
     if (terminal === 'expired') {
       state.commands[0].expiresAt = new Date(Date.now() - 1000);
@@ -101,7 +101,7 @@ for (const terminal of ['failed', 'cancelled', 'expired']) {
 test('failure preserves maintenance that was already enabled before the request', async () => {
   const { db, state } = fixture(); state.node.maintenanceMode = true;
   const response = await reboot(db).requestNodeReboot(nodeId, userId, { confirm_hostname: 'synthetic-fw' });
-  await resultService(db).reportCommandResult({ nodeId, commandId: response.command_id, credentialId: 'credential', status: 'failed' });
+  await resultService(db).reportCommandResult({ nodeId, commandId: response.command_id, credentialId: 'credential', deliveryAttempt: 0, status: 'failed' });
   assert.equal(state.node.maintenanceMode, true);
   assert.equal(state.nodeWrites.length, 0);
 });
@@ -109,7 +109,7 @@ test('failure preserves maintenance that was already enabled before the request'
 test('successful scheduling keeps reboot maintenance for the reboot window', async () => {
   const { db, state } = fixture();
   const response = await reboot(db).requestNodeReboot(nodeId, userId, { confirm_hostname: 'synthetic-fw' });
-  await resultService(db).reportCommandResult({ nodeId, commandId: response.command_id, credentialId: 'credential', status: 'succeeded' });
+  await resultService(db).reportCommandResult({ nodeId, commandId: response.command_id, credentialId: 'credential', deliveryAttempt: 0, status: 'succeeded' });
   assert.equal(state.node.maintenanceMode, true);
   assert.equal(state.commands[0].payloadJson.maintenance_restored_at, undefined);
 });

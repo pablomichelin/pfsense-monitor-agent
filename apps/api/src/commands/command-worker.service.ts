@@ -8,6 +8,7 @@ import { NodeCommandStatus, NodeCommandType, Prisma } from '@prisma/client';
 import { SystemJobLockService } from '../common/system-job-lock.service';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
+import { reconcileCommandBatchStatus } from './command-batch-status';
 import { getCommandDefinition } from './command-registry';
 import {
   canRetryCommand,
@@ -65,34 +66,39 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
     }
 
     const lockTtlMs = appConfig.commands.workerLockTtlSeconds * 1000;
-    const acquired = await this.lockService.tryAcquire(
-      WORKER_LOCK_KEY,
-      lockTtlMs,
-    );
-
-    if (!acquired) {
-      return;
-    }
+    let acquired = false;
 
     try {
-      await this.processRetries();
+      acquired = await this.lockService.tryAcquire(WORKER_LOCK_KEY, lockTtlMs);
+      if (!acquired) {
+        return;
+      }
+
+      const reconciledBatchIds = await this.processRetries();
       await this.processDeferredCommands();
-      await this.reconcileOpenBatches();
+      await this.reconcileOpenBatches(reconciledBatchIds);
       this.logger.debug(`command worker cycle completed reason=${reason}`);
     } catch (error) {
       this.logger.warn(`command worker cycle failed: ${String(error)}`);
     } finally {
-      await this.lockService.release(WORKER_LOCK_KEY);
+      if (acquired) {
+        await this.lockService.release(WORKER_LOCK_KEY);
+      }
     }
   }
 
-  private async processRetries(): Promise<void> {
+  private async processRetries(): Promise<Set<string>> {
     const failedCommands = await this.prisma.nodeCommand.findMany({
       where: {
         status: NodeCommandStatus.failed,
-        maxRetries: {
-          gt: 0,
-        },
+        maxRetries: { gt: 0 },
+        retryCount: { lt: this.prisma.nodeCommand.fields.maxRetries },
+        AND: ['retry_exhausted', 'retry_scheduled'].map((flag) => ({
+          OR: [
+            { resultJson: { path: [flag], equals: Prisma.AnyNull } },
+            { resultJson: { path: [flag], not: true } },
+          ],
+        })),
       },
       take: 50,
       orderBy: {
@@ -101,6 +107,7 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
     });
 
     const now = new Date();
+    const reconciledBatchIds = new Set<string>();
 
     for (const command of failedCommands) {
       if (!canRetryCommand(command)) {
@@ -168,45 +175,52 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
-      const changed = await this.prisma.nodeCommand.updateMany({
-        where: {
-          id: command.id,
-          status: NodeCommandStatus.failed,
-          retryCount: command.retryCount,
-          expiresAt: { gt: nextRetryAt },
-        },
-        data: {
-          status: NodeCommandStatus.pending,
-          retryCount: command.retryCount + 1,
-          nextRetryAt,
-          pickedUpAt: null,
-          runningAt: null,
-          completedAt: null,
-          errorMessage: null,
-          resultJson: {
-            ...result,
-            retry_scheduled: true,
-            retry_attempt: command.retryCount + 1,
+      const scheduled = await this.prisma.$transaction(async (tx) => {
+        const changed = await tx.nodeCommand.updateMany({
+          where: {
+            id: command.id,
+            status: NodeCommandStatus.failed,
+            retryCount: command.retryCount,
+            expiresAt: { gt: nextRetryAt },
           },
-        },
+          data: {
+            status: NodeCommandStatus.pending,
+            retryCount: command.retryCount + 1,
+            nextRetryAt,
+            pickedUpAt: null,
+            runningAt: null,
+            completedAt: null,
+            errorMessage: null,
+            resultJson: {
+              ...result,
+              retry_scheduled: true,
+              retry_attempt: command.retryCount + 1,
+            },
+          },
+        });
+
+        if (changed.count === 0) return false;
+
+        await tx.auditLog.create({
+          data: {
+            actorType: 'system',
+            action: `${definition.auditPrefix}.request_retry_scheduled`,
+            targetType: 'node_command',
+            targetId: command.id,
+            metadataJson: {
+              node_id: command.nodeId,
+              retry_count: command.retryCount + 1,
+              next_retry_at: nextRetryAt.toISOString(),
+            },
+          },
+        });
+        if (command.batchId) await reconcileCommandBatchStatus(tx, command.batchId);
+        return true;
       });
 
-      if (changed.count === 0) continue;
-
-      await this.prisma.auditLog.create({
-        data: {
-          actorType: 'system',
-          action: `${definition.auditPrefix}.request_retry_scheduled`,
-          targetType: 'node_command',
-          targetId: command.id,
-          metadataJson: {
-            node_id: command.nodeId,
-            retry_count: command.retryCount + 1,
-            next_retry_at: nextRetryAt.toISOString(),
-          },
-        },
-      });
+      if (scheduled && command.batchId) reconciledBatchIds.add(command.batchId);
     }
+    return reconciledBatchIds;
   }
 
   private async processDeferredCommands(): Promise<void> {
@@ -284,9 +298,10 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async reconcileOpenBatches(): Promise<void> {
+  private async reconcileOpenBatches(reconciledBatchIds: ReadonlySet<string>): Promise<void> {
     const openBatches = await this.prisma.jobBatch.findMany({
       where: {
+        ...(reconciledBatchIds.size > 0 ? { id: { notIn: [...reconciledBatchIds] } } : {}),
         status: {
           in: ['pending', 'running'],
         },

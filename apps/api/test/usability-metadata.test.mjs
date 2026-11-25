@@ -37,9 +37,9 @@ test('comparação de versão acompanha fonte publicada e ausência vira desconh
 test('dashboard usa serviço de release compartilhado na agregação',async()=>{
  const fakeNode={id:'n',status:'online',lastSeenAt:new Date(),maintenanceMode:false,nodeUidStatus:'active',agentVersion:'0.5.34',pfsenseVersion:'2.9.0',site:{timezone:'America/Sao_Paulo'},configBackups:[],nodeCommands:[]};
  let calls=0;
- const prisma={node:{findMany:async()=>[fakeNode]},alert:{count:async()=>0}};
+ const prisma={node:{findMany:async()=>[fakeNode]},alert:{groupBy:async()=>[]}};
  const policy={assertRequestedClientFilter:async()=>{},mergeNodeWhere:async()=>({}),mergeAlertWhere:async()=>({})};
- const service=new DashboardService(prisma,policy,{getPublishedVersion(){calls++;return '0.5.34';}});
+ const service=new DashboardService(prisma,policy,{getPublishedVersion(){calls++;return '0.5.34';}},{getDashboardRevision:()=>0});
  service.buildActorCacheKey=async()=> 'synthetic-scope';
  const result=await service.getFleet({});assert.equal(calls,1);assert.equal(result.compliance.package_target_version,'0.5.34');assert.equal(result.compliance.package_outdated_count,0);
 });

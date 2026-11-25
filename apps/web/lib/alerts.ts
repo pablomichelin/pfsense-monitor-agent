@@ -2,17 +2,18 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { acknowledgeAlert, resolveAlert } from './api';
+import { acknowledgeAlert, ApiError, resolveAlert } from './api';
+import { sanitizeInternalPath } from './internal-path';
 
-const sanitizeReturnTo = (value: string): string => {
-  if (!value.startsWith('/alerts')) {
-    return '/alerts';
-  }
+function sanitizeReturnTo(value: string): string {
+  const path = sanitizeInternalPath(value);
+  return path && /^\/alerts(?:[?#]|$)/.test(path) ? path : '/alerts';
+}
 
-  return value;
-};
-
-export async function acknowledgeAlertAction(formData: FormData): Promise<void> {
+async function runAlertAction(
+  formData: FormData,
+  execute: (alertId: string) => Promise<unknown>,
+): Promise<void> {
   const alertId = String(formData.get('alert_id') ?? '').trim();
   const returnTo = sanitizeReturnTo(String(formData.get('return_to') ?? '/alerts'));
 
@@ -20,21 +21,28 @@ export async function acknowledgeAlertAction(formData: FormData): Promise<void> 
     redirect(returnTo);
   }
 
-  await acknowledgeAlert(alertId);
+  let destination = returnTo;
+  try {
+    await execute(alertId);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 409) {
+      throw error;
+    }
+
+    const url = new URL(returnTo, 'https://internal.invalid');
+    url.searchParams.set('alert_notice', 'changed');
+    destination = `${url.pathname}${url.search}${url.hash}`;
+  }
+
   revalidatePath('/alerts');
-  redirect(returnTo);
+  redirect(destination);
+}
+
+export async function acknowledgeAlertAction(formData: FormData): Promise<void> {
+  await runAlertAction(formData, acknowledgeAlert);
 }
 
 export async function resolveAlertAction(formData: FormData): Promise<void> {
-  const alertId = String(formData.get('alert_id') ?? '').trim();
   const resolutionNote = String(formData.get('resolution_note') ?? '').trim();
-  const returnTo = sanitizeReturnTo(String(formData.get('return_to') ?? '/alerts'));
-
-  if (!alertId) {
-    redirect(returnTo);
-  }
-
-  await resolveAlert(alertId, resolutionNote || undefined);
-  revalidatePath('/alerts');
-  redirect(returnTo);
+  await runAlertAction(formData, (alertId) => resolveAlert(alertId, resolutionNote || undefined));
 }

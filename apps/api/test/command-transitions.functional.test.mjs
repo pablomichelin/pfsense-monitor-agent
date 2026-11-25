@@ -6,7 +6,9 @@ import { CommandOrchestratorService } from '../dist/commands/command-orchestrato
 import { CommandWorkerService } from '../dist/commands/command-worker.service.js';
 import { fixture, command, nodeId, userId } from './command-test-fixtures.mjs';
 
-const input = (row, status = 'succeeded') => ({ nodeId, credentialId: 'credential', commandId: row.id, status });
+const input = (row, status = 'succeeded') => ({
+  nodeId, credentialId: 'credential', commandId: row.id, deliveryAttempt: row.retryCount, status,
+});
 const service = (db, followUp = { processAfterBackupSuccess: async () => {} }) => new NodeCommandsService(db, followUp);
 const cancelInput = (row) => ({ nodeId, commandId: row.id, cancelledByUserId: userId });
 

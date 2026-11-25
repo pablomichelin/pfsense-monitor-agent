@@ -18,10 +18,6 @@ type Node = NodeDetailsResponse['node'];
 export function NodeDetailOverviewTab({
   node,
   canManageNode,
-  canRunUpgrade,
-  canRunPackageUpgrade,
-  upgradeStatus,
-  packageUpgradeStatus,
   nodeCapabilities,
   pfsenseApiStatus,
   canManagePfsenseCredentials,
@@ -30,10 +26,6 @@ export function NodeDetailOverviewTab({
 }: {
   node: Node;
   canManageNode: boolean;
-  canRunUpgrade: boolean;
-  canRunPackageUpgrade: boolean;
-  upgradeStatus: PfsenseUpgradeStatusResponse;
-  packageUpgradeStatus: PackageUpgradeStatusResponse;
   nodeCapabilities: NodeCapabilitiesResponse | null;
   pfsenseApiStatus: PfsenseApiStatusResponse | null;
   canManagePfsenseCredentials: boolean;
@@ -263,14 +255,43 @@ export function NodeDetailOverviewTab({
 }
 
 
-export function NodeUpdatesSection({ node, canRunUpgrade, canRunPackageUpgrade, upgradeStatus, packageUpgradeStatus }: {
-  node: Node; canRunUpgrade: boolean; canRunPackageUpgrade: boolean;
-  upgradeStatus: PfsenseUpgradeStatusResponse; packageUpgradeStatus: PackageUpgradeStatusResponse;
+export function NodeUpdatesSection({
+  node,
+  canRunUpgrade,
+  canRunPackageUpgrade,
+  upgradeStatus,
+  packageUpgradeStatus,
+}: {
+  node: Node;
+  canRunUpgrade: boolean;
+  canRunPackageUpgrade: boolean;
+  upgradeStatus: PfsenseUpgradeStatusResponse | null;
+  packageUpgradeStatus: PackageUpgradeStatusResponse | null;
 }) {
-  return (<PageSection title="Atualizações" description="Escolha entre o agente Monitor e o sistema operacional do firewall.">
-      <ActionTabs id="node-updates" label="Tipo de atualização" tabs={[
-        { id: 'agent', label: 'Agente Monitor', description: 'Pacote de monitoramento', content: <NodePackageUpgradeSection nodeId={node.id} canRunPackageUpgrade={canRunPackageUpgrade} initialStatus={packageUpgradeStatus} /> },
-        { id: 'os', label: 'pfSense OS', description: 'Sistema operacional', content: <NodePfsenseUpgradeSection nodeId={node.id} nodeEffectiveStatus={node.effective_status} canRunUpgrade={canRunUpgrade} initialStatus={upgradeStatus} /> },
-      ]} />
-    </PageSection>);
+  return (
+    <PageSection title="Atualizações" description="Escolha entre o agente Monitor e o sistema operacional do firewall.">
+      <ActionTabs
+        id="node-updates"
+        label="Tipo de atualização"
+        tabs={[
+          {
+            id: 'agent',
+            label: 'Agente Monitor',
+            description: 'Pacote de monitoramento',
+            content: packageUpgradeStatus ? (
+              <NodePackageUpgradeSection nodeId={node.id} canRunPackageUpgrade={canRunPackageUpgrade} initialStatus={packageUpgradeStatus} />
+            ) : <Alert variant="warning">A consulta do agente Monitor está indisponível.</Alert>,
+          },
+          {
+            id: 'os',
+            label: 'pfSense OS',
+            description: 'Sistema operacional',
+            content: upgradeStatus ? (
+              <NodePfsenseUpgradeSection nodeId={node.id} nodeEffectiveStatus={node.effective_status} canRunUpgrade={canRunUpgrade} initialStatus={upgradeStatus} />
+            ) : <Alert variant="warning">A consulta do pfSense OS está indisponível.</Alert>,
+          },
+        ]}
+      />
+    </PageSection>
+  );
 }

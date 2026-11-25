@@ -14,14 +14,16 @@ import { appConfig } from '../config/app-config';
 import { deriveBackupVisualStatus } from '../nodes/backup-visual-status.util';
 import { deriveEffectiveNodeStatus } from '../nodes/node-status.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import {
   aggregateFleetMetrics,
   EffectiveNodeStatus,
-  FleetNodeRecord,
 } from './fleet-aggregation.util';
 import { FleetQueryDto } from './dto/fleet-query.dto';
 
 const SUMMARY_CACHE_TTL_MS = 20000;
+
+type CacheEntry<T> = { data: T; expiresAt: number; revision: number };
 
 type DashboardSummary = {
   generated_at: string;
@@ -65,26 +67,22 @@ type DashboardFleet = DashboardSummary & {
 
 @Injectable()
 export class DashboardService {
-  private readonly summaryCache = new Map<
-    string,
-    { data: DashboardSummary; expiresAt: number }
-  >();
-  private readonly fleetCache = new Map<
-    string,
-    { data: DashboardFleet; expiresAt: number }
-  >();
+  private readonly summaryCache = new Map<string, CacheEntry<DashboardSummary>>();
+  private readonly fleetCache = new Map<string, CacheEntry<DashboardFleet>>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessPolicy: AccessPolicyService,
     private readonly packageRelease: PackageReleaseService,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   async getSummary(actor: AccessActor): Promise<DashboardSummary> {
     const cacheKey = await this.buildActorCacheKey(actor, 'summary');
     const now = Date.now();
+    const revision = this.realtimeService.getDashboardRevision();
     const cached = this.summaryCache.get(cacheKey);
-    if (cached && cached.expiresAt > now) {
+    if (cached && cached.revision === revision && cached.expiresAt > now) {
       return cached.data;
     }
 
@@ -133,6 +131,7 @@ export class DashboardService {
     this.summaryCache.set(cacheKey, {
       data: result,
       expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS,
+      revision,
     });
 
     return result;
@@ -147,8 +146,9 @@ export class DashboardService {
       `fleet:${query.client_id ?? ''}:${query.site_id ?? ''}:${query.status ?? ''}`,
     );
     const nowMs = Date.now();
+    const revision = this.realtimeService.getDashboardRevision();
     const cached = this.fleetCache.get(cacheKey);
-    if (cached && cached.expiresAt > nowMs) {
+    if (cached && cached.revision === revision && cached.expiresAt > nowMs) {
       return cached.data;
     }
 
@@ -163,15 +163,7 @@ export class DashboardService {
         : undefined,
     };
     const where = await this.accessPolicy.mergeNodeWhere(actor, baseWhere);
-    const alertWhere = await this.accessPolicy.mergeAlertWhere(actor, {
-      status: AlertStatus.open,
-    });
-    const criticalAlertWhere = await this.accessPolicy.mergeAlertWhere(actor, {
-      status: AlertStatus.open,
-      severity: AlertSeverity.critical,
-    });
-
-    const [nodes, openAlerts, criticalAlerts] = await Promise.all([
+    const [nodes, alertGroups] = await Promise.all([
       this.prisma.node.findMany({
         where,
         include: {
@@ -212,17 +204,17 @@ export class DashboardService {
           },
         },
       }),
-      this.prisma.alert.count({
-        where: alertWhere,
-      }),
-      this.prisma.alert.count({
-        where: criticalAlertWhere,
+      this.prisma.alert.groupBy({
+        by: ['nodeId', 'severity'],
+        where: { node: where, status: AlertStatus.open },
+        _count: { _all: true },
       }),
     ]);
 
-    const fleetNodes: FleetNodeRecord[] = nodes
-      .map((node) => {
-        const effectiveStatus = deriveEffectiveNodeStatus(node, nowDate);
+    const fleetNodes = nodes
+      .map((node) => ({ node, effectiveStatus: deriveEffectiveNodeStatus(node, nowDate) }))
+      .filter(({ effectiveStatus }) => !query.status || effectiveStatus === query.status)
+      .map(({ node, effectiveStatus }) => {
         const latestStoredBackup = node.configBackups.find(
           (backup) => backup.status === ConfigBackupStatus.stored,
         );
@@ -236,6 +228,7 @@ export class DashboardService {
           null;
 
         return {
+          id: node.id,
           effectiveStatus,
           backupStatus: deriveBackupVisualStatus({
             latestBackupReceivedAt,
@@ -248,10 +241,20 @@ export class DashboardService {
           pfsenseVersion: node.pfsenseVersion,
           agentVersion: node.agentVersion,
         };
-      })
-      .filter((node) =>
-        query.status ? node.effectiveStatus === query.status : true,
-      );
+      });
+
+    const fleetNodeIds = new Set(fleetNodes.map((node) => node.id));
+    let openAlerts = 0;
+    let criticalAlerts = 0;
+    for (const group of alertGroups) {
+      if (!fleetNodeIds.has(group.nodeId)) {
+        continue;
+      }
+      openAlerts += group._count._all;
+      if (group.severity === AlertSeverity.critical) {
+        criticalAlerts += group._count._all;
+      }
+    }
 
     const packageTargetVersion =
       this.packageRelease.getPublishedVersion();
@@ -277,6 +280,7 @@ export class DashboardService {
     this.fleetCache.set(cacheKey, {
       data: result,
       expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS,
+      revision,
     });
 
     return result;

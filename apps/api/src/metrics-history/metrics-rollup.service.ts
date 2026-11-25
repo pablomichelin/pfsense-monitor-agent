@@ -42,12 +42,16 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
     await this.runDailyRollupCycle('startup');
 
     this.hourlyTimer = setInterval(() => {
-      void this.runHourlyRollupCycle('interval');
+      void this.runHourlyRollupCycle('interval').catch((error) => {
+        this.logger.warn(`hourly metric rollup failed: ${String(error)}`);
+      });
     }, appConfig.metricRollups.hourlyRollupIntervalSeconds * 1000);
     this.hourlyTimer.unref?.();
 
     this.dailyTimer = setInterval(() => {
-      void this.runDailyRollupCycle('interval');
+      void this.runDailyRollupCycle('interval').catch((error) => {
+        this.logger.warn(`daily metric rollup failed: ${String(error)}`);
+      });
     }, appConfig.metricRollups.dailyRollupIntervalSeconds * 1000);
     this.dailyTimer.unref?.();
   }
@@ -122,6 +126,13 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
       const now = new Date();
       const currentDay = truncateToDayUtc(now);
       const previousDay = addDaysUtc(currentDay, -1);
+      const lastHour = addHoursUtc(currentDay, -1);
+      const sampleCutoff = now.getTime() - appConfig.metricRollups.sampleRetentionHours * 60 * 60_000;
+      // The daily timer can run before the hourly timer at the UTC day boundary.
+      // Fill the missing hour only while its entire sampling window is retained.
+      if (lastHour.getTime() >= sampleCutoff) {
+        await this.rollupHourlyBucket(lastHour, { fillMissingOnly: true });
+      }
       await this.rollupDailyBucket(previousDay);
 
       const retentionCutoff = addDaysUtc(
@@ -145,7 +156,10 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async rollupHourlyBucket(bucketStart: Date): Promise<number> {
+  async rollupHourlyBucket(
+    bucketStart: Date,
+    { fillMissingOnly = false }: { fillMissingOnly?: boolean } = {},
+  ): Promise<number> {
     const bucketEnd = addHoursUtc(bucketStart, 1);
     const nodeIds = await this.prisma.nodeMetricSample.findMany({
       where: {
@@ -186,48 +200,36 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
       }
 
       const aggregate = aggregateMetricSamples(samples);
+      const key = { nodeId: entry.nodeId, bucketStart };
+      const metrics = {
+        sampleCount: aggregate.sampleCount,
+        cpuAvg: aggregate.cpu.avg,
+        cpuMin: aggregate.cpu.min,
+        cpuMax: aggregate.cpu.max,
+        memoryAvg: aggregate.memory.avg,
+        memoryMin: aggregate.memory.min,
+        memoryMax: aggregate.memory.max,
+        diskAvg: aggregate.disk.avg,
+        diskMin: aggregate.disk.min,
+        diskMax: aggregate.disk.max,
+        latencyAvg: aggregate.latency.avg,
+        latencyMin: aggregate.latency.min,
+        latencyMax: aggregate.latency.max,
+        availabilityPct: aggregate.availabilityPct,
+      };
+      if (fillMissingOnly) {
+        const inserted = await this.prisma.nodeMetricRollupHourly.createMany({
+          data: { ...key, ...metrics },
+          skipDuplicates: true,
+        });
+        upserts += inserted.count;
+        continue;
+      }
 
       await this.prisma.nodeMetricRollupHourly.upsert({
-        where: {
-          nodeId_bucketStart: {
-            nodeId: entry.nodeId,
-            bucketStart,
-          },
-        },
-        create: {
-          nodeId: entry.nodeId,
-          bucketStart,
-          sampleCount: aggregate.sampleCount,
-          cpuAvg: aggregate.cpu.avg,
-          cpuMin: aggregate.cpu.min,
-          cpuMax: aggregate.cpu.max,
-          memoryAvg: aggregate.memory.avg,
-          memoryMin: aggregate.memory.min,
-          memoryMax: aggregate.memory.max,
-          diskAvg: aggregate.disk.avg,
-          diskMin: aggregate.disk.min,
-          diskMax: aggregate.disk.max,
-          latencyAvg: aggregate.latency.avg,
-          latencyMin: aggregate.latency.min,
-          latencyMax: aggregate.latency.max,
-          availabilityPct: aggregate.availabilityPct,
-        },
-        update: {
-          sampleCount: aggregate.sampleCount,
-          cpuAvg: aggregate.cpu.avg,
-          cpuMin: aggregate.cpu.min,
-          cpuMax: aggregate.cpu.max,
-          memoryAvg: aggregate.memory.avg,
-          memoryMin: aggregate.memory.min,
-          memoryMax: aggregate.memory.max,
-          diskAvg: aggregate.disk.avg,
-          diskMin: aggregate.disk.min,
-          diskMax: aggregate.disk.max,
-          latencyAvg: aggregate.latency.avg,
-          latencyMin: aggregate.latency.min,
-          latencyMax: aggregate.latency.max,
-          availabilityPct: aggregate.availabilityPct,
-        },
+        where: { nodeId_bucketStart: key },
+        create: { ...key, ...metrics },
+        update: metrics,
       });
 
       upserts += 1;

@@ -39,7 +39,9 @@ export class MetricsSamplerService implements OnModuleInit, OnModuleDestroy {
     await this.runSamplingCycle('startup');
 
     this.timer = setInterval(() => {
-      void this.runSamplingCycle('interval');
+      void this.runSamplingCycle('interval').catch((error) => {
+        this.logger.warn(`metric sampling failed: ${String(error)}`);
+      });
     }, appConfig.metricRollups.sampleIntervalSeconds * 1000);
     this.timer.unref?.();
   }

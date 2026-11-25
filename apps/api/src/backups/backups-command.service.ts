@@ -11,8 +11,10 @@ import {
   NodeCommandType,
   Prisma,
 } from '@prisma/client';
+import { reconcileCommandBatchStatus } from '../commands/command-batch-status';
 import { assertMatchingDeliveryAttempt, NodeCommandsService } from '../node-commands/node-commands.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveBackupArtifactUid } from './backups-artifact-uid.util';
 
 export type { PendingCommandPayload } from '../node-commands/node-commands.service';
 
@@ -261,6 +263,9 @@ export class BackupsCommandService {
           },
         },
       });
+      if (command.batchId) {
+        await reconcileCommandBatchStatus(tx, command.batchId);
+      }
       return command;
     };
     const updated = transaction ? await mark(transaction) : await this.prisma.$transaction(mark);
@@ -318,7 +323,7 @@ export class BackupsCommandService {
         commandId: command.id,
         duplicate: backup.status === ConfigBackupStatus.duplicate,
         sha256: backup.configSha256,
-        backupUid: backup.backupUid,
+        backupUid: resolveBackupArtifactUid(backup),
         ...(durableDelivery ? { deliveryAttempt: command.retryCount } : {}),
       });
     }

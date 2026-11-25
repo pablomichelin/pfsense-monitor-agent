@@ -34,6 +34,7 @@ import {
   mapServiceStatus,
 } from '../nodes/node-status.util';
 import {
+  mergeBackupSchedulePolicy,
   normalizeBackupSchedulePolicy,
   toStoredBackupPolicyJson,
 } from '../nodes/backup-policy.util';
@@ -119,14 +120,7 @@ export class IngestService {
     );
 
     if (node.lastHeartbeatId === request.body.heartbeat_id) {
-      await this.prisma.node.update({
-        where: {
-          id: node.id,
-        },
-        data: {
-          lastSeenAt: receivedAt,
-        },
-      });
+      await this.advanceLastSeen(this.prisma, node.id, receivedAt);
 
       await this.prisma.nodeCredential.update({
         where: {
@@ -153,15 +147,6 @@ export class IngestService {
     const services = request.body.services ?? [];
     const gateways = request.body.gateways ?? [];
 
-    const nodeStatus = await this.resolveHeartbeatNodeStatus({
-      nodeId: node.id,
-      maintenanceMode: node.maintenanceMode,
-      persistedStatus: node.status,
-      servicesProvided,
-      gatewaysProvided,
-      services,
-      gateways,
-    });
     const latencyMs = Math.max(0, receivedAt.getTime() - sentAt.getTime());
     const estimatedBootAt = new Date(
       sentAt.getTime() - request.body.uptime_sec * 1000,
@@ -215,20 +200,27 @@ export class IngestService {
       ? normalizeBackupSchedulePolicy(request.body.config_backup)
       : null;
 
-    let staleSkipped = false;
-    const openedAlertIds =
-      (await this.prisma.$transaction(async (tx) => {
+    const outcome = await this.prisma.$transaction(async (tx) => {
       // C3: trava a linha do node e aplica CAS por sent_at para impedir que um
       // heartbeat antigo (fora de ordem) sobrescreva um snapshot mais novo.
       const lockedRows = await tx.$queryRaw<
         Array<{
           last_heartbeat_id: string | null;
           last_heartbeat_sent_at: Date | null;
+          last_seen_at: Date | null;
+          maintenance_mode: boolean;
+          status: NodeStatus;
+          config_backup_policy_json: Prisma.JsonValue | null;
         }>
-      >(Prisma.sql`SELECT last_heartbeat_id, last_heartbeat_sent_at FROM nodes WHERE id = ${node.id}::uuid FOR UPDATE`);
+      >(Prisma.sql`
+        SELECT last_heartbeat_id, last_heartbeat_sent_at, last_seen_at,
+               maintenance_mode, status, config_backup_policy_json
+        FROM nodes WHERE id = ${node.id}::uuid FOR UPDATE
+      `);
 
-      const lockedHeartbeatId = lockedRows[0]?.last_heartbeat_id ?? null;
-      const lockedSentAt = lockedRows[0]?.last_heartbeat_sent_at ?? null;
+      const [lockedNode] = lockedRows;
+      const lockedHeartbeatId = lockedNode?.last_heartbeat_id ?? null;
+      const lockedSentAt = lockedNode?.last_heartbeat_sent_at ?? null;
 
       const alreadyApplied = lockedHeartbeatId === request.body.heartbeat_id;
       const isStale =
@@ -237,17 +229,30 @@ export class IngestService {
       if (alreadyApplied || isStale) {
         // Aplicado por outra requisicao concorrente ou telemetria mais antiga:
         // atualiza apenas presenca/uso da credencial, preserva o snapshot novo.
-        staleSkipped = true;
-        await tx.node.update({
-          where: { id: node.id },
-          data: { lastSeenAt: receivedAt },
-        });
+        await this.advanceLastSeen(tx, node.id, receivedAt);
         await tx.nodeCredential.update({
           where: { id: credential.id },
           data: { lastUsedAt: receivedAt },
         });
-        return;
+        return {
+          nodeStatus: lockedNode?.status ?? node.status,
+          staleSkipped: true,
+          openedAlertIds: [],
+        };
       }
+
+      // Heartbeats parciais precisam usar as linhas do snapshot que venceu a trava.
+      const nodeStatus = await this.resolveHeartbeatNodeStatus(tx, {
+        nodeId: node.id,
+        maintenanceMode: lockedNode?.maintenance_mode ?? node.maintenanceMode,
+        servicesProvided,
+        gatewaysProvided,
+        services,
+        gateways,
+      });
+
+      const priorLastSeen = lockedNode?.last_seen_at;
+      const lastSeenAt = priorLastSeen && priorLastSeen > receivedAt ? priorLastSeen : receivedAt;
 
       await tx.node.update({
         where: {
@@ -263,7 +268,7 @@ export class IngestService {
           pfsenseVersion: request.body.pfsense_version,
           agentVersion: request.body.agent_version ?? undefined,
           lastBootAt: estimatedBootAt,
-          lastSeenAt: receivedAt,
+          lastSeenAt,
           lastHeartbeatId: request.body.heartbeat_id,
           lastHeartbeatSentAt: sentAt,
           lastLatencyMs: latencyMs,
@@ -273,7 +278,7 @@ export class IngestService {
           diskPercent: request.body.disk_percent ?? null,
           schemaVersion: request.body.schema_version,
           customerCode: request.body.customer_code,
-          networkInterfacesJson: networkInterfaces,
+          networkInterfacesJson: request.body.interfaces === undefined ? undefined : networkInterfaces,
           status: nodeStatus,
           ...(updateCheckProvided
             ? {
@@ -308,14 +313,12 @@ export class IngestService {
             : {}),
           ...(normalizedBackupPolicy
             ? {
-                configBackupPolicyJson: toStoredBackupPolicyJson(
-                  normalizedBackupPolicy,
-                  sentAt,
-                  {
-                    last_checked_at:
-                      request.body.config_backup?.last_checked_at,
+                configBackupPolicyJson: mergeBackupSchedulePolicy(
+                  lockedNode?.config_backup_policy_json ?? null,
+                  toStoredBackupPolicyJson(normalizedBackupPolicy, sentAt, {
+                    last_checked_at: request.body.config_backup?.last_checked_at,
                     config_sha256: request.body.config_backup?.config_sha256,
-                  },
+                  }),
                 ),
               }
             : {}),
@@ -468,9 +471,14 @@ export class IngestService {
         syncGateways: gatewaysProvided,
       });
 
-      return [...heartbeatAlertIds, ...certificateAlertIds];
-    })) ?? [];
+      return {
+        nodeStatus,
+        staleSkipped: false,
+        openedAlertIds: [...heartbeatAlertIds, ...certificateAlertIds],
+      };
+    });
 
+    const { nodeStatus, staleSkipped, openedAlertIds } = outcome;
     this.notificationsDispatcher.dispatchForAlertIds(openedAlertIds);
 
     const heartbeatLogMessage =
@@ -488,7 +496,7 @@ export class IngestService {
       return {
         ok: true,
         server_time: receivedAt.toISOString(),
-        node_status: node.status,
+        node_status: nodeStatus,
       };
     }
 
@@ -642,15 +650,31 @@ export class IngestService {
     }
   }
 
-  private async resolveHeartbeatNodeStatus(input: {
-    nodeId: string;
-    maintenanceMode: boolean;
-    persistedStatus: NodeStatus;
-    servicesProvided: boolean;
-    gatewaysProvided: boolean;
-    services: HeartbeatServiceDto[];
-    gateways: HeartbeatGatewayDto[];
-  }): Promise<NodeStatus> {
+  private async advanceLastSeen(
+    db: Prisma.TransactionClient,
+    nodeId: string,
+    receivedAt: Date,
+  ): Promise<void> {
+    await db.node.updateMany({
+      where: {
+        id: nodeId,
+        OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: receivedAt } }],
+      },
+      data: { lastSeenAt: receivedAt },
+    });
+  }
+
+  private async resolveHeartbeatNodeStatus(
+    tx: Prisma.TransactionClient,
+    input: {
+      nodeId: string;
+      maintenanceMode: boolean;
+      servicesProvided: boolean;
+      gatewaysProvided: boolean;
+      services: HeartbeatServiceDto[];
+      gateways: HeartbeatGatewayDto[];
+    },
+  ): Promise<NodeStatus> {
     if (input.maintenanceMode) {
       return NodeStatus.maintenance;
     }
@@ -664,12 +688,12 @@ export class IngestService {
       const [persistedServices, persistedGateways] = await Promise.all([
         input.servicesProvided
           ? Promise.resolve([])
-          : this.prisma.nodeServiceStatus.findMany({
+          : tx.nodeServiceStatus.findMany({
               where: { nodeId: input.nodeId },
             }),
         input.gatewaysProvided
           ? Promise.resolve([])
-          : this.prisma.nodeGatewayStatus.findMany({
+          : tx.nodeGatewayStatus.findMany({
               where: { nodeId: input.nodeId },
             }),
       ]);
@@ -815,13 +839,15 @@ export class IngestService {
           severity: alert.severity,
           title: alert.title,
           description: alert.description,
-          status: AlertStatus.open,
           metadataJson: alert.metadataJson,
-          openedAt: wasResolved ? observedAt : existing.openedAt,
-          acknowledgedAt: wasResolved ? null : existing.acknowledgedAt,
-          acknowledgedBy: wasResolved ? null : existing.acknowledgedBy,
-          resolvedAt: null,
-          resolutionNote: null,
+          ...(wasResolved ? {
+            status: AlertStatus.open,
+            openedAt: observedAt,
+            acknowledgedAt: null,
+            acknowledgedBy: null,
+            resolvedAt: null,
+            resolutionNote: null,
+          } : {}),
         },
       });
 

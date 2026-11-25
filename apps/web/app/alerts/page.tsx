@@ -2,6 +2,7 @@ import { alertTitle, alertTypes } from '@/lib/alert-display';
 import Link from 'next/link';
 import { parsePage } from '@/lib/pagination';
 import { redirect } from 'next/navigation';
+import { ClientScopedFilterSelect, InventoryAlertsFilterForm } from '@/components/inventory-alerts-filter-form';
 import { AdvancedSection } from '@/components/advanced-section';
 import { PageHero } from '@/components/page-hero';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
@@ -116,8 +117,9 @@ export default async function AlertsPage({
   let session;
 
   try {
+    const sessionRequest = getSession();
     [session, alerts, filterOptions] = await Promise.all([
-      getSession(),
+      sessionRequest,
       getAlertsList({
         client_id: clientId,
         site_id: siteId,
@@ -128,7 +130,8 @@ export default async function AlertsPage({
         search,
         page, limit: perPage, sort_by: 'attention',
       }),
-      getNodesFilters(),
+      sessionRequest.then(({ permissions }) =>
+        hasPermission(permissions ?? [], 'firewalls.view') ? getNodesFilters() : null),
     ]);
   } catch (error) {
     handlePageApiError(error);
@@ -141,10 +144,7 @@ export default async function AlertsPage({
 
   const canAcknowledgeAlerts = hasPermission(permissions, 'alerts.acknowledge');
   const canResolveAlerts = hasPermission(permissions, 'alerts.resolve');
-
-  const sites = clientId
-    ? filterOptions.sites.filter((site) => site.client_id === clientId)
-    : filterOptions.sites;
+  const canViewFirewalls = hasPermission(permissions, 'firewalls.view');
 
   const returnToParams = new URLSearchParams();
   for (const [key, value] of Object.entries({
@@ -162,13 +162,13 @@ export default async function AlertsPage({
   }
   returnToParams.set('per_page', String(perPage));
   returnToParams.set('page', String(alerts.page));
+  if (!status) returnToParams.set('view', 'all');
   const returnTo = returnToParams.toString()
     ? `/alerts?${returnToParams.toString()}`
     : '/alerts';
   const openCount = alerts.totals.open;
   const acknowledgedCount = alerts.totals.acknowledged;
   const criticalCount = alerts.totals.critical_pending;
-  if (!status) returnToParams.set('view', 'all');
   const totalPages = alerts.total_pages;
   const currentPage = alerts.page;
   const visibleAlerts = alerts.items;
@@ -203,8 +203,12 @@ export default async function AlertsPage({
           { label: 'Resolvidos', value: String(alerts.totals.resolved), tone: 'success' },
           { label: 'Críticos resolvidos', value: String(alerts.totals.critical_resolved), tone: 'default' },
         ]}
-        aside={<RealtimeRefresh renderedAt={alerts.generated_at} />}
+        aside={<RealtimeRefresh renderedAt={alerts.generated_at} realtimeEnabled={canViewFirewalls} />}
       />
+
+      {params.alert_notice === 'changed' ? (
+        <Alert variant="warning">Este alerta já foi alterado. A lista foi atualizada.</Alert>
+      ) : null}
 
       <PageSection
         title="Filtros"
@@ -226,30 +230,47 @@ export default async function AlertsPage({
           <Link href={quickAlertHref()} aria-current={!status && !severity ? 'page' : undefined} className="rounded-lg border border-border px-3 py-2 text-sm text-fg-muted">Todos</Link>
         </div>
         <Card className="p-3">
-          <form className="flex flex-col gap-3">
+          <InventoryAlertsFilterForm
+            key={JSON.stringify([clientId, siteId])}
+            clientId={clientId}
+            className="flex flex-col gap-3"
+          >
             {!status ? <input type="hidden" name="view" value="all" /> : null}
             {nodeId ? <input type="hidden" name="node_id" value={nodeId} /> : null}
             <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center xl:gap-4">
-              <select
-                name="client_id" aria-label="Cliente"
-                defaultValue={clientId ?? ''}
-                className={formSelectClassName}
-              >
-                <option value="">Todos os clientes</option>
-                {filterOptions.clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name} ({client.node_count})
-                  </option>
-                ))}
-              </select>
-              <select name="site_id" aria-label="Local" defaultValue={siteId ?? ''} className={formSelectClassName}>
-                <option value="">Todos</option>
-                {sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.client_name} — {site.name}
-                  </option>
-                ))}
-              </select>
+              {filterOptions ? (
+                <>
+                  <select
+                    name="client_id" aria-label="Cliente"
+                    defaultValue={clientId ?? ''}
+                    className={formSelectClassName}
+                  >
+                    <option value="">Todos os clientes</option>
+                    {filterOptions.clients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.name} ({client.node_count})
+                      </option>
+                    ))}
+                  </select>
+                  <ClientScopedFilterSelect
+                    name="site_id"
+                    aria-label="Local"
+                    defaultValue={siteId}
+                    className={formSelectClassName}
+                    placeholder="Todos"
+                    options={filterOptions.sites.map((site) => ({
+                      id: site.id,
+                      clientId: site.client_id,
+                      label: `${site.client_name} — ${site.name}`,
+                    }))}
+                  />
+                </>
+              ) : (
+                <>
+                  {clientId ? <input type="hidden" name="client_id" value={clientId} /> : null}
+                  {siteId ? <input type="hidden" name="site_id" value={siteId} /> : null}
+                </>
+              )}
               <select name="status" aria-label="Status do alerta" defaultValue={status ?? ''} className={formSelectClassName}>
                 <option value="">Todos os status</option>
                 <option value="open">Aberto</option>
@@ -292,7 +313,7 @@ export default async function AlertsPage({
                 </select>
               </div>
             </AdvancedSection>
-          </form>
+          </InventoryAlertsFilterForm>
         </Card>
       </PageSection>
 
@@ -322,7 +343,9 @@ export default async function AlertsPage({
                       <h3 className="font-display text-base font-semibold text-fg">{alertTitle(alert.title)}</h3>
                       <p className="mt-1 max-w-3xl text-sm text-fg-muted">{alert.description}</p>
                       <p className="mt-2 text-xs text-fg-muted">
-                        <Link href={`/nodes/${alert.node.id}`} className="font-medium text-primary hover:underline">{alert.node.display_name ?? alert.node.hostname}</Link>
+                        {canViewFirewalls ? (
+                          <Link href={`/nodes/${alert.node.id}`} className="font-medium text-primary hover:underline">{alert.node.display_name ?? alert.node.hostname}</Link>
+                        ) : <span className="font-medium">{alert.node.display_name ?? alert.node.hostname}</span>}
                         {' · '}{alert.client.name} / {alert.site.name}{' · '}Registrado {formatRelativeAge(alert.opened_at)}
                       </p>
                     </div>
@@ -335,12 +358,14 @@ export default async function AlertsPage({
                         <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
                           Firewall
                         </p>
-                        <Link
-                          href={`/nodes/${alert.node.id}`}
-                          className="mt-2 block text-cyan-300 hover:text-cyan-200"
-                        >
-                          {alert.node.display_name ?? alert.node.hostname}
-                        </Link>
+                        {canViewFirewalls ? (
+                          <Link
+                            href={`/nodes/${alert.node.id}`}
+                            className="mt-2 block text-cyan-300 hover:text-cyan-200"
+                          >
+                            {alert.node.display_name ?? alert.node.hostname}
+                          </Link>
+                        ) : <p className="mt-2">{alert.node.display_name ?? alert.node.hostname}</p>}
                         <p className="mt-1 text-slate-500">{alert.node.node_uid}</p>
                       </div>
                       <div>

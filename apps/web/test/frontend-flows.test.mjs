@@ -106,6 +106,64 @@ test('alertas mostram somente ações autorizadas e preservam página/filtros', 
   }
 });
 
+test('reconhecer e resolver em Todos preserva filtros e página de alertas', async () => {
+  const mutations = [];
+  const queries = [];
+  const page = sourceLoader({
+    ...uiMocks,
+    'next/navigation': { redirect },
+    'next/cache': { revalidatePath: () => {} },
+    './api': {
+      acknowledgeAlert: async (id) => mutations.push(['acknowledge', id]),
+      resolveAlert: async (id, note) => mutations.push(['resolve', id, note]),
+    },
+    '@/lib/api': {
+      getSession: async () => ({ permissions: ['alerts.view', 'alerts.acknowledge', 'alerts.resolve'] }),
+      getNodesFilters: async () => ({ clients: [], sites: [] }),
+      getAlertsList: async (query) => {
+        queries.push(query);
+        return {
+          generated_at: '2026-11-04T00:00:00Z',
+          total: 30, page: 2, limit: 10, total_pages: 3,
+          totals: { open: 10, acknowledged: 10, resolved: 10, critical: 0 },
+          items: [alertFixture('alert-synthetic')],
+        };
+      },
+    },
+  })('app/alerts/page.tsx').default;
+  const filters = {
+    view: 'all', page: '2', per_page: '10', client_id: 'synthetic-client',
+    site_id: 'synthetic-site', node_id: 'synthetic-node', search: 'VPN',
+    type: 'service_down', severity: 'warning',
+  };
+  const tree = await page({ searchParams: Promise.resolve(filters) });
+  const next = elements(tree).find((element) => element.type === 'a' && textOf(element) === 'Próxima');
+  assert.deepEqual(Object.fromEntries(new URL(next.props.href, 'https://fixture.invalid').searchParams), { ...filters, page: '3' });
+
+  const actions = elements(tree).find((element) => element.type?.name === 'ActionForms');
+  const forms = elements(actions.type(actions.props)).filter((element) => element.type === 'form');
+  assert.equal(forms.length, 2);
+  for (const form of forms) {
+    const formData = new FormData();
+    for (const input of elements(form).filter((element) => element.type === 'input')) {
+      formData.set(input.props.name, input.props.value ?? 'Nota sintética');
+    }
+    let destination;
+    await assert.rejects(form.props.action(formData), (error) => {
+      destination = error.url;
+      return error.message === 'NEXT_REDIRECT';
+    });
+    const returned = Object.fromEntries(new URL(destination, 'https://fixture.invalid').searchParams);
+    assert.deepEqual(returned, filters);
+    await page({ searchParams: Promise.resolve(returned) });
+    assert.equal(queries.at(-1).status, undefined);
+  }
+  assert.deepEqual(mutations, [
+    ['acknowledge', 'alert-synthetic'],
+    ['resolve', 'alert-synthetic', 'Nota sintética'],
+  ]);
+});
+
 test('usuários sem gestão permanecem somente leitura e sessões são carregadas sob demanda', async () => {
   for (const canManageUsers of [false, true]) {
     const harness = hookHarness();

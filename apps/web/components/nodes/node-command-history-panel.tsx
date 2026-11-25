@@ -62,6 +62,7 @@ export function NodeCommandHistoryPanel({
   canCancelNodeReboot,
 }: Props) {
   const [history, setHistory] = useState(initialHistory);
+  const [confirmedCancellations, setConfirmedCancellations] = useState(() => new Set<string>());
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -95,6 +96,20 @@ export function NodeCommandHistoryPanel({
     return () => clearInterval(timer);
   }, [history.items, refresh]);
 
+  const items = history.items.map((item) => {
+    if (!confirmedCancellations.has(item.command_id) || item.status === 'cancelled') {
+      return item;
+    }
+
+    return {
+      ...item,
+      status: 'cancelled',
+      completed_at: null,
+      error_message: null,
+      progress: { phase: 'terminal' as const, is_active: false, is_terminal: true },
+    };
+  });
+
   const cancelPermissions = {
     backup: canCancelBackup,
     pfsense: canCancelPfsenseUpgrade,
@@ -123,14 +138,14 @@ export function NodeCommandHistoryPanel({
             </tr>
           </thead>
           <tbody>
-            {history.items.length === 0 ? (
+            {items.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                   Nenhum comando registrado para este firewall.
                 </td>
               </tr>
             ) : (
-              history.items.map((item) => (
+              items.map((item) => (
                 <tr key={item.command_id} className="border-b border-slate-800/80">
                   <td className="px-4 py-3 text-slate-200">
                     {commandTypeLabel(item.type)}
@@ -181,7 +196,10 @@ export function NodeCommandHistoryPanel({
                         onClick={() => {
                           startTransition(async () => {
                             try {
-                              await cancelNodeCommandAction(nodeId, item.command_id);
+                              const receipt = await cancelNodeCommandAction(nodeId, item.command_id);
+                              if (receipt.status === 'cancelled' && receipt.command_id === item.command_id) {
+                                setConfirmedCancellations((current) => new Set([...current, item.command_id]));
+                              }
                               await refresh();
                             } catch (err) {
                               setError(
