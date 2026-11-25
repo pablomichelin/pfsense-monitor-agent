@@ -28,6 +28,7 @@ const ACTIVE_STATUSES: NodeCommandStatus[] = [
 export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CommandWorkerService.name);
   private timer?: NodeJS.Timeout;
+  private isRunning = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -61,29 +62,29 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   async runCycle(reason: 'startup' | 'interval' | 'manual'): Promise<void> {
-    if (!appConfig.commands.workerEnabled) {
+    if (!appConfig.commands.workerEnabled || this.isRunning) {
       return;
     }
 
+    this.isRunning = true;
     const lockTtlMs = appConfig.commands.workerLockTtlSeconds * 1000;
-    let acquired = false;
-
     try {
-      acquired = await this.lockService.tryAcquire(WORKER_LOCK_KEY, lockTtlMs);
+      const acquired = await this.lockService.tryAcquire(WORKER_LOCK_KEY, lockTtlMs);
       if (!acquired) {
         return;
       }
-
-      const reconciledBatchIds = await this.processRetries();
-      await this.processDeferredCommands();
-      await this.reconcileOpenBatches(reconciledBatchIds);
-      this.logger.debug(`command worker cycle completed reason=${reason}`);
+      try {
+        const reconciledBatchIds = await this.processRetries();
+        await this.processDeferredCommands();
+        await this.reconcileOpenBatches(reconciledBatchIds);
+        this.logger.debug(`command worker cycle completed reason=${reason}`);
+      } finally {
+        await this.lockService.release(WORKER_LOCK_KEY);
+      }
     } catch (error) {
       this.logger.warn(`command worker cycle failed: ${String(error)}`);
     } finally {
-      if (acquired) {
-        await this.lockService.release(WORKER_LOCK_KEY);
-      }
+      this.isRunning = false;
     }
   }
 

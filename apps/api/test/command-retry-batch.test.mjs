@@ -207,3 +207,37 @@ test('worker preserves a changed deferral when another writer updates it after s
 
   assert.deepEqual(state.commands[0].nextRetryAt, later);
 });
+
+test('one worker instance keeps a slow cycle exclusive until its lease is released', async () => {
+  const { db } = fixture();
+  let enterCycle;
+  let releaseCycle;
+  const entered = new Promise((resolve) => { enterCycle = resolve; });
+  const blocked = new Promise((resolve) => { releaseCycle = resolve; });
+  let cycles = 0;
+  db.jobBatch.findMany = async () => {
+    cycles += 1;
+    if (cycles === 1) {
+      enterCycle();
+      await blocked;
+    }
+    return [];
+  };
+
+  const events = [];
+  const worker = new CommandWorkerService(db, {
+    tryAcquire: async () => { events.push('acquire'); return true; },
+    release: async () => { events.push('release'); },
+  }, {});
+  const first = worker.runCycle('startup');
+  await entered;
+  await worker.runCycle('interval');
+  const duringFirstCycle = [...events];
+  releaseCycle();
+  await first;
+  await worker.runCycle('manual');
+
+  assert.deepEqual(duringFirstCycle, ['acquire']);
+  assert.deepEqual(events, ['acquire', 'release', 'acquire', 'release']);
+  assert.equal(cycles, 2);
+});
