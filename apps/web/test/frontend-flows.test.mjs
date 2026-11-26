@@ -514,6 +514,61 @@ test('detalhe do firewall distingue falha de carga de histórico vazio/desligado
   }
 });
 
+test('editar cadastro só envia a URL de acesso alterada ou explicitamente limpa', async () => {
+  const calls = [];
+  const { updateNodeAction } = sourceLoader({
+    './api': { updateNode: async (id, changes) => calls.push({ id, changes }) },
+    'next/cache': { revalidatePath: () => {} },
+    'next/navigation': { redirect },
+    'next/dist/client/components/redirect-error': { isRedirectError: (error) => error.message === 'NEXT_REDIRECT' },
+  })('lib/admin.ts');
+  const { NodeDetailConfigTab } = sourceLoader({ ...uiMocks,
+    '@/lib/admin': { updateNodeAction },
+    '@/components/rotate-secret-button': { RotateSecretButton: 'rotate-secret' },
+    '@/components/nodes/node-fleet-metadata-form': { NodeFleetMetadataForm: 'fleet-metadata' },
+    '@/components/nodes/fleet-org-badges': { CriticalityBadge: 'criticality', TagChipList: 'tags' },
+    '@/components/ui/page-section': { PageSection: 'section' },
+    '@/components/nodes/node-detail-ui': { BootstrapField: 'bootstrap-field', CommandBlock: 'command-block' },
+  })('components/nodes/node-detail-config-tab.tsx');
+  const automatic = 'https://192.0.2.10:9999';
+  const changed = 'https://192.0.2.11:9443';
+  const tree = NodeDetailConfigTab({
+    node: { id: 'fw1', hostname: 'read-only', tags: [], remote_access_url: automatic },
+    canManageNode: true, bootstrap: null, heartbeatMode: 'normal', configBackupInstallMode: 'default',
+  });
+  const form = elements(tree).find((element) => element.type === 'form');
+  const inputs = elements(form).filter((element) => element.type === 'input');
+  const original = inputs.find((input) => input.props.name === 'original_remote_access_url');
+  assert.equal(original.props.hidden, true);
+  assert.equal(original.props.defaultValue, automatic);
+  assert.equal(inputs.find((input) => input.props.name === 'remote_access_url').props.defaultValue, automatic);
+  assert.ok(!inputs.some((input) => input.props.name === 'hostname'));
+
+  for (const [baseline, submitted, expected] of [
+    [original.props.defaultValue, ` ${automatic} `, undefined],
+    [automatic, ` ${changed} `, changed],
+    [automatic, ' ', ''],
+    ['', '', undefined],
+    [undefined, ` ${changed} `, changed],
+    [undefined, '', ''],
+    [automatic, undefined, undefined],
+  ]) {
+    const data = new FormData();
+    data.set('node_id', 'fw1');
+    data.set('display_name', 'New name');
+    data.set('hostname', 'legacy-read-only');
+    if (baseline !== undefined) data.set('original_remote_access_url', baseline);
+    if (submitted !== undefined) data.set('remote_access_url', submitted);
+    await assert.rejects(form.props.action(data), (error) => error.url === '/nodes/fw1?updated=1');
+    const { id, changes } = calls.at(-1);
+    assert.equal(id, 'fw1');
+    assert.equal(changes.display_name, 'New name');
+    assert.equal(Object.hasOwn(changes, 'hostname'), false);
+    assert.equal(Object.hasOwn(changes, 'remote_access_url'), expected !== undefined);
+    assert.equal(changes.remote_access_url, expected);
+  }
+});
+
 test('falha do histórico preserva snapshot e serviços na aba de métricas', () => {
   const { NodeDetailMetricsTab } = sourceLoader({ ...uiMocks,
     '@/components/nodes/node-detail-ui': { Metric: 'metric' },

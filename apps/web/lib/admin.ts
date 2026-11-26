@@ -534,13 +534,22 @@ export async function updateNodeAction(formData: FormData): Promise<void> {
     return value ? value : undefined;
   };
 
+  const changes: Parameters<typeof updateNode>[1] = {
+    display_name: normalizeOptional('display_name'),
+    ha_role: normalizeOptional('ha_role'),
+  };
+  const submittedUrl = formData.get('remote_access_url');
+  const originalUrl = formData.get('original_remote_access_url');
+  // Submissions from an older form have no original value to compare against.
+  if (typeof submittedUrl === 'string') {
+    const url = submittedUrl.trim();
+    if (typeof originalUrl !== 'string' || url !== originalUrl.trim()) {
+      changes.remote_access_url = url;
+    }
+  }
+
   try {
-    await updateNode(nodeId, {
-      hostname: normalizeOptional('hostname'),
-      display_name: normalizeOptional('display_name'),
-      remote_access_url: String(formData.get('remote_access_url') ?? '').trim(),
-      ha_role: normalizeOptional('ha_role'),
-    });
+    await updateNode(nodeId, changes);
     revalidatePath(`/nodes/${nodeId}`);
     revalidatePath('/nodes');
     revalidatePath('/dashboard');

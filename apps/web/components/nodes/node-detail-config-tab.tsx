@@ -49,6 +49,7 @@ export function NodeDetailConfigTab({
     targetType: 'node',
     targetId: node.id,
   });
+  const initialRemoteAccessUrl = node.remote_access_url ?? '';
   const pfSensePrecheckBlock = bootstrap
     ? buildPfSensePrecheckBlock({
         controllerUrl: bootstrap.release.controller_url,
@@ -97,7 +98,6 @@ export function NodeDetailConfigTab({
           <Card>
             <form action={updateNodeAction} className="space-y-3">
               <input type="hidden" name="node_id" value={node.id} />
-              <input type="hidden" name="hostname" value={node.hostname} />
               <input
                 type="text"
                 name="display_name"
@@ -123,10 +123,18 @@ export function NodeDetailConfigTab({
                 <p className="text-xs uppercase tracking-wider text-slate-500">
                   IP de acesso direto web
                 </p>
+                {/* Use the same uncontrolled text defaults for both fields when the detail refreshes. */}
+                <input
+                  type="text"
+                  hidden
+                  readOnly
+                  name="original_remote_access_url"
+                  defaultValue={initialRemoteAccessUrl}
+                />
                 <input
                   type="text"
                   name="remote_access_url"
-                  defaultValue={node.remote_access_url ?? ''}
+                  defaultValue={initialRemoteAccessUrl}
                   placeholder="https://177.38.158.46:9999"
                   className="mt-1.5 w-full rounded-lg h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                 />
