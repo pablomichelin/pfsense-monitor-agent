@@ -7,11 +7,25 @@ import { PageHero } from '@/components/page-hero';
 import { Alert, Card, PageSection } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
-import { getDashboardFleet, getNodesList, getSession, getAlertsList } from '@/lib/api';
+import { ApiError, getDashboardFleet, getNodesList, getSession, getAlertsList } from '@/lib/api';
 import { isClientRole } from '@/lib/client-profile';
 import { RealtimeRefresh } from '@/components/realtime-refresh';
 
 export const dynamic = 'force-dynamic';
+
+async function getAttentionNodes(status: 'offline' | 'degraded') {
+  try {
+    const result = await getNodesList({ status, sort_by: 'name', sort_order: 'asc', limit: 6 });
+    return result.items;
+  } catch (error) {
+    const statusCode = error instanceof ApiError ? error.status : undefined;
+    if (error instanceof TypeError || statusCode === 408 || statusCode === 429 ||
+        (statusCode !== undefined && statusCode >= 500)) {
+      return null;
+    }
+    throw error;
+  }
+}
 
 export default async function DashboardPage() {
   let fleet;
@@ -22,8 +36,8 @@ export default async function DashboardPage() {
   try {
     [fleet, offlineNodes, degradedNodes, session] = await Promise.all([
       getDashboardFleet(),
-      getNodesList({ status: 'offline', sort_by: 'name', sort_order: 'asc', limit: 6 }),
-      getNodesList({ status: 'degraded', sort_by: 'name', sort_order: 'asc', limit: 6 }),
+      getAttentionNodes('offline'),
+      getAttentionNodes('degraded'),
       getSession(),
     ]);
   } catch (error) {
@@ -32,7 +46,8 @@ export default async function DashboardPage() {
 
   const isClientProfile = isClientRole(session.user.role);
 
-  const attentionNodes = [...offlineNodes.items, ...degradedNodes.items].slice(0, 6);
+  const attentionUnavailable = offlineNodes === null || degradedNodes === null;
+  const attentionNodes = [...(offlineNodes ?? []), ...(degradedNodes ?? [])].slice(0, 6);
   const attentionSummaries = new Map(await Promise.all(attentionNodes.map(async (node) => {
     if (!hasPermission(session.permissions ?? [], 'alerts.view')) return [node.id, null] as const;
     try {
@@ -89,12 +104,19 @@ export default async function DashboardPage() {
           </div>
         }
       >
+        {totalAttention > 0 && attentionUnavailable ? (
+          <Alert variant="warning">
+            Parte da lista de firewalls está temporariamente indisponível. Há {totalAttention} firewall(s) offline ou degradado(s).
+          </Alert>
+        ) : null}
         {totalAttention === 0 ? (
           <Alert variant="success">
             Nenhum firewall offline ou degradado no momento.
           </Alert>
         ) : attentionNodes.length === 0 ? (
-          <Alert variant="warning">Há {totalAttention} firewall(s) offline ou degradado(s). Abra o inventário para consultar os equipamentos.</Alert>
+          attentionUnavailable ? null : (
+            <Alert variant="warning">Há {totalAttention} firewall(s) offline ou degradado(s). Abra o inventário para consultar os equipamentos.</Alert>
+          )
         ) : (
           <HotZoneExpandableList
             nodes={attentionNodes.map((node) => ({

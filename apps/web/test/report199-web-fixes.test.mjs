@@ -74,6 +74,43 @@ test('F04 dashboard requests offline/degraded before limiting attention results'
   assert.ok(!textOf(tree).includes('Nenhum firewall offline'));
 });
 
+test('dashboard keeps fleet totals and the available attention rows during a partial outage', async () => {
+  class ApiError extends Error {
+    constructor(status) { super('synthetic request failure'); this.status = status; }
+  }
+  let status = 503;
+  const offline = { id: 'qa-offline', hostname: 'qa-offline', effective_status: 'offline' };
+  const page = sourceLoader({
+    ...uiMocks,
+    '@/components/dashboard/dashboard-kpi-grid': { DashboardKpiGrid: 'kpis' },
+    '@/components/dashboard/fleet-version-matrix': { FleetVersionMatrix: 'versions' },
+    '@/components/hot-zone-expandable-list': { HotZoneExpandableList: 'hot-zone' },
+    '@/lib/client-profile': { isClientRole: () => false },
+    '@/lib/handle-page-api-error': { handlePageApiError: (error) => { throw error; } },
+    '@/lib/api': {
+      ApiError,
+      getSession: async () => ({ user: { role: 'admin' } }),
+      getDashboardFleet: async () => ({
+        generated_at: '2026-11-02',
+        totals: { offline: 1, degraded: 1 },
+        version_matrix: { pfsense: [], package: [] },
+        compliance: { package_target_version: null },
+      }),
+      getNodesList: async ({ status: filter }) => {
+        if (filter === 'degraded') throw new ApiError(status);
+        return { items: [offline] };
+      },
+    },
+  })('app/dashboard/page.tsx').default;
+  const tree = await page();
+  assert.equal(elements(tree).find((element) => element.type === 'kpis').props.fleet.totals.degraded, 1);
+  assert.equal(elements(tree).find((element) => element.type === 'hot-zone').props.nodes[0].id, offline.id);
+  assert.match(textOf(tree), /Parte da lista de firewalls está temporariamente indisponível/);
+  assert.doesNotMatch(textOf(tree), /Nenhum firewall offline/);
+  status = 403;
+  await assert.rejects(page, (error) => error instanceof ApiError && error.status === 403);
+});
+
 test('F05 detail with view-only permission never requests backups or tags', async () => {
   const calls = [];
   const node = { id: 'node', hostname: 'lab', node_uid: 'lab-uid', effective_status: 'online',
