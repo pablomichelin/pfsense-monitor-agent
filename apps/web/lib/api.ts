@@ -1444,6 +1444,7 @@ export async function getAuditLogs(query?: {
   result?: string;
   from?: string;
   to?: string;
+  to_before?: string;
   actor_email?: string;
   limit?: number;
   offset?: number;
@@ -1467,6 +1468,9 @@ export async function getAuditLogs(query?: {
   if (query?.to) {
     params.set('to', query.to);
   }
+  if (query?.to_before) {
+    params.set('to_before', query.to_before);
+  }
   if (query?.actor_email) {
     params.set('actor_email', query.actor_email);
   }
@@ -1477,8 +1481,17 @@ export async function getAuditLogs(query?: {
     params.set('offset', String(query.offset));
   }
 
-  const suffix = params.toString() ? `?${params.toString()}` : '';
-  return apiFetch<AuditLogsResponse>(`/api/v1/admin/audit${suffix}`);
+  const fetchAudit = () => apiFetch<AuditLogsResponse>(`/api/v1/admin/audit?${params.toString()}`);
+  try {
+    return await fetchAudit();
+  } catch (error) {
+    if (!query?.to_before || !(error instanceof ApiError) || error.status !== 400 ||
+        !error.message.includes('property to_before should not exist')) throw error;
+    // Older API images support only an inclusive timestamp.
+    params.delete('to_before');
+    params.set('to', new Date(Date.parse(query.to_before) - 1).toISOString());
+    return fetchAudit();
+  }
 }
 
 export async function acknowledgeAlert(id: string): Promise<{

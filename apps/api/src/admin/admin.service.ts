@@ -928,7 +928,7 @@ export class AdminService {
       };
     }
 
-    if (query.from || query.to) {
+    if (query.from || query.to || query.to_before) {
       where.createdAt = {};
       if (query.from) {
         where.createdAt.gte = new Date(query.from);
@@ -939,6 +939,9 @@ export class AdminService {
           toDate.setHours(23, 59, 59, 999);
         }
         where.createdAt.lte = toDate;
+      }
+      if (query.to_before) {
+        where.createdAt.lt = new Date(query.to_before);
       }
     }
 

@@ -228,7 +228,7 @@ export default async function AuditPage({
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-300">De</span>
                 <input
-                  type="date"
+                  type={fromParam?.includes('T') ? 'text' : 'date'}
                   name="from"
                   defaultValue={fromParam ?? ''}
                   className={`${inputClassName} w-full`}
@@ -238,7 +238,7 @@ export default async function AuditPage({
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-300">Até</span>
                 <input
-                  type="date"
+                  type={toParam?.includes('T') ? 'text' : 'date'}
                   name="to"
                   defaultValue={toParam ?? ''}
                   className={`${inputClassName} w-full`}
@@ -265,7 +265,7 @@ export default async function AuditPage({
               Para período personalizado, selecione &quot;Personalizado&quot; e informe as datas De/Até no horário de Brasília.
             </p>
             {bounds === null ? (
-              <Alert variant="error">Informe datas válidas e mantenha a data inicial anterior ou igual à final.</Alert>
+              <Alert variant="error">Informe datas válidas, com fuso para horários exatos, e mantenha a data inicial anterior ou igual à final.</Alert>
             ) : null}
 
             <div className="flex flex-wrap items-center gap-2">

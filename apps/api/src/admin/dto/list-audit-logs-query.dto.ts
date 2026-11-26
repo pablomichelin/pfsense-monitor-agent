@@ -39,6 +39,10 @@ export class ListAuditLogsQueryDto {
   to?: string;
 
   @IsOptional()
+  @IsDateString()
+  to_before?: string;
+
+  @IsOptional()
   @IsString()
   @MaxLength(120)
   actor_email?: string;

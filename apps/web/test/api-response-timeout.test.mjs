@@ -15,6 +15,27 @@ function loadApi() {
   }
 }
 
+test('audit dates fall back to an inclusive limit only for an older API', async (t) => {
+  const requests = [];
+  const unsupported = { message: ['property to_before should not exist'] };
+  t.mock.method(globalThis, 'fetch', async (rawUrl) => {
+    const url = new URL(rawUrl);
+    requests.push(url);
+    return requests.length === 1
+      ? Response.json(unsupported, { status: 400 })
+      : Response.json({ items: [] });
+  });
+  const { getAuditLogs } = loadApi();
+  const bounds = { from: '2026-11-25T03:00:00.000Z', to_before: '2026-11-26T03:00:00.000Z' };
+  assert.deepEqual(await getAuditLogs({ action: 'auth.', ...bounds }), { items: [] });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].searchParams.get('to_before'), bounds.to_before);
+  assert.equal(requests[1].searchParams.has('to_before'), false);
+  assert.equal(requests[1].searchParams.get('to'), '2026-11-26T02:59:59.999Z');
+  assert.equal(requests[1].searchParams.get('from'), bounds.from);
+  assert.equal(requests[1].searchParams.get('action'), 'auth.');
+});
+
 for (const status of [200, 503]) {
   test(`API deadline covers a stalled body after HTTP ${status} headers`, async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });

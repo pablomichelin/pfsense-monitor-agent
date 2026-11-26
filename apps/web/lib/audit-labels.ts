@@ -220,16 +220,19 @@ function parseAuditDate(value: string | undefined, endOfDay: boolean): Date | un
     const day = new Date(`${input}T00:00:00.000Z`);
     if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== input) return undefined;
     const boundary = endOfDay ? new Date(day.getTime() + DAY_MS) : day;
-    return new Date(displayDayStart(boundary) - (endOfDay ? 1 : 0));
+    return new Date(displayDayStart(boundary));
   }
   const instant = new Date(input);
-  return /^\d{4}-\d{2}-\d{2}T/.test(input) && Number.isFinite(instant.getTime()) ? instant : undefined;
+  return /^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:?\d{2})$/i.test(input) &&
+    Number.isFinite(instant.getTime()) ? instant : undefined;
 }
 
-export function resolveAuditDateBounds(from?: string, to?: string): { from?: string; to?: string } | null {
+export function resolveAuditDateBounds(from?: string, to?: string): { from?: string; to?: string; to_before?: string } | null {
   const start = parseAuditDate(from, false);
   const end = parseAuditDate(to, true);
+  const exclusiveEnd = /^\d{4}-\d{2}-\d{2}$/.test(to?.trim() ?? '');
   if ((from?.trim() && !start) || (to?.trim() && !end) ||
-      (start && end && start > end)) return null;
+      (start && end && (exclusiveEnd ? start >= end : start > end))) return null;
+  if (exclusiveEnd) return { from: start?.toISOString(), to_before: end?.toISOString() };
   return { from: start?.toISOString(), to: end?.toISOString() };
 }

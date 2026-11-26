@@ -147,28 +147,39 @@ test('audit respects the end of a full page and clamps malformed or unsupported 
 test('audit custom calendar days match Brasília and invalid periods stay on the form', async () => {
   const { resolveAuditDateBounds } = sourceLoader()('lib/audit-labels.ts');
   assert.deepEqual(resolveAuditDateBounds('2026-11-25', '2026-11-25'), {
-    from: '2026-11-25T03:00:00.000Z', to: '2026-11-26T02:59:59.999Z',
+    from: '2026-11-25T03:00:00.000Z', to_before: '2026-11-26T03:00:00.000Z',
   });
   assert.deepEqual(resolveAuditDateBounds('2018-11-04', '2018-11-04'), {
-    from: '2018-11-04T03:00:00.000Z', to: '2018-11-05T01:59:59.999Z',
+    from: '2018-11-04T03:00:00.000Z', to_before: '2018-11-05T02:00:00.000Z',
   });
   assert.equal(resolveAuditDateBounds('2026-02-30'), null);
+  assert.equal(resolveAuditDateBounds('2026-11-25T15:00:00'), null);
   assert.deepEqual(resolveAuditDateBounds(undefined, '2026-11-25T15:00:00Z'), {
     from: undefined, to: '2026-11-25T15:00:00.000Z',
   });
 
+  const filters = [];
   const page = sourceLoader({
     ...uiMocks,
     '@/components/audit-event-row': { AuditEventRow: 'audit-event' },
     '@/lib/handle-page-api-error': { handlePageApiError: (error) => { throw error; } },
     '@/lib/api': {
       getSession: async () => ({ permissions: ['audit.view'] }),
-      getAuditLogs: async () => assert.fail('an invalid date range must not start a query'),
+      getAuditLogs: async (query) => {
+        filters.push(query);
+        return { items: [], has_more: false };
+      },
     },
   })('app/audit/page.tsx').default;
   const tree = await page({ searchParams: Promise.resolve({ period: 'custom', from: '2026-11-26', to: '2026-11-25' }) });
+  assert.equal(filters.length, 0);
   assert.match(textOf(tree), /Informe datas válidas/);
   assert.doesNotMatch(textOf(tree), /Nenhum evento encontrado/);
+  const withInstant = await page({ searchParams: Promise.resolve({ to: '2026-11-25T15:00:00Z' }) });
+  const toInput = elements(withInstant).find((element) => element.type === 'input' && element.props.name === 'to');
+  assert.equal(toInput.props.type, 'text');
+  assert.equal(toInput.props.defaultValue, '2026-11-25T15:00:00Z');
+  assert.equal(filters[0].to, '2026-11-25T15:00:00.000Z');
 });
 
 test('F05 detail with view-only permission never requests backups or tags', async () => {
