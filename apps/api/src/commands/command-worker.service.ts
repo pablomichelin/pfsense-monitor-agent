@@ -258,9 +258,7 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
             retryCount: 0,
             nextRetryAt: { gt: now },
           },
-          orderBy: {
-            nextRetryAt: 'asc',
-          },
+          orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
           take: definition.maxConcurrentGlobal - activeGlobal,
         });
 
@@ -274,7 +272,8 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
               nextRetryAt: command.nextRetryAt,
             },
             data: {
-              nextRetryAt: null,
+              // The warning timer starts when the attempt becomes eligible.
+              nextRetryAt: now,
             },
           });
         }

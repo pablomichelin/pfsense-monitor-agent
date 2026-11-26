@@ -180,8 +180,9 @@ test('worker schedules the eligible failure after fifty older blocked failures',
   assert.equal(state.audit[0].action, 'backup.config.request_retry_scheduled');
 });
 
-test('worker frees a capacity-deferred upgrade without bypassing a retry backoff', async () => {
+test('worker frees a capacity-deferred upgrade without bypassing a retry backoff', async ({ mock }) => {
   const now = Date.now();
+  mock.timers.enable({ apis: ['Date'], now });
   const retryAt = new Date(now + 180_000);
   const queued = {
     type: 'package_upgrade', status: 'pending', expiresAt: new Date(now + 600_000),
@@ -193,7 +194,7 @@ test('worker frees a capacity-deferred upgrade without bypassing a retry backoff
 
   await new CommandWorkerService(db, {}, {}).processDeferredCommands();
 
-  assert.deepEqual(state.commands.map((row) => row.nextRetryAt), [retryAt, null, expired.nextRetryAt]);
+  assert.deepEqual(state.commands.map((row) => row.nextRetryAt), [retryAt, new Date(now), expired.nextRetryAt]);
 });
 
 test('worker preserves a changed deferral when another writer updates it after selection', async () => {

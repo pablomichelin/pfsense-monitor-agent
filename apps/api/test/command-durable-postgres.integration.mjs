@@ -197,9 +197,15 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
     }
   });
 
-  await runCase('queued upgrade accounts for occupied slots without deferring expired rows', async () => {
+  await runCase('queued upgrade preserves priority with occupied slots and records capacity release time', async t => {
+    const { appConfig } = appRequire('/app/dist/config/app-config.js');
+    const wasEnabled = appConfig.commands.workerEnabled;
+    appConfig.commands.workerEnabled = true;
+    t.after(() => { appConfig.commands.workerEnabled = wasEnabled; });
     const running = await fixture({ type: 'pfsense_upgrade', status: 'running', payloadJson: {} });
-    const waiting = await fixture({ type: 'pfsense_upgrade', payloadJson: {} });
+    const waiting = await fixture({
+      type: 'pfsense_upgrade', payloadJson: {}, requestedAt: new Date(Date.now() - 180_000),
+    });
     const expired = await fixture({
       type: 'pfsense_upgrade', payloadJson: {}, expiresAt: new Date(Date.now() - 1000),
     });
@@ -211,6 +217,40 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
     assert.ok(deferred.nextRetryAt.getTime() >= started + 30_000);
     assert.equal((await b.nodeCommand.findUnique({ where: { id: running.command.id } })).nextRetryAt, null);
     assert.equal((await b.nodeCommand.findUnique({ where: { id: expired.command.id } })).nextRetryAt, null);
+    await a.nodeCommand.update({ where: { id: expired.command.id }, data: { status: 'expired' } });
+
+    await a.nodeCommand.update({
+      where: { id: running.command.id },
+      data: { status: 'succeeded', completedAt: new Date() },
+    });
+    const newcomer = await a.node.create({
+      data: { siteId: site.id, nodeUid: randomUUID(), hostname: 'newer.synthetic.invalid' },
+    });
+    const queued = await sb.orchestrator.enqueueCommand({
+      nodeId: newcomer.id, type: 'pfsense_upgrade', payloadJson: { target_version: '2.8.1' },
+    });
+    assert.ok(queued.nextRetryAt > new Date(), 'a later request must respect earlier pending first attempts');
+    await assert.rejects(ack(sb, { node: newcomer, command: queued }, 0, 'picked_up'), /scheduled for later/);
+
+    const releaseStarted = Date.now();
+    await worker.processDeferredCommands();
+    const ready = await b.nodeCommand.findUnique({ where: { id: waiting.command.id } });
+    assert.ok(ready.nextRetryAt instanceof Date, 'capacity release must retain its effective ready time');
+    assert.ok(ready.nextRetryAt.getTime() >= releaseStarted);
+    assert.ok(ready.nextRetryAt.getTime() <= Date.now());
+    const warn = t.mock.method(sb.service.logger, 'warn', () => {});
+    await sb.service.warnStuckPendingCommands();
+    assert.equal(warn.mock.callCount(), 0, 'newly eligible commands are not stuck');
+    await a.nodeCommand.update({
+      where: { id: waiting.command.id },
+      data: { nextRetryAt: new Date(Date.now() - 91_000) },
+    });
+    await sb.service.warnStuckPendingCommands();
+    assert.equal(warn.mock.callCount(), 1);
+    const age = Number(/still pending after (\d+)s/.exec(warn.mock.calls[0].arguments[0])?.[1]);
+    assert.ok(age >= 91 && age < 180);
+    assert.equal((await ack(sb, waiting, 0, 'picked_up')).status, 'picked_up');
+    assert.equal((await b.nodeCommand.findUnique({ where: { id: queued.id } })).status, 'pending');
   });
 
   await runCase('upgrade capacity reserves one slot and respects a scheduled pickup time', async () => {

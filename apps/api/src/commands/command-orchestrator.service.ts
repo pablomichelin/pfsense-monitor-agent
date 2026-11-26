@@ -519,7 +519,14 @@ export class CommandOrchestratorService {
           status: {
             in: ACTIVE_STATUSES,
           },
-          OR: [{ nextRetryAt: null }, { nextRetryAt: { lte: now } }],
+          expiresAt: { gt: now },
+          OR: [
+            { status: { in: [NodeCommandStatus.picked_up, NodeCommandStatus.running] } },
+            // A capacity delay on a first attempt preserves its place in the queue.
+            { status: NodeCommandStatus.pending, retryCount: 0 },
+            { nextRetryAt: null },
+            { nextRetryAt: { lte: now } },
+          ],
         },
       });
 
