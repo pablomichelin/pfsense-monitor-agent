@@ -112,7 +112,7 @@ export default async function BootstrapPage({
       filterOptions = inventory.filters;
     }
   } catch (error) {
-    handlePageApiError(error);
+    handlePageApiError(error, { pathname: '/bootstrap', searchParams: params });
   }
 
   const items = nodes.items.map((node) => ({

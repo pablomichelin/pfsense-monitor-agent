@@ -180,7 +180,12 @@ export function decodeNodeCursor(value: string | undefined, filter: string): Nod
       || typeof a.client?.name !== 'string' || !Number.isSafeInteger(a.open_alerts) || a.open_alerts < 0) throw new Error();
     return c as NodeCursor;
   } catch {
-    throw new BadRequestException('Cursor inválido ou incompatível com os filtros. Reinicie a listagem.');
+    throw new BadRequestException({
+      statusCode: 400,
+      error: 'Bad Request',
+      code: 'INVALID_NODE_CURSOR',
+      message: 'Cursor inválido ou incompatível com os filtros. Reinicie a listagem.',
+    });
   }
 }
 

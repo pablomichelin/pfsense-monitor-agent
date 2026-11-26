@@ -106,7 +106,7 @@ export default async function NodesPage({
         .catch(() => null),
     ]);
   } catch (error) {
-    handlePageApiError(error);
+    handlePageApiError(error, { pathname: '/nodes', searchParams: params });
   }
 
   const isClientProfile = isClientRole(session.user.role);

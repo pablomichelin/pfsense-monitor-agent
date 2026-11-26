@@ -15,6 +15,34 @@ test('F03 login next is always same-origin and cannot reach an external host', (
   }
 });
 
+test('node list cursor errors return to page one with the rest of the URL intact', () => {
+  class ApiError extends Error {
+    constructor(message, status, code) { super(message); this.status = status; this.code = code; }
+  }
+  const { handlePageApiError } = sourceLoader({
+    '@/lib/api': { ApiError },
+    'next/navigation': { redirect: (url) => { throw Object.assign(new Error('Redirect'), { url }); } },
+  })('lib/handle-page-api-error.ts');
+  const state = {
+    pathname: '/bootstrap',
+    searchParams: { cursor: 'expired', node_id: 'target-qa', search: 'QA site', bucket: 'active', heartbeat_mode: 'light' },
+  };
+  const check = expected => error => {
+    assert.equal(error.url, expected);
+    return true;
+  };
+  const old = new ApiError('Cursor inválido ou incompatível com os filtros. Reinicie a listagem.', 400);
+  const current = new ApiError('Synthetic status', 400, 'INVALID_NODE_CURSOR');
+  assert.throws(() => handlePageApiError(old, state), check('/bootstrap?node_id=target-qa&search=QA+site&bucket=active&heartbeat_mode=light'));
+  assert.throws(() => handlePageApiError(current, {
+    pathname: '/nodes', searchParams: { cursor: 'old', sort_by: 'status', search: 'QA' },
+  }), check('/nodes?sort_by=status&search=QA'));
+  assert.throws(() => handlePageApiError(current, { ...state, searchParams: {} }), error => error === current);
+  const other = new ApiError('invalid fields', 400);
+  assert.throws(() => handlePageApiError(other, state), error => error === other);
+  assert.throws(() => handlePageApiError(new ApiError('denied', 403), state), check('/conta?access=denied'));
+});
+
 function bootstrapFixture(items, selectedId, cursor) {
   const calls = [];
   const page = sourceLoader({

@@ -97,7 +97,15 @@ test('limits, legacy shape, empty result and cursors bound to actor/filter/order
   assert.equal(first.items.length, 500); assert.equal(first.total, 1327); assert.equal(typeof first.generated_at, 'string');
   assert.equal(first.previous_cursor, null);
   for (const limit of [0, -1, 1.2, 1001, Infinity, NaN]) await assert.rejects(service.listNodes(actor, { limit }), /limit/);
-  for (const changed of [{ search: 'else' }, { sort_by: 'status' }, { sort_order: 'desc' }]) await assert.rejects(service.listNodes(actor, { ...changed, cursor: first.next_cursor }), /Cursor/);
+  for (const changed of [{ search: 'else' }, { sort_by: 'status' }, { sort_order: 'desc' }]) {
+    await assert.rejects(service.listNodes(actor, { ...changed, cursor: first.next_cursor }), error => {
+      assert.deepEqual(error.getResponse(), {
+        statusCode: 400, error: 'Bad Request', code: 'INVALID_NODE_CURSOR',
+        message: 'Cursor inválido ou incompatível com os filtros. Reinicie a listagem.',
+      });
+      return true;
+    });
+  }
   await assert.rejects(service.listNodes({ ...actor, userId: 'different' }, { cursor: first.next_cursor }), /Cursor/);
   for (const cursor of ['!', 'a'.repeat(8193), Buffer.from('{}').toString('base64url')]) await assert.rejects(service.listNodes(actor, { cursor }), /Cursor/);
   const none = await service.listNodes(actor, { search: 'absent-synthetic-node' });
