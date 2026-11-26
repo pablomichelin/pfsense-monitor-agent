@@ -307,7 +307,7 @@ export default async function NodesPage({
       </div>
 
       <InventoryAlertsFilterForm
-        key={JSON.stringify(inventoryQueryParams)}
+        key={JSON.stringify([inventoryQueryParams, sortBy, sortOrder])}
         clientId={clientId}
         className="space-y-2"
         role="search"
@@ -447,6 +447,7 @@ export default async function NodesPage({
               <option value="agent_version">Ordenar: pacote</option>
               <option value="backup">Ordenar: backup</option>
               <option value="alerts">Ordenar: alertas</option>
+              <option value="last_seen">Ordenar: último contato</option>
             </select>
             <select
               name="sort_order"

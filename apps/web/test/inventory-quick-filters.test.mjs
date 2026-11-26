@@ -27,8 +27,9 @@ test('atalhos do inventário preservam filtros e ordenação ao voltar à primei
   };
   const sort = { sort_by: 'backup', sort_order: 'desc' };
   const render = (query) => page({ searchParams: Promise.resolve(query) });
-  const filterFormKey = (tree) => elements(tree).find((element) =>
-    element.props?.['aria-label'] === 'Filtrar inventário de firewalls').key;
+  const filterForm = (tree) => elements(tree).find((element) =>
+    element.props?.['aria-label'] === 'Filtrar inventário de firewalls');
+  const filterFormKey = (tree) => filterForm(tree).key;
   const shortcut = (tree, label) => {
     const shortcuts = elements(tree).find((element) => element.props?.['aria-label'] === 'Atalhos de inventário');
     return elements(shortcuts).find((element) => element.type === 'a' && textOf(element) === label).props.href;
@@ -55,5 +56,10 @@ test('atalhos do inventário preservam filtros e ordenação ao voltar à primei
   }
   const firstPage = await render({ ...filters, ...sort, preset: 'problem', status: 'offline' });
   assert.equal(filterFormKey(firstPage), filterFormKey(filtered));
+  const sorted = await render({ ...filters, sort_by: 'last_seen', sort_order: 'asc', preset: 'problem', status: 'offline' });
+  assert.notEqual(filterFormKey(sorted), filterFormKey(firstPage));
+  const sortSelect = elements(filterForm(sorted)).find(element => element.props?.name === 'sort_by');
+  assert.equal(sortSelect.props.defaultValue, 'last_seen');
+  assert.ok(elements(sortSelect).some(element => element.type === 'option' && element.props.value === 'last_seen'));
   assert.equal(shortcut(await render({}), 'Todos'), '/nodes');
 });
