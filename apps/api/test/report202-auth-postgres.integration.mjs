@@ -162,7 +162,10 @@ test('R202 auth: PG17 budgets, rollback, own-session pagination and password res
     const noMatch = await listOwnSessions(a, actor, { q: 'absent-synthetic-query', page: 999 });
     assert.equal(noMatch.total, 0); assert.equal(noMatch.page, 1); assert.equal(noMatch.total_pages, 1);
     const auth = new AuthService(a, { record: async () => {} }, {}, { consume: async () => {} });
-    await assert.rejects(auth.revokeSession(currentId, actor), e => e.getStatus() === 403);
+    for (const current of [currentId, currentId.toUpperCase()]) {
+      await assert.rejects(auth.revokeSession(current, actor), e => e.getStatus() === 403);
+    }
+    assert.equal((await a.userSession.findUnique({ where: { id: currentId } })).revokedAt, null);
     await auth.revokeSession(second.items[0].id, actor);
     assert.equal((await listOwnSessions(a, actor)).active_count, 34);
     const foreign = data.find(row => row.userId === other.id);

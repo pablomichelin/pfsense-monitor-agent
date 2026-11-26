@@ -348,7 +348,7 @@ export class AuthService {
       const target = { id: targetSessionId, userId: actor.userId };
       const revokedAt = new Date();
       const [changed] = await tx.userSession.updateManyAndReturn({
-        where: { ...target, revokedAt: null },
+        where: { ...target, revokedAt: null, NOT: { id: actor.sessionId } },
         data: { revokedAt },
         select: { id: true },
       });
@@ -358,6 +358,9 @@ export class AuthService {
           where: target,
           select: { id: true, revokedAt: true },
         });
+        if (existing?.id === actor.sessionId) {
+          throw new ForbiddenException('current session must use logout');
+        }
         if (!existing?.revokedAt) {
           throw new UnauthorizedException('session not found');
         }
