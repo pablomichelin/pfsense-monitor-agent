@@ -9,6 +9,7 @@ import {
   AUDIT_PERIOD_OPTIONS,
   AUDIT_RESULT_OPTIONS,
   AUDIT_TARGET_TYPE_OPTIONS,
+  resolveAuditDateBounds,
   resolveAuditPeriodBounds,
 } from '@/lib/audit-labels';
 import { getAuditLogs, getSession } from '@/lib/api';
@@ -66,17 +67,9 @@ export default async function AuditPage({
   const parsedOffset = typeof params.offset === 'string' && /^\d+$/.test(params.offset) ? Number(params.offset) : 0;
   const offset = Number.isSafeInteger(parsedOffset) ? Math.min(MAX_AUDIT_OFFSET, parsedOffset) : 0;
 
-  let from: string | undefined;
-  let to: string | undefined;
-
-  if (period === '24h' || period === '7d' || period === '30d') {
-    const presetBounds = resolveAuditPeriodBounds(period);
-    from = presetBounds.from;
-    to = presetBounds.to;
-  } else if (fromParam || toParam) {
-    from = fromParam;
-    to = toParam;
-  }
+  const bounds = period === '24h' || period === '7d' || period === '30d'
+    ? resolveAuditPeriodBounds(period)
+    : resolveAuditDateBounds(fromParam, toParam);
 
   let session;
   let audit;
@@ -84,17 +77,16 @@ export default async function AuditPage({
   try {
     [session, audit] = await Promise.all([
       getSession(),
-      getAuditLogs({
+      bounds ? getAuditLogs({
         action,
         target_type: targetType,
         target_id: targetId,
         result,
-        from,
-        to,
+        ...bounds,
         actor_email: actorEmail,
         limit,
         offset,
-      }),
+      }) : { items: [], has_more: false },
     ]);
   } catch (error) {
     handlePageApiError(error);
@@ -270,8 +262,11 @@ export default async function AuditPage({
             </div>
 
             <p className="text-xs text-slate-500">
-              Para período personalizado, selecione &quot;Personalizado&quot; e informe as datas De/Até.
+              Para período personalizado, selecione &quot;Personalizado&quot; e informe as datas De/Até no horário de Brasília.
             </p>
+            {bounds === null ? (
+              <Alert variant="error">Informe datas válidas e mantenha a data inicial anterior ou igual à final.</Alert>
+            ) : null}
 
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit">Aplicar filtros</Button>
@@ -293,7 +288,9 @@ export default async function AuditPage({
         description="Lista em ordem cronológica decrescente. Detalhes técnicos (payload) sob demanda."
       >
         <Card className="p-4 sm:p-5">
-          {audit.items.length === 0 ? (
+          {bounds === null ? (
+            <Alert variant="info">Ajuste as datas para consultar os eventos.</Alert>
+          ) : audit.items.length === 0 ? (
             <Alert variant="info">
               Nenhum evento encontrado para os filtros atuais. Tente ampliar o período ou remover
               critérios.

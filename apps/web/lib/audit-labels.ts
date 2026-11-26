@@ -1,3 +1,5 @@
+import { DISPLAY_TIME_ZONE } from './format';
+
 export const AUDIT_ACTION_GROUPS: Array<{ value: string; label: string }> = [
   { value: '', label: 'Todas as ações' },
   { value: 'auth.', label: 'Autenticação' },
@@ -183,25 +185,51 @@ export function auditResultLabel(result: string): string {
 }
 
 export function resolveAuditPeriodBounds(period: string): { from?: string; to?: string } {
-  if (!period || period === 'custom') {
-    return {};
+  const days = period === '24h' ? 1 : period === '7d' ? 7 : period === '30d' ? 30 : 0;
+  if (!days) return {};
+  const to = Date.now();
+  return { from: new Date(to - days * DAY_MS).toISOString(), to: new Date(to).toISOString() };
+}
+
+const DAY_MS = 86_400_000;
+const auditDayFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: DISPLAY_TIME_ZONE, calendar: 'iso8601', numberingSystem: 'latn',
+  year: 'numeric', month: 'numeric', day: 'numeric', era: 'short',
+});
+
+function displayDayStart(utcDay: Date): number {
+  const targetDay = utcDay.getUTCFullYear() * 10_000 + (utcDay.getUTCMonth() + 1) * 100 + utcDay.getUTCDate();
+  // Find the start of the local date, even when a clock change skips midnight.
+  let lo = utcDay.getTime() - DAY_MS;
+  let hi = utcDay.getTime() + DAY_MS;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const parts = Object.fromEntries(auditDayFormatter.formatToParts(mid).map(({ type, value }) => [type, value]));
+    const year = parts.era === 'BC' ? 1 - Number(parts.year) : Number(parts.year);
+    const localDay = year * 10_000 + Number(parts.month) * 100 + Number(parts.day);
+    if (localDay < targetDay) lo = mid + 1;
+    else hi = mid;
   }
+  return lo;
+}
 
-  const to = new Date();
-  const from = new Date(to);
-
-  if (period === '24h') {
-    from.setHours(from.getHours() - 24);
-  } else if (period === '7d') {
-    from.setDate(from.getDate() - 7);
-  } else if (period === '30d') {
-    from.setDate(from.getDate() - 30);
-  } else {
-    return {};
+function parseAuditDate(value: string | undefined, endOfDay: boolean): Date | undefined {
+  const input = value?.trim();
+  if (!input) return undefined;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+    const day = new Date(`${input}T00:00:00.000Z`);
+    if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== input) return undefined;
+    const boundary = endOfDay ? new Date(day.getTime() + DAY_MS) : day;
+    return new Date(displayDayStart(boundary) - (endOfDay ? 1 : 0));
   }
+  const instant = new Date(input);
+  return /^\d{4}-\d{2}-\d{2}T/.test(input) && Number.isFinite(instant.getTime()) ? instant : undefined;
+}
 
-  return {
-    from: from.toISOString(),
-    to: to.toISOString(),
-  };
+export function resolveAuditDateBounds(from?: string, to?: string): { from?: string; to?: string } | null {
+  const start = parseAuditDate(from, false);
+  const end = parseAuditDate(to, true);
+  if ((from?.trim() && !start) || (to?.trim() && !end) ||
+      (start && end && start > end)) return null;
+  return { from: start?.toISOString(), to: end?.toISOString() };
 }

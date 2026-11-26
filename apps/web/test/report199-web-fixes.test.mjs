@@ -144,6 +144,33 @@ test('audit respects the end of a full page and clamps malformed or unsupported 
   assert.match(textOf(await browse('50')), /Próxima página/);
 });
 
+test('audit custom calendar days match Brasília and invalid periods stay on the form', async () => {
+  const { resolveAuditDateBounds } = sourceLoader()('lib/audit-labels.ts');
+  assert.deepEqual(resolveAuditDateBounds('2026-11-25', '2026-11-25'), {
+    from: '2026-11-25T03:00:00.000Z', to: '2026-11-26T02:59:59.999Z',
+  });
+  assert.deepEqual(resolveAuditDateBounds('2018-11-04', '2018-11-04'), {
+    from: '2018-11-04T03:00:00.000Z', to: '2018-11-05T01:59:59.999Z',
+  });
+  assert.equal(resolveAuditDateBounds('2026-02-30'), null);
+  assert.deepEqual(resolveAuditDateBounds(undefined, '2026-11-25T15:00:00Z'), {
+    from: undefined, to: '2026-11-25T15:00:00.000Z',
+  });
+
+  const page = sourceLoader({
+    ...uiMocks,
+    '@/components/audit-event-row': { AuditEventRow: 'audit-event' },
+    '@/lib/handle-page-api-error': { handlePageApiError: (error) => { throw error; } },
+    '@/lib/api': {
+      getSession: async () => ({ permissions: ['audit.view'] }),
+      getAuditLogs: async () => assert.fail('an invalid date range must not start a query'),
+    },
+  })('app/audit/page.tsx').default;
+  const tree = await page({ searchParams: Promise.resolve({ period: 'custom', from: '2026-11-26', to: '2026-11-25' }) });
+  assert.match(textOf(tree), /Informe datas válidas/);
+  assert.doesNotMatch(textOf(tree), /Nenhum evento encontrado/);
+});
+
 test('F05 detail with view-only permission never requests backups or tags', async () => {
   const calls = [];
   const node = { id: 'node', hostname: 'lab', node_uid: 'lab-uid', effective_status: 'online',
