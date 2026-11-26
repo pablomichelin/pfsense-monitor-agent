@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import { AccessActor } from '../auth/access-actor.type';
 import { AccessPolicyService } from '../auth/access-policy.service';
@@ -34,6 +35,10 @@ type GroupMemberRecord = {
   hostname: string;
   display_name: string | null;
 };
+
+function membershipRevision(nodeIds: string[]): string {
+  return createHash('sha256').update(nodeIds.map((id) => id.toLowerCase()).sort().join(',')).digest('hex');
+}
 
 @Injectable()
 export class GroupsService {
@@ -128,6 +133,7 @@ export class GroupsService {
   ): Promise<{
     group: GroupRecord;
     members: GroupMemberRecord[];
+    membership_revision: string;
     generated_at: string;
   }> {
     const group = await this.prisma.nodeGroup.findUnique({
@@ -175,6 +181,7 @@ export class GroupsService {
         hostname: member.node.hostname,
         display_name: member.node.displayName,
       })),
+      membership_revision: membershipRevision(group.members.map((member) => member.node.id)),
       generated_at: new Date().toISOString(),
     };
   }
@@ -375,7 +382,7 @@ export class GroupsService {
     dto: SetGroupMembersDto,
     actorId?: string,
     actorIp?: string,
-  ): Promise<{ group: GroupRecord; member_count: number }> {
+  ): Promise<{ group: GroupRecord; member_count: number; membership_revision: string }> {
     const group = await this.prisma.nodeGroup.findUnique({
       where: { id: groupId },
       select: {
@@ -414,50 +421,52 @@ export class GroupsService {
       }
     }
 
-    await this.prisma.$transaction([
-      this.prisma.nodeGroupMember.deleteMany({
-        where: { groupId },
-      }),
-      ...(uniqueNodeIds.length > 0
-        ? [
-            this.prisma.nodeGroupMember.createMany({
-              data: uniqueNodeIds.map((nodeId) => ({
-                groupId,
-                nodeId,
-              })),
-            }),
-          ]
-        : []),
-    ]);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const [locked] = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM node_groups WHERE id = ${group.id}::uuid FOR UPDATE
+      `;
+      if (!locked) throw new NotFoundException('group not found');
 
-    const updated = await this.prisma.nodeGroup.findUniqueOrThrow({
-      where: { id: groupId },
-      include: {
-        client: {
-          select: {
-            name: true,
-          },
-        },
-        _count: {
-          select: {
-            members: true,
-          },
-        },
-      },
-    });
+      if (dto.expected_revision) {
+        const current = await tx.nodeGroupMember.findMany({
+          where: { groupId: group.id },
+          select: { nodeId: true },
+        });
+        if (dto.expected_revision !== membershipRevision(current.map(({ nodeId }) => nodeId))) {
+          throw new ConflictException({
+            statusCode: 409, error: 'Conflict', code: 'GROUP_MEMBERS_CHANGED', message: 'group membership changed',
+          });
+        }
+      }
 
-    await this.auditService.record({
-      actorId,
-      clientId: group.clientId,
-      action: 'fleet.group.members.set',
-      targetType: 'node_group',
-      targetId: groupId,
-      ipAddress: actorIp,
-      metadataJson: {
-        group_name: group.name,
-        member_count: uniqueNodeIds.length,
-        node_ids: uniqueNodeIds,
-      },
+      await tx.nodeGroupMember.deleteMany({ where: { groupId: group.id } });
+      if (uniqueNodeIds.length > 0) {
+        await tx.nodeGroupMember.createMany({
+          data: uniqueNodeIds.map((nodeId) => ({ groupId: group.id, nodeId })),
+        });
+      }
+      const saved = await tx.nodeGroup.findUniqueOrThrow({
+        where: { id: group.id },
+        include: {
+          client: { select: { name: true } },
+          _count: { select: { members: true } },
+        },
+      });
+
+      await this.auditService.record({
+        actorId,
+        clientId: group.clientId,
+        action: 'fleet.group.members.set',
+        targetType: 'node_group',
+        targetId: group.id,
+        ipAddress: actorIp,
+        metadataJson: {
+          group_name: saved.name,
+          member_count: uniqueNodeIds.length,
+          node_ids: uniqueNodeIds,
+        },
+      }, tx);
+      return saved;
     });
 
     this.nodesService.invalidateFiltersCache();
@@ -465,6 +474,7 @@ export class GroupsService {
     return {
       group: this.mapGroup(updated),
       member_count: uniqueNodeIds.length,
+      membership_revision: membershipRevision(uniqueNodeIds),
     };
   }
 }

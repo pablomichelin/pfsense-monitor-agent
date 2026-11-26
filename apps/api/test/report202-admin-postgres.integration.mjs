@@ -12,7 +12,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { loadAdmin, makeAdmin, appRequire, deferred, validateReport202Url } from './report202-admin-test-support.mjs';
+import { loadAdmin, loadServiceModule, makeAdmin, appRequire, deferred, validateReport202Url } from './report202-admin-test-support.mjs';
 
 
 const raw = process.env.REPORT202_PG_URL;
@@ -106,6 +106,48 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
   }
   const selected = process.env.REPORT202_ADMIN_CASE;
   const run = (name, callback) => t.test(name, { skip: !!selected && !name.includes(selected) }, callback);
+
+  await run('group membership rejects an outdated full replacement and rolls back an audit failure', async t => {
+    const f = await fixture(t);
+    const { GroupsService } = loadServiceModule('fleet-org/groups.service');
+    const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const service = (connection, audit = new AuditService(connection)) =>
+      new GroupsService(connection, new AccessPolicyService(connection), audit, { invalidateFiltersCache() {} });
+    const left = service(db);
+    const right = service(peer);
+    const actor = { userId: f.users[0].id, role: 'superadmin' };
+    const site = await db.site.create({ data: { clientId: f.client.id, code: 'qa', name: f.run } });
+    const group = await db.nodeGroup.create({ data: { clientId: f.client.id, name: f.run } });
+    const ids = Array.from({ length: 53 }, () => randomUUID());
+    await db.node.createMany({ data: ids.map((id, index) => ({
+      id, siteId: site.id, nodeUid: randomUUID(), hostname: `qa-${String(index).padStart(3, '0')}.invalid`,
+    })) });
+    const original = ids.slice(0, 50);
+    await left.setGroupMembers(actor, group.id, { node_ids: original }, actor.userId);
+    const before = await left.getGroupById(actor, group.id);
+    assert.match(before.membership_revision, /^[0-9a-f]{64}$/);
+    const save = (editor, memberIds, expected) => editor.setGroupMembers(actor, group.id, {
+      node_ids: memberIds, expected_revision: expected,
+    }, actor.userId);
+    const outcomes = await Promise.allSettled([
+      save(left, [...original, ids[50]], before.membership_revision),
+      save(right, [...original, ids[51]], before.membership_revision),
+    ]);
+    assert.equal(outcomes.filter(result => result.status === 'fulfilled').length, 1);
+    const conflict = outcomes.find(result => result.status === 'rejected').reason;
+    assert.equal(conflict.getStatus(), 409);
+    assert.equal(conflict.getResponse().code, 'GROUP_MEMBERS_CHANGED');
+    const current = await right.getGroupById(actor, group.id);
+    assert.equal(current.members.length, 51);
+    assert.equal(outcomes.find(result => result.status === 'fulfilled').value.membership_revision, current.membership_revision);
+    const failing = service(peer, { record: async () => { throw new Error('synthetic group audit failure'); } });
+    await assert.rejects(save(failing, ids, current.membership_revision), /synthetic group audit failure/);
+    assert.equal((await left.getGroupById(actor, group.id)).membership_revision, current.membership_revision);
+    const saved = await save(right, ids, current.membership_revision);
+    assert.equal(saved.member_count, 53);
+    assert.equal(await db.auditLog.count({ where: { targetId: group.id, action: 'fleet.group.members.set' } }), 3);
+  });
 
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {

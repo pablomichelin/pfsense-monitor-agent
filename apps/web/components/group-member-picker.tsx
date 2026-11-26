@@ -7,14 +7,15 @@ import { usePagedNodes } from '@/lib/use-paged-nodes';
 import { updateGroupMembersAction } from '@/lib/fleet-org-actions';
 import { Alert, Button } from './ui';
 
-export function GroupMemberPicker({ groupId, clientId, memberIds }: {
-  groupId: string; clientId: string; memberIds: string[];
+export function GroupMemberPicker({ groupId, clientId, memberIds, membershipRevision }: {
+  groupId: string; clientId: string; memberIds: string[]; membershipRevision?: string;
 }) {
   const browser = usePagedNodes(undefined, clientId);
   const router = useRouter();
   const [selected, setSelected] = useState(() => new Set(memberIds));
+  const [revision, setRevision] = useState(membershipRevision);
   const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; error?: boolean; conflict?: boolean } | null>(null);
   // All existing memberships survive paging/search. Only explicit toggles change them.
   return <div className="space-y-3">
     <NodeBrowserControls browser={browser} />
@@ -29,14 +30,22 @@ export function GroupMemberPicker({ groupId, clientId, memberIds }: {
         {node.display_name || node.hostname}
       </label>)}
     </div>
-    {message ? <Alert variant="info">{message}</Alert> : null}
-    <Button type="button" disabled={pending || browser.loading || !!browser.error} onClick={async () => {
-      setPending(true); setMessage(null);
+    {notice ? <Alert variant={notice.error ? 'error' : 'info'}>{notice.text}</Alert> : null}
+    {notice?.conflict ? <Button type="button" variant="secondary" onClick={() => router.refresh()}>
+      Recarregar membros
+    </Button> : null}
+    <Button type="button" disabled={pending || browser.loading || !!browser.error || notice?.conflict} onClick={async () => {
+      setPending(true); setNotice(null);
       try {
-        const result = await updateGroupMembersAction(groupId, [...selected]);
-        setMessage(result.ok ? 'Membros do grupo atualizados.' : result.error);
-        if (result.ok) router.refresh();
-      } catch { setMessage('Não foi possível salvar os membros. Tente novamente.'); }
+        const result = await updateGroupMembersAction(groupId, [...selected], revision);
+        if (result.ok) {
+          setRevision(result.data?.membershipRevision ?? revision);
+          setNotice({ text: 'Membros do grupo atualizados.' });
+          router.refresh();
+        } else {
+          setNotice({ text: result.error, error: true, conflict: result.status === 409 });
+        }
+      } catch { setNotice({ text: 'Não foi possível salvar os membros. Tente novamente.', error: true }); }
       finally { setPending(false); }
     }}>Salvar membros</Button>
   </div>;

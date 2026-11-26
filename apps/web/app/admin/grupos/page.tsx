@@ -67,10 +67,12 @@ export default async function AdminGruposPage({ searchParams }: {
     ? groups.items.find((group) => group.id === selectedGroupId)
     : undefined;
   let groupMemberIds: string[] | null = null;
+  let groupMembershipRevision: string | undefined;
   if (selectedGroup) {
     try {
       const detail = await getFleetGroup(selectedGroup.id);
       groupMemberIds = detail.members.map((member) => member.node_id);
+      groupMembershipRevision = detail.membership_revision;
     } catch (error) {
       if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
         handlePageApiError(error);
@@ -107,6 +109,7 @@ export default async function AdminGruposPage({ searchParams }: {
         }))}
         selectedGroupId={selectedGroup?.id}
         groupMemberIds={groupMemberIds}
+        groupMembershipRevision={groupMembershipRevision}
         canManageTags={canManageTags}
         canManageGroups={canManageGroups}
         canEditGroupMembers={canEditGroupMembers}

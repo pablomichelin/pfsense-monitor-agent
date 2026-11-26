@@ -2091,6 +2091,7 @@ export type FleetGroupDetailsResponse = {
     hostname: string;
     display_name: string | null;
   }>;
+  membership_revision?: string;
   generated_at: string;
 };
 
@@ -2182,10 +2183,11 @@ export async function deleteFleetGroup(groupId: string): Promise<{ deleted: true
 export async function setFleetGroupMembers(
   groupId: string,
   nodeIds: string[],
-): Promise<{ group: FleetGroupItem; member_count: number }> {
+  expectedRevision?: string,
+): Promise<{ group: FleetGroupItem; member_count: number; membership_revision?: string }> {
   return apiFetch(`/api/v1/groups/${groupId}/members`, {
     method: 'PUT',
-    body: { node_ids: nodeIds },
+    body: { node_ids: nodeIds, ...(expectedRevision ? { expected_revision: expectedRevision } : {}) },
     csrfProtected: true,
   });
 }

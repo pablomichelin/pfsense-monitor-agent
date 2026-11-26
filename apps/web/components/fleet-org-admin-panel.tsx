@@ -25,6 +25,7 @@ type Props = {
   clients: ClientOption[];
   selectedGroupId?: string;
   groupMemberIds: string[] | null;
+  groupMembershipRevision?: string;
   canManageTags: boolean;
   canManageGroups: boolean;
   canEditGroupMembers: boolean;
@@ -92,6 +93,7 @@ export function FleetOrgAdminPanel({
   clients,
   selectedGroupId,
   groupMemberIds,
+  groupMembershipRevision,
   canManageTags,
   canManageGroups,
   canEditGroupMembers,
@@ -319,10 +321,11 @@ export function FleetOrgAdminPanel({
             </div>
           ) : (
             <GroupMemberPicker
-              key={`${selectedGroup.id}:${JSON.stringify(groupMemberIds)}`}
+              key={`${selectedGroup.id}:${groupMembershipRevision ?? JSON.stringify(groupMemberIds)}`}
               groupId={selectedGroup.id}
               clientId={selectedGroup.client_id}
               memberIds={groupMemberIds}
+              membershipRevision={groupMembershipRevision}
             />
           )}
         </Card>

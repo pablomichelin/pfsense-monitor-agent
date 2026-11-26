@@ -3,6 +3,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
 } from 'class-validator';
 
@@ -36,6 +37,10 @@ export class SetGroupMembersDto {
   @IsArray()
   @IsUUID('4', { each: true })
   node_ids!: string[];
+
+  @IsOptional()
+  @Matches(/^[0-9a-f]{64}$/)
+  expected_revision?: string;
 }
 
 export class ListGroupsQueryDto {

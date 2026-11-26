@@ -286,13 +286,43 @@ test('reapplying the active search keeps an in-flight inventory read valid', asy
 });
 
 test('group editing preserves 1201 off-page memberships and an explicit target beyond 1000', async () => {
-  const hooks = hookHarness(); const browser = browserMock(pageFixture([1301])); let saved;
+  const hooks = hookHarness(); const browser = browserMock(pageFixture([1301])); let saved, revision;
   const { GroupMemberPicker } = sourceLoader({ ...uiMocks, './ui': uiMocks['@/components/ui'], react: hooks.react,
     '@/lib/use-paged-nodes': { usePagedNodes: () => browser }, './node-browser-controls': { NodeBrowserControls: 'browser' },
-    '@/lib/fleet-org-actions': { updateGroupMembersAction: async (_, ids) => { saved = ids; return { ok: true }; } }, 'next/navigation': { useRouter: () => ({ refresh() {} }) },
+    '@/lib/fleet-org-actions': { updateGroupMembersAction: async (_, ids, expected) => { saved = ids; revision = expected; return { ok: true }; } }, 'next/navigation': { useRouter: () => ({ refresh() {} }) },
   })('components/group-member-picker.tsx');
   const props = { groupId: 'group-a', clientId: 'client-a', memberIds: Array.from({ length: 1201 }, (_, i) => `node-${i}`) };
   let tree = hooks.render(GroupMemberPicker, props); elements(tree).find((e) => e.props.type === 'checkbox').props.onChange(); tree = hooks.render(GroupMemberPicker, props);
   await elements(tree).find((e) => e.type === 'button' && textOf(e) === 'Salvar membros').props.onClick();
   assert.equal(saved.length, 1202); assert.ok(saved.includes('node-0')); assert.ok(saved.includes('node-1200')); assert.ok(saved.includes('node-1301'));
+  assert.equal(revision, undefined, 'a legacy group response has no revision');
+});
+
+test('group editor keeps the draft on a version conflict and offers a reload', async () => {
+  const hooks = hookHarness();
+  const browser = browserMock(pageFixture([51]));
+  let saved;
+  let refreshes = 0;
+  const { GroupMemberPicker } = sourceLoader({ ...uiMocks, './ui': uiMocks['@/components/ui'], react: hooks.react,
+    '@/lib/use-paged-nodes': { usePagedNodes: () => browser },
+    './node-browser-controls': { NodeBrowserControls: 'browser' },
+    '@/lib/fleet-org-actions': { updateGroupMembersAction: async (_groupId, ids, revision) => {
+      saved = { ids, revision };
+      return { ok: false, status: 409, error: 'Os membros deste grupo mudaram.' };
+    } },
+    'next/navigation': { useRouter: () => ({ refresh() { refreshes++; } }) },
+  })('components/group-member-picker.tsx');
+  const props = { groupId: 'g', clientId: 'c', memberIds: ['node-50'], membershipRevision: 'a'.repeat(64) };
+  const render = () => hooks.render(GroupMemberPicker, props);
+  const button = (tree, label) => elements(tree).find(e => e.type === 'button' && textOf(e) === label);
+  elements(render()).find(e => e.props.type === 'checkbox').props.onChange();
+  await button(render(), 'Salvar membros').props.onClick();
+  const conflict = render();
+  assert.deepEqual(saved, { ids: ['node-50', 'node-51'], revision: props.membershipRevision });
+  assert.match(textOf(conflict), /2\s+membros selecionados/);
+  assert.match(textOf(conflict), /Os membros deste grupo mudaram/);
+  assert.equal(button(conflict, 'Salvar membros').props.disabled, true);
+  assert.equal(refreshes, 0);
+  button(conflict, 'Recarregar membros').props.onClick();
+  assert.equal(refreshes, 1);
 });

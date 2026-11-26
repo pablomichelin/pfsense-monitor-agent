@@ -14,7 +14,11 @@ export function loadAdmin() {
   process.env.AUTH_BOOTSTRAP_PASSWORD = 'Synthetic-test-only-2026!';
   process.env.NODE_SECRET_ENCRYPTION_KEY_BASE64 = Buffer.alloc(32, 1).toString('base64');
   process.env.BACKUP_ENCRYPTION_KEY_BASE64 = Buffer.alloc(32, 2).toString('base64');
-  if (process.env.REPORT202_USE_DIST === '1') return appRequire(resolve(apiRoot, 'dist/admin/admin.service.js')).AdminService;
+  return loadServiceModule('admin/admin.service').AdminService;
+}
+
+export function loadServiceModule(path) {
+  if (process.env.REPORT202_USE_DIST === '1') return appRequire(resolve(apiRoot, `dist/${path}.js`));
   const ts = appRequire('typescript');
   const previous = Module._extensions['.ts'];
   Module._extensions['.ts'] = (mod, filename) => {
@@ -25,7 +29,7 @@ export function loadAdmin() {
     });
     mod._compile(result.outputText, filename);
   };
-  try { return appRequire(resolve(apiRoot, 'src/admin/admin.service.ts')).AdminService; }
+  try { return appRequire(resolve(apiRoot, `src/${path}.ts`)); }
   finally {
     if (previous) Module._extensions['.ts'] = previous;
     else delete Module._extensions['.ts'];

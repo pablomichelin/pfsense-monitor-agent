@@ -83,13 +83,17 @@ export async function deleteGroupAction(groupId: string): Promise<FleetOrgAction
 export async function updateGroupMembersAction(
   groupId: string,
   nodeIds: string[],
-): Promise<FleetOrgActionResult> {
+  expectedRevision?: string,
+): Promise<FleetOrgActionResult<{ membershipRevision?: string }>> {
   try {
-    await setFleetGroupMembers(groupId, nodeIds);
+    const saved = await setFleetGroupMembers(groupId, nodeIds, expectedRevision);
     revalidatePath('/nodes');
     revalidatePath('/admin/grupos');
-    return { ok: true };
+    return { ok: true, data: { membershipRevision: saved.membership_revision } };
   } catch (error) {
+    if (error instanceof ApiError && error.code === 'GROUP_MEMBERS_CHANGED') {
+      return { ok: false, status: 409, error: 'Os membros deste grupo mudaram. Recarregue a lista e revise a seleção.' };
+    }
     return mapError(error, 'Falha ao atualizar membros do grupo');
   }
 }
