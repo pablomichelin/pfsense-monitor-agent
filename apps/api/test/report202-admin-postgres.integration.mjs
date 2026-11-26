@@ -75,8 +75,19 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
             if (advisory) hooks.atLock?.resolve();
             const result = await target.$queryRaw(...args);
             if (advisory && hooks.locked) { hooks.locked.resolve(); await hooks.release.promise; }
+            if (hooks.roleRead && args[0].join(' ').includes('FROM roles') && args[0].join(' ').includes('FOR KEY SHARE')) {
+              await hooks.roleRead();
+            }
             return result;
           };
+          if (key === 'role' && hooks.roleRead) return new Proxy(target[key], { get(model, operation) {
+            if (operation === 'findUnique') return async args => {
+              const role = await model.findUnique(args);
+              await hooks.roleRead();
+              return role;
+            };
+            return typeof model[operation] === 'function' ? model[operation].bind(model) : model[operation];
+          } });
           if (['auditLog', 'userClientScope', 'user', 'userSession'].includes(key)) return new Proxy(target[key], { get(model, operation) {
             if ((hooks.fail === 'audit' && key === 'auditLog' && operation === 'create') ||
                 (hooks.fail === 'scope' && key === 'userClientScope' && operation === 'createMany') ||
@@ -624,7 +635,7 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     const read = () => observer.rolePermission.findMany({
       where: { role }, orderBy: { permissionId: 'asc' }, select: { permissionId: true },
     }).then(items => items.map(item => item.permissionId));
-    return { ...f, role, permissions, each, service, save, read, PermissionsService };
+    return { ...f, role, permissions, each, service, save, read, PermissionsService, userAdmin: f.service };
   }
 
   await run('role permissions rollback and cache follow a committed audit', async t => {
@@ -741,6 +752,64 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.deepEqual(await f.permissions.getPermissionsForRole(f.role), []);
     assert.deepEqual(await f.read(), []);
     assert.equal(await db.auditLog.count({ where: { targetId: f.role, action: 'role.delete' } }), 1);
+  });
+
+  await run('role assignment commits before a competing role deletion', async t => {
+    const f = await rolePermissionsFixture(t);
+    const read = f.gate(), release = f.gate();
+    const editor = f.userAdmin(db, { async roleRead() { read.resolve(); await release.promise; } });
+    const user = f.users[2];
+    const assignment = f.track(editor.updateUser(user.id, { role: f.role }, f.users[0].id));
+    await read.promise;
+    const deletion = f.track(f.service(peer).deleteRole(f.role, f.users[0].id));
+    let waiter;
+    try {
+      for (let attempt = 0; attempt < 120; attempt++) {
+        [waiter] = await observer.$queryRaw`
+          SELECT query FROM pg_stat_activity
+          WHERE wait_event_type = 'Lock' AND query LIKE '%SELECT is_system%FROM roles%'
+        `;
+        if (waiter) break;
+        await delay(10);
+      }
+    } finally {
+      release.resolve();
+    }
+    const [assigned, removed] = await Promise.allSettled([assignment, deletion]);
+    assert.equal(assigned.status, 'fulfilled', assigned.reason?.message);
+    assert.equal(removed.status, 'rejected');
+    assert.equal(removed.reason.getStatus?.(), 409);
+    assert.match(waiter?.query ?? '', /FOR UPDATE/i);
+    assert.equal((await db.user.findUniqueOrThrow({ where: { id: user.id } })).role, f.role);
+  });
+
+  await run('role assignment returns a validation error when the role deletion wins', async t => {
+    const f = await rolePermissionsFixture(t);
+    const held = f.gate(), release = f.gate();
+    const remover = f.service(peer, { async record() { held.resolve(); await release.promise; } });
+    const user = f.users[2];
+    const deletion = f.track(remover.deleteRole(f.role, f.users[0].id));
+    await held.promise;
+    const assignment = f.track(f.userAdmin(db).updateUser(user.id, { role: f.role }, f.users[0].id));
+    let waiter;
+    try {
+      for (let attempt = 0; attempt < 120; attempt++) {
+        [waiter] = await observer.$queryRaw`
+          SELECT query FROM pg_stat_activity WHERE wait_event_type = 'Lock'
+            AND (query LIKE '%UPDATE "public"."users"%' OR query LIKE '%FROM roles WHERE code%')
+        `;
+        if (waiter) break;
+        await delay(10);
+      }
+    } finally {
+      release.resolve();
+    }
+    const [removed, assigned] = await Promise.allSettled([deletion, assignment]);
+    assert.equal(removed.status, 'fulfilled', removed.reason?.message);
+    assert.equal(assigned.status, 'rejected');
+    assert.equal(assigned.reason.getStatus?.(), 400, assigned.reason?.message);
+    assert.match(waiter?.query ?? '', /FOR KEY SHARE/i);
+    assert.equal((await db.user.findUniqueOrThrow({ where: { id: user.id } })).role, user.role);
   });
 
   await run('dashboard alert counters refresh after manual acknowledgement and resolution', async t => {

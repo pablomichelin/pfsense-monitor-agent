@@ -18,8 +18,10 @@ function fixture(fail = '') {
     const draft = structuredClone(state);
     const matches = (row, where) => Object.entries(where).every(([key, value]) => row[key] === value);
     const tx = {
-      $queryRaw: async strings => { calls.push(String(strings[0])); return []; },
-      role: { findUnique: async () => ({ status: 'active' }) },
+      $queryRaw: async strings => {
+        calls.push(String(strings[0]));
+        return strings[0].includes('FROM roles') ? [{ status: 'active' }] : [];
+      },
       client: { findMany: async ({ where }) => where.id.in.includes(clientId) ? [{ id: clientId }] : [], findFirst: async () => ({ id: clientId }) },
       user: {
         findUnique: async ({ where }) => draft.users.find(row => matches(row, where)),

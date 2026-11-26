@@ -445,8 +445,8 @@ export class AdminService {
       if (role.isSystem) {
         throw new BadRequestException('system roles cannot be deleted');
       }
-      const users = await tx.user.count({ where: { role: code } });
-      if (users > 0) {
+      const assignedUser = await tx.user.findFirst({ where: { role: code }, select: { id: true } });
+      if (assignedUser) {
         throw new ConflictException('role is assigned to users');
       }
 
@@ -523,10 +523,10 @@ export class AdminService {
   }
 
   private async assertAssignableRole(code: string, tx: Prisma.TransactionClient): Promise<void> {
-    const role = await tx.role.findUnique({
-      where: { code },
-      select: { status: true },
-    });
+    // Keep the role available until the user's foreign key is committed.
+    const [role] = await tx.$queryRaw<Array<{ status: EntityStatus }>>`
+      SELECT status FROM roles WHERE code = ${code} FOR KEY SHARE
+    `;
 
     if (!role || role.status !== EntityStatus.active) {
       throw new BadRequestException('invalid role');

@@ -15,8 +15,7 @@ function fixture({ role = 'client', clientId = inactiveId, failAudit = false } =
   const service = makeAdmin(AdminService, { $transaction: async callback => {
     const draft = structuredClone(state);
     const result = await callback({
-      $queryRaw: async () => [],
-      role: { findUnique: async () => ({ status: 'active' }) },
+      $queryRaw: async strings => strings[0].includes('FROM roles') ? [{ status: 'active' }] : [],
       user: {
         findUnique: async ({ where }) => where.id === uid ? draft.user : where.id === actorId ? { role: 'superadmin' } : null,
         update: async ({ data }) => { Object.assign(draft.user, Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined))); return draft.user; },
