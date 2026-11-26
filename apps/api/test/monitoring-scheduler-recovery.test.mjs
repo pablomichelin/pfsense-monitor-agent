@@ -107,6 +107,36 @@ for (const { name, start, timerIndex = 0 } of jobs) {
   });
 }
 
+test('metric sampling writes bounded batches in one transaction and verifies existing firewalls', async () => {
+  const nodes = Array.from({ length: 501 }, (_, index) => ({
+    id: `synthetic-node-${index}`, status: 'online', maintenanceMode: false, lastSeenAt: new Date(),
+    cpuPercent: 25, memoryPercent: null, diskPercent: null, lastLatencyMs: 7,
+  }));
+  const writes = [];
+  let transactions = 0;
+  const sampler = new MetricsSamplerService({
+    node: { findMany: async ({ orderBy }) => {
+      assert.deepEqual(orderBy, { id: 'asc' });
+      return nodes;
+    } },
+    nodeMetricSample: noRowsDeleted,
+    $executeRaw: (query, sampledAt, values) => {
+      const statement = query.join(' ');
+      assert.match(statement, /JOIN nodes ON nodes.id = input.node_id/);
+      assert.match(statement, /FOR KEY SHARE OF nodes/);
+      const rowCount = values.values.length / 7;
+      writes.push({ sampledAt, rowCount });
+      return rowCount;
+    },
+    $transaction: async (batch) => { transactions += 1; return batch; },
+  }, lock, { rollupHourlyBucket: async () => {} });
+
+  await sampler.runSamplingCycle('manual');
+  assert.equal(transactions, 1);
+  assert.deepEqual(writes.map(({ rowCount }) => rowCount), [500, 1]);
+  assert.equal(writes[0].sampledAt, writes[1].sampledAt);
+});
+
 test('the daily cycle fills the final UTC hour before reading aggregates', async () => {
   const events = [];
   const hourlyKey = new Date();

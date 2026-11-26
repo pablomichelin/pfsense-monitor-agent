@@ -4,7 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { NodeStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveEffectiveNodeStatus } from '../nodes/node-status.util';
@@ -17,6 +17,7 @@ import { SystemJobLockService } from '../common/system-job-lock.service';
 
 const SAMPLE_LOCK_KEY = 'metrics_sampler';
 const SAMPLE_LOCK_TTL_MS = 4 * 60 * 1000;
+const SAMPLE_INSERT_BATCH_SIZE = 500;
 
 @Injectable()
 export class MetricsSamplerService implements OnModuleInit, OnModuleDestroy {
@@ -72,6 +73,7 @@ export class MetricsSamplerService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const nodes = await this.prisma.node.findMany({
+        orderBy: { id: 'asc' },
         select: {
           id: true,
           status: true,
@@ -88,24 +90,33 @@ export class MetricsSamplerService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      const rows = nodes.map((node) => {
-        const effectiveStatus = deriveEffectiveNodeStatus(node, sampledAt);
-
-        return {
-          nodeId: node.id,
-          sampledAt,
-          status: effectiveStatus as NodeStatus,
-          cpuPercent: node.cpuPercent,
-          memoryPercent: node.memoryPercent,
-          diskPercent: node.diskPercent,
-          latencyMs: node.lastLatencyMs,
-          availabilityScore: computeAvailabilityScore(effectiveStatus),
-        };
-      });
-
-      await this.prisma.nodeMetricSample.createMany({
-        data: rows,
-      });
+      const inserts: Prisma.PrismaPromise<number>[] = [];
+      for (let offset = 0; offset < nodes.length; offset += SAMPLE_INSERT_BATCH_SIZE) {
+        const values = nodes.slice(offset, offset + SAMPLE_INSERT_BATCH_SIZE).map((node) => {
+          const status = deriveEffectiveNodeStatus(node, sampledAt);
+          return Prisma.sql`(
+            ${node.id}::uuid, ${status}::node_status,
+            ${node.cpuPercent}::float8, ${node.memoryPercent}::float8, ${node.diskPercent}::float8,
+            ${node.lastLatencyMs}::integer, ${computeAvailabilityScore(status)}::float8
+          )`;
+        });
+        // A firewall may be removed after the sample snapshot was read.
+        inserts.push(this.prisma.$executeRaw`
+          INSERT INTO node_metric_samples (
+            node_id, sampled_at, status, cpu_percent, memory_percent, disk_percent, latency_ms, availability_score
+          )
+          SELECT input.node_id, ${sampledAt}::timestamptz, input.status, input.cpu_percent,
+            input.memory_percent, input.disk_percent, input.latency_ms, input.availability_score
+          FROM (VALUES ${Prisma.join(values)}) AS input (
+            node_id, status, cpu_percent, memory_percent, disk_percent, latency_ms, availability_score
+          )
+          JOIN nodes ON nodes.id = input.node_id
+          ORDER BY input.node_id
+          FOR KEY SHARE OF nodes
+        `);
+      }
+      const inserted = await this.prisma.$transaction(inserts);
+      const written = inserted.reduce((total, count) => total + count, 0);
 
       const retentionCutoff = new Date(
         sampledAt.getTime() -
@@ -124,7 +135,7 @@ export class MetricsSamplerService implements OnModuleInit, OnModuleDestroy {
       await this.rollupService.rollupHourlyBucket(previousHour);
 
       this.logger.log(
-        `metric sampling reason=${reason} nodes=${rows.length} purged_samples=${deleted.count}`,
+        `metric sampling reason=${reason} nodes=${written} purged_samples=${deleted.count}`,
       );
     } finally {
       this.isRunning = false;
