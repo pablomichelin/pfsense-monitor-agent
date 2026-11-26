@@ -184,11 +184,13 @@ export function auditResultLabel(result: string): string {
   return RESULT_LABELS[result] ?? result;
 }
 
-export function resolveAuditPeriodBounds(period: string): { from?: string; to?: string } {
+export function resolveAuditPeriodBounds(period: string, referenceTime = Date.now()): { from?: string; to?: string } {
   const days = period === '24h' ? 1 : period === '7d' ? 7 : period === '30d' ? 30 : 0;
   if (!days) return {};
-  const to = Date.now();
-  return { from: new Date(to - days * DAY_MS).toISOString(), to: new Date(to).toISOString() };
+  return {
+    from: new Date(referenceTime - days * DAY_MS).toISOString(),
+    to: new Date(referenceTime).toISOString(),
+  };
 }
 
 const DAY_MS = 86_400_000;

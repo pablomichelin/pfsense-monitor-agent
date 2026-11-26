@@ -172,6 +172,37 @@ test('audit respects the end of a full page and clamps malformed or unsupported 
   assert.match(textOf(await browse('50')), /Próxima página/);
 });
 
+test('audit pagination preserves the relative period while browsing', async ({ mock }) => {
+  const initial = Date.parse('2026-11-26T02:00:00.000Z');
+  mock.timers.enable({ apis: ['Date'], now: initial });
+  const reads = [];
+  const page = sourceLoader({
+    ...uiMocks,
+    '@/components/audit-event-row': { AuditEventRow: 'audit-event' },
+    '@/lib/handle-page-api-error': { handlePageApiError: error => { throw error; } },
+    '@/lib/api': {
+      getSession: async () => ({ permissions: ['audit.view'] }),
+      getAuditLogs: async (query) => {
+        reads.push(query);
+        return { has_more: true, items: Array.from({ length: 25 }, (_, index) => ({ id: index })) };
+      },
+    },
+  })('app/audit/page.tsx').default;
+  const firstQuery = { period: '24h', limit: '25' };
+  const render = query => page({ searchParams: Promise.resolve(query) });
+  const first = await render(firstQuery);
+  const next = elements(first).find(element => element.props?.href?.includes('offset=25'));
+  assert.ok(next);
+  mock.timers.tick(90_000);
+  const follow = Object.fromEntries(new URL(next.props.href, 'https://qa.example.invalid').searchParams);
+  await render(follow);
+  assert.equal(reads[1].offset, 25);
+  assert.equal(reads[1].from, reads[0].from);
+  assert.equal(reads[1].to, reads[0].to);
+  await render(firstQuery);
+  assert.equal(Date.parse(reads[2].to) - Date.parse(reads[0].to), 90_000);
+});
+
 test('audit custom calendar days match Brasília and invalid periods stay on the form', async () => {
   const { resolveAuditDateBounds } = sourceLoader()('lib/audit-labels.ts');
   assert.deepEqual(resolveAuditDateBounds('2026-11-25', '2026-11-25'), {

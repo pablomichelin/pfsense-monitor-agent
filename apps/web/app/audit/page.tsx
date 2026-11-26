@@ -67,8 +67,13 @@ export default async function AuditPage({
   const parsedOffset = typeof params.offset === 'string' && /^\d+$/.test(params.offset) ? Number(params.offset) : 0;
   const offset = Number.isSafeInteger(parsedOffset) ? Math.min(MAX_AUDIT_OFFSET, parsedOffset) : 0;
 
-  const bounds = period === '24h' || period === '7d' || period === '30d'
-    ? resolveAuditPeriodBounds(period)
+  const now = Date.now();
+  const requestedEnd = offset > 0 && typeof params.period_end === 'string' ? Date.parse(params.period_end) : NaN;
+  const periodEnd = Number.isFinite(requestedEnd) && requestedEnd <= now &&
+    new Date(requestedEnd).toISOString() === params.period_end ? requestedEnd : now;
+  const rollingPeriod = period === '24h' || period === '7d' || period === '30d';
+  const bounds = rollingPeriod
+    ? resolveAuditPeriodBounds(period, periodEnd)
     : resolveAuditDateBounds(fromParam, toParam);
 
   let session;
@@ -103,6 +108,7 @@ export default async function AuditPage({
     result,
     actor_email: actorEmail,
     period,
+    period_end: rollingPeriod ? bounds?.to : undefined,
     from: fromParam,
     to: toParam,
     limit: String(limit),
@@ -272,7 +278,7 @@ export default async function AuditPage({
               <Button type="submit">Aplicar filtros</Button>
               {offset > 0 ? (
                 <Link
-                  href={`/audit${buildAuditQueryString({ ...filterState, offset: undefined })}`}
+                  href={`/audit${buildAuditQueryString({ ...filterState, offset: undefined, period_end: undefined })}`}
                   className="inline-flex h-11 min-h-11 items-center justify-center rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-fg"
                 >
                   Voltar ao início
