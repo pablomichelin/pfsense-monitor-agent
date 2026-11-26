@@ -58,6 +58,10 @@ function renderDetail(failingEndpoint, status, {
       getNodeMetricsHistory: async () => ({ enabled: false, points: [] }),
       getNodeCommandHistory: async () => ({ items: [] }),
       getOperationalActionsStatus: async () => ({ enabled: false }),
+      getNodeTechnicianAccounts: async () => {
+        if (failingEndpoint === 'technicians') throw new ApiError(status);
+        return { items: [] };
+      },
     },
   })('app/nodes/[id]/page.tsx');
   return NodeDetailsPage({ params: Promise.resolve({ id: node.id }) });
@@ -111,4 +115,17 @@ test('backup and other authorized detail reads start independently', async () =>
   backup.resolve({ items: [] });
   await details;
   assert.equal(beforeBackupCompleted, 1);
+});
+
+test('technician access stays an authorized tab during an outage with no action panel', async () => {
+  const unavailable = await renderDetail('technicians', 503, { permissions: ['technicians.view', 'technicians.manage'] });
+  const tabs = elements(unavailable).find(item => item.type === 'detail-tabs');
+  assert.ok(tabs.props.tabs.some(tab => tab.id === 'access'));
+  assert.match(textOf(tabs.props.access), /Contas de técnicos temporariamente indisponíveis/);
+  assert.equal(elements(tabs.props.access).some(item => item.type === 'access'), false);
+
+  const unprivileged = await renderDetail('technicians', 503);
+  const hidden = elements(unprivileged).find(item => item.type === 'detail-tabs');
+  assert.equal(hidden.props.tabs.some(tab => tab.id === 'access'), false);
+  assert.equal(hidden.props.access, null);
 });

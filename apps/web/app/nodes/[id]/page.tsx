@@ -187,7 +187,7 @@ export default async function NodeDetailsPage({
       { id: 'overview', label: 'Resumo' },
       { id: 'operations', label: 'Operações' },
       { id: 'history', label: 'Histórico' },
-      ...(canViewTechnicians && technicianAccounts ? [{ id: 'access' as NodeDetailTabId, label: 'Acessos' }] : []),
+      ...(canViewTechnicians ? [{ id: 'access' as NodeDetailTabId, label: 'Acessos' }] : []),
       { id: 'metrics', label: 'Métricas' },
       ...(isClientProfile ? [] : [{ id: 'alerts' as NodeDetailTabId, label: 'Alertas' }]),
       ...(canViewBackups ? [{ id: 'backup' as NodeDetailTabId, label: 'Backup' }] : []),
@@ -319,13 +319,16 @@ export default async function NodeDetailsPage({
                 canCancelNodeReboot={canRebootNode}
               />
             )}
-            access={<>                {canViewTechnicians && technicianAccounts ? (
+            access={canViewTechnicians ? (
+              technicianAccounts ? (
                   <NodeTechnicianAccountsPanel
                     items={technicianAccounts.items}
                     canManageTechnicians={canManageTechnicians}
                   />
-                ) : null}
-</>}
+              ) : (
+                <Alert variant="warning">Contas de técnicos temporariamente indisponíveis. Atualize a página para consultar novamente.</Alert>
+              )
+            ) : null}
             metrics={
               <NodeDetailMetricsTab
                 node={node}
