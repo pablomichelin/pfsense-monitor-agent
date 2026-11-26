@@ -12,6 +12,7 @@ import {
   getUsersList,
 } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
+import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 
 export const dynamic = 'force-dynamic';
@@ -52,7 +53,8 @@ export default async function AdminUsuariosPage({
 
   try {
     const [usersResponse, clientOptions, rolesResponse] = await Promise.all([
-      getUsersList({ status: showInactive ? 'inactive' : 'active', search, cursor, limit: 50 }),
+      getUsersList({ status: showInactive ? 'inactive' : 'active', search, cursor, limit: 50 })
+        .catch((error) => handlePageApiError(error, { pathname: '/admin/usuarios', searchParams: params })),
       getActiveAdminClientOptions(),
       getRolesList(),
     ]);

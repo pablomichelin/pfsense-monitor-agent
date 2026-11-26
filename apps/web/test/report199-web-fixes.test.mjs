@@ -41,6 +41,19 @@ test('node list cursor errors return to page one with the rest of the URL intact
   const other = new ApiError('invalid fields', 400);
   assert.throws(() => handlePageApiError(other, state), error => error === other);
   assert.throws(() => handlePageApiError(new ApiError('denied', 403), state), check('/conta?access=denied'));
+
+  const users = {
+    pathname: '/admin/usuarios',
+    searchParams: { cursor: 'expired', search: 'QA users', showInactive: '1', tab: 'users' },
+  };
+  for (const message of ['invalid user cursor', 'cursor must be a UUID']) {
+    const invalidUserCursor = new ApiError(message, 400);
+    assert.throws(() => handlePageApiError(invalidUserCursor, users),
+      check('/admin/usuarios?search=QA+users&showInactive=1&tab=users'));
+    assert.throws(() => handlePageApiError(invalidUserCursor, state), error => error === invalidUserCursor);
+  }
+  assert.throws(() => handlePageApiError(current, users), error => error === current);
+  assert.throws(() => handlePageApiError(other, users), error => error === other);
 });
 
 function bootstrapFixture(items, selectedId, cursor) {
