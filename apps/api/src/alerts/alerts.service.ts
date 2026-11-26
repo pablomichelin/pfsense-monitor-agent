@@ -187,10 +187,19 @@ export class AlertsService {
       ...(paginated ? { take: limit, skip: (page - 1) * limit } : {}),
       include: {
         node: {
-          include: {
+          select: {
+            id: true,
+            nodeUid: true,
+            hostname: true,
+            displayName: true,
+            managementIp: true,
+            pfsenseVersion: true,
             site: {
-              include: {
-                client: true,
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                client: { select: { id: true, name: true, code: true } },
               },
             },
           },
