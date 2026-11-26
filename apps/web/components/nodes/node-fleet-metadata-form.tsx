@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, Button, Card } from '@/components/ui';
 import { updateNodeFleetMetadataAction } from '@/lib/fleet-org-actions';
@@ -31,13 +31,31 @@ export function NodeFleetMetadataForm({
   const [draftTags, setDraftTags] = useState(() => new Map<string, boolean>());
 
   const clientTags = availableTags.filter((tag) => tag.client_id === clientId);
+  const availableTagIds = new Set(clientTags.map((tag) => tag.id));
+  const selectedTags = new Set(selectedTagIds);
+  const tagChanges = new Map([...draftTags].filter(([id, checked]) =>
+    availableTagIds.has(id) && selectedTags.has(id) !== checked,
+  ));
+  const unavailableChanges = [...draftTags].some(([id, checked]) =>
+    !availableTagIds.has(id) && selectedTags.has(id) !== checked,
+  );
+  const nextCriticality = draftCriticality === criticality ? undefined : draftCriticality;
   const busy = pending || refreshing;
-  const changed = draftCriticality !== undefined || draftTags.size > 0;
+  const changed = nextCriticality !== undefined || tagChanges.size > 0;
+
+  useEffect(() => {
+    setDraftCriticality((current) => current === criticality ? undefined : current);
+    const selected = new Set(selectedTagIds);
+    setDraftTags((current) => {
+      const next = new Map([...current].filter(([id, checked]) => selected.has(id) !== checked));
+      return next.size === current.size ? current : next;
+    });
+  }, [criticality, selectedTagIds]);
 
   function changeTag(id: string, checked: boolean) {
     setDraftTags((current) => {
       const next = new Map(current);
-      if (selectedTagIds.includes(id) === checked) next.delete(id);
+      if (selectedTags.has(id) === checked) next.delete(id);
       else next.set(id, checked);
       return next;
     });
@@ -50,12 +68,12 @@ export function NodeFleetMetadataForm({
     setError(null);
 
     try {
-      const changes: NodeFleetMetadataChanges = { criticality: draftCriticality };
-      if (draftTags.size > 0) {
+      const changes: NodeFleetMetadataChanges = { criticality: nextCriticality };
+      if (tagChanges.size > 0) {
         if (supportsTagChanges) {
           const additions: string[] = [];
           const removals: string[] = [];
-          for (const [id, checked] of draftTags) {
+          for (const [id, checked] of tagChanges) {
             if (checked) additions.push(id);
             else removals.push(id);
           }
@@ -63,7 +81,7 @@ export function NodeFleetMetadataForm({
           if (removals.length > 0) changes.remove_tag_ids = removals;
         } else {
           const tags = new Set(selectedTagIds);
-          for (const [id, checked] of draftTags) {
+          for (const [id, checked] of tagChanges) {
             if (checked) tags.add(id);
             else tags.delete(id);
           }
@@ -73,10 +91,11 @@ export function NodeFleetMetadataForm({
       const result = await updateNodeFleetMetadataAction(nodeId, changes);
       if (!result.ok) {
         setError(result.error);
+        if (result.status === 400 && tagChanges.size > 0) startRefresh(() => router.refresh());
         return;
       }
       setDraftCriticality(undefined);
-      setDraftTags(new Map());
+      setDraftTags((current) => new Map([...current].filter(([id]) => !tagChanges.has(id))));
       startRefresh(() => router.refresh());
     } catch {
       setError('Não foi possível salvar a organização. Tente novamente.');
@@ -120,7 +139,7 @@ export function NodeFleetMetadataForm({
                     type="checkbox"
                     name="tag_ids"
                     value={tag.id}
-                    checked={draftTags.get(tag.id) ?? selectedTagIds.includes(tag.id)}
+                    checked={draftTags.get(tag.id) ?? selectedTags.has(tag.id)}
                     disabled={busy}
                     onChange={(event) => changeTag(tag.id, event.currentTarget.checked)}
                     className="rounded border-slate-600 bg-panel-soft"
@@ -132,6 +151,22 @@ export function NodeFleetMetadataForm({
           )}
         </div>
 
+        {unavailableChanges ? (
+          <Alert variant="warning" className="space-y-2">
+            <p>Uma alteração de tag ficou indisponível. Você pode salvar as demais alterações.</p>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={busy}
+              onClick={() => setDraftTags((current) =>
+                new Map([...current].filter(([id]) => availableTagIds.has(id))),
+              )}
+            >
+              Descartar alterações indisponíveis
+            </Button>
+          </Alert>
+        ) : null}
         {error ? <Alert variant="error">{error}</Alert> : null}
 
         <Button type="submit" className="w-full" disabled={busy || !changed}>
