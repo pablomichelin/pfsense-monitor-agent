@@ -239,18 +239,15 @@ export class TechniciansService {
     const listQuery = {
       where: { ...scope, ...(status === 'all' ? {} : { status }) },
       orderBy: [{ status: 'asc' }, { fullName: 'asc' }],
-      include: {
-        _count: { select: { nodeAccounts: { where: accountScope } } },
-      },
     } satisfies Prisma.TechnicianFindManyArgs;
     const showNotes = this.accessPolicy.hasGlobalClientScope(actor);
-    const summarize = (technician: Technician & { _count: { nodeAccounts: number } }) => ({
+    const summarize = (technician: Technician, accountCount: number) => ({
       id: technician.id,
       full_name: technician.fullName,
       login_username: technician.loginUsername,
       status: technician.status,
       notes: showNotes ? technician.notes : null,
-      node_account_count: technician._count.nodeAccounts,
+      node_account_count: accountCount,
       created_at: technician.createdAt.toISOString(),
       revoked_at: technician.revokedAt?.toISOString() ?? null,
     });
@@ -259,7 +256,6 @@ export class TechniciansService {
       ? (await this.prisma.technician.findMany({
           ...listQuery,
           include: {
-            ...listQuery.include,
             nodeAccounts: {
               where: accountScope,
               include: accountDetailInclude,
@@ -267,10 +263,15 @@ export class TechniciansService {
             },
           },
         })).map((technician) => ({
-          ...summarize(technician),
+          ...summarize(technician, technician.nodeAccounts.length),
           node_accounts: technician.nodeAccounts.map(technicianAccountDetail),
         }))
-      : (await this.prisma.technician.findMany(listQuery)).map(summarize);
+      : (await this.prisma.technician.findMany({
+          ...listQuery,
+          include: {
+            _count: { select: { nodeAccounts: { where: accountScope } } },
+          },
+        })).map((technician) => summarize(technician, technician._count.nodeAccounts));
 
     return {
       generated_at: new Date().toISOString(),
