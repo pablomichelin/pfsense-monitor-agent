@@ -153,6 +153,7 @@ test('audit custom calendar days match Brasília and invalid periods stay on the
     from: '2018-11-04T03:00:00.000Z', to_before: '2018-11-05T02:00:00.000Z',
   });
   assert.equal(resolveAuditDateBounds('2026-02-30'), null);
+  assert.equal(resolveAuditDateBounds('2026-02-30T12:00:00Z'), null);
   assert.equal(resolveAuditDateBounds('2026-11-25T15:00:00'), null);
   assert.deepEqual(resolveAuditDateBounds(undefined, '2026-11-25T15:00:00Z'), {
     from: undefined, to: '2026-11-25T15:00:00.000Z',

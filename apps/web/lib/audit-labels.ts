@@ -216,9 +216,11 @@ function displayDayStart(utcDay: Date): number {
 function parseAuditDate(value: string | undefined, endOfDay: boolean): Date | undefined {
   const input = value?.trim();
   if (!input) return undefined;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) {
-    const day = new Date(`${input}T00:00:00.000Z`);
-    if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== input) return undefined;
+  const date = input.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return undefined;
+  const day = new Date(`${date}T00:00:00.000Z`);
+  if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== date) return undefined;
+  if (input.length === date.length) {
     const boundary = endOfDay ? new Date(day.getTime() + DAY_MS) : day;
     return new Date(displayDayStart(boundary));
   }
