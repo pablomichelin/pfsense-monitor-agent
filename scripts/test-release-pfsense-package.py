@@ -30,7 +30,8 @@ printf 'build %s\n' "$1" >> "$PFS_QA_TRACE"
 dir="$PFS_QA_ROOT/dist/pfsense-package"
 mkdir -p "$dir"
 printf 'synthetic\n' > "$dir/monitor-pfsense-package-v$1.tar.gz"
-printf 'test-checksum synthetic\n' > "$dir/monitor-pfsense-package-v$1.tar.gz.sha256"
+archive="$dir/monitor-pfsense-package-v$1.tar.gz"
+python3 -c 'from pathlib import Path; import hashlib, sys; p = Path(sys.argv[1]); print(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}")' "$archive" > "$archive.sha256"
 ''',
             executable=True,
         )
@@ -40,7 +41,8 @@ printf 'test-checksum synthetic\n' > "$dir/monitor-pfsense-package-v$1.tar.gz.sh
 set -eu
 printf 'git %s\n' "$3" >> "$PFS_QA_TRACE"
 case "$3" in
-  add|commit|push) exit 0 ;;
+  add|push) exit 0 ;;
+  commit) [[ "$4" == --only ]] ;;
   diff) exit 1 ;;
   *) exit 99 ;;
 esac
@@ -94,6 +96,31 @@ esac
         result, events = self.run_release("--help")
         self.assertEqual(result.returncode, 0)
         self.assertIn("--no-push", result.stdout)
+        self.assertEqual(events, [])
+
+    def test_prepare_then_publish_preserves_the_artifact(self):
+        preparation, events = self.run_release("--no-push")
+        self.assertEqual(preparation.returncode, 0, preparation.stderr)
+        self.assertEqual(events, ["build 9.9.9"])
+        archive = self.root / "dist/pfsense-package/monitor-pfsense-package-v9.9.9.tar.gz"
+        original = (archive.read_bytes(), archive.stat().st_ino)
+        published, events = self.run_release("--publish-prepared")
+        self.assertEqual(published.returncode, 0, published.stderr)
+        self.assertEqual(events, ["build 9.9.9", "git add", "git diff", "git commit", "git push"])
+        self.assertEqual((archive.read_bytes(), archive.stat().st_ino), original)
+
+    def test_prepared_artifact_with_changed_checksum_stops_before_git(self):
+        preparation, _ = self.run_release("--no-push")
+        self.assertEqual(preparation.returncode, 0, preparation.stderr)
+        self.write("dist/pfsense-package/monitor-pfsense-package-v9.9.9.tar.gz", "changed")
+        published, events = self.run_release("--publish-prepared")
+        self.assertNotEqual(published.returncode, 0)
+        self.assertIn("Checksum do artefato preparado não confere", published.stderr)
+        self.assertEqual(events, ["build 9.9.9"])
+
+    def test_conflicting_modes_stop_before_build_or_git(self):
+        result, events = self.run_release("--no-push", "--publish-prepared")
+        self.assertEqual(result.returncode, 2)
         self.assertEqual(events, [])
 
 

@@ -3,7 +3,7 @@
 # Release do package pfSense: build do artefato, atualização da versão/sha256
 # no config versionado, commit e push para o GitHub.
 #
-# Uso: ./scripts/release-pfsense-package.sh [--no-push]
+# Uso: ./scripts/release-pfsense-package.sh [--no-push | --publish-prepared]
 #
 # - Lê PORTVERSION do Makefile do package (a versão DEVE ser incrementada
 #   manualmente no Makefile + SYSTEMUP_MONITOR_AGENT_VERSION no .inc antes
@@ -12,9 +12,7 @@
 # - Atualiza config/package-release.env (PACKAGE_RELEASE_VERSION, PACKAGE_RELEASE_SHA256, PACKAGE_RELEASE_REPO_RAW_BASE)
 # - Faz commit e push (a menos que --no-push)
 #
-# Após o push, a API (ao ser reiniciada/redeploy) passa a servir o comando de
-# bootstrap com a nova versão. Novos firewalls e os já cadastrados passam a
-# receber o comando atualizado quando abrirem a tela do node ou de Instalação.
+# Após o pull no host com config/ montado, a API passa a oferecer a nova versão.
 #
 set -euo pipefail
 
@@ -24,13 +22,16 @@ PACKAGE_DIR="$ROOT_DIR/packages/pfsense-package"
 DIST_DIR="$ROOT_DIR/dist/pfsense-package"
 CONFIG_FILE="$ROOT_DIR/config/package-release.env"
 NO_PUSH=false
+PUBLISH_PREPARED=false
 
 for arg in "$@"; do
   case "$arg" in
     --no-push) NO_PUSH=true ;;
+    --publish-prepared) PUBLISH_PREPARED=true ;;
     -h|--help)
-      echo "Uso: $0 [--no-push]"
+      echo "Uso: $0 [--no-push | --publish-prepared]"
       echo "  --no-push  Só faz build e atualiza config; não faz commit nem push"
+      echo "  --publish-prepared  Publica os arquivos verificados de um build preparado"
       exit 0
       ;;
     *)
@@ -39,6 +40,11 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+if [[ "$NO_PUSH" == true && "$PUBLISH_PREPARED" == true ]]; then
+  echo "--no-push e --publish-prepared são mutuamente exclusivos." >&2
+  exit 2
+fi
 
 # Versão a partir do Makefile do package (incremente PORTVERSION no Makefile quando alterar o código do agente)
 VERSION="$(grep -E '^PORTVERSION=' "$PACKAGE_DIR/Makefile" | sed 's/^PORTVERSION=[[:space:]]*//' | tr -d '\r')"
@@ -56,11 +62,40 @@ if [[ "$INC_AGENT_VERSION" != "$VERSION" ]]; then
 fi
 
 echo "Versão do package: $VERSION"
-echo "Build do artefato..."
-"$SCRIPT_DIR/build-pfsense-package-artifact.sh" "$VERSION"
 
 ARTIFACT_NAME="monitor-pfsense-package-v${VERSION}.tar.gz"
+ARTIFACT_PATH="$DIST_DIR/$ARTIFACT_NAME"
 SHA256_FILE="$DIST_DIR/${ARTIFACT_NAME}.sha256"
+if [[ "$PUBLISH_PREPARED" == true ]]; then
+  python3 - "$ARTIFACT_PATH" "$SHA256_FILE" "$CONFIG_FILE" "$VERSION" <<'PYTHON'
+import hashlib
+from pathlib import Path
+import sys
+
+archive, sidecar, config = map(Path, sys.argv[1:4])
+version = sys.argv[4]
+pending = sidecar.with_name(f".{sidecar.name}.pending")
+if any(not path.is_file() or path.is_symlink() for path in (archive, sidecar, config)) or pending.exists():
+    sys.exit("Release preparado incompleto. Conclua o build antes de publicar.")
+
+digest = hashlib.sha256()
+with archive.open("rb") as stream:
+    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+        digest.update(chunk)
+sha256 = digest.hexdigest()
+if sidecar.read_text(encoding="ascii").split() != [sha256, archive.name]:
+    sys.exit("Checksum do artefato preparado não confere.")
+manifest = config.read_text(encoding="utf-8").splitlines()
+if f"PACKAGE_RELEASE_VERSION={version}" not in manifest or f"PACKAGE_RELEASE_SHA256={sha256}" not in manifest:
+    sys.exit("Versão ou checksum do manifesto preparado não confere.")
+
+print(f"Artefato preparado verificado: {archive.name}")
+PYTHON
+else
+  echo "Build do artefato..."
+  "$SCRIPT_DIR/build-pfsense-package-artifact.sh" "$VERSION"
+fi
+
 if [[ ! -f "$SHA256_FILE" ]]; then
   echo "Erro: checksum não encontrado: $SHA256_FILE" >&2
   exit 1
@@ -105,14 +140,14 @@ if [[ "$NO_PUSH" == true ]]; then
 fi
 
 # Commit e push
-git -C "$ROOT_DIR" add -f "$CONFIG_FILE" "$DIST_DIR/${ARTIFACT_NAME}" "$DIST_DIR/${ARTIFACT_NAME}.sha256"
-if git -C "$ROOT_DIR" diff --staged --quiet; then
+git -C "$ROOT_DIR" add -f -- "$CONFIG_FILE" "$ARTIFACT_PATH" "$SHA256_FILE"
+if git -C "$ROOT_DIR" diff --staged --quiet -- "$CONFIG_FILE" "$ARTIFACT_PATH" "$SHA256_FILE"; then
   echo "Nenhuma alteração para commit (config e artefato já estão em dia)."
   exit 0
 fi
 
-git -C "$ROOT_DIR" commit -m "Release pfsense package $VERSION"
+git -C "$ROOT_DIR" commit --only -m "Release pfsense package $VERSION" -- "$CONFIG_FILE" "$ARTIFACT_PATH" "$SHA256_FILE"
 echo "Commit feito. Fazendo push..."
 git -C "$ROOT_DIR" push
 
-echo "Concluído. Após o próximo deploy/restart da API, todos os comandos de bootstrap (novos e já gerados) usarão a versão $VERSION."
+echo "Concluído. Após o pull no host com config/ montado, o bootstrap oferecerá a versão $VERSION."

@@ -52,6 +52,13 @@ Para só gerar artefato e config, sem commit nem push:
 ./scripts/release-pfsense-package.sh --no-push
 ```
 
+Em uma cópia de trabalho, prepare e valide os arquivos com `--no-push`. Depois
+use `./scripts/release-pfsense-package.sh --publish-prepared` para publicar o
+mesmo tarball. O script confere a versão do manifesto e os checksums antes
+do commit. Faça commit do código do agente que corresponde ao build antes
+de publicar. Os arquivos já preparados nunca são recompilados na mesma
+versão. Use outra versão se o código precisar mudar.
+
 ### 3. Atualizar o servidor (git pull) — sem restart
 
 A API lê `config/package-release.env` **em tempo de execução** (o ficheiro está montado no container). Por isso:
@@ -83,6 +90,6 @@ Não é obrigatório atualizar todos no mesmo dia: quando o cliente rodar o coma
 
 ## Resumo
 
-- **Um release:** alterar `PORTVERSION` no Makefile (se necessário), rodar `./scripts/release-pfsense-package.sh`, depois reiniciar/redeploy da API.
-- **Comandos “já gerados”:** não existem armazenados; a API gera sempre com a versão atual de `config/package-release.env`. Por isso, ao atualizar esse ficheiro e redeployar, todos (novos e antigos) passam a receber o comando na nova versão.
+- **Um release.** Alinhe a versão no Makefile e no `.inc`, publique o artefato e atualize o checkout do servidor. Com `config/` montado, a API lê a nova versão em tempo de execução.
+- **Comandos de bootstrap.** Ao abrir o painel, consulte novamente o comando para receber a versão atual de `config/package-release.env`.
 - **Próximos firewalls:** ao criar um node e usar o comando de bootstrap, já recebem a versão que está em `config/package-release.env`.
