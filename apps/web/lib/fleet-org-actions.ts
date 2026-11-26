@@ -11,7 +11,7 @@ import {
   updateFleetGroup,
   updateFleetTag,
   updateNodeFleetMetadata,
-  type NodeCriticality,
+  type NodeFleetMetadataChanges,
 } from '@/lib/api';
 
 export type FleetOrgActionResult<T = void> =
@@ -100,7 +100,7 @@ export async function updateGroupMembersAction(
 
 export async function updateNodeFleetMetadataAction(
   nodeId: string,
-  changes: { criticality?: NodeCriticality; tag_ids?: string[] },
+  changes: NodeFleetMetadataChanges,
 ): Promise<FleetOrgActionResult> {
   try {
     await updateNodeFleetMetadata(nodeId, changes);

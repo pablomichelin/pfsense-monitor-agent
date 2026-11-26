@@ -341,6 +341,46 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.equal(await db.auditLog.count({ where: { targetId: node.id, action: 'fleet.node_metadata.update' } }), 0);
   });
 
+  await run('node metadata preserves concurrent partial tag edits and legacy replacements', async t => {
+    const f = await fixture(t);
+    const { NodeFleetMetadataService } = loadServiceModule('fleet-org/node-fleet-metadata.service');
+    const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const site = await db.site.create({ data: { clientId: f.client.id, code: 'qa', name: f.run } });
+    const node = await db.node.create({ data: { siteId: site.id, nodeUid: randomUUID(), hostname: 'qa.invalid' } });
+    const [first, second] = await Promise.all(['first', 'second'].map(name =>
+      db.tag.create({ data: { clientId: f.client.id, name } })));
+    const actor = { userId: f.users[0].id, role: 'superadmin' };
+    const service = connection =>
+      new NodeFleetMetadataService(connection, new AccessPolicyService(connection), new AuditService(connection));
+    const left = service(db);
+    const right = service(peer);
+    const save = (editor, dto) => editor.updateNodeFleetMetadata(actor, node.id, dto, actor.userId);
+    const read = async () => (await db.nodeTag.findMany({ where: { nodeId: node.id } })).map(link => link.tagId).sort();
+    await Promise.all([
+      save(left, { add_tag_ids: [first.id, first.id.toUpperCase()] }),
+      save(right, { add_tag_ids: [second.id] }),
+    ]);
+    assert.deepEqual(await read(), [first.id, second.id].sort());
+    await save(left, { add_tag_ids: [first.id] });
+    assert.deepEqual(await read(), [first.id, second.id].sort());
+    await assert.rejects(save(left, { add_tag_ids: [first.id], remove_tag_ids: [first.id.toUpperCase()] }), error => error.getStatus() === 400);
+    await assert.rejects(save(left, { tag_ids: [], add_tag_ids: [first.id] }), error => error.getStatus() === 400);
+    await assert.rejects(save(left, { add_tag_ids: [randomUUID()], remove_tag_ids: [first.id] }), error => error.getStatus() === 400);
+    assert.deepEqual(await read(), [first.id, second.id].sort());
+    await Promise.all([
+      save(left, { remove_tag_ids: [first.id] }),
+      save(right, { remove_tag_ids: [second.id.toUpperCase()] }),
+    ]);
+    assert.deepEqual(await read(), []);
+    await save(left, { tag_ids: [first.id, second.id] });
+    await save(right, { tag_ids: [second.id] });
+    assert.deepEqual(await read(), [second.id]);
+    assert.equal(await db.auditLog.count({ where: {
+      targetId: node.id, action: 'fleet.node_metadata.update',
+    } }), 7);
+  });
+
   for (const entity of [
     { name: 'group', model: 'nodeGroup', service: 'GroupsService', module: 'groups.service', suffix: 'Group' },
     { name: 'tag', model: 'tag', service: 'TagsService', module: 'tags.service', suffix: 'Tag' },

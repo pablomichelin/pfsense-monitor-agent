@@ -4,13 +4,14 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, Button, Card } from '@/components/ui';
 import { updateNodeFleetMetadataAction } from '@/lib/fleet-org-actions';
-import type { FleetTagItem, NodeCriticality } from '@/lib/api';
+import type { FleetTagItem, NodeCriticality, NodeFleetMetadataChanges } from '@/lib/api';
 
 type Props = {
   nodeId: string;
   clientId: string;
   criticality: NodeCriticality;
   selectedTagIds: string[];
+  supportsTagChanges: boolean;
   availableTags: FleetTagItem[];
 };
 
@@ -19,6 +20,7 @@ export function NodeFleetMetadataForm({
   clientId,
   criticality,
   selectedTagIds,
+  supportsTagChanges,
   availableTags,
 }: Props) {
   const router = useRouter();
@@ -26,17 +28,19 @@ export function NodeFleetMetadataForm({
   const [pending, setPending] = useState(false);
   const [refreshing, startRefresh] = useTransition();
   const [draftCriticality, setDraftCriticality] = useState<NodeCriticality>();
-  const [draftTagIds, setDraftTagIds] = useState<string[]>();
+  const [draftTags, setDraftTags] = useState(() => new Map<string, boolean>());
 
   const clientTags = availableTags.filter((tag) => tag.client_id === clientId);
-  const tagIds = draftTagIds ?? selectedTagIds;
   const busy = pending || refreshing;
-  const changed = draftCriticality !== undefined || draftTagIds !== undefined;
+  const changed = draftCriticality !== undefined || draftTags.size > 0;
 
   function changeTag(id: string, checked: boolean) {
-    const next = checked ? [...tagIds, id] : tagIds.filter((tagId) => tagId !== id);
-    const sameSelection = next.length === selectedTagIds.length && next.every((tagId) => selectedTagIds.includes(tagId));
-    setDraftTagIds(sameSelection ? undefined : next);
+    setDraftTags((current) => {
+      const next = new Map(current);
+      if (selectedTagIds.includes(id) === checked) next.delete(id);
+      else next.set(id, checked);
+      return next;
+    });
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -46,16 +50,33 @@ export function NodeFleetMetadataForm({
     setError(null);
 
     try {
-      const result = await updateNodeFleetMetadataAction(nodeId, {
-        criticality: draftCriticality,
-        tag_ids: draftTagIds,
-      });
+      const changes: NodeFleetMetadataChanges = { criticality: draftCriticality };
+      if (draftTags.size > 0) {
+        if (supportsTagChanges) {
+          const additions: string[] = [];
+          const removals: string[] = [];
+          for (const [id, checked] of draftTags) {
+            if (checked) additions.push(id);
+            else removals.push(id);
+          }
+          if (additions.length > 0) changes.add_tag_ids = additions;
+          if (removals.length > 0) changes.remove_tag_ids = removals;
+        } else {
+          const tags = new Set(selectedTagIds);
+          for (const [id, checked] of draftTags) {
+            if (checked) tags.add(id);
+            else tags.delete(id);
+          }
+          changes.tag_ids = [...tags];
+        }
+      }
+      const result = await updateNodeFleetMetadataAction(nodeId, changes);
       if (!result.ok) {
         setError(result.error);
         return;
       }
       setDraftCriticality(undefined);
-      setDraftTagIds(undefined);
+      setDraftTags(new Map());
       startRefresh(() => router.refresh());
     } catch {
       setError('Não foi possível salvar a organização. Tente novamente.');
@@ -99,7 +120,7 @@ export function NodeFleetMetadataForm({
                     type="checkbox"
                     name="tag_ids"
                     value={tag.id}
-                    checked={tagIds.includes(tag.id)}
+                    checked={draftTags.get(tag.id) ?? selectedTagIds.includes(tag.id)}
                     disabled={busy}
                     onChange={(event) => changeTag(tag.id, event.currentTarget.checked)}
                     className="rounded border-slate-600 bg-panel-soft"

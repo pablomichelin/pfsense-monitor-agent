@@ -162,6 +162,7 @@ export type NodeDetailsResponse = {
     maintenance_mode: boolean;
     criticality: NodeCriticality;
     tags: FleetTagRef[];
+    supports_tag_changes?: true;
     client: { id: string; name: string; code: string };
     site: {
       id: string;
@@ -2192,12 +2193,16 @@ export async function setFleetGroupMembers(
   });
 }
 
+export type NodeFleetMetadataChanges = {
+  criticality?: NodeCriticality;
+  tag_ids?: string[];
+  add_tag_ids?: string[];
+  remove_tag_ids?: string[];
+};
+
 export async function updateNodeFleetMetadata(
   nodeId: string,
-  input: {
-    criticality?: NodeCriticality;
-    tag_ids?: string[];
-  },
+  input: NodeFleetMetadataChanges,
 ): Promise<{
   node_id: string;
   criticality: NodeCriticality;

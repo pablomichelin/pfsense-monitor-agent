@@ -33,7 +33,18 @@ export class NodeFleetMetadataService {
   }> {
     const clientId = await this.accessPolicy.assertNodeAccess(actor, nodeId);
 
-    if (dto.criticality === undefined && dto.tag_ids === undefined) {
+    const replaceTags = dto.tag_ids !== undefined;
+    if (replaceTags && (dto.add_tag_ids !== undefined || dto.remove_tag_ids !== undefined)) {
+      throw new BadRequestException('tag replacements and partial tag changes cannot be combined');
+    }
+    const addedTagIds = replaceTags
+      ? [...new Set(dto.tag_ids)]
+      : [...new Set((dto.add_tag_ids ?? []).map((id) => id.toLowerCase()))];
+    const removedTagIds = new Set((dto.remove_tag_ids ?? []).map((id) => id.toLowerCase()));
+    if (addedTagIds.some((id) => removedTagIds.has(id))) {
+      throw new BadRequestException('a tag cannot be both added and removed');
+    }
+    if (dto.criticality === undefined && !replaceTags && addedTagIds.length === 0 && removedTagIds.size === 0) {
       throw new BadRequestException('no fields to update');
     }
 
@@ -48,15 +59,14 @@ export class NodeFleetMetadataService {
       `;
       if (!locked) throw new NotFoundException('node not found');
 
-      const uniqueTagIds = dto.tag_ids === undefined ? undefined : [...new Set(dto.tag_ids)];
-      if (uniqueTagIds?.length) {
+      if (addedTagIds.length > 0) {
         const tags = await tx.$queryRaw<Array<{ id: string }>>`
           SELECT id FROM tags
-          WHERE id IN (${Prisma.join(uniqueTagIds.map((id) => Prisma.sql`${id}::uuid`))})
+          WHERE id IN (${Prisma.join(addedTagIds.map((id) => Prisma.sql`${id}::uuid`))})
             AND client_id = ${clientId}::uuid
           ORDER BY id FOR KEY SHARE
         `;
-        if (tags.length !== uniqueTagIds.length) {
+        if (tags.length !== addedTagIds.length) {
           throw new BadRequestException('one or more tags are invalid or out of client scope');
         }
       }
@@ -65,11 +75,16 @@ export class NodeFleetMetadataService {
         where: { id: nodeId },
         select: { criticality: true, status: true, nodeTags: { select: { tagId: true } } },
       });
-      if (uniqueTagIds !== undefined) {
-        await tx.nodeTag.deleteMany({ where: { nodeId } });
-        if (uniqueTagIds.length > 0) {
-          await tx.nodeTag.createMany({ data: uniqueTagIds.map((tagId) => ({ nodeId, tagId })) });
-        }
+      if (replaceTags || removedTagIds.size > 0) {
+        await tx.nodeTag.deleteMany({
+          where: replaceTags ? { nodeId } : { nodeId, tagId: { in: [...removedTagIds] } },
+        });
+      }
+      if (addedTagIds.length > 0) {
+        await tx.nodeTag.createMany({
+          data: addedTagIds.map((tagId) => ({ nodeId, tagId })),
+          skipDuplicates: !replaceTags,
+        });
       }
       return this.updateAndAudit(tx, existing, clientId, nodeId, dto.criticality, actorId, actorIp);
     });

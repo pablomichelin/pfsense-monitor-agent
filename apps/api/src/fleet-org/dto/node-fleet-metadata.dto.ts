@@ -14,4 +14,14 @@ export class UpdateNodeFleetMetadataDto {
   @IsArray()
   @IsUUID('4', { each: true })
   tag_ids?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  add_tag_ids?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  remove_tag_ids?: string[];
 }

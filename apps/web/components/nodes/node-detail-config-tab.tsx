@@ -85,6 +85,7 @@ export function NodeDetailConfigTab({
               clientId={node.client.id}
               criticality={node.criticality}
               selectedTagIds={node.tags.map((tag) => tag.id)}
+              supportsTagChanges={node.supports_tag_changes === true}
               availableTags={availableTags}
             />
           ) : null}

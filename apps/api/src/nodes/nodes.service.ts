@@ -719,6 +719,7 @@ export class NodesService {
       maintenance_mode: boolean;
       criticality: NodeCriticality;
       tags: Array<{ id: string; name: string }>;
+      supports_tag_changes: true;
       client: { id: string; name: string; code: string };
       site: { id: string; name: string; code: string; city: string | null; state: string | null; timezone: string | null };
       management_ip: string | null;
@@ -856,6 +857,7 @@ export class NodesService {
           id: entry.tag.id,
           name: entry.tag.name,
         })),
+        supports_tag_changes: true,
         client: {
           id: node.site.client.id,
           name: node.site.client.name,
