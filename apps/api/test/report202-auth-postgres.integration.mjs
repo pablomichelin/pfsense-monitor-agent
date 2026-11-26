@@ -67,6 +67,7 @@ test('R202 auth: PG17 budgets, rollback, own-session pagination and password res
 
   const { PasswordLoginLimitService, passwordLoginKeys } = require('./dist/auth/password-login-limit.service.js');
   const { AuthService } = require('./dist/auth/auth.service.js');
+  const { AuditService } = require('./dist/audit/audit.service.js');
   const { MfaService } = require('./dist/auth/mfa.service.js');
   const { hashPassword } = require('./dist/auth/password-hash.js');
   const { listOwnSessions } = require('./dist/auth/own-sessions.js');
@@ -167,6 +168,63 @@ test('R202 auth: PG17 budgets, rollback, own-session pagination and password res
     const foreign = data.find(row => row.userId === other.id);
     await assert.rejects(auth.revokeSession(foreign.id, actor), e => e.getStatus() === 401);
   });
+
+  for (const mode of ['concurrent revocation', 'audit failure']) {
+    await runCase(`own session revocation is atomic: ${mode}`, async () => {
+      const user = await makeUser(mode === 'audit failure' ? 'revoke-audit' : 'revoke-race');
+      const target = await a.userSession.create({
+        data: {
+          userId: user.id,
+          sessionTokenHash: hash(randomUUID()),
+          csrfTokenHash: hash(randomUUID()),
+          expiresAt: new Date(Date.now() + 3_600_000),
+        },
+      });
+      const actor = { userId: user.id, sessionId: randomUUID() };
+      const auth = db => new AuthService(db, new AuditService(db), {}, {});
+      const auditWhere = { action: 'auth.session.revoke', targetId: target.id, actorId: user.id };
+
+      if (mode === 'audit failure') {
+        const failing = new AuthService(a, { record: async () => { throw new Error('synthetic audit failure'); } }, {}, {});
+        await assert.rejects(failing.revokeSession(target.id, actor), /synthetic audit failure/);
+        assert.equal((await a.userSession.findUnique({ where: { id: target.id } })).revokedAt, null);
+        assert.equal(await a.auditLog.count({ where: auditWhere }), 0);
+        await auth(b).revokeSession(target.id, actor);
+      } else {
+        const release = gate();
+        const blocked = gate();
+        const locker = observer.$transaction(async tx => {
+          await tx.$queryRaw`SELECT id FROM user_sessions WHERE id = ${target.id}::uuid FOR UPDATE`;
+          blocked.resolve();
+          await release.promise;
+        }, { timeout: 15_000 });
+        await blocked.promise;
+        const requests = Promise.allSettled([auth(a).revokeSession(target.id, actor), auth(b).revokeSession(target.id, actor)]);
+        try {
+          const deadline = Date.now() + 5_000;
+          let waiting = 0;
+          while (Date.now() < deadline && waiting < 2) {
+            const [row] = await a.$queryRaw`SELECT count(*) AS count FROM pg_stat_activity
+              WHERE wait_event_type = 'Lock' AND query LIKE 'UPDATE %user_sessions%'`;
+            waiting = Number(row.count);
+            if (waiting < 2) await new Promise(resolve => setTimeout(resolve, 10));
+          }
+          assert.equal(waiting, 2, 'both revocations must reach the lock before it is released');
+        } finally {
+          release.resolve();
+          await locker;
+          await requests;
+        }
+        const [first, second] = await requests;
+        assert.equal(first.status, 'fulfilled');
+        assert.equal(second.status, 'fulfilled');
+        assert.equal(await a.auditLog.count({ where: auditWhere }), 1);
+        assert.equal(first.value.revoked_at, second.value.revoked_at);
+      }
+
+      assert.equal(await a.auditLog.count({ where: auditWhere }), 1);
+    });
+  }
 
   for (const mode of ['password-session', 'password-challenge', 'completed-mfa']) {
     await runCase(`reset commits after verification: ${mode} is fenced across connections`, async () => {

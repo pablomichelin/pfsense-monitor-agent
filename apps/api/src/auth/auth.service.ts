@@ -344,52 +344,36 @@ export class AuthService {
       throw new ForbiddenException('current session must use logout');
     }
 
-    const session = await this.prisma.userSession.findFirst({
-      where: {
-        id: targetSessionId,
-        userId: actor.userId,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const target = { id: targetSessionId, userId: actor.userId };
+      const revokedAt = new Date();
+      const changed = await tx.userSession.updateMany({
+        where: { ...target, revokedAt: null },
+        data: { revokedAt },
+      });
+
+      if (!changed.count) {
+        const existing = await tx.userSession.findFirst({
+          where: target,
+          select: { revokedAt: true },
+        });
+        if (!existing?.revokedAt) {
+          throw new UnauthorizedException('session not found');
+        }
+        return { ok: true, session_id: targetSessionId, revoked_at: existing.revokedAt.toISOString() };
+      }
+
+      await this.auditService.record({
+        actorId: actor.userId,
+        action: 'auth.session.revoke',
+        targetType: 'user_session',
+        targetId: targetSessionId,
+        ipAddress: actor.ipAddress,
+        metadataJson: { session_id: targetSessionId },
+      }, tx);
+
+      return { ok: true, session_id: targetSessionId, revoked_at: revokedAt.toISOString() };
     });
-
-    if (!session) {
-      throw new UnauthorizedException('session not found');
-    }
-
-    if (session.revokedAt) {
-      return {
-        ok: true,
-        session_id: session.id,
-        revoked_at: session.revokedAt.toISOString(),
-      };
-    }
-
-    const revokedAt = new Date();
-
-    await this.prisma.userSession.update({
-      where: {
-        id: session.id,
-      },
-      data: {
-        revokedAt,
-      },
-    });
-
-    await this.auditService.record({
-      actorId: actor.userId,
-      action: 'auth.session.revoke',
-      targetType: 'user_session',
-      targetId: session.id,
-      ipAddress: actor.ipAddress,
-      metadataJson: {
-        session_id: session.id,
-      },
-    });
-
-    return {
-      ok: true,
-      session_id: session.id,
-      revoked_at: revokedAt.toISOString(),
-    };
   }
 
   buildSessionCookie(value: string, expiresAt: Date): string {

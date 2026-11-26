@@ -23,7 +23,7 @@ export class AuditService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async resolveActorRole(actorId?: string): Promise<string | null> {
+  async resolveActorRole(actorId?: string, db: Prisma.TransactionClient = this.prisma): Promise<string | null> {
     if (!actorId) {
       return null;
     }
@@ -33,7 +33,7 @@ export class AuditService {
       return cached;
     }
 
-    const user = await this.prisma.user.findUnique({
+    const user = await db.user.findUnique({
       where: { id: actorId },
       select: { role: true },
     });
@@ -46,13 +46,13 @@ export class AuditService {
     return user.role;
   }
 
-  async record(input: AuditRecordInput): Promise<void> {
+  async record(input: AuditRecordInput, db: Prisma.TransactionClient = this.prisma): Promise<void> {
     const actorRole =
       input.actorRole === undefined
-        ? await this.resolveActorRole(input.actorId)
+        ? await this.resolveActorRole(input.actorId, db)
         : input.actorRole;
 
-    await this.prisma.auditLog.create({
+    await db.auditLog.create({
       data: {
         actorType: input.actorType ?? 'user_session',
         actorId: input.actorId,
