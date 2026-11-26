@@ -240,19 +240,27 @@ export async function logoutAction(): Promise<void> {
 
 export async function revokeSessionAction(formData: FormData): Promise<void> {
   const sessionId = String(formData.get('session_id') ?? '').trim();
+  const returnTo = sanitizeInternalPath(String(formData.get('return_to') ?? ''));
+  const url = new URL(returnTo ?? '/sessions', 'https://internal.invalid');
+  const filters = url.pathname === '/sessions' ? url.searchParams : new URLSearchParams();
+  const destination = (status: 'ok' | 'error', message: string) => {
+    filters.set('status', status);
+    filters.set('message', message);
+    return `/sessions?${filters.toString()}`;
+  };
 
   if (!sessionId) {
-    redirect('/sessions?status=error&message=Sess%C3%A3o%20inv%C3%A1lida');
+    redirect(destination('error', 'Sessão inválida'));
   }
 
   let redirectTo: string;
   try {
     await revokeAuthSession(sessionId);
     revalidatePath('/sessions');
-    redirectTo = '/sessions?status=ok&message=Sess%C3%A3o%20revogada';
+    redirectTo = destination('ok', 'Sessão revogada');
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Falha ao revogar sessão';
-    redirectTo = `/sessions?status=error&message=${encodeURIComponent(message)}`;
+    redirectTo = destination('error', message);
   }
   redirect(redirectTo);
 }

@@ -5,8 +5,12 @@ import { Alert, Badge, Button, DataTable, PageSection, dataTableHeadClassName, d
 import { ApiError, getAuthSessions, getSession } from '@/lib/api';
 import { revokeSessionAction } from '@/lib/auth';
 import { formatRelativeAge } from '@/lib/format';
+import { parsePage } from '@/lib/pagination';
 
 export const dynamic = 'force-dynamic';
+
+const SESSION_QUERY_MAX_LENGTH = 200;
+const SESSION_MAX_PAGE = 2_147_483_647;
 
 function sessionState(session: {
   current: boolean;
@@ -39,8 +43,9 @@ export default async function SessionsPage({
   const view = typeof params.view === 'string' && ['active', 'history', 'all'].includes(params.view)
     ? params.view
     : 'active';
-  const query = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
-  const page = typeof params.page === 'string' && /^\d+$/.test(params.page) ? Math.max(1, Number(params.page)) : 1;
+  const search = typeof params.q === 'string' ? params.q.trim() : '';
+  const query = search.slice(0, SESSION_QUERY_MAX_LENGTH);
+  const page = Math.min(parsePage(params.page), SESSION_MAX_PAGE);
   const perPage = typeof params.per_page === 'string' && ['10', '25', '50'].includes(params.per_page)
     ? Number(params.per_page)
     : 25;
@@ -61,9 +66,9 @@ export default async function SessionsPage({
   const totalPages = sessions.total_pages;
   const currentPage = sessions.page;
   const visibleSessions = sessions.items;
-  const pageHref = (nextPage: number) => {
+  const pageHref = (nextPage: number, nextView = view) => {
     const next = new URLSearchParams();
-    next.set('view', view);
+    next.set('view', nextView);
     if (query) next.set('q', query);
     next.set('per_page', String(perPage));
     next.set('page', String(nextPage));
@@ -85,6 +90,9 @@ export default async function SessionsPage({
       {status && message ? (
         <Alert variant={status === 'ok' ? 'success' : 'error'}>{message}</Alert>
       ) : null}
+      {search.length > SESSION_QUERY_MAX_LENGTH ? (
+        <Alert variant="warning">A busca foi limitada a {SESSION_QUERY_MAX_LENGTH} caracteres.</Alert>
+      ) : null}
 
       <PageSection
         title="Sessões registradas"
@@ -97,12 +105,12 @@ export default async function SessionsPage({
               ['history', 'Expiradas/revogadas'],
               ['all', 'Todas'],
             ].map(([value, label]) => (
-              <Link key={value} href={`/sessions?view=${value}&per_page=${perPage}`} aria-current={view === value ? 'page' : undefined} className={view === value ? 'rounded-lg border border-primary bg-primary/15 px-3 py-2 text-sm text-primary' : 'rounded-lg border border-border px-3 py-2 text-sm text-fg-muted hover:text-fg'}>{label}</Link>
+              <Link key={value} href={pageHref(1, value)} aria-current={view === value ? 'page' : undefined} className={view === value ? 'rounded-lg border border-primary bg-primary/15 px-3 py-2 text-sm text-primary' : 'rounded-lg border border-border px-3 py-2 text-sm text-fg-muted hover:text-fg'}>{label}</Link>
             ))}
           </div>
-          <form className="flex flex-wrap items-end gap-2">
+          <form key={JSON.stringify([view, query, perPage])} className="flex flex-wrap items-end gap-2">
             <input type="hidden" name="view" value={view} />
-            <label className="text-xs text-fg-muted">Buscar por IP ou agente<input name="q" defaultValue={query} className="mt-1 block h-10 min-w-[16rem] rounded-lg border border-border bg-surface px-3 text-sm text-fg" /></label>
+            <label className="text-xs text-fg-muted">Buscar por IP ou agente<input name="q" defaultValue={query} maxLength={SESSION_QUERY_MAX_LENGTH} className="mt-1 block h-10 min-w-[16rem] rounded-lg border border-border bg-surface px-3 text-sm text-fg" /></label>
             <label className="text-xs text-fg-muted">Por página<select name="per_page" defaultValue={String(perPage)} className="mt-1 block h-10 rounded-lg border border-border bg-surface px-3 text-sm text-fg"><option value="10">10</option><option value="25">25</option><option value="50">50</option></select></label>
             <Button type="submit" size="sm">Aplicar</Button>
           </form>
@@ -162,6 +170,7 @@ export default async function SessionsPage({
                     ) : (
                       <form action={revokeSessionAction} className="inline">
                         <input type="hidden" name="session_id" value={item.id} />
+                        <input type="hidden" name="return_to" value={pageHref(currentPage)} />
                         <Button type="submit" variant="danger-outline" size="sm">
                           Revogar
                         </Button>
