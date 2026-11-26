@@ -896,9 +896,10 @@ export class IngestService {
         continue;
       }
 
-      await tx.alert.update({
+      await tx.alert.updateMany({
         where: {
           id: existing.id,
+          status: { not: AlertStatus.resolved },
         },
         data: {
           status: AlertStatus.resolved,

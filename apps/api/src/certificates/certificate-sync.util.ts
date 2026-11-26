@@ -217,8 +217,8 @@ export async function syncCertificateExpirationAlerts(
       continue;
     }
 
-    await tx.alert.update({
-      where: { id: existing.id },
+    await tx.alert.updateMany({
+      where: { id: existing.id, status: { not: AlertStatus.resolved } },
       data: {
         status: AlertStatus.resolved,
         resolvedAt: observedAt,

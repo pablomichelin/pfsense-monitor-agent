@@ -174,3 +174,20 @@ test('certificate refresh keeps acknowledgment and only reopens a resolved incid
     }
   }
 });
+
+test('certificate recovery leaves an already resolved alert untouched', async () => {
+  const id = 'synthetic-certificate';
+  let writes = 0;
+  const observedAt = new Date('2026-06-01T00:00:00Z');
+  const result = await syncCertificateExpirationAlerts({ alert: {
+    findMany: async () => [{ id, fingerprint: 'synthetic', status: 'open' }],
+    updateMany: async ({ where, data }) => {
+      writes += 1;
+      assert.deepEqual(where, { id, status: { not: 'resolved' } });
+      assert.equal(data.resolvedAt, observedAt);
+      return { count: 0 };
+    },
+  } }, 'synthetic-node', [], observedAt);
+  assert.equal(writes, 1);
+  assert.deepEqual(result, []);
+});

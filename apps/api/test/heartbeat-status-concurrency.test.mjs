@@ -208,3 +208,21 @@ test('observing the same service and gateway faults preserves their lifecycle fi
   assert.equal(updates.get('gateway-alert').acknowledgedAt, null);
   assert.deepEqual(notifications, ['gateway-alert']);
 });
+
+test('automatic recovery only resolves a gateway alert that is still active', async () => {
+  const { service } = fixture();
+  const observedAt = new Date(sentAt);
+  const id = 'gateway-alert';
+  let writes = 0;
+  const notifications = await service.syncAlerts({ alert: {
+    findMany: async () => [{ id, status: 'open', type: 'gateway_down', fingerprint: `gateway_down:${nodeId}:LINK_A` }],
+    updateMany: async ({ where, data }) => {
+      writes += 1;
+      assert.deepEqual(where, { id, status: { not: 'resolved' } });
+      assert.equal(data.resolvedAt, observedAt);
+      return { count: 0 };
+    },
+  } }, nodeId, { services: [], gateways: [] }, observedAt, { syncServices: true, syncGateways: true });
+  assert.equal(writes, 1);
+  assert.deepEqual(notifications, []);
+});
