@@ -105,17 +105,12 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const acquired = await this.lockService.tryAcquire(
-      HOURLY_LOCK_KEY,
-      ROLLUP_LOCK_TTL_MS,
-    );
-    if (!acquired) {
-      return;
-    }
-
     this.isHourlyRunning = true;
-
+    let acquired = false;
     try {
+      acquired = await this.lockService.tryAcquire(HOURLY_LOCK_KEY, ROLLUP_LOCK_TTL_MS);
+      if (!acquired) return;
+
       const now = new Date();
       const currentHour = truncateToHourUtc(now);
       const previousHour = addHoursUtc(currentHour, -1);
@@ -137,8 +132,11 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
         `hourly rollup reason=${reason} bucket=${previousHour.toISOString()} purged_hourly=${deleted.count}`,
       );
     } finally {
-      this.isHourlyRunning = false;
-      await this.lockService.release(HOURLY_LOCK_KEY);
+      try {
+        if (acquired) await this.lockService.release(HOURLY_LOCK_KEY);
+      } finally {
+        this.isHourlyRunning = false;
+      }
     }
   }
 
@@ -147,17 +145,12 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const acquired = await this.lockService.tryAcquire(
-      DAILY_LOCK_KEY,
-      ROLLUP_LOCK_TTL_MS,
-    );
-    if (!acquired) {
-      return;
-    }
-
     this.isDailyRunning = true;
-
+    let acquired = false;
     try {
+      acquired = await this.lockService.tryAcquire(DAILY_LOCK_KEY, ROLLUP_LOCK_TTL_MS);
+      if (!acquired) return;
+
       const now = new Date();
       const currentDay = truncateToDayUtc(now);
       const previousDay = addDaysUtc(currentDay, -1);
@@ -186,8 +179,11 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
         `daily rollup reason=${reason} bucket=${previousDay.toISOString()} purged_daily=${deleted.count}`,
       );
     } finally {
-      this.isDailyRunning = false;
-      await this.lockService.release(DAILY_LOCK_KEY);
+      try {
+        if (acquired) await this.lockService.release(DAILY_LOCK_KEY);
+      } finally {
+        this.isDailyRunning = false;
+      }
     }
   }
 

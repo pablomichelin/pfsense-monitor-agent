@@ -13,6 +13,61 @@ const { deriveEffectiveNodeStatus } = await import('../dist/nodes/node-status.ut
 const lock = { tryAcquire: async () => true, release: async () => {} };
 const noRowsDeleted = { deleteMany: async () => ({ count: 0 }) };
 
+function deferred() {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+for (const key of ['sampler', 'hourly', 'daily']) {
+  test(`${key} metric cycle stays exclusive through acquisition and release`, async () => {
+    const acquiring = deferred();
+    const release = deferred();
+    const startedRelease = deferred();
+    let acquisitions = 0;
+    let releases = 0;
+    let firstAcquisitionReturned = false;
+    const lease = {
+      tryAcquire: async () => {
+        if (++acquisitions === 1) {
+          await acquiring.promise;
+          firstAcquisitionReturned = true;
+        }
+        return firstAcquisitionReturned;
+      },
+      release: async () => {
+        if (++releases === 1) {
+          startedRelease.resolve();
+          await release.promise;
+        }
+      },
+    };
+    const sampler = new MetricsSamplerService({ node: { findMany: async () => [] } }, lease, {});
+    const rollup = new MetricsRollupService({
+      nodeMetricRollupHourly: noRowsDeleted,
+      nodeMetricRollupDaily: noRowsDeleted,
+    }, lease);
+    rollup.rollupHourlyBucket = async () => 0;
+    rollup.rollupDailyBucket = async () => 0;
+    const run = key === 'sampler' ? () => sampler.runSamplingCycle('manual') :
+      key === 'hourly' ? () => rollup.runHourlyRollupCycle('manual') : () => rollup.runDailyRollupCycle('manual');
+
+    const first = run();
+    const whileAcquiring = run();
+    acquiring.resolve();
+    await startedRelease.promise;
+    const whileReleasing = run();
+    await setImmediate();
+    const whileLocked = [acquisitions, releases];
+    release.resolve();
+    await Promise.all([first, whileAcquiring, whileReleasing]);
+    assert.deepEqual(whileLocked, [1, 1]);
+
+    await run();
+    assert.deepEqual([acquisitions, releases], [2, 2]);
+  });
+}
+
 test('a firewall without a heartbeat stops reporting maintenance when the mode is disabled', () => {
   const neverSeen = { status: 'maintenance', maintenanceMode: true, lastSeenAt: null };
   assert.equal(deriveEffectiveNodeStatus(neverSeen), 'maintenance');

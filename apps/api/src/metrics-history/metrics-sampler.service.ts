@@ -60,18 +60,13 @@ export class MetricsSamplerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const acquired = await this.lockService.tryAcquire(
-      SAMPLE_LOCK_KEY,
-      SAMPLE_LOCK_TTL_MS,
-    );
-    if (!acquired) {
-      return;
-    }
-
     this.isRunning = true;
-    const sampledAt = new Date();
-
+    let acquired = false;
     try {
+      acquired = await this.lockService.tryAcquire(SAMPLE_LOCK_KEY, SAMPLE_LOCK_TTL_MS);
+      if (!acquired) return;
+
+      const sampledAt = new Date();
       const nodes = await this.prisma.node.findMany({
         orderBy: { id: 'asc' },
         select: {
@@ -138,8 +133,11 @@ export class MetricsSamplerService implements OnModuleInit, OnModuleDestroy {
         `metric sampling reason=${reason} nodes=${written} purged_samples=${deleted.count}`,
       );
     } finally {
-      this.isRunning = false;
-      await this.lockService.release(SAMPLE_LOCK_KEY);
+      try {
+        if (acquired) await this.lockService.release(SAMPLE_LOCK_KEY);
+      } finally {
+        this.isRunning = false;
+      }
     }
   }
 }
