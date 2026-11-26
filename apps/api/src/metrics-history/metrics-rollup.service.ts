@@ -4,7 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -19,14 +19,18 @@ import { SystemJobLockService } from '../common/system-job-lock.service';
 const HOURLY_LOCK_KEY = 'metrics_rollup_hourly';
 const DAILY_LOCK_KEY = 'metrics_rollup_daily';
 const ROLLUP_LOCK_TTL_MS = 10 * 60 * 1000;
-const ROLLUP_READ_BATCH_SIZE = 128;
+const ROLLUP_BATCH_SIZE = 128;
+type RollupRow = Required<Omit<
+  Prisma.NodeMetricRollupHourlyCreateManyInput,
+  'id' | 'createdAt' | 'updatedAt'
+>>;
 
 async function* loadRollupRowsByNode<Row extends { nodeId: string }>(
   nodes: { nodeId: string }[],
   load: (nodeIds: string[]) => Promise<Row[]>,
-): AsyncGenerator<[string, Row[]]> {
-  for (let offset = 0; offset < nodes.length; offset += ROLLUP_READ_BATCH_SIZE) {
-    const nodeIds = nodes.slice(offset, offset + ROLLUP_READ_BATCH_SIZE).map(({ nodeId }) => nodeId);
+): AsyncGenerator<Array<[string, Row[]]>> {
+  for (let offset = 0; offset < nodes.length; offset += ROLLUP_BATCH_SIZE) {
+    const nodeIds = nodes.slice(offset, offset + ROLLUP_BATCH_SIZE).map(({ nodeId }) => nodeId);
     const grouped = new Map<string, Row[]>();
     for (const row of await load(nodeIds)) {
       const existing = grouped.get(row.nodeId);
@@ -36,7 +40,12 @@ async function* loadRollupRowsByNode<Row extends { nodeId: string }>(
         grouped.set(row.nodeId, [row]);
       }
     }
-    yield* grouped;
+    const ordered: Array<[string, Row[]]> = [];
+    for (const nodeId of nodeIds) {
+      const rows = grouped.get(nodeId);
+      if (rows) ordered.push([nodeId, rows]);
+    }
+    if (ordered.length) yield ordered;
   }
 }
 
@@ -195,22 +204,13 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
         },
       },
       distinct: ['nodeId'],
+      orderBy: { nodeId: 'asc' },
       select: {
         nodeId: true,
       },
     });
 
     let upserts = 0;
-    const missingHourlyRows: Prisma.NodeMetricRollupHourlyCreateManyInput[] = [];
-    const insertMissingRows = async () => {
-      const result = await this.prisma.nodeMetricRollupHourly.createMany({
-        data: missingHourlyRows,
-        skipDuplicates: true,
-      });
-      upserts += result.count;
-      missingHourlyRows.length = 0;
-    };
-
     const samplesByNode = loadRollupRowsByNode(nodeIds, (batch) =>
       this.prisma.nodeMetricSample.findMany({
         where: {
@@ -232,45 +232,39 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
       }),
     );
 
-    for await (const [nodeId, samples] of samplesByNode) {
-      const aggregate = aggregateMetricSamples(samples);
-      const key = { nodeId, bucketStart };
-      const metrics = {
-        sampleCount: aggregate.sampleCount,
-        cpuAvg: aggregate.cpu.avg,
-        cpuMin: aggregate.cpu.min,
-        cpuMax: aggregate.cpu.max,
-        memoryAvg: aggregate.memory.avg,
-        memoryMin: aggregate.memory.min,
-        memoryMax: aggregate.memory.max,
-        diskAvg: aggregate.disk.avg,
-        diskMin: aggregate.disk.min,
-        diskMax: aggregate.disk.max,
-        latencyAvg: aggregate.latency.avg,
-        latencyMin: aggregate.latency.min,
-        latencyMax: aggregate.latency.max,
-        availabilityPct: aggregate.availabilityPct,
-      };
-      if (fillMissingOnly) {
-        missingHourlyRows.push({ ...key, ...metrics });
-        if (missingHourlyRows.length === ROLLUP_READ_BATCH_SIZE) {
-          await insertMissingRows();
-        }
-        continue;
-      }
-
-      await this.prisma.nodeMetricRollupHourly.upsert({
-        where: { nodeId_bucketStart: key },
-        create: { ...key, ...metrics },
-        update: metrics,
+    for await (const batch of samplesByNode) {
+      const rows = batch.map(([nodeId, samples]) => {
+        const aggregate = aggregateMetricSamples(samples);
+        return {
+          nodeId,
+          bucketStart,
+          sampleCount: aggregate.sampleCount,
+          cpuAvg: aggregate.cpu.avg,
+          cpuMin: aggregate.cpu.min,
+          cpuMax: aggregate.cpu.max,
+          memoryAvg: aggregate.memory.avg,
+          memoryMin: aggregate.memory.min,
+          memoryMax: aggregate.memory.max,
+          diskAvg: aggregate.disk.avg,
+          diskMin: aggregate.disk.min,
+          diskMax: aggregate.disk.max,
+          latencyAvg: aggregate.latency.avg,
+          latencyMin: aggregate.latency.min,
+          latencyMax: aggregate.latency.max,
+          availabilityPct: aggregate.availabilityPct,
+        };
       });
-
-      upserts += 1;
+      if (fillMissingOnly) {
+        const inserted = await this.prisma.nodeMetricRollupHourly.createMany({
+          data: rows,
+          skipDuplicates: true,
+        });
+        upserts += inserted.count;
+      } else {
+        upserts += await this.upsertRollupRows('hourly', rows);
+      }
     }
 
-    if (missingHourlyRows.length > 0) {
-      await insertMissingRows();
-    }
     return upserts;
   }
 
@@ -284,6 +278,7 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
         },
       },
       distinct: ['nodeId'],
+      orderBy: { nodeId: 'asc' },
       select: {
         nodeId: true,
       },
@@ -320,40 +315,64 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
       }),
     );
 
-    for await (const [nodeId, hourlyRows] of hourlyRowsByNode) {
-      const metricAverage = (field: 'cpuAvg' | 'memoryAvg' | 'diskAvg' | 'latencyAvg' | 'availabilityPct') =>
-        weightedAverage(hourlyRows.flatMap((row) => {
-          const value = row[field];
-          return value != null && row.sampleCount > 0 ? [{ value, weight: row.sampleCount }] : [];
-        }));
-      const metrics = {
-        sampleCount: hourlyRows.reduce((sum, row) => sum + row.sampleCount, 0),
-        cpuAvg: metricAverage('cpuAvg'),
-        cpuMin: minNullable(hourlyRows.map((row) => row.cpuMin)),
-        cpuMax: maxNullable(hourlyRows.map((row) => row.cpuMax)),
-        memoryAvg: metricAverage('memoryAvg'),
-        memoryMin: minNullable(hourlyRows.map((row) => row.memoryMin)),
-        memoryMax: maxNullable(hourlyRows.map((row) => row.memoryMax)),
-        diskAvg: metricAverage('diskAvg'),
-        diskMin: minNullable(hourlyRows.map((row) => row.diskMin)),
-        diskMax: maxNullable(hourlyRows.map((row) => row.diskMax)),
-        latencyAvg: metricAverage('latencyAvg'),
-        latencyMin: minNullable(hourlyRows.map((row) => row.latencyMin)),
-        latencyMax: maxNullable(hourlyRows.map((row) => row.latencyMax)),
-        availabilityPct: metricAverage('availabilityPct'),
-      };
-      const key = { nodeId, bucketStart };
-
-      await this.prisma.nodeMetricRollupDaily.upsert({
-        where: { nodeId_bucketStart: key },
-        create: { ...key, ...metrics },
-        update: metrics,
+    for await (const batch of hourlyRowsByNode) {
+      const rows = batch.map(([nodeId, hourlyRows]) => {
+        const metricAverage = (field: 'cpuAvg' | 'memoryAvg' | 'diskAvg' | 'latencyAvg' | 'availabilityPct') =>
+          weightedAverage(hourlyRows.flatMap((row) => {
+            const value = row[field];
+            return value != null && row.sampleCount > 0 ? [{ value, weight: row.sampleCount }] : [];
+          }));
+        return {
+          nodeId,
+          bucketStart,
+          sampleCount: hourlyRows.reduce((sum, row) => sum + row.sampleCount, 0),
+          cpuAvg: metricAverage('cpuAvg'),
+          cpuMin: minNullable(hourlyRows.map((row) => row.cpuMin)),
+          cpuMax: maxNullable(hourlyRows.map((row) => row.cpuMax)),
+          memoryAvg: metricAverage('memoryAvg'),
+          memoryMin: minNullable(hourlyRows.map((row) => row.memoryMin)),
+          memoryMax: maxNullable(hourlyRows.map((row) => row.memoryMax)),
+          diskAvg: metricAverage('diskAvg'),
+          diskMin: minNullable(hourlyRows.map((row) => row.diskMin)),
+          diskMax: maxNullable(hourlyRows.map((row) => row.diskMax)),
+          latencyAvg: metricAverage('latencyAvg'),
+          latencyMin: minNullable(hourlyRows.map((row) => row.latencyMin)),
+          latencyMax: maxNullable(hourlyRows.map((row) => row.latencyMax)),
+          availabilityPct: metricAverage('availabilityPct'),
+        };
       });
-
-      upserts += 1;
+      upserts += await this.upsertRollupRows('daily', rows);
     }
 
     return upserts;
+  }
+
+  private upsertRollupRows(granularity: 'hourly' | 'daily', rows: RollupRow[]): Promise<number> {
+    const table = granularity === 'hourly'
+      ? Prisma.sql`node_metric_rollups_hourly`
+      : Prisma.sql`node_metric_rollups_daily`;
+    const values = rows.map((row) => Prisma.sql`(
+      ${row.nodeId}::uuid, ${row.bucketStart}::timestamptz, ${row.sampleCount}::integer,
+      ${row.cpuAvg}, ${row.cpuMin}, ${row.cpuMax}, ${row.memoryAvg}, ${row.memoryMin}, ${row.memoryMax},
+      ${row.diskAvg}, ${row.diskMin}, ${row.diskMax}, ${row.latencyAvg}, ${row.latencyMin}, ${row.latencyMax},
+      ${row.availabilityPct}, CURRENT_TIMESTAMP
+    )`);
+    return this.prisma.$executeRaw`
+      INSERT INTO ${table} (
+        node_id, bucket_start, sample_count,
+        cpu_avg, cpu_min, cpu_max, memory_avg, memory_min, memory_max,
+        disk_avg, disk_min, disk_max, latency_avg, latency_min, latency_max,
+        availability_pct, updated_at
+      ) VALUES ${Prisma.join(values)}
+      ON CONFLICT (node_id, bucket_start) DO UPDATE SET
+        sample_count = EXCLUDED.sample_count,
+        cpu_avg = EXCLUDED.cpu_avg, cpu_min = EXCLUDED.cpu_min, cpu_max = EXCLUDED.cpu_max,
+        memory_avg = EXCLUDED.memory_avg, memory_min = EXCLUDED.memory_min, memory_max = EXCLUDED.memory_max,
+        disk_avg = EXCLUDED.disk_avg, disk_min = EXCLUDED.disk_min, disk_max = EXCLUDED.disk_max,
+        latency_avg = EXCLUDED.latency_avg, latency_min = EXCLUDED.latency_min, latency_max = EXCLUDED.latency_max,
+        availability_pct = EXCLUDED.availability_pct,
+        updated_at = EXCLUDED.updated_at
+    `;
   }
 }
 

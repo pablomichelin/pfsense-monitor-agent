@@ -152,19 +152,19 @@ test('daily availability counts only hourly rows with a measured availability', 
           ? hourly.map((row) => ({ ...row, nodeId: 'synthetic-node' }))
           : [{ nodeId: 'synthetic-node' }],
       },
-      nodeMetricRollupDaily: {
-        upsert: async (args) => { writes.push(args); },
+      $executeRaw: async (_query, table, rows) => {
+        assert.equal(table.text, 'node_metric_rollups_daily');
+        writes.push(rows.values);
+        return 1;
       },
     }, lock);
 
     const bucket = new Date('2026-01-01T00:00:00Z');
     assert.equal(await service.rollupDailyBucket(bucket), 1);
-    const [{ create, update }] = writes;
-    const { nodeId, bucketStart, ...created } = create;
+    const [[nodeId, bucketStart, sampleCount, ...measures]] = writes;
     assert.equal(nodeId, 'synthetic-node');
     assert.deepEqual(bucketStart, bucket);
-    assert.deepEqual(created, update);
-    assert.equal(update.sampleCount, hourly.reduce((sum, row) => sum + row.sampleCount, 0));
-    assert.equal(update.availabilityPct, [100, null, 0][index]);
+    assert.equal(sampleCount, hourly.reduce((sum, row) => sum + row.sampleCount, 0));
+    assert.equal(measures.at(-1), [100, null, 0][index]);
   }
 });
