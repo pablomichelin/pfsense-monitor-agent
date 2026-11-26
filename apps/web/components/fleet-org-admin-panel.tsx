@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { GroupMemberPicker } from './group-member-picker';
 import { useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Alert, Button, Card } from '@/components/ui';
 import {
@@ -35,7 +35,7 @@ function DeleteFleetItemButton({ item, kind, disabled, onDeleted }: {
   item: { id: string; name: string };
   kind: 'tag' | 'group';
   disabled: boolean;
-  onDeleted: () => void;
+  onDeleted: (alreadyRemoved: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -43,17 +43,18 @@ function DeleteFleetItemButton({ item, kind, disabled, onDeleted }: {
   const isTag = kind === 'tag';
 
   async function confirm() {
+    if (loading) return;
     setLoading(true);
     setError(null);
     try {
       const remove = isTag ? deleteTagAction : deleteGroupAction;
       const result = await remove(item.id);
-      if (!result.ok) {
+      if (!result.ok && result.status !== 404) {
         setError(result.error);
         return;
       }
       setOpen(false);
-      onDeleted();
+      onDeleted(!result.ok);
     } catch {
       setError('Não foi possível concluir a exclusão. Tente novamente.');
     } finally {
@@ -99,17 +100,33 @@ export function FleetOrgAdminPanel({
   canEditGroupMembers,
 }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
+
+  function refreshAfterDelete(alreadyRemoved: boolean, groupId?: string) {
+    setError(null);
+    setMessage(alreadyRemoved ? 'O item já foi removido.' : null);
+    if (groupId && searchParams.get('group') === groupId) {
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete('group');
+      const query = next.toString();
+      router.replace(query ? `/admin/grupos?${query}` : '/admin/grupos', { scroll: false });
+      return;
+    }
+    router.refresh();
+  }
+
   async function handleCreate(
     event: FormEvent<HTMLFormElement>,
     run: typeof createTagAction,
     success: string,
   ) {
     event.preventDefault();
+    if (pending) return;
     const form = event.currentTarget;
     const data = new FormData(form);
     setPending(true);
@@ -151,6 +168,7 @@ export function FleetOrgAdminPanel({
                 name="client_id"
                 aria-label="Cliente da tag"
                 required
+                disabled={pending}
                 defaultValue={clients[0]?.id ?? ''}
                 className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200"
               >
@@ -164,6 +182,7 @@ export function FleetOrgAdminPanel({
                 name="name"
                 aria-label="Nome da tag"
                 required
+                disabled={pending}
                 placeholder="Nome da tag"
                 className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-100"
               />
@@ -195,7 +214,7 @@ export function FleetOrgAdminPanel({
                           item={tag}
                           kind="tag"
                           disabled={pending}
-                          onDeleted={() => router.refresh()}
+                          onDeleted={refreshAfterDelete}
                         />
                       </td>
                     ) : null}
@@ -224,6 +243,7 @@ export function FleetOrgAdminPanel({
                   name="client_id"
                   aria-label="Cliente do grupo"
                   required
+                  disabled={pending}
                   defaultValue={clients[0]?.id ?? ''}
                   className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200"
                 >
@@ -237,6 +257,7 @@ export function FleetOrgAdminPanel({
                   name="name"
                   aria-label="Nome do grupo"
                   required
+                  disabled={pending}
                   placeholder="Nome do grupo"
                   className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-100"
                 />
@@ -244,6 +265,7 @@ export function FleetOrgAdminPanel({
               <input
                 name="description"
                 aria-label="Descrição opcional do grupo"
+                disabled={pending}
                 placeholder="Descrição opcional"
                 className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-100"
               />
@@ -286,7 +308,7 @@ export function FleetOrgAdminPanel({
                           item={group}
                           kind="group"
                           disabled={pending}
-                          onDeleted={() => router.refresh()}
+                          onDeleted={(alreadyRemoved) => refreshAfterDelete(alreadyRemoved, group.id)}
                         />
                       </td>
                     ) : null}
