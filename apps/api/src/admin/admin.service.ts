@@ -271,27 +271,22 @@ export class AdminService {
     throw new ConflictException('unable to generate a unique client code');
   }
 
-  private async buildUniqueSiteCode(
-    clientId: string,
+  private async createSiteWithUniqueCode(
     nameOrCode: string,
-    db: Prisma.TransactionClient = this.prisma,
-  ): Promise<string> {
+    db: Prisma.TransactionClient,
+    data: Omit<Prisma.SiteCreateManyInput, 'code'>,
+  ) {
     const base = normalizeCode(nameOrCode || 'SITE');
 
     for (let attempt = 0; attempt < 1000; attempt++) {
       const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
-      const existing = await db.site.findFirst({
-        where: {
-          clientId,
-          code: candidate,
-        },
-        select: {
-          id: true,
-        },
+      const [site] = await db.site.createManyAndReturn({
+        data: { ...data, code: candidate },
+        skipDuplicates: true,
       });
 
-      if (!existing) {
-        return candidate;
+      if (site) {
+        return site;
       }
     }
 
@@ -1770,28 +1765,32 @@ export class AdminService {
 
     await this.withClientScope(scopeActor, dto.client_id);
 
-    const site = await this.prisma.site.create({
-      data: {
+    const site = await this.prisma.$transaction(async (tx) => {
+      const [lockedClient] = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM clients WHERE id = ${dto.client_id}::uuid FOR NO KEY UPDATE
+      `;
+      if (!lockedClient) throw new NotFoundException('client not found');
+      const site = await this.createSiteWithUniqueCode(dto.code?.trim() || dto.name.trim(), tx, {
         clientId: dto.client_id,
         name: dto.name.trim(),
-        code: await this.buildUniqueSiteCode(dto.client_id, dto.code?.trim() || dto.name.trim()),
         city: normalizeOptional(dto.city),
         state: normalizeOptional(dto.state),
         timezone: normalizeOptional(dto.timezone),
         status: dto.status === 'inactive' ? EntityStatus.inactive : EntityStatus.active,
-      },
-    });
+      });
 
-    await this.writeAuditLog({
-      actorId,
-      action: 'admin.site.create',
-      targetType: 'site',
-      targetId: site.id,
-      ipAddress: actorIp,
-      metadataJson: {
-        client_id: site.clientId,
-        code: site.code,
-      },
+      await this.writeAuditLog({
+        actorId,
+        action: 'admin.site.create',
+        targetType: 'site',
+        targetId: site.id,
+        ipAddress: actorIp,
+        metadataJson: {
+          client_id: site.clientId,
+          code: site.code,
+        },
+      }, tx);
+      return site;
     });
     this.invalidateNodesFiltersCache();
 
@@ -1958,41 +1957,48 @@ export class AdminService {
 
     await this.withSiteScope(scopeActor, siteId);
 
-    const site = await this.prisma.site.update({
-      where: {
-        id: siteId,
-      },
-      data: {
-        name: dto.name?.trim() || undefined,
-        code: dto.code ? normalizeCode(dto.code) : undefined,
-        city: dto.city !== undefined ? normalizeOptional(dto.city) : undefined,
-        state: dto.state !== undefined ? normalizeOptional(dto.state) : undefined,
-        timezone:
-          dto.timezone !== undefined ? normalizeOptional(dto.timezone) : undefined,
-        status:
-          dto.status === undefined
-            ? undefined
-            : dto.status === 'inactive'
-              ? EntityStatus.inactive
-              : EntityStatus.active,
-      },
-    });
+    const site = await this.prisma.$transaction(async (tx) => {
+      const site = await tx.site.update({
+        where: { id: siteId },
+        data: {
+          name: dto.name?.trim() || undefined,
+          code: dto.code ? normalizeCode(dto.code) : undefined,
+          city: dto.city !== undefined ? normalizeOptional(dto.city) : undefined,
+          state: dto.state !== undefined ? normalizeOptional(dto.state) : undefined,
+          timezone:
+            dto.timezone !== undefined ? normalizeOptional(dto.timezone) : undefined,
+          status:
+            dto.status === undefined
+              ? undefined
+              : dto.status === 'inactive'
+                ? EntityStatus.inactive
+                : EntityStatus.active,
+        },
+      }).catch((error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          if (error.code === 'P2002') throw new ConflictException('site code already exists for this client');
+          if (error.code === 'P2025') throw new NotFoundException('site not found');
+        }
+        throw error;
+      });
 
-    await this.writeAuditLog({
-      actorId,
-      action: 'admin.site.update',
-      targetType: 'site',
-      targetId: site.id,
-      ipAddress: actorIp,
-      metadataJson: {
-        client_id: site.clientId,
-        name: site.name,
-        code: site.code,
-        city: site.city,
-        state: site.state,
-        timezone: site.timezone,
-        status: site.status,
-      },
+      await this.writeAuditLog({
+        actorId,
+        action: 'admin.site.update',
+        targetType: 'site',
+        targetId: site.id,
+        ipAddress: actorIp,
+        metadataJson: {
+          client_id: site.clientId,
+          name: site.name,
+          code: site.code,
+          city: site.city,
+          state: site.state,
+          timezone: site.timezone,
+          status: site.status,
+        },
+      }, tx);
+      return site;
     });
     this.invalidateNodesFiltersCache();
 
@@ -2077,14 +2083,10 @@ export class AdminService {
         if (!client) throw new NotFoundException('client not found');
         // Under the client lock, a parallel registration will reuse the first site.
         const site = await tx.site.findFirst({ where: { clientId: client.id }, select: { id: true } });
-        const target = site ?? await tx.site.create({
-          data: {
-            clientId: client.id,
-            name: 'Principal',
-            code: await this.buildUniqueSiteCode(client.id, 'default', tx),
-            status: EntityStatus.active,
-          },
-          select: { id: true },
+        const target = site ?? await this.createSiteWithUniqueCode('default', tx, {
+          clientId: client.id,
+          name: 'Principal',
+          status: EntityStatus.active,
         });
         siteId = target.id;
       }

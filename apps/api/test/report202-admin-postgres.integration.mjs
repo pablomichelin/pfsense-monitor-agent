@@ -1037,8 +1037,53 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
       hostname: `qa-node-${index}.${f.run}.invalid`,
       node_uid: nodeUid,
     }, actor.userId, undefined, actor);
-    return { ...f, service, count, register, invalidations: () => invalidations, realtime };
+    return { ...f, actor, service, count, register, invalidations: () => invalidations, realtime };
   }
+
+  await run('site changes keep creation and updates atomic with audit', async t => {
+    const f = await nodeCreationFixture(t);
+    const site = await db.site.create({ data: { clientId: f.client.id, code: 'original', name: 'Original' } });
+    const failAudit = async () => { throw new Error('synthetic site audit failure'); };
+    const failingDb = new Proxy(db, { get(target, key) {
+      if (key === '$transaction') return (callback, options) => target.$transaction(tx =>
+        callback(new Proxy(tx, { get(client, property) {
+          if (property === 'auditLog') return { create: failAudit };
+          return typeof client[property] === 'function' ? client[property].bind(client) : client[property];
+        } })), options);
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    } });
+    const failed = f.service(failingDb, { record: failAudit });
+    const create = admin => admin.createSite({ client_id: f.client.id, name: 'Filial' }, f.actor.userId, undefined, f.actor);
+    const update = admin => admin.updateSite(site.id, { name: 'Alterada' }, f.actor.userId, undefined, f.actor);
+    await assert.rejects(create(failed), /synthetic site audit failure/);
+    await assert.rejects(update(failed), /synthetic site audit failure/);
+    const before = await db.site.findMany({ where: { clientId: f.client.id }, select: { name: true } });
+    assert.deepEqual(before, [{ name: 'Original' }]);
+    assert.equal(f.invalidations(), 0);
+    const admin = f.service(db);
+    assert.equal((await create(admin)).site.code, 'FILIAL');
+    assert.equal((await update(admin)).site.name, 'Alterada');
+    assert.equal(f.invalidations(), 2);
+    assert.equal(await db.auditLog.count({
+      where: { actorId: f.actor.userId, action: { in: ['admin.site.create', 'admin.site.update'] } },
+    }), 2);
+  });
+
+  await run('site changes serialize concurrent allocation and reject an explicit duplicate', async t => {
+    const f = await nodeCreationFixture(t);
+    const create = connection => f.service(connection).createSite({ client_id: f.client.id, name: 'Filial' },
+      f.actor.userId, undefined, f.actor);
+    const [left, right] = await Promise.all([create(db), create(peer)]);
+    const ids = [left.site.id, right.site.id];
+    assert.deepEqual(new Set([left.site.code, right.site.code]), new Set(['FILIAL', 'FILIAL-2']));
+    await assert.rejects(
+      f.service(db).updateSite(right.site.id, { code: left.site.code }, f.actor.userId, undefined, f.actor),
+      error => error.getStatus?.() === 409,
+    );
+    assert.equal((await db.site.findUnique({ where: { id: right.site.id } })).code, right.site.code);
+    assert.equal(await db.auditLog.count({ where: { targetId: { in: ids } } }), 2);
+    assert.equal(f.invalidations(), 2);
+  });
 
   await run('firewall registration removes its default site and credential on audit failure', async t => {
     const f = await nodeCreationFixture(t);
