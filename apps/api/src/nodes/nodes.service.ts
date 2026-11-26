@@ -448,60 +448,57 @@ export class NodesService {
           orderBy: { id: 'asc' },
           take: 250,
           ...(lastId ? { cursor: { id: lastId }, skip: 1 } : {}),
-      include: {
-        site: {
-          include: {
-            client: true,
-          },
-        },
-        nodeTags: {
-          include: {
-            tag: {
+          select: {
+            id: true,
+            nodeUid: true,
+            nodeUidStatus: true,
+            hostname: true,
+            displayName: true,
+            status: true,
+            maintenanceMode: true,
+            lastSeenAt: true,
+            pfsenseVersion: true,
+            agentVersion: true,
+            managementIp: true,
+            wanIp: true,
+            remoteAccessUrl: true,
+            cpuPercent: true,
+            memoryPercent: true,
+            diskPercent: true,
+            uptimeSeconds: true,
+            criticality: true,
+            configBackupPolicyJson: true,
+            site: {
               select: {
                 id: true,
                 name: true,
+                code: true,
+                timezone: true,
+                client: { select: { id: true, name: true, code: true } },
               },
             },
-          },
-          orderBy: {
-            tag: {
-              name: 'asc',
+            nodeTags: {
+              orderBy: { tag: { name: 'asc' } },
+              select: { tag: { select: { id: true, name: true } } },
+            },
+            _count: { select: { alerts: { where: { status: AlertStatus.open } } } },
+            configBackups: {
+              where: { status: { in: [ConfigBackupStatus.stored, ConfigBackupStatus.duplicate] } },
+              orderBy: { receivedAt: 'desc' },
+              take: 1,
+              select: { receivedAt: true, status: true, configSha256: true },
+            },
+            nodeCommands: {
+              where: {
+                type: NodeCommandType.config_backup_now,
+                status: NodeCommandStatus.failed,
+              },
+              orderBy: { requestedAt: 'desc' },
+              take: 1,
+              select: { completedAt: true, requestedAt: true },
             },
           },
-        },
-        _count: { select: { alerts: { where: { status: AlertStatus.open } } } },
-        configBackups: {
-          where: {
-            status: {
-              in: [ConfigBackupStatus.stored, ConfigBackupStatus.duplicate],
-            },
-          },
-          orderBy: {
-            receivedAt: 'desc',
-          },
-          take: 1,
-          select: {
-            receivedAt: true,
-            status: true,
-            configSha256: true,
-          },
-        },
-        nodeCommands: {
-          where: {
-            type: NodeCommandType.config_backup_now,
-            status: NodeCommandStatus.failed,
-          },
-          orderBy: {
-            requestedAt: 'desc',
-          },
-          take: 1,
-          select: {
-            completedAt: true,
-            requestedAt: true,
-          },
-        },
-      },
-    });
+        });
 
     const items = nodes
       .map((node) => {
