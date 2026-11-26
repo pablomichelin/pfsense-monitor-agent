@@ -86,7 +86,9 @@ sha256 = digest.hexdigest()
 if sidecar.read_text(encoding="ascii").split() != [sha256, archive.name]:
     sys.exit("Checksum do artefato preparado não confere.")
 manifest = config.read_text(encoding="utf-8").splitlines()
-if f"PACKAGE_RELEASE_VERSION={version}" not in manifest or f"PACKAGE_RELEASE_SHA256={sha256}" not in manifest:
+expected = {"PACKAGE_RELEASE_VERSION": version, "PACKAGE_RELEASE_SHA256": sha256}
+if any([line for line in manifest if line.startswith(f"{key}=")] != [f"{key}={value}"]
+       for key, value in expected.items()):
     sys.exit("Versão ou checksum do manifesto preparado não confere.")
 
 print(f"Artefato preparado verificado: {archive.name}")
@@ -96,32 +98,33 @@ else
   "$SCRIPT_DIR/build-pfsense-package-artifact.sh" "$VERSION"
 fi
 
-if [[ ! -f "$SHA256_FILE" ]]; then
-  echo "Erro: checksum não encontrado: $SHA256_FILE" >&2
-  exit 1
-fi
-
-SHA256_VALUE="$(awk '{print $1}' "$SHA256_FILE")"
-
-# Repo raw base: .env.api ou derivado do git remote
-REPO_RAW_BASE=""
-if [[ -f "$ROOT_DIR/.env.api" ]]; then
-  REPO_RAW_BASE="$(awk -F= -v key='PACKAGE_RELEASE_REPO_RAW_BASE' '$1==key { gsub(/^[^=]*=/, ""); print; exit }' "$ROOT_DIR/.env.api" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-fi
-if [[ -z "$REPO_RAW_BASE" ]]; then
-  REMOTE="$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || true)"
-  BRANCH="$(git -C "$ROOT_DIR" branch --show-current 2>/dev/null || echo "main")"
-  if [[ "$REMOTE" =~ github\.com[:/](.+)/(.+)\.git ]]; then
-    ORG_REPO="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
-    REPO_RAW_BASE="https://raw.githubusercontent.com/${ORG_REPO}/${BRANCH}"
+if [[ "$PUBLISH_PREPARED" != true ]]; then
+  if [[ ! -f "$SHA256_FILE" ]]; then
+    echo "Erro: checksum não encontrado: $SHA256_FILE" >&2
+    exit 1
   fi
-fi
-if [[ -z "$REPO_RAW_BASE" ]]; then
-  REPO_RAW_BASE="https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main"
-fi
 
-mkdir -p "$(dirname "$CONFIG_FILE")"
-cat > "$CONFIG_FILE" <<EOF
+  SHA256_VALUE="$(awk '{print $1}' "$SHA256_FILE")"
+
+  # Repo raw base: .env.api ou derivado do git remote
+  REPO_RAW_BASE=""
+  if [[ -f "$ROOT_DIR/.env.api" ]]; then
+    REPO_RAW_BASE="$(awk -F= -v key='PACKAGE_RELEASE_REPO_RAW_BASE' '$1==key { gsub(/^[^=]*=/, ""); print; exit }' "$ROOT_DIR/.env.api" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  fi
+  if [[ -z "$REPO_RAW_BASE" ]]; then
+    REMOTE="$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || true)"
+    BRANCH="$(git -C "$ROOT_DIR" branch --show-current 2>/dev/null || echo "main")"
+    if [[ "$REMOTE" =~ github\.com[:/](.+)/(.+)\.git ]]; then
+      ORG_REPO="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+      REPO_RAW_BASE="https://raw.githubusercontent.com/${ORG_REPO}/${BRANCH}"
+    fi
+  fi
+  if [[ -z "$REPO_RAW_BASE" ]]; then
+    REPO_RAW_BASE="https://raw.githubusercontent.com/pablomichelin/pfsense-monitor-agent/main"
+  fi
+
+  mkdir -p "$(dirname "$CONFIG_FILE")"
+  cat > "$CONFIG_FILE" <<EOF
 # Versão e checksum do package pfSense — atualizado pelo script scripts/release-pfsense-package.sh
 # A API usa estes valores para montar o comando de bootstrap; o script generate-install-command.sh também.
 PACKAGE_RELEASE_VERSION=$VERSION
@@ -129,10 +132,11 @@ PACKAGE_RELEASE_SHA256=$SHA256_VALUE
 PACKAGE_RELEASE_REPO_RAW_BASE=$REPO_RAW_BASE
 EOF
 
-echo "Config atualizado: $CONFIG_FILE"
-echo "  PACKAGE_RELEASE_VERSION=$VERSION"
-echo "  PACKAGE_RELEASE_SHA256=$SHA256_VALUE"
-echo "  PACKAGE_RELEASE_REPO_RAW_BASE=$REPO_RAW_BASE"
+  echo "Config atualizado: $CONFIG_FILE"
+  echo "  PACKAGE_RELEASE_VERSION=$VERSION"
+  echo "  PACKAGE_RELEASE_SHA256=$SHA256_VALUE"
+  echo "  PACKAGE_RELEASE_REPO_RAW_BASE=$REPO_RAW_BASE"
+fi
 
 if [[ "$NO_PUSH" == true ]]; then
   echo "Opção --no-push: nenhum commit nem push."
@@ -141,13 +145,17 @@ fi
 
 # Commit e push
 git -C "$ROOT_DIR" add -f -- "$CONFIG_FILE" "$ARTIFACT_PATH" "$SHA256_FILE"
+RELEASE_COMMIT_MESSAGE="Release pfsense package $VERSION"
 if git -C "$ROOT_DIR" diff --staged --quiet -- "$CONFIG_FILE" "$ARTIFACT_PATH" "$SHA256_FILE"; then
-  echo "Nenhuma alteração para commit (config e artefato já estão em dia)."
-  exit 0
+  if [[ "$PUBLISH_PREPARED" != true || "$(git -C "$ROOT_DIR" log -1 --format=%s)" != "$RELEASE_COMMIT_MESSAGE" ]]; then
+    echo "Nenhuma alteração para commit nos arquivos do release."
+    exit 0
+  fi
+  echo "Commit do release já está no HEAD. Tentando enviar novamente..."
+else
+  git -C "$ROOT_DIR" commit --only -m "$RELEASE_COMMIT_MESSAGE" -- "$CONFIG_FILE" "$ARTIFACT_PATH" "$SHA256_FILE"
+  echo "Commit feito. Fazendo push..."
 fi
-
-git -C "$ROOT_DIR" commit --only -m "Release pfsense package $VERSION" -- "$CONFIG_FILE" "$ARTIFACT_PATH" "$SHA256_FILE"
-echo "Commit feito. Fazendo push..."
 git -C "$ROOT_DIR" push
 
 echo "Concluído. Após o pull no host com config/ montado, o bootstrap oferecerá a versão $VERSION."

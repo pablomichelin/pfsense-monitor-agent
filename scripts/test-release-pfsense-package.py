@@ -41,9 +41,11 @@ python3 -c 'from pathlib import Path; import hashlib, sys; p = Path(sys.argv[1])
 set -eu
 printf 'git %s\n' "$3" >> "$PFS_QA_TRACE"
 case "$3" in
-  add|push) exit 0 ;;
+  add) exit 0 ;;
   commit) [[ "$4" == --only ]] ;;
-  diff) exit 1 ;;
+  diff) [[ "${PFS_QA_ALREADY_COMMITTED:-0}" == 1 ]] ;;
+  log) printf 'Release pfsense package 9.9.9\n' ;;
+  push) [[ "${PFS_QA_FAIL_PUSH:-0}" == 0 ]] ;;
   *) exit 99 ;;
 esac
 ''',
@@ -57,7 +59,7 @@ esac
         if executable:
             target.chmod(0o700)
 
-    def run_release(self, *args):
+    def run_release(self, *args, extra_env=None):
         result = subprocess.run(
             ["/bin/bash", self.release, *args],
             cwd=self.root,
@@ -66,6 +68,7 @@ esac
                 "PFS_QA_TRACE": str(self.trace),
                 "PFS_QA_ROOT": str(self.root),
                 "PATH": f"{self.root}/bin:{os.environ['PATH']}",
+                **(extra_env or {}),
             },
             capture_output=True,
             text=True,
@@ -104,10 +107,25 @@ esac
         self.assertEqual(events, ["build 9.9.9"])
         archive = self.root / "dist/pfsense-package/monitor-pfsense-package-v9.9.9.tar.gz"
         original = (archive.read_bytes(), archive.stat().st_ino)
+        manifest = self.root / "config/package-release.env"
+        prepared_manifest = manifest.read_bytes()
+        self.write(".env.api", "PACKAGE_RELEASE_REPO_RAW_BASE=https://changed.example.test/source\n")
         published, events = self.run_release("--publish-prepared")
         self.assertEqual(published.returncode, 0, published.stderr)
         self.assertEqual(events, ["build 9.9.9", "git add", "git diff", "git commit", "git push"])
         self.assertEqual((archive.read_bytes(), archive.stat().st_ino), original)
+        self.assertEqual(manifest.read_bytes(), prepared_manifest)
+
+    def test_prepared_release_retries_push_without_another_commit(self):
+        preparation, _ = self.run_release("--no-push")
+        self.assertEqual(preparation.returncode, 0, preparation.stderr)
+        failed, events = self.run_release("--publish-prepared", extra_env={"PFS_QA_FAIL_PUSH": "1"})
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertEqual(events.count("git commit"), 1)
+        retried, events = self.run_release("--publish-prepared", extra_env={"PFS_QA_ALREADY_COMMITTED": "1"})
+        self.assertEqual(retried.returncode, 0, retried.stderr)
+        self.assertEqual(events.count("git commit"), 1)
+        self.assertEqual(events[-4:], ["git add", "git diff", "git log", "git push"])
 
     def test_prepared_artifact_with_changed_checksum_stops_before_git(self):
         preparation, _ = self.run_release("--no-push")

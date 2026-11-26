@@ -55,9 +55,10 @@ Para só gerar artefato e config, sem commit nem push:
 Em uma cópia de trabalho, prepare e valide os arquivos com `--no-push`. Depois
 use `./scripts/release-pfsense-package.sh --publish-prepared` para publicar o
 mesmo tarball. O script confere a versão do manifesto e os checksums antes
-do commit. Faça commit do código do agente que corresponde ao build antes
-de publicar. Os arquivos já preparados nunca são recompilados na mesma
-versão. Use outra versão se o código precisar mudar.
+do commit e preserva o manifesto de preparação, inclusive a URL. Faça
+commit do código do agente que corresponde ao build antes de publicar.
+Se o push falhar, use `--publish-prepared` novamente enquanto o commit
+do release estiver no HEAD. Use outra versão se o código precisar mudar.
 
 ### 3. Atualizar o servidor (git pull) — sem restart
 
