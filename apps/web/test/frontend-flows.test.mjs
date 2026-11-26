@@ -515,6 +515,7 @@ test('detalhe do firewall distingue falha de carga de histórico vazio/desligado
 });
 
 test('editar cadastro só envia a URL de acesso alterada ou explicitamente limpa', async () => {
+  const hooks = hookHarness();
   const calls = [];
   const { updateNodeAction } = sourceLoader({
     './api': { updateNode: async (id, changes) => calls.push({ id, changes }) },
@@ -522,7 +523,7 @@ test('editar cadastro só envia a URL de acesso alterada ou explicitamente limpa
     'next/navigation': { redirect },
     'next/dist/client/components/redirect-error': { isRedirectError: (error) => error.message === 'NEXT_REDIRECT' },
   })('lib/admin.ts');
-  const { NodeDetailConfigTab } = sourceLoader({ ...uiMocks,
+  const { NodeDetailConfigTab } = sourceLoader({ ...uiMocks, react: hooks.react,
     '@/lib/admin': { updateNodeAction },
     '@/components/rotate-secret-button': { RotateSecretButton: 'rotate-secret' },
     '@/components/nodes/node-fleet-metadata-form': { NodeFleetMetadataForm: 'fleet-metadata' },
@@ -532,22 +533,68 @@ test('editar cadastro só envia a URL de acesso alterada ou explicitamente limpa
   })('components/nodes/node-detail-config-tab.tsx');
   const automatic = 'https://192.0.2.10:9999';
   const changed = 'https://192.0.2.11:9443';
+  const refreshed = 'https://192.0.2.12:9999';
   const tree = NodeDetailConfigTab({
     node: { id: 'fw1', hostname: 'read-only', tags: [], remote_access_url: automatic },
     canManageNode: true, bootstrap: null, heartbeatMode: 'normal', configBackupInstallMode: 'default',
   });
   const form = elements(tree).find((element) => element.type === 'form');
-  const inputs = elements(form).filter((element) => element.type === 'input');
-  const original = inputs.find((input) => input.props.name === 'original_remote_access_url');
-  assert.equal(original.props.hidden, true);
-  assert.equal(original.props.defaultValue, automatic);
-  assert.equal(inputs.find((input) => input.props.name === 'remote_access_url').props.defaultValue, automatic);
-  assert.ok(!inputs.some((input) => input.props.name === 'hostname'));
+  const field = elements(form).find((element) => element.type?.name === 'NodeRemoteAccessUrlField');
+  assert.equal(field.key, 'fw1');
+  assert.ok(!elements(form).some((element) => element.props?.name === 'hostname'));
+  const renderUrl = (renderedUrl = field.props.renderedUrl) => {
+    const inputs = elements(hooks.render(field.type, { renderedUrl })).filter((element) => element.type === 'input');
+    return {
+      original: inputs.find((input) => input.props.name === 'original_remote_access_url').props,
+      visible: inputs.find((input) => input.props.name === 'remote_access_url').props,
+    };
+  };
+  const initial = renderUrl();
+  assert.equal(initial.original.type, 'hidden');
+  assert.equal(initial.original.value, automatic);
+  assert.equal(initial.visible.value, automatic);
+
+  initial.visible.onChange({ currentTarget: { value: changed } });
+  const edited = renderUrl();
+  assert.equal(edited.visible.value, changed);
+  edited.visible.onChange({ currentTarget: { value: automatic } });
+  const afterRefresh = renderUrl(refreshed);
+  assert.equal(afterRefresh.visible.value, refreshed);
+  assert.equal(afterRefresh.original.value, refreshed);
+
+  renderUrl().visible.onChange({ currentTarget: { value: changed } });
+  const refreshedWhileEditing = renderUrl(refreshed);
+  assert.equal(refreshedWhileEditing.visible.value, changed);
+  assert.equal(refreshedWhileEditing.original.value, refreshed);
+  refreshedWhileEditing.visible.onChange({ currentTarget: { value: automatic } });
+  const revertedBeforeBlur = renderUrl(refreshed);
+  assert.equal(revertedBeforeBlur.visible.value, automatic);
+  assert.equal(revertedBeforeBlur.original.value, automatic);
+  revertedBeforeBlur.visible.onBlur();
+  const revertedAfterBlur = renderUrl(refreshed);
+  assert.equal(revertedAfterBlur.visible.value, refreshed);
+  assert.equal(revertedAfterBlur.original.value, refreshed);
+
+  revertedAfterBlur.visible.onChange({ currentTarget: { value: '' } });
+  const cleared = renderUrl(automatic);
+  assert.equal(cleared.visible.value, '');
+  assert.equal(cleared.original.value, automatic);
+
+  cleared.visible.onChange({ currentTarget: { value: automatic } });
+  renderUrl(null).visible.onChange({ currentTarget: { value: changed } });
+  renderUrl(refreshed).visible.onChange({ currentTarget: { value: '' } });
+  const clearedAfterEmptyStart = renderUrl(refreshed);
+  assert.equal(clearedAfterEmptyStart.visible.value, '');
+  assert.equal(clearedAfterEmptyStart.original.value, refreshed);
 
   for (const [baseline, submitted, expected] of [
-    [original.props.defaultValue, ` ${automatic} `, undefined],
+    [afterRefresh.original.value, afterRefresh.visible.value, undefined],
+    [revertedBeforeBlur.original.value, revertedBeforeBlur.visible.value, undefined],
+    [revertedAfterBlur.original.value, revertedAfterBlur.visible.value, undefined],
+    [initial.original.value, ` ${automatic} `, undefined],
     [automatic, ` ${changed} `, changed],
-    [automatic, ' ', ''],
+    [cleared.original.value, cleared.visible.value, ''],
+    [clearedAfterEmptyStart.original.value, clearedAfterEmptyStart.visible.value, ''],
     ['', '', undefined],
     [undefined, ` ${changed} `, changed],
     [undefined, '', ''],

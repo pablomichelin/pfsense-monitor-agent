@@ -3,6 +3,7 @@ import { AdvancedSection } from '@/components/advanced-section';
 import { CopyButton } from '@/components/copy-button';
 import { RotateSecretButton } from '@/components/rotate-secret-button';
 import { NodeFleetMetadataForm } from '@/components/nodes/node-fleet-metadata-form';
+import { NodeRemoteAccessUrlField } from '@/components/nodes/node-remote-access-url-field';
 import { CriticalityBadge, TagChipList } from '@/components/nodes/fleet-org-badges';
 import { updateNodeAction } from '@/lib/admin';
 import type { FleetTagItem, NodeBootstrapCommandResponse, NodeDetailsResponse } from '@/lib/api';
@@ -49,7 +50,6 @@ export function NodeDetailConfigTab({
     targetType: 'node',
     targetId: node.id,
   });
-  const initialRemoteAccessUrl = node.remote_access_url ?? '';
   const pfSensePrecheckBlock = bootstrap
     ? buildPfSensePrecheckBlock({
         controllerUrl: bootstrap.release.controller_url,
@@ -119,26 +119,7 @@ export function NodeDetailConfigTab({
                 <p className="text-xs uppercase tracking-wider text-slate-500">IP WAN (resumo)</p>
                 <p className="mt-0.5 font-mono text-sm text-slate-300">{node.wan_ip || '—'}</p>
               </div>
-              <div>
-                <p className="text-xs uppercase tracking-wider text-slate-500">
-                  IP de acesso direto web
-                </p>
-                {/* Use the same uncontrolled text defaults for both fields when the detail refreshes. */}
-                <input
-                  type="text"
-                  hidden
-                  readOnly
-                  name="original_remote_access_url"
-                  defaultValue={initialRemoteAccessUrl}
-                />
-                <input
-                  type="text"
-                  name="remote_access_url"
-                  defaultValue={initialRemoteAccessUrl}
-                  placeholder="https://177.38.158.46:9999"
-                  className="mt-1.5 w-full rounded-lg h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                />
-              </div>
+              <NodeRemoteAccessUrlField key={node.id} renderedUrl={node.remote_access_url} />
               <div className="rounded-lg border border-slate-600/80 bg-slate-900/50 px-4 py-3">
                 <p className="text-xs uppercase tracking-wider text-slate-500">Versão pfSense</p>
                 <p className="mt-0.5 font-mono text-sm text-slate-300">
