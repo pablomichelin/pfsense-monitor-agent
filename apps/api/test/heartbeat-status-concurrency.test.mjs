@@ -35,6 +35,7 @@ const priorHeartbeat = {
   last_heartbeat_sent_at: new Date('2026-01-01T00:00:01.000Z'),
   maintenance_mode: false,
   last_seen_at: null,
+  display_name: null,
   status: 'degraded',
 };
 
@@ -152,6 +153,17 @@ test('an accepted heartbeat keeps the latest contact read under the lock', async
   await ingest({ services: [], gateways: [] });
 
   assert.equal(state.updates[0].lastSeenAt, previousContact);
+});
+
+test('an accepted heartbeat keeps a display name set while authentication was in progress', async () => {
+  const named = fixture({ lockedNode: { ...priorHeartbeat, display_name: 'QA oficina' } });
+  await named.ingest({ services: [], gateways: [] });
+  assert.equal(named.state.updates[0].hostname, 'synthetic');
+  assert.equal(Object.hasOwn(named.state.updates[0], 'displayName'), false);
+
+  const unnamed = fixture();
+  await unnamed.ingest({ services: [], gateways: [] });
+  assert.equal(unnamed.state.updates[0].displayName, 'synthetic');
 });
 
 for (const [label, options] of [

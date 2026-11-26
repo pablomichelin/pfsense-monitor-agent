@@ -209,12 +209,13 @@ export class IngestService {
           last_heartbeat_sent_at: Date | null;
           last_seen_at: Date | null;
           maintenance_mode: boolean;
+          display_name: string | null;
           status: NodeStatus;
           config_backup_policy_json: Prisma.JsonValue | null;
         }>
       >(Prisma.sql`
         SELECT last_heartbeat_id, last_heartbeat_sent_at, last_seen_at,
-               maintenance_mode, status, config_backup_policy_json
+               maintenance_mode, display_name, status, config_backup_policy_json
         FROM nodes WHERE id = ${node.id}::uuid FOR UPDATE
       `);
 
@@ -260,7 +261,7 @@ export class IngestService {
         },
         data: {
           hostname: request.body.hostname,
-          ...(node.displayName == null && request.body.hostname
+          ...(lockedNode?.display_name === null && request.body.hostname
             ? { displayName: request.body.hostname }
             : {}),
           ...(managementIp !== undefined ? { managementIp } : {}),
