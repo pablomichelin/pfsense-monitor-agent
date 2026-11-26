@@ -121,17 +121,18 @@ test('the daily cycle fills the final UTC hour before reading aggregates', async
       },
     },
     nodeMetricRollupHourly: {
-      createMany: async ({ data: [data], skipDuplicates }) => {
-        assert.equal(data.nodeId, 'synthetic-node');
-        assert.equal(data.bucketStart.getTime(), hourlyKey.getTime());
-        assert.equal(data.sampleCount, 1);
-        assert.equal(skipDuplicates, true);
-        events.push('fill hourly');
-        return { count: 1 };
-      },
       findMany: async () => { events.push('read hourly'); return []; },
     },
     nodeMetricRollupDaily: noRowsDeleted,
+    $executeRaw: async (_query, table, rows, conflict) => {
+      assert.equal(table.text, 'node_metric_rollups_hourly');
+      assert.equal(rows.values[0], 'synthetic-node');
+      assert.equal(rows.values[1].getTime(), hourlyKey.getTime());
+      assert.equal(rows.values[2], 1);
+      assert.equal(conflict.text, 'DO NOTHING');
+      events.push('fill hourly');
+      return 1;
+    },
   };
 
   await new MetricsRollupService(prisma, lock).runDailyRollupCycle('manual');

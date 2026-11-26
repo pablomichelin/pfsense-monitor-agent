@@ -254,15 +254,7 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
           availabilityPct: aggregate.availabilityPct,
         };
       });
-      if (fillMissingOnly) {
-        const inserted = await this.prisma.nodeMetricRollupHourly.createMany({
-          data: rows,
-          skipDuplicates: true,
-        });
-        upserts += inserted.count;
-      } else {
-        upserts += await this.upsertRollupRows('hourly', rows);
-      }
+      upserts += await this.upsertRollupRows('hourly', rows, fillMissingOnly);
     }
 
     return upserts;
@@ -286,10 +278,12 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
 
     let upserts = 0;
 
-    const hourlyRowsByNode = loadRollupRowsByNode(nodeIds, (batch) =>
-      this.prisma.nodeMetricRollupHourly.findMany({
+    // Read each node immediately before writing its daily result. The last
+    // hourly bucket may still be refreshed by the sampler after the UTC boundary.
+    for (const { nodeId } of nodeIds) {
+      const hourlyRows = await this.prisma.nodeMetricRollupHourly.findMany({
         where: {
-          nodeId: { in: batch },
+          nodeId,
           bucketStart: {
             gte: bucketStart,
             lt: bucketEnd,
@@ -312,59 +306,56 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
           latencyMax: true,
           availabilityPct: true,
         },
-      }),
-    );
-
-    for await (const batch of hourlyRowsByNode) {
-      const rows = batch.map(([nodeId, hourlyRows]) => {
-        const metricAverage = (field: 'cpuAvg' | 'memoryAvg' | 'diskAvg' | 'latencyAvg' | 'availabilityPct') =>
-          weightedAverage(hourlyRows.flatMap((row) => {
-            const value = row[field];
-            return value != null && row.sampleCount > 0 ? [{ value, weight: row.sampleCount }] : [];
-          }));
-        return {
-          nodeId,
-          bucketStart,
-          sampleCount: hourlyRows.reduce((sum, row) => sum + row.sampleCount, 0),
-          cpuAvg: metricAverage('cpuAvg'),
-          cpuMin: minNullable(hourlyRows.map((row) => row.cpuMin)),
-          cpuMax: maxNullable(hourlyRows.map((row) => row.cpuMax)),
-          memoryAvg: metricAverage('memoryAvg'),
-          memoryMin: minNullable(hourlyRows.map((row) => row.memoryMin)),
-          memoryMax: maxNullable(hourlyRows.map((row) => row.memoryMax)),
-          diskAvg: metricAverage('diskAvg'),
-          diskMin: minNullable(hourlyRows.map((row) => row.diskMin)),
-          diskMax: maxNullable(hourlyRows.map((row) => row.diskMax)),
-          latencyAvg: metricAverage('latencyAvg'),
-          latencyMin: minNullable(hourlyRows.map((row) => row.latencyMin)),
-          latencyMax: maxNullable(hourlyRows.map((row) => row.latencyMax)),
-          availabilityPct: metricAverage('availabilityPct'),
-        };
       });
-      upserts += await this.upsertRollupRows('daily', rows);
+      if (hourlyRows.length === 0) continue;
+
+      const metricAverage = (field: 'cpuAvg' | 'memoryAvg' | 'diskAvg' | 'latencyAvg' | 'availabilityPct') =>
+        weightedAverage(hourlyRows.flatMap((row) => {
+          const value = row[field];
+          return value != null && row.sampleCount > 0 ? [{ value, weight: row.sampleCount }] : [];
+        }));
+      const metrics = {
+        nodeId,
+        bucketStart,
+        sampleCount: hourlyRows.reduce((sum, row) => sum + row.sampleCount, 0),
+        cpuAvg: metricAverage('cpuAvg'),
+        cpuMin: minNullable(hourlyRows.map((row) => row.cpuMin)),
+        cpuMax: maxNullable(hourlyRows.map((row) => row.cpuMax)),
+        memoryAvg: metricAverage('memoryAvg'),
+        memoryMin: minNullable(hourlyRows.map((row) => row.memoryMin)),
+        memoryMax: maxNullable(hourlyRows.map((row) => row.memoryMax)),
+        diskAvg: metricAverage('diskAvg'),
+        diskMin: minNullable(hourlyRows.map((row) => row.diskMin)),
+        diskMax: maxNullable(hourlyRows.map((row) => row.diskMax)),
+        latencyAvg: metricAverage('latencyAvg'),
+        latencyMin: minNullable(hourlyRows.map((row) => row.latencyMin)),
+        latencyMax: maxNullable(hourlyRows.map((row) => row.latencyMax)),
+        availabilityPct: metricAverage('availabilityPct'),
+      };
+      upserts += await this.upsertRollupRows('daily', [metrics]);
     }
 
     return upserts;
   }
 
-  private upsertRollupRows(granularity: 'hourly' | 'daily', rows: RollupRow[]): Promise<number> {
+  private upsertRollupRows(
+    granularity: 'hourly' | 'daily',
+    rows: RollupRow[],
+    fillMissingOnly = false,
+  ): Promise<number> {
     const table = granularity === 'hourly'
       ? Prisma.sql`node_metric_rollups_hourly`
       : Prisma.sql`node_metric_rollups_daily`;
     const values = rows.map((row) => Prisma.sql`(
       ${row.nodeId}::uuid, ${row.bucketStart}::timestamptz, ${row.sampleCount}::integer,
-      ${row.cpuAvg}, ${row.cpuMin}, ${row.cpuMax}, ${row.memoryAvg}, ${row.memoryMin}, ${row.memoryMax},
-      ${row.diskAvg}, ${row.diskMin}, ${row.diskMax}, ${row.latencyAvg}, ${row.latencyMin}, ${row.latencyMax},
-      ${row.availabilityPct}, CURRENT_TIMESTAMP
+      ${row.cpuAvg}::float8, ${row.cpuMin}::float8, ${row.cpuMax}::float8,
+      ${row.memoryAvg}::float8, ${row.memoryMin}::float8, ${row.memoryMax}::float8,
+      ${row.diskAvg}::float8, ${row.diskMin}::float8, ${row.diskMax}::float8,
+      ${row.latencyAvg}::float8, ${row.latencyMin}::float8, ${row.latencyMax}::float8,
+      ${row.availabilityPct}::float8
     )`);
-    return this.prisma.$executeRaw`
-      INSERT INTO ${table} (
-        node_id, bucket_start, sample_count,
-        cpu_avg, cpu_min, cpu_max, memory_avg, memory_min, memory_max,
-        disk_avg, disk_min, disk_max, latency_avg, latency_min, latency_max,
-        availability_pct, updated_at
-      ) VALUES ${Prisma.join(values)}
-      ON CONFLICT (node_id, bucket_start) DO UPDATE SET
+    const conflictAction = fillMissingOnly ? Prisma.sql`DO NOTHING` : Prisma.sql`
+      DO UPDATE SET
         sample_count = EXCLUDED.sample_count,
         cpu_avg = EXCLUDED.cpu_avg, cpu_min = EXCLUDED.cpu_min, cpu_max = EXCLUDED.cpu_max,
         memory_avg = EXCLUDED.memory_avg, memory_min = EXCLUDED.memory_min, memory_max = EXCLUDED.memory_max,
@@ -372,6 +363,26 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
         latency_avg = EXCLUDED.latency_avg, latency_min = EXCLUDED.latency_min, latency_max = EXCLUDED.latency_max,
         availability_pct = EXCLUDED.availability_pct,
         updated_at = EXCLUDED.updated_at
+    `;
+    // Exclude nodes removed since the read and hold each surviving FK row until the write commits.
+    return this.prisma.$executeRaw`
+      INSERT INTO ${table} (
+        node_id, bucket_start, sample_count,
+        cpu_avg, cpu_min, cpu_max, memory_avg, memory_min, memory_max,
+        disk_avg, disk_min, disk_max, latency_avg, latency_min, latency_max,
+        availability_pct, updated_at
+      )
+      SELECT input.*, CURRENT_TIMESTAMP
+      FROM (VALUES ${Prisma.join(values)}) AS input (
+        node_id, bucket_start, sample_count,
+        cpu_avg, cpu_min, cpu_max, memory_avg, memory_min, memory_max,
+        disk_avg, disk_min, disk_max, latency_avg, latency_min, latency_max,
+        availability_pct
+      )
+      JOIN nodes ON nodes.id = input.node_id
+      ORDER BY input.node_id
+      FOR KEY SHARE OF nodes
+      ON CONFLICT (node_id, bucket_start) ${conflictAction}
     `;
   }
 }
