@@ -18,8 +18,7 @@ import {
 import { CommandOrchestratorService } from './command-orchestrator.service';
 
 const WORKER_LOCK_KEY = 'command_worker';
-const ACTIVE_STATUSES: NodeCommandStatus[] = [
-  NodeCommandStatus.pending,
+const IN_FLIGHT_STATUSES: NodeCommandStatus[] = [
   NodeCommandStatus.picked_up,
   NodeCommandStatus.running,
 ];
@@ -226,6 +225,11 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
 
   private async processDeferredCommands(): Promise<void> {
     const now = new Date();
+    const readyToRun = {
+      status: NodeCommandStatus.pending,
+      expiresAt: { gt: now },
+      OR: [{ nextRetryAt: null }, { nextRetryAt: { lte: now } }],
+    } satisfies Prisma.NodeCommandWhereInput;
 
     for (const type of Object.values(NodeCommandType)) {
       const definition = getCommandDefinition(type);
@@ -233,15 +237,11 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
-      const activeGlobal = await this.prisma.nodeCommand.count({
-        where: {
-          type,
-          status: {
-            in: ACTIVE_STATUSES,
-          },
-          OR: [{ nextRetryAt: null }, { nextRetryAt: { lte: now } }],
-        },
-      });
+      const [inFlight, ready] = await Promise.all([
+        this.prisma.nodeCommand.count({ where: { type, status: { in: IN_FLIGHT_STATUSES } } }),
+        this.prisma.nodeCommand.count({ where: { type, ...readyToRun } }),
+      ]);
+      const activeGlobal = inFlight + ready;
 
       if (
         !shouldDeferForConcurrency({
@@ -283,23 +283,17 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
       }
 
       const overflow = await this.prisma.nodeCommand.findMany({
-        where: {
-          type,
-          status: NodeCommandStatus.pending,
-          OR: [{ nextRetryAt: null }, { nextRetryAt: { lte: now } }],
-        },
-        orderBy: {
-          requestedAt: 'asc',
-        },
-        skip: definition.maxConcurrentGlobal,
+        where: { type, ...readyToRun },
+        orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
+        skip: Math.max(0, definition.maxConcurrentGlobal - inFlight),
         take: 20,
       });
 
       for (const command of overflow) {
         await this.prisma.nodeCommand.updateMany({
           where: {
+            ...readyToRun,
             id: command.id,
-            status: NodeCommandStatus.pending,
             nextRetryAt: command.nextRetryAt,
           },
           data: {

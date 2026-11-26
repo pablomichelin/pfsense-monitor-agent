@@ -21,6 +21,7 @@ process.env.TECHNICIAN_ACCOUNTS_ENABLED = 'true';
 process.env.TECHNICIAN_ACCOUNT_CREATE_ENABLED = 'true';
 process.env.TECHNICIAN_ACCOUNT_PASSWORD_RESET_ENABLED = 'true';
 process.env.PACKAGE_UPGRADE_MAX_CONCURRENT = '1';
+process.env.PFSENSE_UPGRADE_MAX_CONCURRENT = '1';
 
 const sentinel = 'pfs-command-recovery-qa-only-20261101';
 const deferred = () => {
@@ -52,7 +53,7 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
   assert.ok(!url.searchParams.has('host'), 'socket/host overrides are forbidden');
   assert.ok(!url.searchParams.has('schema'), 'schema overrides are forbidden');
   const selectedCase = process.env.COMMAND_RECOVERY_PG_CASE;
-  assert.ok(!selectedCase || ['disconnect', 'capacity', 'batch-sweep'].includes(selectedCase), 'unknown PG case selector');
+  assert.ok(!selectedCase || ['disconnect', 'capacity', 'batch-sweep', 'capacity-queue'].includes(selectedCase), 'unknown PG case selector');
   url.searchParams.set('connection_limit', '4');
   url.searchParams.set('connect_timeout', '5');
   url.searchParams.set('pool_timeout', '5');
@@ -163,6 +164,7 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
     if (selectedCase === 'disconnect' && !name.startsWith('server terminates')) return Promise.resolve();
     if (selectedCase === 'capacity' && !name.startsWith('upgrade capacity')) return Promise.resolve();
     if (selectedCase === 'batch-sweep' && !name.startsWith('periodic batch sweep')) return Promise.resolve();
+    if (selectedCase === 'capacity-queue' && !name.startsWith('queued upgrade')) return Promise.resolve();
     return t.test(name, work);
   };
 
@@ -193,6 +195,22 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
       await a.nodeCommand.updateMany({ where: { batchId: { in: allIds } }, data: { batchId: null } });
       await a.jobBatch.deleteMany({ where: { id: { in: allIds } } });
     }
+  });
+
+  await runCase('queued upgrade accounts for occupied slots without deferring expired rows', async () => {
+    const running = await fixture({ type: 'pfsense_upgrade', status: 'running', payloadJson: {} });
+    const waiting = await fixture({ type: 'pfsense_upgrade', payloadJson: {} });
+    const expired = await fixture({
+      type: 'pfsense_upgrade', payloadJson: {}, expiresAt: new Date(Date.now() - 1000),
+    });
+    const worker = new CommandWorkerService(a, {}, sa.orchestrator);
+    const started = Date.now();
+    await worker.processDeferredCommands();
+    const deferred = await b.nodeCommand.findUnique({ where: { id: waiting.command.id } });
+    assert.ok(deferred.nextRetryAt instanceof Date);
+    assert.ok(deferred.nextRetryAt.getTime() >= started + 30_000);
+    assert.equal((await b.nodeCommand.findUnique({ where: { id: running.command.id } })).nextRetryAt, null);
+    assert.equal((await b.nodeCommand.findUnique({ where: { id: expired.command.id } })).nextRetryAt, null);
   });
 
   await runCase('upgrade capacity reserves one slot and respects a scheduled pickup time', async () => {
