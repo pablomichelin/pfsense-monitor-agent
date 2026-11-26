@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { PackageUpgradeStatusResponse } from '@/lib/api';
+import type { PackageUpgradeRequestResponse, PackageUpgradeStatusResponse } from '@/lib/api';
 import {
   pollPackageUpgradeStatusAction,
   requestPackageUpgradeAction,
 } from '@/lib/package-upgrade';
 import { formatDateTime } from '@/lib/format';
+import { useScopedRead } from '@/lib/use-scoped-read';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -47,18 +48,33 @@ export function NodePackageUpgradeSection({
   const [confirmText, setConfirmText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<Pick<PackageUpgradeRequestResponse, 'command_id' | 'expires_at'> | null>(null);
+  const [pollFailed, setPollFailed] = useState(false);
+  const readStatus = useScopedRead(nodeId, initialStatus);
 
-  const refreshStatus = useCallback(async () => {
-    try {
-      const next = await pollPackageUpgradeStatusAction(nodeId);
-      setStatus(next);
-    } catch {
-      // polling silencioso
-    }
-  }, [nodeId]);
+  const applyStatus = useCallback((next: PackageUpgradeStatusResponse) => {
+    setStatus(next);
+    setReceipt((current) => current && (
+      next.active_command?.command_id === current.command_id
+      || next.last_result?.command_id === current.command_id
+      || Date.parse(current.expires_at) <= Date.now()
+    ) ? null : current);
+    setPollFailed(false);
+  }, []);
 
+  useEffect(() => { applyStatus(initialStatus); }, [applyStatus, initialStatus]);
+
+  const refreshStatus = useCallback((afterSubmission = false) => readStatus(
+    () => pollPackageUpgradeStatusAction(nodeId),
+    applyStatus,
+    () => setPollFailed(true),
+    afterSubmission,
+  ), [applyStatus, nodeId, readStatus]);
+
+  const tracking = receipt != null || (status.active_command != null
+    && ACTIVE_STATUSES.has(status.active_command.status));
   useEffect(() => {
-    if (!status.active_command || !ACTIVE_STATUSES.has(status.active_command.status)) {
+    if (!tracking) {
       return;
     }
 
@@ -67,7 +83,7 @@ export function NodePackageUpgradeSection({
     }, POLL_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
-  }, [refreshStatus, status.active_command]);
+  }, [refreshStatus, tracking]);
 
   const blockReason = useMemo(() => {
     if (!status.enabled) {
@@ -89,6 +105,7 @@ export function NodePackageUpgradeSection({
     status.enabled &&
     status.update_available &&
     !status.active_command &&
+    !receipt &&
     canRunPackageUpgrade &&
     status.agent_version_supported;
 
@@ -101,13 +118,14 @@ export function NodePackageUpgradeSection({
       const result = await requestPackageUpgradeAction(nodeId);
       if (!result.ok) {
         setError(result.error);
-        await refreshStatus();
+        await refreshStatus(true);
         return;
       }
 
+      setReceipt(result.data);
       setModalOpen(false);
       setConfirmText('');
-      await refreshStatus();
+      await refreshStatus(true);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -152,6 +170,12 @@ export function NodePackageUpgradeSection({
         </div>
 
         {activeLabel ? <Alert variant="warning">{activeLabel}</Alert> : null}
+        {receipt && !activeLabel ? (
+          <Alert variant="info">Solicitação aceita. Aguardando o status da atualização.</Alert>
+        ) : null}
+        {pollFailed && tracking ? (
+          <Alert variant="warning">Consulta temporariamente indisponível. O acompanhamento continua.</Alert>
+        ) : null}
 
         {status.last_result?.status === 'failed' ? (
           <Alert variant="error">

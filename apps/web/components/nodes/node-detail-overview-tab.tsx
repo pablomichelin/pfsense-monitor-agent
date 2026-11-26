@@ -279,7 +279,7 @@ export function NodeUpdatesSection({
             label: 'Agente Monitor',
             description: 'Pacote de monitoramento',
             content: packageUpgradeStatus ? (
-              <NodePackageUpgradeSection nodeId={node.id} canRunPackageUpgrade={canRunPackageUpgrade} initialStatus={packageUpgradeStatus} />
+              <NodePackageUpgradeSection key={node.id} nodeId={node.id} canRunPackageUpgrade={canRunPackageUpgrade} initialStatus={packageUpgradeStatus} />
             ) : <Alert variant="warning">A consulta do agente Monitor está indisponível.</Alert>,
           },
           {
