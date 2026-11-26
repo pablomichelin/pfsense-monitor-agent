@@ -234,7 +234,7 @@ export default async function AlertsPage({
         </div>
         <Card className="p-3">
           <InventoryAlertsFilterForm
-            key={JSON.stringify([clientId, siteId])}
+            key={JSON.stringify([clientId, siteId, search, status, severity, type, perPage])}
             clientId={clientId}
             className="flex flex-col gap-3"
           >

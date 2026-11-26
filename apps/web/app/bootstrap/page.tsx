@@ -238,7 +238,7 @@ export default async function BootstrapPage({
       <PageSection title="Filtros" description="Busque em toda a frota por nome, cliente, local ou situação.">
         <Card className="p-3">
         <InventoryAlertsFilterForm
-          key={JSON.stringify([clientId, siteId])}
+          key={JSON.stringify([clientId, siteId, search, bucket])}
           clientId={clientId}
           className="flex flex-wrap items-center gap-2"
         >
