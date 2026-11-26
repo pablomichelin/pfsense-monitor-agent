@@ -93,6 +93,19 @@ test('rejected override is explained without exposing API response or secret', a
   assert.doesNotMatch(textOf(tree), /synthetic secret command/);
 });
 
+test('installation keeps the selected firewall and filters when its command is unavailable', async () => {
+  for (const [status, explanation] of [[404, /credencial ativa/], [503, /temporariamente indisponível/]]) {
+    const f = fixture(['bootstrap.view', 'bootstrap.execute', 'firewalls.view'], status);
+    const tree = await f.Page({ searchParams: Promise.resolve({ node_id: 'fw1', bucket: 'active', search: 'lab' }) });
+    assert.equal(f.revealCount, 1);
+    assert.equal(f.query.bootstrap_bucket, 'active');
+    assert.equal(f.query.search, 'lab');
+    assert.match(textOf(tree), /Firewall:\s+lab/);
+    assert.match(textOf(tree), explanation);
+    assert.doesNotMatch(textOf(tree), /synthetic secret command/);
+  }
+});
+
 function componentMocks(path) {
   const source = readFileSync(new URL(path, import.meta.url), 'utf8');
   return Object.fromEntries([...source.matchAll(/import \{([^}]+)\} from '(@\/components\/[^']+)';/g)]

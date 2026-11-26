@@ -152,11 +152,16 @@ export default async function BootstrapPage({
         heartbeatMode,
       );
     } catch (error) {
-      if (error instanceof ApiError && [400, 403].includes(error.status)) {
-        selectedBootstrap = null;
-        bootstrapError = error.status === 403
-          ? 'Sua permissão de instalação foi alterada. Solicite bootstrap.execute para revelar o comando.'
-          : 'URL não aprovada. Use HTTPS e uma origem de release/controlador configurada pelo administrador.';
+      const status = error instanceof ApiError ? error.status : undefined;
+      if (status === 400) {
+        bootstrapError = 'URL não aprovada. Use HTTPS e uma origem de release/controlador configurada pelo administrador.';
+      } else if (status === 403) {
+        bootstrapError = 'Sua permissão de instalação foi alterada. Solicite bootstrap.execute para revelar o comando.';
+      } else if (status === 404) {
+        bootstrapError = 'Confira se este firewall ainda está cadastrado e se possui uma credencial ativa para revelar o comando.';
+      } else if (error instanceof TypeError || status === 408 || status === 429 ||
+          (status !== undefined && status >= 500)) {
+        bootstrapError = 'O comando de instalação está temporariamente indisponível. Tente novamente em instantes.';
       } else {
         handlePageApiError(error);
       }
