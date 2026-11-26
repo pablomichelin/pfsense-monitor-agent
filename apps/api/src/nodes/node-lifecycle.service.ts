@@ -100,7 +100,7 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
 
-        await this.prisma.$transaction(async (tx) => {
+        const committed = await this.prisma.$transaction(async (tx) => {
           const [current] = await tx.$queryRaw<Array<{
             status: NodeStatus;
             maintenance_mode: boolean;
@@ -117,7 +117,7 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
             current.maintenance_mode !== node.maintenanceMode ||
             current.last_seen_at?.getTime() !== node.lastSeenAt?.getTime()
           ) {
-            return;
+            return null;
           }
 
           const currentUpgradeIds = isOffline
@@ -134,25 +134,21 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
                 status: effectiveStatus,
               },
             });
-
-            changedNodes += 1;
           }
 
+          let openedAlertId: string | null = null;
           if (keepHeartbeatAlertOpen && !hasOpenHeartbeatAlert) {
-            const openedAlertId = await this.openHeartbeatMissingAlert(
+            openedAlertId = await this.openHeartbeatMissingAlert(
               tx,
               node.id,
               node.lastSeenAt,
               now,
             );
-            if (openedAlertId) {
-              openedAlerts += 1;
-              openedAlertIds.push(openedAlertId);
-            }
           }
 
+          let resolved = 0;
           if (!keepHeartbeatAlertOpen && hasOpenHeartbeatAlert) {
-            const resolved = await tx.alert.updateMany({
+            const result = await tx.alert.updateMany({
               where: {
                 id: heartbeatAlert.id,
                 status: { not: AlertStatus.resolved },
@@ -164,11 +160,20 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
               },
             });
 
-            resolvedAlerts += resolved.count;
+            resolved = result.count;
           }
+          return { updated: shouldUpdateNodeStatus, openedAlertId, resolved };
         });
+        if (!committed) continue;
+        if (committed.updated) changedNodes += 1;
+        if (committed.openedAlertId) {
+          openedAlerts += 1;
+          openedAlertIds.push(committed.openedAlertId);
+        }
+        resolvedAlerts += committed.resolved;
       }
-
+    } finally {
+      this.isReconciling = false;
       if (changedNodes > 0 || openedAlerts > 0 || resolvedAlerts > 0) {
         this.realtimeService.publishDashboardRefresh({
           source: 'node_reconciled',
@@ -180,8 +185,6 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
           `node lifecycle reconciliation reason=${reason} updated_nodes=${changedNodes} opened_alerts=${openedAlerts} resolved_alerts=${resolvedAlerts}`,
         );
       }
-    } finally {
-      this.isReconciling = false;
     }
   }
 

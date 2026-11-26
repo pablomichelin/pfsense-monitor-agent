@@ -137,6 +137,43 @@ test('metric sampling writes bounded batches in one transaction and verifies exi
   assert.equal(writes[0].sampledAt, writes[1].sampledAt);
 });
 
+test('node reconciliation dispatches committed alerts even when a later node update rolls back', async () => {
+  const lastSeenAt = new Date('2025-01-01T00:00:00Z');
+  const nodes = ['first', 'second'].map(id => ({
+    id, nodeUid: id, status: 'online', maintenanceMode: false, lastSeenAt, alerts: [],
+  }));
+  let transactions = 0;
+  const committedAlerts = [];
+  const notifications = [];
+  const refreshes = [];
+  const lifecycle = new NodeLifecycleService({
+    node: { findMany: async () => nodes },
+    $transaction: async (work) => {
+      const index = transactions++;
+      const alertId = `alert-${nodes[index].id}`;
+      const result = await work({
+        $queryRaw: async () => [{ status: 'online', maintenance_mode: false, last_seen_at: lastSeenAt }],
+        node: { update: async () => {} },
+        alert: { findUnique: async () => null, create: async () => ({ id: alertId }) },
+      });
+      if (index === 1) throw new Error('synthetic transaction failed before commit');
+      committedAlerts.push(alertId);
+      return result;
+    },
+  }, {
+    publishDashboardRefresh: event => refreshes.push(event.source),
+  }, {
+    loadActivePfsenseUpgradeNodeIds: async () => new Set(),
+  }, {
+    dispatchForAlertIds: ids => notifications.push(...ids),
+  });
+
+  await assert.rejects(lifecycle.reconcileStatuses('interval'), /synthetic transaction failed/);
+  assert.deepEqual(committedAlerts, ['alert-first']);
+  assert.deepEqual(notifications, committedAlerts);
+  assert.deepEqual(refreshes, ['node_reconciled']);
+});
+
 test('the daily cycle fills the final UTC hour before reading aggregates', async () => {
   const events = [];
   const hourlyKey = new Date();
