@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { GroupMemberPicker } from './group-member-picker';
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Alert, Button, Card } from '@/components/ui';
@@ -102,16 +102,24 @@ export function FleetOrgAdminPanel({
   const [pending, setPending] = useState(false);
 
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
-  async function handleCreate(run: () => ReturnType<typeof createTagAction>, success: string) {
+  async function handleCreate(
+    event: FormEvent<HTMLFormElement>,
+    run: typeof createTagAction,
+    success: string,
+  ) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
     setPending(true);
     setError(null);
     setMessage(null);
     try {
-      const result = await run();
+      const result = await run(data);
       if (!result.ok) {
         setError(result.error);
         return;
       }
+      form.reset();
       setMessage(success);
       router.refresh();
     } catch {
@@ -136,7 +144,7 @@ export function FleetOrgAdminPanel({
           </div>
 
           {canManageTags && clients.length > 0 ? (
-            <form action={(formData) => handleCreate(() => createTagAction(formData), 'Tag criada.')} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <form onSubmit={(event) => handleCreate(event, createTagAction, 'Tag criada.')} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
               <select
                 name="client_id"
                 aria-label="Cliente da tag"
@@ -208,7 +216,7 @@ export function FleetOrgAdminPanel({
           </div>
 
           {canManageGroups && clients.length > 0 ? (
-            <form action={(formData) => handleCreate(() => createGroupAction(formData), 'Grupo criado.')} className="grid gap-3">
+            <form onSubmit={(event) => handleCreate(event, createGroupAction, 'Grupo criado.')} className="grid gap-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <select
                   name="client_id"

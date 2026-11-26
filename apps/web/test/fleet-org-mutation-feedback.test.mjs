@@ -39,24 +39,37 @@ function fixture(actions) {
   };
 }
 
-test('create transport failure clears pending state and can be retried', async () => {
+test('create transport failure preserves the form and resets it only after a successful retry', async ({ mock }) => {
+  const NativeFormData = globalThis.FormData;
+  const data = new NativeFormData();
+  data.set('name', 'QA draft tag');
+  let resets = 0;
+  const form = { reset: () => { resets++; } };
+  mock.method(globalThis, 'FormData', function (submittedForm) {
+    assert.equal(submittedForm, form);
+    return data;
+  });
+  const event = { preventDefault() {}, currentTarget: form };
   let calls = 0;
   const qa = fixture({
-    createTagAction: async () => {
+    createTagAction: async (submittedData) => {
+      assert.equal(submittedData.get('name'), 'QA draft tag');
       if (++calls === 1) throw new Error('QA transport unavailable');
       return { ok: true };
     },
   });
   const getForm = (tree) => elements(tree).find((item) => item.type === 'form'
     && elements(item).some(({ props }) => props.placeholder === 'Nome da tag'));
-  await getForm(qa.panel()).props.action(new FormData());
+  await getForm(qa.panel()).props.onSubmit(event);
   const afterFailure = qa.panel();
   assert.match(textOf(afterFailure), /Tente novamente/);
   assert.equal(elements(getForm(afterFailure)).find((item) => item.type === 'button').props.disabled, false);
   assert.equal(qa.refreshes(), 0);
-  await getForm(afterFailure).props.action(new FormData());
+  assert.equal(resets, 0);
+  await getForm(afterFailure).props.onSubmit(event);
   assert.match(textOf(qa.panel()), /Tag criada/);
   assert.equal(qa.refreshes(), 1);
+  assert.equal(resets, 1);
 });
 
 test('deletion shows the API error and recovers after a transport interruption', async () => {

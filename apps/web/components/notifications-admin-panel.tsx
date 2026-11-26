@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { Button, Card } from '@/components/ui';
+import { Alert, Button, Card } from '@/components/ui';
 import {
   createNotificationChannelAction,
   createNotificationRuleAction,
@@ -224,6 +224,7 @@ export function NotificationsAdminPanel({
     | { kind: 'rule'; id: string; name: string }
     | null
   >(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const stats = useMemo(
     () => ({
@@ -234,18 +235,26 @@ export function NotificationsAdminPanel({
     [channels, rules, deliveries],
   );
 
-  const runAction = (action: () => Promise<{ ok: boolean; error?: string }>, success: string) => {
+  const runAction = (
+    action: () => Promise<{ ok: boolean; error?: string }>,
+    success: string,
+    onError: (error: string) => void = (error) => setMessage({ tone: 'error', text: error }),
+  ) => {
     startTransition(async () => {
       setMessage(null);
-      const result = await action();
-      if (result.ok) {
+      try {
+        const result = await action();
+        if (!result.ok) {
+          onError(result.error ?? 'Operação falhou');
+          return;
+        }
         setMessage({ tone: 'ok', text: success });
         setExpandedPanel(null);
         setEditingChannelId(null);
         setEditingRuleId(null);
         setDeleteTarget(null);
-      } else {
-        setMessage({ tone: 'error', text: result.error ?? 'Operação falhou' });
+      } catch {
+        onError('Não foi possível concluir a operação. Tente novamente.');
       }
     });
   };
@@ -656,29 +665,30 @@ export function NotificationsAdminPanel({
               {deleteTarget.kind === 'channel'
                 ? ' Regras vinculadas a este canal também serão removidas.'
                 : null}
+              {deleteError ? <Alert variant="error" className="mt-3">{deleteError}</Alert> : null}
             </>
           ) : null
         }
         confirmLabel="Excluir"
         tone="danger"
         loading={pending}
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => {
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
         onConfirm={() => {
           if (!deleteTarget) {
             return;
           }
 
-          if (deleteTarget.kind === 'channel') {
-            runAction(
-              () => deleteNotificationChannelAction(deleteTarget.id),
-              'Canal excluído.',
-            );
-          } else {
-            runAction(
-              () => deleteNotificationRuleAction(deleteTarget.id),
-              'Regra excluída.',
-            );
-          }
+          setDeleteError(null);
+          const isChannel = deleteTarget.kind === 'channel';
+          const remove = isChannel ? deleteNotificationChannelAction : deleteNotificationRuleAction;
+          runAction(
+            () => remove(deleteTarget.id),
+            isChannel ? 'Canal excluído.' : 'Regra excluída.',
+            setDeleteError,
+          );
         }}
       />
     </div>
