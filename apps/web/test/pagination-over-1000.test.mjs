@@ -59,7 +59,12 @@ test('1327 scoped nodes: every page beyond 1000, unique ties and reverse navigat
       assert.deepEqual(previous.items.map((n) => n.id), pages.at(-2).items.map((n) => n.id));
       const nextAgain = await service.listNodes(actor, { limit: 127, sort_by, sort_order, cursor: previous.next_cursor });
       assert.deepEqual(nextAgain.items.map((n) => n.id), last.items.map((n) => n.id));
-      assert.ok(calls.filter((c) => c.kind === 'node').every((c) => c.query.take === 250 && c.query.include._count.select.alerts.where.status === 'open'));
+      const nodeReads = calls.filter((call) => call.kind === 'node');
+      assert.ok(nodeReads.length > 0);
+      for (const { query: read } of nodeReads) {
+        assert.equal(read.take, 250);
+        assert.equal(read.select._count.select.alerts.where.status, 'open');
+      }
       assert.ok(calls.filter((c) => c.kind === 'transaction').every((c) => c.options.isolationLevel === 'RepeatableRead'));
     }
   }

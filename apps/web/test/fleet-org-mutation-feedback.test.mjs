@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { elements, hookHarness, sourceLoader, textOf, uiMocks } from './source-harness.mjs';
+import { elements, hookHarness, installBrowserFixture, sourceLoader, textOf, uiMocks } from './source-harness.mjs';
 
 const group = { id: 'qa-group', name: 'QA group', client_id: 'qa-client', client_name: 'QA', member_count: 0 };
 
@@ -72,7 +72,9 @@ test('create transport failure preserves the form and resets it only after a suc
   assert.equal(resets, 1);
 });
 
-test('deletion shows the API error and recovers after a transport interruption', async () => {
+test('deletion shows the API error and recovers after a transport interruption', async (t) => {
+  const browser = installBrowserFixture(t);
+  browser.location = { href: 'https://synthetic.invalid/admin/grupos' };
   let calls = 0;
   const qa = fixture({
     deleteGroupAction: async (id) => {
