@@ -281,10 +281,13 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
+      // Keep the oldest eligible request ready when every slot is occupied.
+      // Admission still checks capacity under the transaction lock.
+      const readySlots = Math.max(1, definition.maxConcurrentGlobal - inFlight);
       const overflow = await this.prisma.nodeCommand.findMany({
         where: { type, ...readyToRun },
         orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
-        skip: Math.max(0, definition.maxConcurrentGlobal - inFlight),
+        skip: readySlots,
         take: 20,
       });
 

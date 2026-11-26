@@ -204,7 +204,14 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
     t.after(() => { appConfig.commands.workerEnabled = wasEnabled; });
     const running = await fixture({ type: 'pfsense_upgrade', status: 'running', payloadJson: {} });
     const waiting = await fixture({
-      type: 'pfsense_upgrade', payloadJson: {}, requestedAt: new Date(Date.now() - 180_000),
+      type: 'pfsense_upgrade', payloadJson: {},
+      requestedAt: new Date(Date.now() - 180_000), nextRetryAt: new Date(Date.now() + 60_000),
+    });
+    const readyFirst = await fixture({
+      type: 'pfsense_upgrade', payloadJson: {}, requestedAt: new Date(Date.now() - 240_000),
+    });
+    const overflow = await fixture({
+      type: 'pfsense_upgrade', payloadJson: {}, requestedAt: new Date(Date.now() - 120_000),
     });
     const expired = await fixture({
       type: 'pfsense_upgrade', payloadJson: {}, expiresAt: new Date(Date.now() - 1000),
@@ -212,12 +219,14 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
     const worker = new CommandWorkerService(a, {}, sa.orchestrator);
     const started = Date.now();
     await worker.processDeferredCommands();
-    const deferred = await b.nodeCommand.findUnique({ where: { id: waiting.command.id } });
+    const deferred = await b.nodeCommand.findUnique({ where: { id: overflow.command.id } });
     assert.ok(deferred.nextRetryAt instanceof Date);
     assert.ok(deferred.nextRetryAt.getTime() >= started + 30_000);
+    assert.equal((await b.nodeCommand.findUnique({ where: { id: readyFirst.command.id } })).nextRetryAt, null);
     assert.equal((await b.nodeCommand.findUnique({ where: { id: running.command.id } })).nextRetryAt, null);
     assert.equal((await b.nodeCommand.findUnique({ where: { id: expired.command.id } })).nextRetryAt, null);
     await a.nodeCommand.update({ where: { id: expired.command.id }, data: { status: 'expired' } });
+    await a.nodeCommand.update({ where: { id: readyFirst.command.id }, data: { status: 'cancelled' } });
 
     await a.nodeCommand.update({
       where: { id: running.command.id },
@@ -251,6 +260,29 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
     assert.ok(age >= 91 && age < 180);
     assert.equal((await ack(sb, waiting, 0, 'picked_up')).status, 'picked_up');
     assert.equal((await b.nodeCommand.findUnique({ where: { id: queued.id } })).status, 'pending');
+  });
+
+  await runCase('queued upgrade does not postpone the oldest eligible request again while occupied', async () => {
+    const running = await fixture({ type: 'package_upgrade', status: 'running', payloadJson: {} });
+    const eligibleAt = new Date(Date.now() - 5_000);
+    const first = await fixture({
+      type: 'package_upgrade', payloadJson: {},
+      requestedAt: new Date(Date.now() - 60_000), nextRetryAt: eligibleAt,
+    });
+    const later = await fixture({
+      type: 'package_upgrade', payloadJson: {},
+      requestedAt: new Date(Date.now() - 30_000), nextRetryAt: new Date(Date.now() + 60_000),
+    });
+    const worker = new CommandWorkerService(a, {}, sa.orchestrator);
+    await worker.processDeferredCommands();
+    const waiting = await b.nodeCommand.findUnique({ where: { id: first.command.id } });
+    assert.deepEqual(waiting.nextRetryAt, eligibleAt);
+    await a.nodeCommand.update({
+      where: { id: running.command.id },
+      data: { status: 'succeeded', completedAt: new Date() },
+    });
+    await assert.rejects(ack(sb, later, 0, 'picked_up'), /scheduled for later/);
+    assert.equal((await ack(sb, first, 0, 'picked_up')).status, 'picked_up');
   });
 
   await runCase('upgrade capacity reserves one slot and respects a scheduled pickup time', async () => {
