@@ -30,85 +30,57 @@ type Props = {
   canEditGroupMembers: boolean;
 };
 
-function DeleteTagButton({
-  tag,
-  disabled,
-  onDeleted,
-}: {
-  tag: FleetTagItem;
+function DeleteFleetItemButton({ item, kind, disabled, onDeleted }: {
+  item: { id: string; name: string };
+  kind: 'tag' | 'group';
   disabled: boolean;
   onDeleted: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isTag = kind === 'tag';
+
+  async function confirm() {
+    setLoading(true);
+    setError(null);
+    try {
+      const remove = isTag ? deleteTagAction : deleteGroupAction;
+      const result = await remove(item.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setOpen(false);
+      onDeleted();
+    } catch {
+      setError('Não foi possível concluir a exclusão. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <>
-      <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => setOpen(true)}>
+      <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => {
+        setError(null);
+        setOpen(true);
+      }}>
         Excluir
       </Button>
       <ConfirmDialog
         open={open}
-        title="Excluir tag"
+        title={isTag ? 'Excluir tag' : 'Excluir grupo'}
         confirmLabel="Excluir"
         loading={loading}
-        onCancel={() => {
-          if (!loading) {
-            setOpen(false);
-          }
-        }}
-        onConfirm={async () => {
-          setLoading(true);
-          const result = await deleteTagAction(tag.id);
-          setLoading(false);
-          if (result.ok) {
-            setOpen(false);
-            onDeleted();
-          }
-        }}
-        description={`Remover a tag "${tag.name}"? Associações nos firewalls serão removidas.`}
-      />
-    </>
-  );
-}
-
-function DeleteGroupButton({
-  group,
-  disabled,
-  onDeleted,
-}: {
-  group: FleetGroupItem;
-  disabled: boolean;
-  onDeleted: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  return (
-    <>
-      <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => setOpen(true)}>
-        Excluir
-      </Button>
-      <ConfirmDialog
-        open={open}
-        title="Excluir grupo"
-        confirmLabel="Excluir"
-        loading={loading}
-        onCancel={() => {
-          if (!loading) {
-            setOpen(false);
-          }
-        }}
-        onConfirm={async () => {
-          setLoading(true);
-          const result = await deleteGroupAction(group.id);
-          setLoading(false);
-          if (result.ok) {
-            setOpen(false);
-            onDeleted();
-          }
-        }}
-        description={`Remover o grupo "${group.name}"?`}
+        onCancel={() => { if (!loading) setOpen(false); }}
+        onConfirm={confirm}
+        description={(
+          <>
+            {isTag ? `Remover a tag "${item.name}"? Associações nos firewalls serão removidas.` : `Remover o grupo "${item.name}"?`}
+            {error ? <Alert variant="error" className="mt-3">{error}</Alert> : null}
+          </>
+        )}
       />
     </>
   );
@@ -130,32 +102,23 @@ export function FleetOrgAdminPanel({
   const [pending, setPending] = useState(false);
 
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
-  async function handleCreateTag(formData: FormData) {
+  async function handleCreate(run: () => ReturnType<typeof createTagAction>, success: string) {
     setPending(true);
     setError(null);
     setMessage(null);
-    const result = await createTagAction(formData);
-    setPending(false);
-    if (!result.ok) {
-      setError(result.error);
-      return;
+    try {
+      const result = await run();
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setMessage(success);
+      router.refresh();
+    } catch {
+      setError('Não foi possível concluir o cadastro. Tente novamente.');
+    } finally {
+      setPending(false);
     }
-    setMessage('Tag criada.');
-    router.refresh();
-  }
-
-  async function handleCreateGroup(formData: FormData) {
-    setPending(true);
-    setError(null);
-    setMessage(null);
-    const result = await createGroupAction(formData);
-    setPending(false);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    setMessage('Grupo criado.');
-    router.refresh();
   }
 
   return (
@@ -173,7 +136,7 @@ export function FleetOrgAdminPanel({
           </div>
 
           {canManageTags && clients.length > 0 ? (
-            <form action={handleCreateTag} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <form action={(formData) => handleCreate(() => createTagAction(formData), 'Tag criada.')} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
               <select
                 name="client_id"
                 required
@@ -216,8 +179,9 @@ export function FleetOrgAdminPanel({
                     <td className="px-3 py-2">{tag.node_count}</td>
                     {canManageTags ? (
                       <td className="px-3 py-2">
-                        <DeleteTagButton
-                          tag={tag}
+                        <DeleteFleetItemButton
+                          item={tag}
+                          kind="tag"
                           disabled={pending}
                           onDeleted={() => router.refresh()}
                         />
@@ -242,7 +206,7 @@ export function FleetOrgAdminPanel({
           </div>
 
           {canManageGroups && clients.length > 0 ? (
-            <form action={handleCreateGroup} className="grid gap-3">
+            <form action={(formData) => handleCreate(() => createGroupAction(formData), 'Grupo criado.')} className="grid gap-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <select
                   name="client_id"
@@ -303,8 +267,9 @@ export function FleetOrgAdminPanel({
                     <td className="px-3 py-2">{group.member_count}</td>
                     {canManageGroups ? (
                       <td className="px-3 py-2">
-                        <DeleteGroupButton
-                          group={group}
+                        <DeleteFleetItemButton
+                          item={group}
+                          kind="group"
                           disabled={pending}
                           onDeleted={() => router.refresh()}
                         />
