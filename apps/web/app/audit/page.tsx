@@ -101,17 +101,20 @@ export default async function AuditPage({
     redirect('/conta?access=denied');
   }
 
-  const filterState = {
+  const formState = {
     action,
     target_type: targetType,
     target_id: targetId,
     result,
     actor_email: actorEmail,
     period,
-    period_end: rollingPeriod ? bounds?.to : undefined,
     from: fromParam,
     to: toParam,
     limit: String(limit),
+  };
+  const filterState = {
+    ...formState,
+    period_end: rollingPeriod ? bounds?.to : undefined,
     offset: offset > 0 ? String(offset) : undefined,
   };
 
@@ -147,7 +150,7 @@ export default async function AuditPage({
         }
       >
         <Card className="p-6">
-          <form className="flex flex-col gap-4">
+          <form key={JSON.stringify(formState)} className="flex flex-col gap-4">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-300">Período</span>

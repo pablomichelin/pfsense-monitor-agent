@@ -252,19 +252,22 @@ test('audit pagination preserves the relative period while browsing', async ({ m
   })('app/audit/page.tsx').default;
   const firstQuery = { period: '24h', limit: '25' };
   const render = query => page({ searchParams: Promise.resolve(query) });
+  const formKey = tree => elements(tree).find(element => element.type === 'form').key;
   const first = await render(firstQuery);
   const next = elements(first).find(element => element.props?.href?.includes('offset=25'));
   assert.ok(next);
   mock.timers.tick(90_000);
   const follow = Object.fromEntries(new URL(next.props.href, 'https://qa.example.invalid').searchParams);
-  await render(follow);
+  const second = await render(follow);
   assert.equal(reads[1].offset, 25);
   assert.equal(reads[1].from, reads[0].from);
   assert.equal(reads[1].to, reads[0].to);
+  assert.equal(formKey(second), formKey(first));
   await render(firstQuery);
   assert.equal(Date.parse(reads[2].to) - Date.parse(reads[0].to), 90_000);
   await render({ ...firstQuery, offset: '25', period_end: '-271821-04-20T00:00:00.000Z' });
   assert.equal(reads[3].to, reads[2].to);
+  assert.notEqual(formKey(await render({})), formKey(first));
 });
 
 test('audit custom calendar days match Brasília and invalid periods stay on the form', async () => {
