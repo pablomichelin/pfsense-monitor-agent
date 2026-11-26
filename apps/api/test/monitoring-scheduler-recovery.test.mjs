@@ -8,9 +8,17 @@ process.env.METRIC_ROLLUPS_ENABLED = 'true';
 const { NodeLifecycleService } = await import('../dist/nodes/node-lifecycle.service.js');
 const { MetricsSamplerService } = await import('../dist/metrics-history/metrics-sampler.service.js');
 const { MetricsRollupService } = await import('../dist/metrics-history/metrics-rollup.service.js');
+const { deriveEffectiveNodeStatus } = await import('../dist/nodes/node-status.util.js');
 
 const lock = { tryAcquire: async () => true, release: async () => {} };
 const noRowsDeleted = { deleteMany: async () => ({ count: 0 }) };
+
+test('a firewall without a heartbeat stops reporting maintenance when the mode is disabled', () => {
+  const neverSeen = { status: 'maintenance', maintenanceMode: true, lastSeenAt: null };
+  assert.equal(deriveEffectiveNodeStatus(neverSeen), 'maintenance');
+  assert.equal(deriveEffectiveNodeStatus({ ...neverSeen, maintenanceMode: false }), 'unknown');
+  assert.equal(deriveEffectiveNodeStatus({ ...neverSeen, maintenanceMode: false, status: 'online' }), 'unknown');
+});
 
 const jobs = [
   {

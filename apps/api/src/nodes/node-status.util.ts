@@ -171,7 +171,7 @@ export const deriveEffectiveNodeStatus = (
   }
 
   if (!node.lastSeenAt) {
-    return node.status === NodeStatus.maintenance ? NodeStatus.maintenance : NodeStatus.unknown;
+    return NodeStatus.unknown;
   }
 
   const ageSeconds = Math.floor(
