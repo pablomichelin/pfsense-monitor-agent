@@ -22,6 +22,7 @@ const inputClassName =
   'h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500';
 const selectClassName =
   'h-11 min-w-[11rem] rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none';
+const MAX_AUDIT_OFFSET = 10_000;
 
 function parseLimit(value: string | undefined): number {
   const parsed = Number(value);
@@ -62,7 +63,8 @@ export default async function AuditPage({
   const fromParam = typeof params.from === 'string' ? params.from : undefined;
   const toParam = typeof params.to === 'string' ? params.to : undefined;
   const limit = parseLimit(typeof params.limit === 'string' ? params.limit : undefined);
-  const offset = Math.max(0, Number(typeof params.offset === 'string' ? params.offset : '0') || 0);
+  const parsedOffset = typeof params.offset === 'string' && /^\d+$/.test(params.offset) ? Number(params.offset) : 0;
+  const offset = Number.isSafeInteger(parsedOffset) ? Math.min(MAX_AUDIT_OFFSET, parsedOffset) : 0;
 
   let from: string | undefined;
   let to: string | undefined;
@@ -117,8 +119,8 @@ export default async function AuditPage({
 
   const currentQuery = buildAuditQueryString(filterState);
   const nextOffset = offset + audit.items.length;
-  const hasMore = audit.items.length === limit;
-  const loadMoreHref = hasMore
+  const hasMore = audit.has_more ?? (audit.items.length === limit);
+  const loadMoreHref = hasMore && nextOffset <= MAX_AUDIT_OFFSET
     ? `/audit${buildAuditQueryString(filterState, { offset: String(nextOffset) })}`
     : undefined;
 
@@ -305,7 +307,7 @@ export default async function AuditPage({
           )}
         </Card>
 
-        {hasMore && loadMoreHref ? (
+        {loadMoreHref ? (
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <Link
               href={loadMoreHref}
@@ -314,9 +316,12 @@ export default async function AuditPage({
               Próxima página
             </Link>
             <p className="text-xs text-slate-500">
-              Exibindo até {limit} eventos por página. Há mais registros compatíveis com os filtros.
+              Exibindo até {limit} eventos por página.
             </p>
           </div>
+        ) : null}
+        {hasMore && !loadMoreHref ? (
+          <p className="mt-4 text-sm text-fg-muted">A consulta alcançou o limite de navegação. Refine os filtros para localizar outros eventos.</p>
         ) : null}
 
         {offset > 0 ? (

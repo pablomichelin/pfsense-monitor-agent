@@ -827,6 +827,7 @@ export type AlertsListResponse = {
 
 export type AuditLogsResponse = {
   generated_at: string;
+  has_more?: boolean;
   items: Array<{
     id: string;
     actor_type: string;

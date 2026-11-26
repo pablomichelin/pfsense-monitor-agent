@@ -111,6 +111,33 @@ test('dashboard keeps fleet totals and the available attention rows during a par
   await assert.rejects(page, (error) => error instanceof ApiError && error.status === 403);
 });
 
+test('audit respects the end of a full page and clamps malformed or unsupported offsets', async () => {
+  let hasMore = false;
+  const reads = [];
+  const page = sourceLoader({
+    ...uiMocks,
+    '@/components/audit-event-row': { AuditEventRow: 'audit-event' },
+    '@/lib/handle-page-api-error': { handlePageApiError: (error) => { throw error; } },
+    '@/lib/api': {
+      getSession: async () => ({ permissions: ['audit.view'] }),
+      getAuditLogs: async (filters) => {
+        reads.push(filters);
+        return { has_more: hasMore, items: Array.from({ length: 50 }, (_, index) => ({ id: index })) };
+      },
+    },
+  })('app/audit/page.tsx').default;
+  const browse = (offset) => page({ searchParams: Promise.resolve({ offset, limit: '50' }) });
+  assert.doesNotMatch(textOf(await browse('Infinity')), /Próxima página/);
+  assert.equal(reads.at(-1).offset, 0);
+  hasMore = true;
+  const limited = await browse('10001');
+  assert.equal(reads.at(-1).offset, 10_000);
+  assert.doesNotMatch(textOf(limited), /Próxima página/);
+  assert.match(textOf(limited), /limite de navegação/);
+  hasMore = undefined;
+  assert.match(textOf(await browse('50')), /Próxima página/);
+});
+
 test('F05 detail with view-only permission never requests backups or tags', async () => {
   const calls = [];
   const node = { id: 'node', hostname: 'lab', node_uid: 'lab-uid', effective_status: 'online',

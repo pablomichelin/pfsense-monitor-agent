@@ -876,6 +876,7 @@ export class AdminService {
     query: ListAuditLogsQueryDto,
   ): Promise<{
     generated_at: string;
+    has_more: boolean;
     items: Array<{
       id: string;
       actor_type: string;
@@ -895,6 +896,11 @@ export class AdminService {
   }> {
     const limit = query.limit ?? 50;
     const offset = query.offset ?? 0;
+    const pageSize = limit + 1;
+    const orderBy: Prisma.AuditLogOrderByWithRelationInput[] = [
+      { createdAt: 'desc' },
+      { id: 'desc' },
+    ];
 
     const where: Prisma.AuditLogWhereInput = {};
 
@@ -947,13 +953,13 @@ export class AdminService {
         select: {
           id: true,
         },
-        take: 50,
       });
 
       const actorIds = matchingUsers.map((user) => user.id);
       if (actorIds.length === 0) {
         return {
           generated_at: new Date().toISOString(),
+          has_more: false,
           items: [],
         };
       }
@@ -969,16 +975,15 @@ export class AdminService {
     if (!requiresScopeFilter) {
       const logs = await this.prisma.auditLog.findMany({
         where,
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: limit,
+        orderBy,
+        take: pageSize,
         skip: offset,
       });
 
       return {
         generated_at: new Date().toISOString(),
-        items: await this.buildAuditLogItems(logs),
+        has_more: logs.length > limit,
+        items: await this.buildAuditLogItems(logs.slice(0, limit)),
       };
     }
 
@@ -987,12 +992,10 @@ export class AdminService {
     let dbSkip = 0;
     let skipped = 0;
 
-    while (scopedItems.length < limit) {
+    while (scopedItems.length < pageSize) {
       const logs = await this.prisma.auditLog.findMany({
         where,
-        orderBy: {
-          createdAt: 'desc',
-        },
+        orderBy,
         take: batchSize,
         skip: dbSkip,
       });
@@ -1021,7 +1024,7 @@ export class AdminService {
         }
 
         scopedItems.push(item);
-        if (scopedItems.length >= limit) {
+        if (scopedItems.length >= pageSize) {
           break;
         }
       }
@@ -1033,7 +1036,8 @@ export class AdminService {
 
     return {
       generated_at: new Date().toISOString(),
-      items: scopedItems,
+      has_more: scopedItems.length > limit,
+      items: scopedItems.slice(0, limit),
     };
   }
 
