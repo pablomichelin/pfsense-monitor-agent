@@ -1,3 +1,5 @@
+import { isIPv6 } from 'node:net';
+
 const IP_SPLIT = /[,;\s]+/;
 
 export function extractPrimaryIp(value?: string | null): string | undefined {
@@ -19,7 +21,8 @@ export function buildDefaultRemoteAccessUrl(
     return null;
   }
 
-  return `https://${ip}:9999`;
+  const host = isIPv6(ip) ? `[${ip}]` : ip;
+  return `https://${host}:9999`;
 }
 
 export function resolveRemoteAccessUrl(
