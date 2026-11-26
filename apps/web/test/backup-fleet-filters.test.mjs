@@ -46,10 +46,10 @@ test('URL antiga com cliente e local incompatíveis informa a causa e corrige os
     },
   })('app/backups/page.tsx');
 
-  const render = (siteId) => BackupsPage({
+  const render = (siteId, overrides = {}) => BackupsPage({
     searchParams: Promise.resolve({
       client_id: 'client-b', site_id: siteId, page: '2', per_page: '10',
-      sort_by: 'name', sort_order: 'desc', search: 'Sede', backup_status: 'late',
+      sort_by: 'name', sort_order: 'desc', search: 'Sede', backup_status: 'late', ...overrides,
     }),
   });
   const tree = await render('site-a');
@@ -70,4 +70,10 @@ test('URL antiga com cliente e local incompatíveis informa a causa e corrige os
   assert.equal(hiddenPicker.props.initialSiteId, 'site-inactive');
   assert.equal(requests[1].site_id, 'site-inactive');
   assert.equal(elements(hiddenSite).find((entry) => entry.type === 'hero').props.aside.props.realtimeEnabled, false);
+
+  const formKey = (page) => elements(page).find((entry) => entry.type === 'form').key;
+  const nextStatus = await render('site-inactive', { backup_status: 'failed' });
+  const nextPage = await render('site-inactive', { page: '3' });
+  assert.notEqual(formKey(nextStatus), formKey(hiddenSite));
+  assert.equal(formKey(nextPage), formKey(hiddenSite));
 });

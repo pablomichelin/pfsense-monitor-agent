@@ -131,9 +131,11 @@ export default async function BackupsPage({
               O local da consulta pertence a outro cliente. Selecione um local deste cliente ou aplique os filtros com todos os seus sites.
             </Alert>
           ) : null}
-          <form className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <form
+            key={JSON.stringify([clientId, filterSiteId, backupStatus, search, sortBy, sortOrder, perPage])}
+            className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
+          >
             <BackupScopeSelects
-              key={`${clientId ?? ''}/${filterSiteId ?? ''}`}
               clients={filterOptions.clients}
               sites={filterOptions.sites}
               initialClientId={clientId}
