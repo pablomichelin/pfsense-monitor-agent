@@ -139,6 +139,7 @@ export function FleetOrgAdminPanel({
             <form action={(formData) => handleCreate(() => createTagAction(formData), 'Tag criada.')} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
               <select
                 name="client_id"
+                aria-label="Cliente da tag"
                 required
                 defaultValue={clients[0]?.id ?? ''}
                 className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200"
@@ -151,6 +152,7 @@ export function FleetOrgAdminPanel({
               </select>
               <input
                 name="name"
+                aria-label="Nome da tag"
                 required
                 placeholder="Nome da tag"
                 className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-100"
@@ -210,6 +212,7 @@ export function FleetOrgAdminPanel({
               <div className="grid gap-3 sm:grid-cols-2">
                 <select
                   name="client_id"
+                  aria-label="Cliente do grupo"
                   required
                   defaultValue={clients[0]?.id ?? ''}
                   className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-200"
@@ -222,6 +225,7 @@ export function FleetOrgAdminPanel({
                 </select>
                 <input
                   name="name"
+                  aria-label="Nome do grupo"
                   required
                   placeholder="Nome do grupo"
                   className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-100"
@@ -229,6 +233,7 @@ export function FleetOrgAdminPanel({
               </div>
               <input
                 name="description"
+                aria-label="Descrição opcional do grupo"
                 placeholder="Descrição opcional"
                 className="h-11 rounded-lg border border-slate-600/80 bg-panel-soft px-3 text-sm text-slate-100"
               />

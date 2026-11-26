@@ -429,6 +429,7 @@ export function NodeDetailConfigTab({
                     <input
                       type="text"
                       name="release_base_url"
+                      aria-label="URL base do release"
                       defaultValue={releaseBaseUrl ?? ''}
                       placeholder="https://downloads.systemup.inf.br/monitor-pfsense"
                       className="w-full rounded-lg h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
@@ -436,6 +437,7 @@ export function NodeDetailConfigTab({
                     <input
                       type="text"
                       name="controller_url"
+                      aria-label="URL do controlador"
                       defaultValue={controllerUrl ?? ''}
                       placeholder="https://pfs-monitor.systemup.inf.br"
                       className="w-full rounded-lg h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"

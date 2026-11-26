@@ -75,8 +75,8 @@ function ChannelTypeFields({
   if (type === 'webhook') {
     return (
       <>
-        <div>
-          <label className={labelClass}>URL</label>
+        <label className="block">
+          <span className={labelClass}>URL</span>
           <input
             name="url"
             type="url"
@@ -85,18 +85,18 @@ function ChannelTypeFields({
             className={inputClass}
             placeholder="https://hooks.exemplo/alertas"
           />
-        </div>
-        <div>
-          <label className={labelClass}>Método HTTP</label>
+        </label>
+        <label className="block">
+          <span className={labelClass}>Método HTTP</span>
           <select name="method" defaultValue={String(config.method ?? 'POST')} className={selectClass}>
             <option value="POST">POST</option>
             <option value="PUT">PUT</option>
           </select>
-        </div>
-        <div>
-          <label className={labelClass}>
+        </label>
+        <label className="block">
+          <span className={labelClass}>
             Authorization header {isEdit ? '(vazio = manter atual)' : ''}
-          </label>
+          </span>
           <input
             name="auth_header"
             type="password"
@@ -104,7 +104,7 @@ function ChannelTypeFields({
             className={inputClass}
             placeholder={isEdit && channel?.has_secrets ? '••••••••' : 'Bearer …'}
           />
-        </div>
+        </label>
       </>
     );
   }
@@ -113,59 +113,59 @@ function ChannelTypeFields({
     return (
       <>
         <div className="grid gap-3 md:grid-cols-2">
-          <div>
-            <label className={labelClass}>SMTP host</label>
+          <label className="block">
+            <span className={labelClass}>SMTP host</span>
             <input
               name="smtp_host"
               required={!isEdit}
               defaultValue={String(config.smtp_host ?? '')}
               className={inputClass}
             />
-          </div>
-          <div>
-            <label className={labelClass}>SMTP port</label>
+          </label>
+          <label className="block">
+            <span className={labelClass}>SMTP port</span>
             <input
               name="smtp_port"
               type="number"
               defaultValue={String(config.smtp_port ?? 587)}
               className={inputClass}
             />
-          </div>
+          </label>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
-          <div>
-            <label className={labelClass}>From</label>
+          <label className="block">
+            <span className={labelClass}>From</span>
             <input
               name="from"
               required={!isEdit}
               defaultValue={String(config.from ?? '')}
               className={inputClass}
             />
-          </div>
-          <div>
-            <label className={labelClass}>To</label>
+          </label>
+          <label className="block">
+            <span className={labelClass}>To</span>
             <input
               name="to"
               required={!isEdit}
               defaultValue={String(config.to ?? '')}
               className={inputClass}
             />
-          </div>
+          </label>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
-          <div>
-            <label className={labelClass}>SMTP user {isEdit ? '(vazio = manter)' : ''}</label>
+          <label className="block">
+            <span className={labelClass}>SMTP user {isEdit ? '(vazio = manter)' : ''}</span>
             <input name="smtp_user" autoComplete="off" className={inputClass} />
-          </div>
-          <div>
-            <label className={labelClass}>SMTP password {isEdit ? '(vazio = manter)' : ''}</label>
+          </label>
+          <label className="block">
+            <span className={labelClass}>SMTP password {isEdit ? '(vazio = manter)' : ''}</span>
             <input
               name="smtp_password"
               type="password"
               autoComplete="new-password"
               className={inputClass}
             />
-          </div>
+          </label>
         </div>
       </>
     );
@@ -173,17 +173,17 @@ function ChannelTypeFields({
 
   return (
     <>
-      <div>
-        <label className={labelClass}>Chat ID</label>
+      <label className="block">
+        <span className={labelClass}>Chat ID</span>
         <input
           name="chat_id"
           required={!isEdit}
           defaultValue={String(config.chat_id ?? '')}
           className={inputClass}
         />
-      </div>
-      <div>
-        <label className={labelClass}>Bot token {isEdit ? '(vazio = manter atual)' : ''}</label>
+      </label>
+      <label className="block">
+        <span className={labelClass}>Bot token {isEdit ? '(vazio = manter atual)' : ''}</span>
         <input
           name="bot_token"
           type="password"
@@ -191,7 +191,7 @@ function ChannelTypeFields({
           className={inputClass}
           placeholder={isEdit && channel?.has_secrets ? '••••••••' : ''}
         />
-      </div>
+      </label>
     </>
   );
 }
@@ -326,12 +326,12 @@ export function NotificationsAdminPanel({
           >
             <p className="text-sm font-medium text-slate-200">Novo canal</p>
             <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <label className={labelClass}>Nome</label>
+              <label className="block">
+                <span className={labelClass}>Nome</span>
                 <input name="name" required minLength={2} className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Tipo</label>
+              </label>
+              <label className="block">
+                <span className={labelClass}>Tipo</span>
                 <select
                   name="type"
                   value={newChannelType}
@@ -344,15 +344,15 @@ export function NotificationsAdminPanel({
                   <option value="email">E-mail (SMTP)</option>
                   <option value="telegram">Telegram</option>
                 </select>
-              </div>
+              </label>
             </div>
-            <div>
-              <label className={labelClass}>Status</label>
+            <label className="block">
+              <span className={labelClass}>Status</span>
               <select name="status" defaultValue="active" className={selectClass}>
                 <option value="active">Ativo</option>
                 <option value="inactive">Inativo</option>
               </select>
-            </div>
+            </label>
             <ChannelTypeFields type={newChannelType} />
             <Button type="submit" disabled={pending}>
               {pending ? 'Salvando…' : 'Criar canal'}
@@ -458,17 +458,17 @@ export function NotificationsAdminPanel({
                   >
                     <input type="hidden" name="type" value={channel.type} />
                     <div className="grid gap-3 md:grid-cols-2">
-                      <div>
-                        <label className={labelClass}>Nome</label>
+                      <label className="block">
+                        <span className={labelClass}>Nome</span>
                         <input
                           name="name"
                           required
                           defaultValue={channel.name}
                           className={inputClass}
                         />
-                      </div>
-                      <div>
-                        <label className={labelClass}>Status</label>
+                      </label>
+                      <label className="block">
+                        <span className={labelClass}>Status</span>
                         <select
                           name="status"
                           defaultValue={channel.status}
@@ -477,7 +477,7 @@ export function NotificationsAdminPanel({
                           <option value="active">Ativo</option>
                           <option value="inactive">Inativo</option>
                         </select>
-                      </div>
+                      </label>
                     </div>
                     <ChannelTypeFields type={channel.type} channel={channel} isEdit />
                     <Button type="submit" size="sm" disabled={pending}>
@@ -697,17 +697,17 @@ function RuleFormFields({
   return (
     <>
       <div className="grid gap-3 md:grid-cols-2">
-        <div>
-          <label className={labelClass}>Nome</label>
+        <label className="block">
+          <span className={labelClass}>Nome</span>
           <input
             name="name"
             required
             defaultValue={rule?.name ?? ''}
             className={inputClass}
           />
-        </div>
-        <div>
-          <label className={labelClass}>Canal</label>
+        </label>
+        <label className="block">
+          <span className={labelClass}>Canal</span>
           <select
             name="channel_id"
             required
@@ -720,11 +720,11 @@ function RuleFormFields({
               </option>
             ))}
           </select>
-        </div>
+        </label>
       </div>
       <div className="grid gap-3 md:grid-cols-3">
-        <div>
-          <label className={labelClass}>Severidade</label>
+        <label className="block">
+          <span className={labelClass}>Severidade</span>
           <select name="severity" defaultValue={rule?.severity ?? ''} className={selectClass}>
             {SEVERITY_OPTIONS.map((option) => (
               <option key={option.value || 'any'} value={option.value}>
@@ -732,9 +732,9 @@ function RuleFormFields({
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label className={labelClass}>Tipo de alerta</label>
+        </label>
+        <label className="block">
+          <span className={labelClass}>Tipo de alerta</span>
           <select name="alert_type" defaultValue={rule?.alert_type ?? ''} className={selectClass}>
             {ALERT_TYPE_OPTIONS.map((option) => (
               <option key={option.value || 'any'} value={option.value}>
@@ -742,9 +742,9 @@ function RuleFormFields({
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label className={labelClass}>Cliente (opcional)</label>
+        </label>
+        <label className="block">
+          <span className={labelClass}>Cliente (opcional)</span>
           <select name="client_id" defaultValue={rule?.client_id ?? ''} className={selectClass}>
             <option value="">Todos os clientes</option>
             {rule?.client_id && !clients.some((client) => client.id === rule.client_id) ? (
@@ -756,10 +756,10 @@ function RuleFormFields({
               </option>
             ))}
           </select>
-        </div>
+        </label>
       </div>
-      <div>
-        <label className={labelClass}>Ativa</label>
+      <label className="block">
+        <span className={labelClass}>Ativa</span>
         <select
           name="enabled"
           defaultValue={rule?.enabled === false ? 'false' : 'true'}
@@ -768,7 +768,7 @@ function RuleFormFields({
           <option value="true">Sim</option>
           <option value="false">Não</option>
         </select>
-      </div>
+      </label>
     </>
   );
 }

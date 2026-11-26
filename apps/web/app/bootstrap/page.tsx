@@ -285,6 +285,7 @@ export default async function BootstrapPage({
           <input
             type="search"
             name="search"
+            aria-label="Buscar firewall"
             defaultValue={search ?? ''}
             placeholder="Buscar"
             className={`${formInputClassName} min-w-[10rem] max-w-[16rem] flex-1`}
@@ -318,6 +319,7 @@ export default async function BootstrapPage({
                 <input
                   type="text"
                   name="release_base_url"
+                  aria-label="URL base do release"
                   defaultValue={releaseBaseUrl ?? ''}
                   placeholder="https://downloads.systemup.inf.br/monitor-pfsense"
                   className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
@@ -325,6 +327,7 @@ export default async function BootstrapPage({
                 <input
                   type="text"
                   name="controller_url"
+                  aria-label="URL do controlador"
                   defaultValue={controllerUrl ?? ''}
                   placeholder="https://pfs-monitor.systemup.inf.br"
                   className="w-full rounded-xl h-11 border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"
