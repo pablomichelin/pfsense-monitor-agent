@@ -44,25 +44,29 @@ export function UserMenu({ userEmail }: { userEmail: string }) {
         <span className="truncate">{userEmail}</span>
         <span aria-hidden>▾</span>
       </button>
-      {open ? (
+      {open || logoutError ? (
         <div id="user-account-actions" aria-label="Opções do usuário" className="absolute right-0 z-50 mt-2 w-72 rounded-xl border border-border bg-surface-elevated p-2 shadow-surface">
-          <p className="truncate px-3 py-2 text-xs text-fg-muted" title={userEmail}>{userEmail}</p>
-          <Link href="/conta" onClick={() => closeMenu()} className="flex rounded-lg px-3 py-2 text-sm text-fg hover:bg-nav-hover">Minha conta</Link>
-          <Link href="/sessions" onClick={() => closeMenu()} className="flex rounded-lg px-3 py-2 text-sm text-fg hover:bg-nav-hover">Sessões</Link>
-          <div className="my-2 border-t border-border" />
-          <div className="px-3 py-2"><ThemeToggle compact /></div>
-          <div className="my-2 border-t border-border" />
-          <form action={submitLogout}>
-            <button
-              type="submit"
-              aria-disabled={logoutPending}
-              onClick={(event) => { if (logoutPending) event.preventDefault(); }}
-              className="flex w-full rounded-lg px-3 py-2 text-left text-sm text-danger-fg hover:bg-danger-muted"
-            >
-              {logoutPending ? 'Encerrando sessão…' : 'Sair'}
-            </button>
-            {logoutError && <p role="alert" className="px-3 py-2 text-xs text-danger-fg">{logoutError}</p>}
-          </form>
+          {open ? (
+            <>
+              <p className="truncate px-3 py-2 text-xs text-fg-muted" title={userEmail}>{userEmail}</p>
+              <Link href="/conta" onClick={() => closeMenu()} className="flex rounded-lg px-3 py-2 text-sm text-fg hover:bg-nav-hover">Minha conta</Link>
+              <Link href="/sessions" onClick={() => closeMenu()} className="flex rounded-lg px-3 py-2 text-sm text-fg hover:bg-nav-hover">Sessões</Link>
+              <div className="my-2 border-t border-border" />
+              <div className="px-3 py-2"><ThemeToggle compact /></div>
+              <div className="my-2 border-t border-border" />
+              <form action={submitLogout}>
+                <button
+                  type="submit"
+                  aria-disabled={logoutPending}
+                  onClick={(event) => { if (logoutPending) event.preventDefault(); }}
+                  className="flex w-full rounded-lg px-3 py-2 text-left text-sm text-danger-fg hover:bg-danger-muted"
+                >
+                  {logoutPending ? 'Encerrando sessão…' : 'Sair'}
+                </button>
+              </form>
+            </>
+          ) : null}
+          {logoutError && <p role="alert" className="px-3 py-2 text-xs text-danger-fg">{logoutError}</p>}
         </div>
       ) : null}
     </div>
