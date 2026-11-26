@@ -10,11 +10,14 @@ import { PermissionsGuard } from '../auth/permissions.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { MfaEnrollmentGuard } from '../auth/mfa-enrollment.guard';
 
-export class ListAdminClientsQuery {
-  @IsOptional() @IsIn(['active', 'inactive']) status?: 'active' | 'inactive';
+export class ListAdminClientOptionsQuery {
   @IsOptional() @IsString() @MaxLength(200) search?: string;
   @IsOptional() @IsInt() @Min(1) @Max(1000000) page?: number;
   @IsOptional() @IsInt() @Min(1) @Max(100) limit?: number;
+}
+
+export class ListAdminClientsQuery extends ListAdminClientOptionsQuery {
+  @IsOptional() @IsIn(['active', 'inactive']) status?: 'active' | 'inactive';
 }
 
 @Controller('api/v1/admin/clients')
@@ -25,16 +28,7 @@ export class ClientsAdminController {
   @Get()
   @RequirePermissions('clients.view')
   async list(@Query() query: ListAdminClientsQuery, @Req() request: AuthenticatedRequest) {
-    const allowed = await this.access.getAllowedClientIds(getAccessActor(request));
-    const search = query.search?.trim();
-    const where: Prisma.ClientWhereInput = {
-      status: query.status ?? 'active',
-      ...(allowed === null ? {} : { id: { in: allowed } }),
-      ...(search ? { OR: [
-        { name: { contains: search, mode: 'insensitive' } },
-        { code: { contains: search, mode: 'insensitive' } },
-      ] } : {}),
-    };
+    const where = await this.scopedClientsWhere(query, request, query.status ?? 'active');
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
     return this.prisma.$transaction(async tx => {
@@ -59,5 +53,51 @@ export class ClientsAdminController {
         site_count: c._count.sites, node_count: nodeCounts.get(c.id) ?? 0 })),
         total, page, limit, total_pages: Math.max(1, Math.ceil(total / limit)) };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  }
+
+  @Get('options/groups')
+  @RequirePermissions('groups.manage')
+  listGroupClientOptions(@Query() query: ListAdminClientOptionsQuery, @Req() request: AuthenticatedRequest) {
+    return this.listActiveOptions(query, request);
+  }
+
+  @Get('options/tags')
+  @RequirePermissions('tags.manage')
+  listTagClientOptions(@Query() query: ListAdminClientOptionsQuery, @Req() request: AuthenticatedRequest) {
+    return this.listActiveOptions(query, request);
+  }
+
+  private async listActiveOptions(query: ListAdminClientOptionsQuery, request: AuthenticatedRequest) {
+    const where = await this.scopedClientsWhere(query, request);
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 50;
+    return this.prisma.$transaction(async (tx) => {
+      const total = await tx.client.count({ where });
+      const items = await tx.client.findMany({
+        where,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+        select: { id: true, name: true, code: true },
+      });
+      return { items, total, page, limit, total_pages: Math.max(1, Math.ceil(total / limit)) };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  }
+
+  private async scopedClientsWhere(
+    query: ListAdminClientOptionsQuery,
+    request: AuthenticatedRequest,
+    status: NonNullable<ListAdminClientsQuery['status']> = 'active',
+  ): Promise<Prisma.ClientWhereInput> {
+    const allowed = await this.access.getAllowedClientIds(getAccessActor(request));
+    const search = query.search?.trim();
+    return {
+      status,
+      ...(allowed === null ? {} : { id: { in: allowed } }),
+      ...(search ? { OR: [
+        { name: { contains: search, mode: 'insensitive' } },
+        { code: { contains: search, mode: 'insensitive' } },
+      ] } : {}),
+    };
   }
 }

@@ -8,6 +8,7 @@ import {
   getActiveAdminClientOptions,
   getFleetGroup,
   getNodesFilters,
+  getScopedAdminClientOptions,
   getSession,
   listFleetGroups,
   listFleetTags,
@@ -55,7 +56,9 @@ export default async function AdminGruposPage({ searchParams }: {
       canManageTags || canManageGroups
         ? canViewFirewalls
           ? getNodesFilters().then(({ clients }) => clients.filter((client) => client.status === 'active'))
-          : canViewClients ? getActiveAdminClientOptions() : []
+          : canViewClients
+            ? getActiveAdminClientOptions()
+            : getScopedAdminClientOptions(canManageGroups ? 'groups' : 'tags')
         : [],
     ]);
   } catch (error) {

@@ -1136,6 +1136,25 @@ export async function getActiveAdminClientOptions(): Promise<Array<{ id: string;
   return clients;
 }
 
+export async function getScopedAdminClientOptions(section: 'groups' | 'tags') {
+  type OptionsPage = Pick<AdminClientsListResponse, 'total_pages'> & {
+    items: Array<Pick<AdminClientsListResponse['items'][number], 'id' | 'name' | 'code'>>;
+  };
+  const loadPage = (page: number) =>
+    apiFetch<OptionsPage>(`/api/v1/admin/clients/options/${section}?page=${page}&limit=100`);
+  try {
+    const firstPage = await loadPage(1);
+    const clients = [...firstPage.items];
+    for (let page = 2; page <= firstPage.total_pages; page++) {
+      clients.push(...(await loadPage(page)).items);
+    }
+    return clients;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return [];
+    throw error;
+  }
+}
+
 export async function getNodeDetails(id: string): Promise<NodeDetailsResponse> {
   return apiFetch<NodeDetailsResponse>(`/api/v1/nodes/${id}`);
 }

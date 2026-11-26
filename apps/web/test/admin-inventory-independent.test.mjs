@@ -9,7 +9,11 @@ class ApiError extends Error {
   }
 }
 
-function fixture(permissions, { groups = [{ id: 'group-1' }], groupDetailFailure } = {}) {
+function fixture(permissions, {
+  groups = [{ id: 'group-1' }],
+  groupDetailFailure,
+  scopedClients = [{ id: 'qa-north', name: 'QA North', code: 'NORTH' }],
+} = {}) {
   const reads = [];
   const list = (name, items = []) => async () => {
     reads.push(name);
@@ -33,6 +37,13 @@ function fixture(permissions, { groups = [{ id: 'group-1' }], groupDetailFailure
         reads.push('clients');
         assert.ok(permissions.includes('clients.view'));
         return [{ id: 'qa-client', name: 'QA client', code: 'qa-client' }];
+      },
+      getScopedAdminClientOptions: async (section) => {
+        reads.push(`options:${section}`);
+        assert.ok(permissions.includes(`${section}.manage`));
+        assert.ok(!permissions.includes('clients.view'));
+        assert.ok(!permissions.includes('firewalls.view'));
+        return scopedClients;
       },
       listFleetTags: list('tags', [{ id: 'tag-1' }]),
       listFleetGroups: list('groups', groups),
@@ -62,15 +73,36 @@ test('notification readers can see their settings without inventory access', asy
   assert.deepEqual(reads, ['channels', 'rules', 'deliveries']);
 });
 
-test('fleet organization renders the visible groups without inventory access', async () => {
-  const { routes, reads } = fixture(['groups.view', 'groups.manage']);
+test('fleet organization renders the visible groups for a reader without inventory access', async () => {
+  const { routes, reads } = fixture(['groups.view']);
   const tree = await routes('app/admin/grupos/page.tsx').default({});
   const panel = elements(tree).find((item) => item.type === 'fleet-panel');
   assert.deepEqual(panel.props.groups, [{ id: 'group-1' }]);
   assert.deepEqual(panel.props.clients, []);
-  assert.equal(panel.props.canManageGroups, true);
+  assert.equal(panel.props.canManageGroups, false);
   assert.equal(panel.props.canEditGroupMembers, false);
   assert.deepEqual(reads, ['groups']);
+});
+
+test('groups and tags use their management selector without inventory access', async () => {
+  const expected = { id: 'qa-north', name: 'QA North', code: 'NORTH' };
+  for (const section of ['groups', 'tags']) {
+    const { routes, reads } = fixture([`${section}.view`, `${section}.manage`]);
+    const tree = await routes('app/admin/grupos/page.tsx').default({});
+    const panel = elements(tree).find((item) => item.type === 'fleet-panel');
+    assert.deepEqual(panel.props.clients, [{ id: expected.id, name: expected.name }]);
+    assert.equal(panel.props.canEditGroupMembers, false);
+    assert.deepEqual(reads, [section, `options:${section}`]);
+  }
+});
+
+test('an unavailable selector keeps groups visible', async () => {
+  const groups = fixture(['groups.view', 'groups.manage'], { scopedClients: [] });
+  const groupTree = await groups.routes('app/admin/grupos/page.tsx').default({});
+  const groupPanel = elements(groupTree).find((item) => item.type === 'fleet-panel');
+  assert.deepEqual(groupPanel.props.groups, [{ id: 'group-1' }]);
+  assert.deepEqual(groupPanel.props.clients, []);
+  assert.equal(groupPanel.props.canEditGroupMembers, false);
 });
 
 test('authorized client readers can use management selectors without loading inventory', async () => {

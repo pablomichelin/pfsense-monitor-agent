@@ -15,6 +15,38 @@ function loadApi() {
   }
 }
 
+test('management client options follow pagination on the dedicated route', async (t) => {
+  const clients = [{ id: 'qa-north', name: 'QA North', code: 'N' }, { id: 'qa-east', name: 'QA East', code: 'E' }];
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async (rawUrl) => {
+    const url = new URL(rawUrl);
+    assert.equal(url.pathname, '/api/v1/admin/clients/options/groups');
+    assert.equal(url.searchParams.get('limit'), '100');
+    assert.equal(url.searchParams.has('status'), false);
+    const page = Number(url.searchParams.get('page'));
+    requests.push(page);
+    return Response.json({ items: [clients[page - 1]], total_pages: 2 });
+  });
+  const { getScopedAdminClientOptions } = loadApi();
+  assert.deepEqual(await getScopedAdminClientOptions('groups'), clients);
+  assert.deepEqual(requests, [1, 2]);
+});
+
+test('management selector treats only HTTP 404 as an unavailable older API', async (t) => {
+  let status = 404;
+  const fetch = t.mock.method(globalThis, 'fetch', async (url) => {
+    assert.equal(new URL(url).pathname, '/api/v1/admin/clients/options/tags');
+    return Response.json({ message: 'synthetic response' }, { status });
+  });
+  const { ApiError, getScopedAdminClientOptions } = loadApi();
+  assert.deepEqual(await getScopedAdminClientOptions('tags'), []);
+  for (status of [401, 403, 503]) {
+    await assert.rejects(getScopedAdminClientOptions('tags'),
+      (error) => error instanceof ApiError && error.status === status);
+  }
+  assert.equal(fetch.mock.callCount(), 4);
+});
+
 test('audit dates fall back to an inclusive limit only for an older API', async (t) => {
   const requests = [];
   const unsupported = { message: ['property to_before should not exist'] };
