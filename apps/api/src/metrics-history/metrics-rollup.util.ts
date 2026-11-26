@@ -42,21 +42,29 @@ export function computeAvailabilityScore(status: NodeStatus | string): number {
 export function computeNumericStats(
   values: Array<number | null | undefined>,
 ): NumericRollupStats {
-  const nums = values.filter(
-    (value): value is number => value != null && Number.isFinite(value),
-  );
+  let count = 0;
+  let sum = 0;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const value of values) {
+    if (value == null || !Number.isFinite(value)) {
+      continue;
+    }
+    count += 1;
+    sum += value;
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+  }
 
-  if (nums.length === 0) {
+  if (count === 0) {
     return { avg: null, min: null, max: null, count: 0 };
   }
 
-  const sum = nums.reduce((acc, value) => acc + value, 0);
-
   return {
-    avg: round2(sum / nums.length),
-    min: round2(Math.min(...nums)),
-    max: round2(Math.max(...nums)),
-    count: nums.length,
+    avg: round2(sum / count),
+    min: round2(min),
+    max: round2(max),
+    count,
   };
 }
 

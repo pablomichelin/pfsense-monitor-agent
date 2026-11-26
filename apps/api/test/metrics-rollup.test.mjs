@@ -18,6 +18,15 @@ test('computeNumericStats ignores null values', () => {
   assert.equal(stats.avg, 20);
 });
 
+test('computeNumericStats handles a dense sampling window', () => {
+  const measurements = new Array(250_000).fill(42);
+  measurements[0] = 0;
+  measurements[measurements.length - 1] = null;
+  assert.deepEqual(computeNumericStats(measurements), {
+    avg: 42, min: 0, max: 42, count: 249_999,
+  });
+});
+
 test('computeAvailabilityScore treats online/degraded/maintenance as available', () => {
   assert.equal(computeAvailabilityScore('online'), 1);
   assert.equal(computeAvailabilityScore('degraded'), 1);
