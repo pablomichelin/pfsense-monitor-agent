@@ -307,7 +307,7 @@ export default async function NodesPage({
       </div>
 
       <InventoryAlertsFilterForm
-        key={JSON.stringify([clientId, siteId, tagId, groupId])}
+        key={JSON.stringify(inventoryQueryParams)}
         clientId={clientId}
         className="space-y-2"
         role="search"

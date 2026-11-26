@@ -27,6 +27,8 @@ test('atalhos do inventário preservam filtros e ordenação ao voltar à primei
   };
   const sort = { sort_by: 'backup', sort_order: 'desc' };
   const render = (query) => page({ searchParams: Promise.resolve(query) });
+  const filterFormKey = (tree) => elements(tree).find((element) =>
+    element.props?.['aria-label'] === 'Filtrar inventário de firewalls').key;
   const shortcut = (tree, label) => {
     const shortcuts = elements(tree).find((element) => element.props?.['aria-label'] === 'Atalhos de inventário');
     return elements(shortcuts).find((element) => element.type === 'a' && textOf(element) === label).props.href;
@@ -45,10 +47,13 @@ test('atalhos do inventário preservam filtros e ordenação ao voltar à primei
     const nextFilters = Object.fromEntries(url.searchParams);
     assert.deepEqual(nextFilters, { ...filters, ...sort, ...(preset ? { preset } : {}) });
 
-    await render(nextFilters);
+    const nextPage = await render(nextFilters);
+    assert.notEqual(filterFormKey(nextPage), filterFormKey(filtered));
     assert.deepEqual(queries.at(-1), {
       ...filters, ...sort, preset, limit: 50, cursor: undefined, status: undefined,
     });
   }
+  const firstPage = await render({ ...filters, ...sort, preset: 'problem', status: 'offline' });
+  assert.equal(filterFormKey(firstPage), filterFormKey(filtered));
   assert.equal(shortcut(await render({}), 'Todos'), '/nodes');
 });
