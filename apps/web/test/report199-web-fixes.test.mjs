@@ -79,6 +79,7 @@ test('dashboard keeps fleet totals and the available attention rows during a par
     constructor(status) { super('synthetic request failure'); this.status = status; }
   }
   let status = 503;
+  let totals = { offline: 1, degraded: 1 };
   const offline = { id: 'qa-offline', hostname: 'qa-offline', effective_status: 'offline' };
   const page = sourceLoader({
     ...uiMocks,
@@ -92,7 +93,7 @@ test('dashboard keeps fleet totals and the available attention rows during a par
       getSession: async () => ({ user: { role: 'admin' } }),
       getDashboardFleet: async () => ({
         generated_at: '2026-11-02',
-        totals: { offline: 1, degraded: 1 },
+        totals,
         version_matrix: { pfsense: [], package: [] },
         compliance: { package_target_version: null },
       }),
@@ -107,6 +108,11 @@ test('dashboard keeps fleet totals and the available attention rows during a par
   assert.equal(elements(tree).find((element) => element.type === 'hot-zone').props.nodes[0].id, offline.id);
   assert.match(textOf(tree), /Parte da lista de firewalls está temporariamente indisponível/);
   assert.doesNotMatch(textOf(tree), /Nenhum firewall offline/);
+  totals = { offline: 0, degraded: 0 };
+  const zeroTotals = await page();
+  assert.match(textOf(zeroTotals), /Parte da lista de firewalls está temporariamente indisponível/);
+  assert.doesNotMatch(textOf(zeroTotals), /Nenhum firewall offline/);
+  assert.equal(elements(zeroTotals).find((element) => element.type === 'hot-zone').props.nodes[0].id, offline.id);
   status = 403;
   await assert.rejects(page, (error) => error instanceof ApiError && error.status === 403);
 });

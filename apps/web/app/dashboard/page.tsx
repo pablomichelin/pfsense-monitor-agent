@@ -104,17 +104,18 @@ export default async function DashboardPage() {
           </div>
         }
       >
-        {totalAttention > 0 && attentionUnavailable ? (
+        {attentionUnavailable ? (
           <Alert variant="warning">
-            Parte da lista de firewalls está temporariamente indisponível. Há {totalAttention} firewall(s) offline ou degradado(s).
+            Parte da lista de firewalls está temporariamente indisponível.
+            {totalAttention > 0 ? ` Há ${totalAttention} firewall(s) offline ou degradado(s).` : ''}
           </Alert>
         ) : null}
-        {totalAttention === 0 ? (
+        {!attentionUnavailable && totalAttention === 0 && attentionNodes.length === 0 ? (
           <Alert variant="success">
             Nenhum firewall offline ou degradado no momento.
           </Alert>
         ) : attentionNodes.length === 0 ? (
-          attentionUnavailable ? null : (
+          attentionUnavailable || totalAttention === 0 ? null : (
             <Alert variant="warning">Há {totalAttention} firewall(s) offline ou degradado(s). Abra o inventário para consultar os equipamentos.</Alert>
           )
         ) : (
