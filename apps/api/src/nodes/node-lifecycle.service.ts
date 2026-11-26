@@ -148,6 +148,12 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
 
           let resolved = 0;
           if (!keepHeartbeatAlertOpen && hasOpenHeartbeatAlert) {
+            let resolutionNote = 'Node recovered from heartbeat timeout window';
+            if (node.maintenanceMode) {
+              resolutionNote = 'Heartbeat alert suppressed during maintenance';
+            } else if (isOffline) {
+              resolutionNote = 'Heartbeat alert suppressed during pfSense upgrade';
+            }
             const result = await tx.alert.updateMany({
               where: {
                 id: heartbeatAlert.id,
@@ -156,7 +162,7 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
               data: {
                 status: AlertStatus.resolved,
                 resolvedAt: now,
-                resolutionNote: 'Node recovered from heartbeat timeout window',
+                resolutionNote,
               },
             });
 

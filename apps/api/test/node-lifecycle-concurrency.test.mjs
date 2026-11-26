@@ -97,6 +97,20 @@ test('reconciliation does not send a second refresh for an alert already resolve
   assert.deepEqual(effects.notified, []);
 });
 
+test('heartbeat alert resolution distinguishes maintenance and upgrade from actual recovery', async () => {
+  const old = new Date(2020, 0, 1);
+  const opened = [{ id: 'alert', status: 'acknowledged' }];
+  for (const [initial, upgrade, note] of [
+    [node(old, { status: 'offline', maintenanceMode: true, alerts: opened }), false, 'Heartbeat alert suppressed during maintenance'],
+    [node(old, { status: 'offline', alerts: opened }), true, 'Heartbeat alert suppressed during pfSense upgrade'],
+    [node(new Date(), { alerts: opened }), false, 'Node recovered from heartbeat timeout window'],
+  ]) {
+    const effects = await reconcile({ initial, locked: initial, upgradeAtScan: upgrade });
+    assert.equal(effects.updated[0].data.resolutionNote, note);
+    assert.deepEqual(effects.notified, []);
+  }
+});
+
 
 test('an upgrade picked up after the scan suppresses a new offline alert', async () => {
   const initial = node(new Date(2020, 0, 1));
