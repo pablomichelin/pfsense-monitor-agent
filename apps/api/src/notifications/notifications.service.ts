@@ -199,6 +199,23 @@ export class NotificationsDispatcherService {
       attemptCount: delivery.attemptCount,
       ...(readyBefore ? { updatedAt: { lte: readyBefore } } : {}),
     };
+    const { alert, channel } = delivery;
+    let obsoleteReason: string | undefined;
+    if (alert.status === 'resolved') {
+      obsoleteReason = 'alert resolved';
+    } else if (channel.status !== NotificationChannelStatus.active) {
+      obsoleteReason = 'channel inactive';
+    } else if (delivery.idempotencyKey !== buildNotificationIdempotencyKey(alert.id, delivery.channelId, alert.openedAt)) {
+      obsoleteReason = 'alert occurrence replaced';
+    }
+    if (obsoleteReason) {
+      await this.prisma.notificationDelivery.updateMany({
+        where: claim,
+        data: { status: NotificationDeliveryStatus.failed, lastError: obsoleteReason },
+      });
+      return;
+    }
+
     if (delivery.attemptCount >= appConfig.notifications.maxAttempts) {
       if (delivery.status !== NotificationDeliveryStatus.failed) {
         await this.prisma.notificationDelivery.updateMany({
@@ -210,7 +227,14 @@ export class NotificationsDispatcherService {
     }
 
     const started = await this.prisma.notificationDelivery.updateMany({
-      where: claim,
+      where: {
+        ...claim,
+        alert: {
+          status: { not: 'resolved' },
+          openedAt: { gte: alert.openedAt, lt: new Date(alert.openedAt.getTime() + 1) },
+        },
+        channel: { status: NotificationChannelStatus.active },
+      },
       data: {
         status: NotificationDeliveryStatus.sending,
         attemptCount: { increment: 1 },
@@ -219,7 +243,6 @@ export class NotificationsDispatcherService {
     if (started.count !== 1) return;
     const attempt = delivery.attemptCount + 1;
 
-    const alert = delivery.alert;
     const message: NotificationMessage = {
       subject: `[${alert.severity}] ${alert.title}`,
       body: [

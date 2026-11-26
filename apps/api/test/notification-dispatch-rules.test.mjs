@@ -84,13 +84,15 @@ test('matching rules for the same channel start one delivery and preserve retry 
 test('two dispatchers that read the same pending snapshot claim one attempt', async () => {
   const current = {
     id: 'qa-delivery', status: 'pending', attemptCount: 0, updatedAt: new Date(),
-    channel: { type: 'webhook', configPublicJson: {}, secretsEncrypted: null },
+    channelId: 'qa-channel',
+    channel: { type: 'webhook', status: 'active', configPublicJson: {}, secretsEncrypted: null },
     alert: {
       id: 'qa-alert', severity: 'warning', title: 'Synthetic concurrent alert', type: 'agent_error',
-      description: 'QA only', openedAt: new Date(),
+      description: 'QA only', openedAt: new Date(), status: 'open',
       node: { hostname: 'qa.example.test', nodeUid: 'qa', site: { client: { name: 'QA' } } },
     },
   };
+  current.idempotencyKey = `${current.alert.id}:${current.channelId}:${current.alert.openedAt.toISOString()}`;
   let reads = 0;
   let sent = 0;
   const bothRead = Promise.withResolvers();
@@ -120,3 +122,35 @@ test('two dispatchers that read the same pending snapshot claim one attempt', as
   assert.equal(current.attemptCount, 1);
   assert.equal(current.status, 'delivered');
 });
+
+for (const [reason, alertStatus, channelStatus, reopened] of [
+  ['alert resolved', 'resolved', 'active', false],
+  ['channel inactive', 'open', 'inactive', false],
+  ['alert occurrence replaced', 'open', 'active', true],
+]) {
+  test('retry suppresses delivery when ' + reason, async () => {
+    const originallyOpened = new Date('2026-11-25T09:00:00Z');
+    const delivery = {
+      id: 'qa-delivery', status: 'failed', attemptCount: 1, updatedAt: new Date(0),
+      channelId: 'qa-channel', idempotencyKey: `qa-alert:qa-channel:${originallyOpened.toISOString()}`,
+      channel: { type: 'webhook', status: channelStatus, configPublicJson: {}, secretsEncrypted: null },
+      alert: {
+        id: 'qa-alert', severity: 'warning', title: 'Synthetic alert', type: 'agent_error',
+        status: alertStatus, description: 'QA only',
+        openedAt: reopened ? new Date('2026-11-25T10:00:00Z') : originallyOpened,
+        node: { hostname: 'qa.example.test', nodeUid: 'qa', site: { client: { name: 'QA' } } },
+      },
+    };
+    const changes = [];
+    let sends = 0;
+    const prisma = { notificationDelivery: {
+      findUnique: async () => delivery,
+      updateMany: async ({ data }) => { changes.push(data); return { count: 1 }; },
+    } };
+    const provider = { send: async () => { sends += 1; return { ok: true }; } };
+    const dispatcher = new NotificationsDispatcherService(prisma, {}, {}, provider, {});
+    await dispatcher.processDelivery(delivery.id);
+    assert.equal(sends, 0);
+    assert.deepEqual(changes, [{ status: 'failed', lastError: reason }]);
+  });
+}

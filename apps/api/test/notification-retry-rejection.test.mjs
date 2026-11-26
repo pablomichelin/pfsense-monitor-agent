@@ -14,13 +14,15 @@ test('a failed deferred delivery read is reported and does not escape the timer'
   const warned = Promise.withResolvers();
   const delivery = {
     id: 'qa-delivery', status: 'pending', attemptCount: 0, updatedAt: new Date(),
-    channel: { type: 'webhook', configPublicJson: {}, secretsEncrypted: null },
+    channelId: 'qa-channel',
+    channel: { type: 'webhook', status: 'active', configPublicJson: {}, secretsEncrypted: null },
     alert: {
       id: 'qa-alert', severity: 'warning', title: 'Synthetic alert', type: 'agent_error',
-      description: 'QA', openedAt: new Date(),
+      description: 'QA', openedAt: new Date(), status: 'open',
       node: { hostname: 'qa.example.test', nodeUid: 'qa', site: { client: { name: 'QA' } } },
     },
   };
+  delivery.idempotencyKey = `${delivery.alert.id}:${delivery.channelId}:${delivery.alert.openedAt.toISOString()}`;
   const prisma = {
     notificationDelivery: {
       findUnique: async () => {
