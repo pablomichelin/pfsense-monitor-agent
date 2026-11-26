@@ -18,7 +18,7 @@ function isIPv4(value: string): boolean {
   });
 }
 
-function isIPv6(value: string): boolean {
+export function isIPv6(value: string): boolean {
   if (!value.includes(':') || value.includes('%') || value.includes('/')) return false;
   try {
     return new URL(`http://[${value}]`).hostname.startsWith('[');

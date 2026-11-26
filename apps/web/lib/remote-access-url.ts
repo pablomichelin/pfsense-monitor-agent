@@ -1,3 +1,5 @@
+import { isIPv6 } from './table-ip';
+
 const IP_SPLIT = /[,;\s]+/;
 
 export function extractPrimaryIp(value?: string | null): string | undefined {
@@ -15,7 +17,9 @@ export function buildDefaultRemoteAccessUrl(
   managementIp?: string | null,
 ): string {
   const ip = extractPrimaryIp(wanIp) ?? extractPrimaryIp(managementIp);
-  return ip ? `https://${ip}:9999` : '';
+  if (!ip) return '';
+  const host = isIPv6(ip) ? `[${ip}]` : ip;
+  return `https://${host}:9999`;
 }
 
 export function resolveRemoteAccessUrl(
