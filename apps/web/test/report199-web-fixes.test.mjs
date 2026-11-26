@@ -201,6 +201,8 @@ test('audit pagination preserves the relative period while browsing', async ({ m
   assert.equal(reads[1].to, reads[0].to);
   await render(firstQuery);
   assert.equal(Date.parse(reads[2].to) - Date.parse(reads[0].to), 90_000);
+  await render({ ...firstQuery, offset: '25', period_end: '-271821-04-20T00:00:00.000Z' });
+  assert.equal(reads[3].to, reads[2].to);
 });
 
 test('audit custom calendar days match Brasília and invalid periods stay on the form', async () => {

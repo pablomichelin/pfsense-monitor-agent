@@ -187,13 +187,18 @@ export function auditResultLabel(result: string): string {
 export function resolveAuditPeriodBounds(period: string, referenceTime = Date.now()): { from?: string; to?: string } {
   const days = period === '24h' ? 1 : period === '7d' ? 7 : period === '30d' ? 30 : 0;
   if (!days) return {};
+  const duration = days * DAY_MS;
+  const end = referenceTime >= FIRST_ISO_YEAR + duration && referenceTime < AFTER_LAST_ISO_YEAR
+    ? referenceTime : Date.now();
   return {
-    from: new Date(referenceTime - days * DAY_MS).toISOString(),
-    to: new Date(referenceTime).toISOString(),
+    from: new Date(end - duration).toISOString(),
+    to: new Date(end).toISOString(),
   };
 }
 
 const DAY_MS = 86_400_000;
+const FIRST_ISO_YEAR = Date.parse('0000-01-01T00:00:00.000Z');
+const AFTER_LAST_ISO_YEAR = Date.parse('+010000-01-01T00:00:00.000Z');
 const auditDayFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: DISPLAY_TIME_ZONE, calendar: 'iso8601', numberingSystem: 'latn',
   year: 'numeric', month: 'numeric', day: 'numeric', era: 'short',
