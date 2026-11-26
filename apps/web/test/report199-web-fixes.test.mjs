@@ -282,6 +282,20 @@ test('metric charts reserve time for missing measurements without marking a meas
   assert.match(bars[2].props.title, /03:00:00.000Z/);
   assert.match(bars[3].props.title, /04:00:00.000Z: 50/);
   assert.equal(elements(tree).filter(element => element.type === 'tr').length, 4);
+  const { buildMetricTrendSlots } = sourceLoader()('lib/metrics-history.ts');
+  const withoutOpenHour = buildMetricTrendSlots({ ...history, points: history.points.slice(0, 2) });
+  assert.deepEqual(withoutOpenHour.map(slot => slot.bucketStart), [
+    '2026-11-26T01:00:00.000Z', '2026-11-26T02:00:00.000Z', '2026-11-26T03:00:00.000Z',
+  ]);
+  const daily = buildMetricTrendSlots({
+    granularity: 'daily',
+    from: '2026-11-24T12:00:00.000Z',
+    to: '2026-11-27T00:00:00.000Z',
+    points: [],
+  });
+  assert.deepEqual(daily.map(slot => slot.bucketStart), [
+    '2026-11-25T00:00:00.000Z', '2026-11-26T00:00:00.000Z',
+  ]);
 });
 
 test('F05 detail with view-only permission never requests backups or tags', async () => {
