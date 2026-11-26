@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { GroupMemberPicker } from './group-member-picker';
 import { useState, type FormEvent } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Alert, Button, Card } from '@/components/ui';
 import {
@@ -100,7 +100,6 @@ export function FleetOrgAdminPanel({
   canEditGroupMembers,
 }: Props) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -108,13 +107,13 @@ export function FleetOrgAdminPanel({
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
 
   function refreshAfterDelete(alreadyRemoved: boolean, groupId?: string) {
+    const current = new URL(window.location.href);
+    if (current.pathname !== '/admin/grupos') return;
     setError(null);
     setMessage(alreadyRemoved ? 'O item já foi removido.' : null);
-    if (groupId && searchParams.get('group') === groupId) {
-      const next = new URLSearchParams(searchParams.toString());
-      next.delete('group');
-      const query = next.toString();
-      router.replace(query ? `/admin/grupos?${query}` : '/admin/grupos', { scroll: false });
+    if (groupId && current.searchParams.get('group') === groupId) {
+      current.searchParams.delete('group');
+      router.replace(current.pathname + current.search + current.hash, { scroll: false });
       return;
     }
     router.refresh();
