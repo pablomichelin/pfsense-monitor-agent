@@ -112,7 +112,7 @@ export function AdminUsuariosTabs({
   const sessionGeneration = useRef(0);
   const invalidateSessionReads = useCallback(() => { sessionGeneration.current++; }, []);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsLoading, setSessionsLoading] = useState(urlTab === 'sessoes' && initialSelection !== null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [sessionsRetry, setSessionsRetry] = useState(0);
   const [scopeValidationError, setScopeValidationError] = useState<string | null>(null);

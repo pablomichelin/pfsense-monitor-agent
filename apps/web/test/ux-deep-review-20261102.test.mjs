@@ -127,7 +127,9 @@ test('escopo alterado bloqueia troca de usuário e vínculo inválido bloqueia s
 test('revogação de sessão dispara nova busca ao mudar o identificador da ação', async (t) => {
   installBrowserFixture(t);
   const fixture = userFixture({ activeSection: 'user-sessions', sessionRevision: 'A' });
-  fixture.render();
+  const first = fixture.render();
+  assert.match(textOf(first), /Consultando sessões/);
+  assert.doesNotMatch(textOf(first), /Nenhuma sessão registrada/);
   await settle();
   assert.deepEqual(fixture.fetched, ['u1']);
   fixture.render({ sessionRevision: 'B' });
