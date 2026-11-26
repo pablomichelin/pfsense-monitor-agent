@@ -399,28 +399,6 @@ export class GroupsService {
     await this.accessPolicy.assertClientAccess(actor, group.clientId);
 
     const uniqueNodeIds = [...new Set(dto.node_ids)];
-    if (uniqueNodeIds.length > 0) {
-      const nodes = await this.prisma.node.findMany({
-        where: {
-          id: {
-            in: uniqueNodeIds,
-          },
-          site: {
-            clientId: group.clientId,
-          },
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      if (nodes.length !== uniqueNodeIds.length) {
-        throw new BadRequestException(
-          'one or more nodes are invalid or out of client scope',
-        );
-      }
-    }
-
     const updated = await this.prisma.$transaction(async (tx) => {
       // Client deletion acquires the parent lock before cascading to groups.
       const [client] = await tx.$queryRaw<Array<{ id: string }>>`
@@ -432,6 +410,16 @@ export class GroupsService {
       `;
       if (!locked) throw new NotFoundException('group not found');
 
+      // A firewall deletion can cascade to the old memberships. Hold the
+      // requested firewall rows before touching those membership rows.
+      const nodes = uniqueNodeIds.length === 0 ? [] : await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT n.id
+        FROM nodes n
+        JOIN sites s ON s.id = n.site_id
+        WHERE n.id IN (${Prisma.join(uniqueNodeIds.map((id) => Prisma.sql`${id}::uuid`))})
+          AND s.client_id = ${group.clientId}::uuid
+        ORDER BY n.id FOR KEY SHARE OF n
+      `;
       if (dto.expected_revision) {
         const current = await tx.nodeGroupMember.findMany({
           where: { groupId: group.id },
@@ -444,6 +432,9 @@ export class GroupsService {
         }
       }
 
+      if (nodes.length !== uniqueNodeIds.length) {
+        throw new BadRequestException('one or more nodes are invalid or out of client scope');
+      }
       await tx.nodeGroupMember.deleteMany({ where: { groupId: group.id } });
       if (uniqueNodeIds.length > 0) {
         await tx.nodeGroupMember.createMany({
