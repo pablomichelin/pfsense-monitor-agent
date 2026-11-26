@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, Button, Card } from '@/components/ui';
 import { updateNodeFleetMetadataAction } from '@/lib/fleet-org-actions';
@@ -24,37 +24,59 @@ export function NodeFleetMetadataForm({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [refreshing, startRefresh] = useTransition();
+  const [draftCriticality, setDraftCriticality] = useState<NodeCriticality>();
+  const [draftTagIds, setDraftTagIds] = useState<string[]>();
 
   const clientTags = availableTags.filter((tag) => tag.client_id === clientId);
+  const tagIds = draftTagIds ?? selectedTagIds;
+  const busy = pending || refreshing;
+  const changed = draftCriticality !== undefined || draftTagIds !== undefined;
+
+  function changeTag(id: string, checked: boolean) {
+    const next = checked ? [...tagIds, id] : tagIds.filter((tagId) => tagId !== id);
+    const sameSelection = next.length === selectedTagIds.length && next.every((tagId) => selectedTagIds.includes(tagId));
+    setDraftTagIds(sameSelection ? undefined : next);
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy || !changed) return;
     setPending(true);
     setError(null);
 
-    const formData = new FormData(event.currentTarget);
-    const result = await updateNodeFleetMetadataAction(formData);
-
-    setPending(false);
-
-    if (!result.ok) {
-      setError(result.error);
-      return;
+    try {
+      const result = await updateNodeFleetMetadataAction(nodeId, {
+        criticality: draftCriticality,
+        tag_ids: draftTagIds,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setDraftCriticality(undefined);
+      setDraftTagIds(undefined);
+      startRefresh(() => router.refresh());
+    } catch {
+      setError('Não foi possível salvar a organização. Tente novamente.');
+    } finally {
+      setPending(false);
     }
-
-    router.refresh();
   }
 
   return (
     <Card>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <input type="hidden" name="node_id" value={nodeId} />
-
         <div>
           <p className="text-xs uppercase tracking-wider text-slate-500">Criticidade / SLA</p>
           <select
             name="criticality"
-            defaultValue={criticality}
+            value={draftCriticality ?? criticality}
+            disabled={busy}
+            onChange={(event) => {
+              const value = event.currentTarget.value as NodeCriticality;
+              setDraftCriticality(value === criticality ? undefined : value);
+            }}
             className="mt-1.5 h-11 w-full rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-200 outline-none"
           >
             <option value="critical">Crítico</option>
@@ -77,7 +99,9 @@ export function NodeFleetMetadataForm({
                     type="checkbox"
                     name="tag_ids"
                     value={tag.id}
-                    defaultChecked={selectedTagIds.includes(tag.id)}
+                    checked={tagIds.includes(tag.id)}
+                    disabled={busy}
+                    onChange={(event) => changeTag(tag.id, event.currentTarget.checked)}
                     className="rounded border-slate-600 bg-panel-soft"
                   />
                   <span>{tag.name}</span>
@@ -89,8 +113,8 @@ export function NodeFleetMetadataForm({
 
         {error ? <Alert variant="error">{error}</Alert> : null}
 
-        <Button type="submit" className="w-full" disabled={pending}>
-          {pending ? 'Salvando…' : 'Salvar organização'}
+        <Button type="submit" className="w-full" disabled={busy || !changed}>
+          {busy ? 'Salvando…' : 'Salvar organização'}
         </Button>
       </form>
     </Card>

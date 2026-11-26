@@ -80,6 +80,7 @@ export function NodeDetailConfigTab({
 
           {canManageFleetMetadata ? (
             <NodeFleetMetadataForm
+              key={node.id}
               nodeId={node.id}
               clientId={node.client.id}
               criticality={node.criticality}

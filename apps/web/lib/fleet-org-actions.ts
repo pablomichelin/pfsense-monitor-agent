@@ -99,20 +99,11 @@ export async function updateGroupMembersAction(
 }
 
 export async function updateNodeFleetMetadataAction(
-  formData: FormData,
+  nodeId: string,
+  changes: { criticality?: NodeCriticality; tag_ids?: string[] },
 ): Promise<FleetOrgActionResult> {
-  const nodeId = String(formData.get('node_id') ?? '').trim();
-  const criticality = String(formData.get('criticality') ?? '').trim() as NodeCriticality;
-  const tagIds = formData
-    .getAll('tag_ids')
-    .map((value) => String(value).trim())
-    .filter(Boolean);
-
   try {
-    await updateNodeFleetMetadata(nodeId, {
-      criticality: criticality || undefined,
-      tag_ids: tagIds,
-    });
+    await updateNodeFleetMetadata(nodeId, changes);
     revalidatePath(`/nodes/${nodeId}`);
     revalidatePath('/nodes');
     return { ok: true };
