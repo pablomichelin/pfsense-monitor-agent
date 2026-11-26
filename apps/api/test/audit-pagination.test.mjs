@@ -6,11 +6,12 @@ import { loadAdmin } from './report202-admin-test-support.mjs';
 const AdminService = loadAdmin();
 const actor = { userId: 'qa-user', role: 'qa-role' };
 
-function fixture(rows, scopes = null, matchingCount = 0) {
+function fixture(rows, scopes = null, matchingCount = 0, nodes = []) {
   const auditReads = [];
   const userReads = [];
   const db = {
     client: { findMany: async () => [] },
+    node: { findMany: async ({ where }) => nodes.filter(node => where.id.in.includes(node.id)) },
     user: { findMany: async ({ where, take }) => {
       if (!where.email) return [];
       userReads.push({ where, take });
@@ -64,4 +65,22 @@ test('audit searches events of every user whose email matches before applying pa
   const result = await admin.listAuditLogs(actor, { actor_email: 'qa-staff', limit: 50 });
   assert.deepEqual(result.items.map(item => item.id), ['older-match']);
   assert.equal(userReads[0].take, undefined);
+});
+
+test('audit resolves command event scope even without a direct firewall event in the same batch', async () => {
+  const allowed = 'a0000000-0000-4000-8000-000000000021';
+  const denied = 'b0000000-0000-4000-8000-000000000022';
+  const command = (id, nodeId) => event(id, {
+    targetType: 'node_command', metadataJson: { node_id: nodeId },
+  });
+  const { admin } = fixture([
+    command('allowed-command', allowed.toUpperCase()),
+    command('outside-command', denied),
+    command('old-invalid-identifier', 'legacy-text-id'),
+  ], ['visible'], 0, [
+    { id: allowed, site: { clientId: 'visible' } },
+    { id: denied, site: { clientId: 'outside' } },
+  ]);
+  const result = await admin.listAuditLogs(actor, { limit: 25 });
+  assert.deepEqual(result.items.map(item => item.id), ['allowed-command']);
 });

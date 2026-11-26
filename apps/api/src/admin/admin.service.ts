@@ -1010,9 +1010,15 @@ export class AdminService {
       dbSkip += logs.length;
       const items = await this.buildAuditLogItems(logs);
       const nodeClientById = await this.buildNodeClientMap(
-        items
-          .filter((item) => item.target_type === 'node' && item.target_id)
-          .map((item) => item.target_id as string),
+        items.flatMap((item) => {
+          const ids = item.target_type === 'node' && item.target_id ? [item.target_id] : [];
+          const metadata = item.metadata_json;
+          if (metadata && typeof metadata === 'object' && !Array.isArray(metadata) &&
+              typeof metadata.node_id === 'string') {
+            ids.push(metadata.node_id);
+          }
+          return ids;
+        }),
       );
       const filteredItems = await this.filterAuditItemsForScope(
         scopeActor,
@@ -1045,11 +1051,10 @@ export class AdminService {
   }
 
   private async buildNodeClientMap(nodeIds: string[]): Promise<Map<string, string>> {
-    if (nodeIds.length === 0) {
-      return new Map();
-    }
-
-    const uniqueNodeIds = Array.from(new Set(nodeIds));
+    const uniqueNodeIds = [...new Set(nodeIds
+      .filter((id) => /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(id))
+      .map((id) => id.toLowerCase()))];
+    if (uniqueNodeIds.length === 0) return new Map();
     const nodes = await this.prisma.node.findMany({
       where: {
         id: {
@@ -1221,7 +1226,7 @@ export class AdminService {
       }
 
       if (item.target_type === 'node' && item.target_id) {
-        const clientId = nodeClientById.get(item.target_id);
+        const clientId = nodeClientById.get(item.target_id.toLowerCase());
         return clientId ? allowedSet.has(clientId) : false;
       }
 
@@ -1232,7 +1237,7 @@ export class AdminService {
           return true;
         }
         if (typeof record.node_id === 'string') {
-          const clientId = nodeClientById.get(record.node_id);
+          const clientId = nodeClientById.get(record.node_id.toLowerCase());
           if (clientId && allowedSet.has(clientId)) {
             return true;
           }
