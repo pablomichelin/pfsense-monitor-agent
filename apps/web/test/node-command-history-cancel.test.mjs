@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { elements, hookHarness, settle, sourceLoader, textOf, uiMocks } from './source-harness.mjs';
+import { deferred, elements, hookHarness, settle, sourceLoader, textOf, uiMocks } from './source-harness.mjs';
 
 const nodeId = 'firewall-synthetic';
 const commandId = 'restart-synthetic';
@@ -132,6 +132,32 @@ test('cancelamento recusado mantém o estado e o controle indicados pelo histór
       assert.deepEqual(panel.requests, [['POST', cancelPath]]);
     });
   }
+});
+
+test('histórico evita consultas concorrentes e descarta a resposta anterior ao cancelamento', async (t) => {
+  const otherCommand = 'another-synthetic-command';
+  const older = deferred();
+  const panel = historyPanel(t, {
+    initialHistory: snapshot('running', [commandId, otherCommand]),
+    cancelResponse: () => Response.json({ ok: true, command_id: commandId, status: 'cancelled' }, { status: 201 }),
+    historyResponses: [
+      () => older.promise,
+      () => Response.json(snapshot('cancelled', [commandId, otherCommand])),
+    ],
+  });
+  panel.render();
+  await panel.poll();
+  await panel.poll();
+  assert.deepEqual(panel.requests, [['GET', historyPath]]);
+
+  const latest = await panel.cancel();
+  assert.equal(panel.status(latest, otherCommand), 'cancelled');
+  assert.equal(panel.timers.size, 0);
+  older.resolve(Response.json(snapshot('running', [commandId, otherCommand])));
+  await settle();
+  const afterOldRead = panel.render();
+  assert.equal(panel.status(afterOldRead, otherCommand), 'cancelled');
+  assert.equal(panel.timers.size, 0);
 });
 
 test('recibo com command_id diferente não marca outro comando do histórico como Cancelado', async (t) => {

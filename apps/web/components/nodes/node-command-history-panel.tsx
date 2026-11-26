@@ -7,6 +7,7 @@ import {
   fetchNodeCommandHistory,
 } from '@/lib/node-commands-actions';
 import { formatDateTime, formatRelativeAge } from '@/lib/format';
+import { useScopedRead } from '@/lib/use-scoped-read';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -65,6 +66,7 @@ export function NodeCommandHistoryPanel({
   const [confirmedCancellations, setConfirmedCancellations] = useState(() => new Set<string>());
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const readHistory = useScopedRead(nodeId, initialHistory);
 
   // Next.js may stream a new server snapshot into the mounted client component.
   // Adopt it even when the previous snapshot contained no active commands.
@@ -73,18 +75,19 @@ export function NodeCommandHistoryPanel({
     setError(null);
   }, [initialHistory, nodeId]);
 
-  const refresh = useCallback(async () => {
-    try {
-      const next = await fetchNodeCommandHistory(nodeId);
+  const refresh = useCallback((afterCancellation = false) => readHistory(
+    () => fetchNodeCommandHistory(nodeId),
+    (next) => {
       setHistory(next);
       setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao atualizar histórico');
-    }
-  }, [nodeId]);
+    },
+    (error) => setError(error instanceof Error ? error.message : 'Falha ao atualizar histórico'),
+    afterCancellation,
+  ), [nodeId, readHistory]);
+
+  const hasActive = history.items.some((item) => item.progress.is_active);
 
   useEffect(() => {
-    const hasActive = history.items.some((item) => item.progress.is_active);
     if (!hasActive) {
       return;
     }
@@ -94,7 +97,7 @@ export function NodeCommandHistoryPanel({
     }, 15_000);
 
     return () => clearInterval(timer);
-  }, [history.items, refresh]);
+  }, [hasActive, refresh]);
 
   const items = history.items.map((item) => {
     if (!confirmedCancellations.has(item.command_id) || item.status === 'cancelled') {
@@ -200,7 +203,7 @@ export function NodeCommandHistoryPanel({
                               if (receipt.status === 'cancelled' && receipt.command_id === item.command_id) {
                                 setConfirmedCancellations((current) => new Set([...current, item.command_id]));
                               }
-                              await refresh();
+                              await refresh(true);
                             } catch (err) {
                               setError(
                                 err instanceof Error
