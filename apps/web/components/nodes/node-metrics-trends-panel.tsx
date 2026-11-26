@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/cn';
 import { formatPercent } from '@/lib/format';
 import {
+  buildMetricTrendSlots,
   METRICS_HISTORY_PERIODS,
   metricsHistoryPeriodLabel,
   normalizeMetricsHistoryPeriod,
@@ -39,13 +40,13 @@ function formatMetricValue(metric: TrendMetric, value: number | null): string {
 
 function SparkBars({
   metric,
-  points,
+  slots,
 }: {
   metric: TrendMetric;
-  points: NodeMetricsHistoryResponse['points'];
+  slots: ReturnType<typeof buildMetricTrendSlots>;
 }) {
-  const values = points
-    .map((point) => point[metric])
+  const values = slots
+    .map(({ point }) => point?.[metric])
     .filter((value): value is number => value != null && Number.isFinite(value));
 
   if (values.length === 0) {
@@ -55,19 +56,19 @@ function SparkBars({
   const max = Math.max(...values, metric === 'availability_pct' ? 100 : 1);
 
   return (
-    <div className="flex h-16 items-end gap-0.5" aria-hidden>
-      {points.map((point) => {
-        const value = point[metric];
-        const height =
-          value != null && Number.isFinite(value)
-            ? Math.max(4, Math.round((value / max) * 100))
-            : 4;
+    <div className="flex h-16 items-end gap-px" aria-hidden>
+      {slots.map(({ bucketStart, point }) => {
+        const value = point?.[metric];
+        if (value == null || !Number.isFinite(value)) {
+          return <div key={bucketStart} className="h-full min-w-0 flex-1" title={`${bucketStart}: sem medição`} />;
+        }
+        const height = Math.max(4, Math.round((value / max) * 100));
         return (
           <div
-            key={point.bucket_start}
-            className="min-w-[3px] flex-1 rounded-sm bg-cyan-500/70"
+            key={bucketStart}
+            className="min-w-0 flex-1 rounded-sm bg-cyan-500/70"
             style={{ height: `${height}%` }}
-            title={`${point.bucket_start}: ${formatMetricValue(metric, value)}`}
+            title={`${bucketStart}: ${formatMetricValue(metric, value)}`}
           />
         );
       })}
@@ -130,6 +131,7 @@ export function NodeMetricsTrendsPanel({
     'latency_avg',
     'availability_pct',
   ];
+  const slots = buildMetricTrendSlots(history);
 
   return (
     <div className="space-y-4">
@@ -137,7 +139,7 @@ export function NodeMetricsTrendsPanel({
         <PeriodSelector activePeriod={activePeriod} onSelect={selectPeriod} />
         <p className="text-xs text-slate-500">
           Granularidade: {history.granularity === 'hourly' ? 'horária' : 'diária'} ·{' '}
-          {history.points.length} buckets
+          {history.points.length} intervalos com amostras. Espaços no gráfico indicam períodos sem medição.
         </p>
       </div>
 
@@ -162,7 +164,7 @@ export function NodeMetricsTrendsPanel({
                 )}
               </p>
             </div>
-            <SparkBars metric={metric} points={history.points} />
+            <SparkBars metric={metric} slots={slots} />
           </Card>
         ))}
       </div>

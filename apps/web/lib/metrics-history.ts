@@ -38,6 +38,22 @@ export type NodeMetricsHistoryResponse = {
 };
 
 export const METRICS_HISTORY_PERIODS: MetricsHistoryPeriod[] = ['24h', '7d', '30d'];
+const MAX_TREND_SLOTS = 169;
+
+export function buildMetricTrendSlots(history: Pick<NodeMetricsHistoryResponse, 'granularity' | 'from' | 'to' | 'points'>) {
+  const step = history.granularity === 'hourly' ? 3_600_000 : 86_400_000;
+  const first = Math.ceil(Date.parse(history.from) / step) * step;
+  const last = Math.floor(Date.parse(history.to) / step) * step;
+  const count = (last - first) / step + 1;
+  if (!Number.isSafeInteger(count) || count < 1 || count > MAX_TREND_SLOTS) {
+    return history.points.map(point => ({ bucketStart: point.bucket_start, point }));
+  }
+  const measured = new Map(history.points.map(point => [Date.parse(point.bucket_start), point]));
+  return Array.from({ length: count }, (_, index) => {
+    const time = first + index * step;
+    return { bucketStart: new Date(time).toISOString(), point: measured.get(time) };
+  });
+}
 
 export function metricsHistoryPeriodLabel(period: MetricsHistoryPeriod): string {
   if (period === '24h') return '24 horas';

@@ -244,6 +244,33 @@ test('audit custom calendar days match Brasília and invalid periods stay on the
   assert.equal(filters[0].to, '2026-11-25T15:00:00.000Z');
 });
 
+test('metric charts reserve time for missing measurements without marking a measured zero as missing', () => {
+  const point = (hour, cpu) => ({ bucket_start: `2026-11-26T0${hour}:00:00.000Z`, sample_count: 1, cpu_avg: cpu });
+  const history = {
+    enabled: true, granularity: 'hourly', from: '2026-11-26T00:30:00.000Z', to: '2026-11-26T04:30:00.000Z',
+    points: [point(1, 0), point(2, null), point(4, 50)], summary: { cpu_avg: 25 },
+  };
+  const { NodeMetricsTrendsPanel } = sourceLoader({
+    ...uiMocks,
+    'next/navigation': {
+      useRouter: () => ({}), usePathname: () => '/nodes/qa-node', useSearchParams: () => new URLSearchParams(),
+    },
+  })('components/nodes/node-metrics-trends-panel.tsx');
+  const tree = NodeMetricsTrendsPanel({ nodeId: 'qa-node', history, activePeriod: '24h' });
+  const cpu = elements(tree).find(element => typeof element.type === 'function' && element.props.metric === 'cpu_avg');
+  const bars = elements(cpu.type(cpu.props)).filter(element => element.props?.title);
+  assert.equal(bars.length, 4);
+  assert.match(bars[0].props.title, /01:00:00.000Z: 0/);
+  assert.match(bars[0].props.className, /bg-cyan/);
+  for (const index of [1, 2]) {
+    assert.match(bars[index].props.title, /sem medição/);
+    assert.doesNotMatch(bars[index].props.className, /bg-cyan/);
+  }
+  assert.match(bars[2].props.title, /03:00:00.000Z/);
+  assert.match(bars[3].props.title, /04:00:00.000Z: 50/);
+  assert.equal(elements(tree).filter(element => element.type === 'tr').length, 4);
+});
+
 test('F05 detail with view-only permission never requests backups or tags', async () => {
   const calls = [];
   const node = { id: 'node', hostname: 'lab', node_uid: 'lab-uid', effective_status: 'online',
