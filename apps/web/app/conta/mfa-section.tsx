@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button } from '@/components/ui';
 
 type MfaStatus = {
@@ -36,6 +36,7 @@ async function postJson(path: string, body?: unknown) {
 
 export function MfaSection() {
   const [status, setStatus] = useState<MfaStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
   const [phase, setPhase] = useState<Phase>('idle');
   const [enroll, setEnroll] = useState<EnrollStart | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
@@ -44,20 +45,28 @@ export function MfaSection() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async (signal?: AbortSignal) => {
+    setStatusLoading(true);
     try {
-      const res = await fetch('/api/mfa/status', { cache: 'no-store' });
-      if (res.ok) {
-        setStatus((await res.json()) as MfaStatus);
+      const res = await fetch('/api/mfa/status', { cache: 'no-store', signal });
+      if (!res.ok) throw new Error('MFA status request failed');
+      const data = await res.json() as MfaStatus;
+      if (typeof data?.enabled !== 'boolean' || !Number.isInteger(data.recovery_codes_remaining)) {
+        throw new Error('MFA status response is incomplete');
       }
+      if (!signal?.aborted) setStatus(data);
     } catch {
-      // silencioso; mantem ultimo estado
+      if (!signal?.aborted) setStatus(null);
+    } finally {
+      if (!signal?.aborted) setStatusLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void loadStatus();
-  }, []);
+    const controller = new AbortController();
+    void loadStatus(controller.signal);
+    return () => controller.abort();
+  }, [loadStatus]);
 
   const handleStart = async () => {
     setError(null);
@@ -133,9 +142,19 @@ export function MfaSection() {
               </li>
             ))}
           </ul>
-          <Button onClick={() => setPhase('idle')}>Concluir</Button>
+          <Button onClick={() => {
+            setRecoveryCodes([]);
+            setPhase('idle');
+          }}>Concluir</Button>
         </div>
-      ) : status?.enabled ? (
+      ) : statusLoading ? (
+        <p role="status" className="text-sm text-fg-muted">Consultando status da verificação em duas etapas…</p>
+      ) : status === null ? (
+        <div className="space-y-3">
+          <Alert variant="warning">Não foi possível consultar o status da verificação em duas etapas.</Alert>
+          <Button onClick={() => void loadStatus()}>Consultar novamente</Button>
+        </div>
+      ) : status.enabled ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
             <span className="inline-flex items-center rounded-md border border-emerald-500/40 bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-200">

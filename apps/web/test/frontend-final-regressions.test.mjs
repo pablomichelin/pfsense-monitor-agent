@@ -4,6 +4,29 @@ import { sourceLoader, uiMocks, hookHarness, elements, textOf, deferred, settle 
 
 const findButton = (tree, label) => elements(tree).find((e) => e.type === 'button' && textOf(e).replace(/\s+/g, ' ').trim().includes(label));
 
+test('account settings wait for an actual MFA status and offer a retry after a failed read', async (t) => {
+  const hooks = hookHarness();
+  let reads = 0;
+  t.mock.method(globalThis, 'fetch', async (path) => {
+    assert.equal(path, '/api/mfa/status');
+    reads += 1;
+    return reads === 1
+      ? Response.json({ message: 'synthetic outage' }, { status: 503 })
+      : Response.json({ enabled: true, recovery_codes_remaining: 8, enforcement_required: false, enrolled_at: null });
+  });
+  const { MfaSection } = sourceLoader({ ...uiMocks, react: hooks.react })('app/conta/mfa-section.tsx');
+  const render = () => hooks.render(MfaSection);
+  assert.equal(findButton(render(), 'Ativar verificação em duas etapas'), undefined);
+  await settle();
+  const unavailable = render();
+  assert.match(textOf(unavailable), /Não foi possível consultar o status/);
+  assert.equal(findButton(unavailable, 'Ativar verificação em duas etapas'), undefined);
+  findButton(unavailable, 'Consultar novamente').props.onClick();
+  await settle();
+  assert.match(textOf(render()), /MFA ativo/);
+  assert.equal(reads, 2);
+});
+
 function tablesFixture(t) {
   const hooks = hookHarness();
   const timers = [];
