@@ -6,6 +6,8 @@ export const dynamic = 'force-dynamic';
 const apiBaseUrl = process.env.MONITOR_API_BASE_URL?.trim();
 const streamRetryDelaysMs = [250, 1000];
 const upstreamHandshakeTimeoutMs = 5000;
+// The API sends a keepalive every 15 seconds.
+const upstreamIdleTimeoutMs = 45_000;
 const transientStatuses = new Set([502, 503, 504]);
 
 async function connectUpstream(
@@ -41,6 +43,37 @@ async function connectUpstream(
     response = await connect();
   }
   return response;
+}
+
+function reconnectWhenUpstreamIsSilent(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  let cancelled = false;
+
+  return new ReadableStream({
+    async pull(controller) {
+      const deadline = globalThis.setTimeout(() => {
+        if (cancelled) return;
+        cancelled = true;
+        controller.close();
+        void reader.cancel().catch(() => {});
+      }, upstreamIdleTimeoutMs);
+      try {
+        const chunk = await reader.read();
+        if (cancelled) return;
+        if (chunk.done) controller.close();
+        else controller.enqueue(chunk.value);
+      } catch {
+        // A clean end lets EventSource reconnect even if the upstream socket failed.
+        if (!cancelled) controller.close();
+      } finally {
+        globalThis.clearTimeout(deadline);
+      }
+    },
+    cancel(reason) {
+      cancelled = true;
+      return reader.cancel(reason);
+    },
+  });
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -88,7 +121,7 @@ export async function GET(request: Request): Promise<Response> {
     });
   }
 
-  return new Response(response.body, {
+  return new Response(reconnectWhenUpstreamIsSilent(response.body), {
     status: response.status,
     headers: {
       'Content-Type':

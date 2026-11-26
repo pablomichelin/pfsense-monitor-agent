@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { setTimeout as sleep } from 'node:timers/promises';
+import { setImmediate, setTimeout as sleep } from 'node:timers/promises';
 import test from 'node:test';
 import { deferred, sourceLoader } from './source-harness.mjs';
 
@@ -130,4 +130,35 @@ test('a stalled stream handshake times out without timing out an established SSE
   client.abort();
   assert.equal(streamingSignal.aborted, true);
   await stream.body.cancel();
+});
+
+test('an established SSE stream closes after silence and forwards chunks before the deadline', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let upstream;
+  let cancelled = 0;
+  const { GET } = makeRoute(t, () => new Response(new ReadableStream({
+    start(controller) { upstream = controller; },
+    cancel() { cancelled++; },
+  }), { headers: { 'content-type': 'text/event-stream' } }), async (_ms, value) => value);
+  const stream = await GET(new Request(origin + '/api/realtime/dashboard'));
+  assert.equal(stream.status, 200);
+  const reader = stream.body.getReader();
+  const encoder = new TextEncoder();
+  const connected = encoder.encode('event: connected\ndata: {}\n\n');
+  const keepalive = encoder.encode('event: keepalive\ndata: {}\n\n');
+  upstream.enqueue(connected);
+  assert.deepEqual(await reader.read(), { done: false, value: connected });
+  const next = reader.read();
+  await setImmediate();
+  t.mock.timers.tick(44_999);
+  assert.equal(cancelled, 0);
+  upstream.enqueue(keepalive);
+  assert.deepEqual(await next, { done: false, value: keepalive });
+
+  const end = reader.read();
+  await setImmediate();
+  t.mock.timers.tick(45_000);
+  if (!cancelled) upstream.close();
+  assert.deepEqual(await end, { done: true, value: undefined });
+  assert.equal(cancelled, 1);
 });
