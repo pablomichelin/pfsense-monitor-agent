@@ -298,22 +298,22 @@ export class AdminService {
     throw new ConflictException('unable to generate a unique site code');
   }
 
-  private async buildUniqueNodeUid(seed: string, db: Prisma.TransactionClient): Promise<string> {
+  private async createNodeWithUniqueUid(
+    seed: string,
+    db: Prisma.TransactionClient,
+    data: Omit<Prisma.NodeCreateManyInput, 'nodeUid' | 'hostname'> & { hostname?: string },
+  ) {
     const base = this.ensureNonEmptySlug(seed, 'firewall');
 
     for (let attempt = 0; attempt < 1000; attempt++) {
       const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
-      const existing = await db.node.findUnique({
-        where: {
-          nodeUid: candidate,
-        },
-        select: {
-          id: true,
-        },
+      const [node] = await db.node.createManyAndReturn({
+        data: { ...data, nodeUid: candidate, hostname: data.hostname || candidate },
+        skipDuplicates: true,
       });
 
-      if (!existing) {
-        return candidate;
+      if (node) {
+        return node;
       }
     }
 
@@ -2088,15 +2088,12 @@ export class AdminService {
         });
         siteId = target.id;
       }
-      const nodeUid = await this.buildUniqueNodeUid(
+      const createdNode = await this.createNodeWithUniqueUid(
         dto.node_uid?.trim() || generatedId || dto.display_name?.trim() || 'firewall',
         tx,
-      );
-      const createdNode = await tx.node.create({
-        data: {
+        {
           siteId,
-          nodeUid,
-          hostname: hostnameRaw || nodeUid,
+          hostname: hostnameRaw,
           displayName: normalizeOptional(dto.display_name),
           managementIp,
           wanIp,
@@ -2106,7 +2103,7 @@ export class AdminService {
           status: NodeStatus.unknown,
           nodeUidStatus: NodeUidStatus.active,
         },
-      });
+      );
 
       await tx.nodeCredential.create({
         data: {

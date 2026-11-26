@@ -1032,9 +1032,10 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
       db.node.count({ where: { site: { clientId: f.client.id } } }),
       db.nodeCredential.count({ where: { node: { site: { clientId: f.client.id } } } }),
     ]);
-    const register = (admin, index, siteId) => admin.createNode({
+    const register = (admin, index, siteId, nodeUid) => admin.createNode({
       ...(siteId ? { site_id: siteId } : { client_id: f.client.id }),
       hostname: `qa-node-${index}.${f.run}.invalid`,
+      node_uid: nodeUid,
     }, actor.userId, undefined, actor);
     return { ...f, service, count, register, invalidations: () => invalidations, realtime };
   }
@@ -1094,6 +1095,51 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.equal(explicit.node.site_id, siteId);
     assert.deepEqual(await f.count(), [1, 3, 3]);
     assert.equal(f.realtime.getDashboardRevision(), 3);
+  });
+
+  await run('firewall registration assigns distinct UIDs across concurrent explicit sites', async t => {
+    const f = await nodeCreationFixture(t);
+    const sites = await Promise.all(['left', 'right'].map(code => db.site.create({
+      data: { clientId: f.client.id, code, name: code },
+    })));
+    const nodeUid = 'qa-uid-' + randomUUID();
+    const bothReady = f.gate();
+    let contenders = 0;
+    const synchronize = async () => {
+      if (++contenders === 2) bothReady.resolve();
+      await bothReady.promise;
+    };
+    const connection = db => new Proxy(db, { get(target, key) {
+      if (key === '$transaction') return (work, options) => target.$transaction(tx => work(new Proxy(tx, {
+        get(client, operation) {
+          if (operation === 'node') return new Proxy(client.node, { get(model, method) {
+            if (method === 'findUnique') return async args => {
+              const row = await model.findUnique(args);
+              if (args.where.nodeUid === nodeUid) await synchronize();
+              return row;
+            };
+            if (method === 'createManyAndReturn') return async args => {
+              if (args.data.nodeUid === nodeUid) await synchronize();
+              return model.createManyAndReturn(args);
+            };
+            return typeof model[method] === 'function' ? model[method].bind(model) : model[method];
+          } });
+          return typeof client[operation] === 'function' ? client[operation].bind(client) : client[operation];
+        },
+      })), options);
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    } });
+    const outcomes = await Promise.allSettled([
+      f.track(f.register(f.service(connection(db)), 0, sites[0].id, nodeUid)),
+      f.track(f.register(f.service(connection(peer)), 1, sites[1].id, nodeUid)),
+    ]);
+    assert.equal(contenders, 2);
+    assert.deepEqual(outcomes.map(result => result.status === 'fulfilled' ? 'created' : result.reason.code), ['created', 'created']);
+    const registered = outcomes.map(result => result.value.node);
+    assert.deepEqual(new Set(registered.map(node => node.node_uid)), new Set([nodeUid, nodeUid + '-2']));
+    assert.deepEqual(registered.map(node => node.site_id), sites.map(site => site.id));
+    assert.deepEqual(await f.count(), [2, 2, 2]);
+    assert.equal(f.realtime.getDashboardRevision(), 2);
   });
 
   await run('maintenance exit restores the observed health from stored telemetry', async t => {
