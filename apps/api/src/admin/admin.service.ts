@@ -162,9 +162,10 @@ export class AdminService {
    */
   private async grantCreatedClientScope(
     clientId: string,
+    db: Prisma.TransactionClient,
     actor?: AccessActor,
   ): Promise<void> {
-    const otherActive = await this.prisma.client.findMany({
+    const otherActive = await db.client.findMany({
       where: {
         status: EntityStatus.active,
         id: { not: clientId },
@@ -173,7 +174,7 @@ export class AdminService {
     });
     const otherIds = otherActive.map((client) => client.id);
 
-    const users = await this.prisma.user.findMany({
+    const users = await db.user.findMany({
       where: { status: 'active' },
       select: {
         id: true,
@@ -203,7 +204,7 @@ export class AdminService {
       return;
     }
 
-    await this.prisma.userClientScope.createMany({
+    await db.userClientScope.createMany({
       data: [...grantUserIds].map((userId) => ({
         userId,
         clientId,
@@ -246,12 +247,12 @@ export class AdminService {
     await this.accessPolicy.assertSiteAccess(scopeActor, siteId);
   }
 
-  private async buildUniqueClientCode(nameOrCode: string): Promise<string> {
+  private async buildUniqueClientCode(nameOrCode: string, db: Prisma.TransactionClient): Promise<string> {
     const base = normalizeCode(nameOrCode || 'CLIENTE');
 
     for (let attempt = 0; attempt < 1000; attempt++) {
       const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
-      const existing = await this.prisma.client.findUnique({
+      const existing = await db.client.findUnique({
         where: {
           code: candidate,
         },
@@ -1698,27 +1699,28 @@ export class AdminService {
       await this.accessPolicy.assertCanCreateClient(scopeActor);
     }
 
-    const client = await this.prisma.client.create({
-      data: {
-        name: dto.name.trim(),
-        code: await this.buildUniqueClientCode(dto.code?.trim() || dto.name.trim()),
-        status: dto.status === 'inactive' ? EntityStatus.inactive : EntityStatus.active,
-      },
-    });
-
-    if (client.status === EntityStatus.active) {
-      await this.grantCreatedClientScope(client.id, scopeActor);
-    }
-
-    await this.writeAuditLog({
-      actorId,
-      action: 'admin.client.create',
-      targetType: 'client',
-      targetId: client.id,
-      ipAddress: actorIp,
-      metadataJson: {
-        code: client.code,
-      },
+    const client = await this.prisma.$transaction(async (tx) => {
+      // Read the previous client universe in the same order as scope changes.
+      await this.lockUserAdministration(tx);
+      const client = await tx.client.create({
+        data: {
+          name: dto.name.trim(),
+          code: await this.buildUniqueClientCode(dto.code?.trim() || dto.name.trim(), tx),
+          status: dto.status === 'inactive' ? EntityStatus.inactive : EntityStatus.active,
+        },
+      });
+      if (client.status === EntityStatus.active) {
+        await this.grantCreatedClientScope(client.id, tx, scopeActor);
+      }
+      await this.writeAuditLog({
+        actorId,
+        action: 'admin.client.create',
+        targetType: 'client',
+        targetId: client.id,
+        ipAddress: actorIp,
+        metadataJson: { code: client.code },
+      }, tx);
+      return client;
     });
     this.invalidateNodesFiltersCache();
 

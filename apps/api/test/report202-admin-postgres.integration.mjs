@@ -896,6 +896,79 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.deepEqual(events.map(event => event.action), ['admin.node.maintenance.enable', 'admin.node.maintenance.disable']);
   });
 
+  async function clientCreationFixture(t) {
+    const f = await fixture(t);
+    const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const { RealtimeService } = loadServiceModule('realtime/realtime.service');
+    const creator = { userId: f.users[0].id, role: 'superadmin' };
+    const inherited = f.users[2].id;
+    const existing = await db.client.findMany({ where: { status: 'active' }, select: { id: true } });
+    await db.userClientScope.createMany({
+      data: existing.map(client => ({ clientId: client.id, userId: inherited })), skipDuplicates: true,
+    });
+    const names = Array.from({ length: 2 }, (_, index) => 'qa-created-client-' + randomUUID() + '-' + index);
+    t.after(() => db.client.deleteMany({ where: { name: { in: names } } }));
+    const policy = new AccessPolicyService(db);
+    const realtime = new RealtimeService();
+    let invalidations = 0;
+    const service = (connection, audit = new AuditService(connection)) =>
+      new AdminService(connection, {}, {}, policy, { invalidateFiltersCache() { invalidations++; } },
+        audit, {}, {}, {}, realtime);
+    const create = (admin, index) => admin.createClient({ name: names[index] }, creator.userId, undefined, creator);
+    return { ...f, creator, inherited, names, service, create, invalidations: () => invalidations };
+  }
+
+  await run('client creation rolls back the record and inherited scope if its audit fails', async t => {
+    const f = await clientCreationFixture(t);
+    const failAudit = async () => { throw new Error('synthetic client creation audit failure'); };
+    const failingDb = new Proxy(db, { get(target, key) {
+      if (key === '$transaction') return (callback, options) => target.$transaction(tx =>
+        callback(new Proxy(tx, { get(client, property) {
+          if (property === 'auditLog') return { create: failAudit };
+          return typeof client[property] === 'function' ? client[property].bind(client) : client[property];
+        } })), options);
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    } });
+    await assert.rejects(f.create(f.service(failingDb, { record: failAudit }), 0), /synthetic client creation audit failure/);
+    assert.equal(await db.client.count({ where: { name: f.names[0] } }), 0);
+    assert.equal(f.invalidations(), 0);
+    const { client } = await f.create(f.service(db), 0);
+    assert.equal(client.name, f.names[0]);
+    assert.equal(f.invalidations(), 1);
+    const link = await db.userClientScope.findUnique({ where: { userId_clientId: {
+      userId: f.inherited, clientId: client.id,
+    } } });
+    assert.equal(link.grantedByUserId, f.creator.userId);
+    assert.equal(await db.auditLog.count({ where: { targetId: client.id, action: 'admin.client.create' } }), 1);
+  });
+
+  await run('client creation preserves inherited access during concurrent registrations', async t => {
+    const f = await clientCreationFixture(t);
+    const bothInserted = f.gate();
+    let inserted = 0;
+    const connection = db => new Proxy(db, { get(target, key) {
+      if (key === 'client') return new Proxy(target[key], { get(model, operation) {
+        if (operation === 'create') return async args => {
+          const client = await model.create(args);
+          if (++inserted === 2) bothInserted.resolve();
+          await bothInserted.promise;
+          return client;
+        };
+        return typeof model[operation] === 'function' ? model[operation].bind(model) : model[operation];
+      } });
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    } });
+    const results = await Promise.all([
+      f.track(f.create(f.service(connection(db)), 0)),
+      f.track(f.create(f.service(connection(peer)), 1)),
+    ]);
+    const ids = results.map(({ client }) => client.id);
+    const links = await db.userClientScope.findMany({ where: { userId: f.inherited, clientId: { in: ids } } });
+    assert.deepEqual(new Set(links.map(link => link.clientId)), new Set(ids));
+    assert.equal(await db.auditLog.count({ where: { targetId: { in: ids }, action: 'admin.client.create' } }), 2);
+  });
+
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {
       const f = await fixture(t), locked = f.gate(), release = f.gate(), pid = f.gate(), atLock = f.gate();
