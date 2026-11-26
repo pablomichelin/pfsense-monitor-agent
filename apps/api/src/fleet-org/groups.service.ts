@@ -59,8 +59,8 @@ export class GroupsService {
       createdAt: Date;
       updatedAt: Date;
       client: { name: string };
-      _count: { members: number };
     },
+    memberCount: number,
   ): GroupRecord {
     return {
       id: group.id,
@@ -68,7 +68,7 @@ export class GroupsService {
       client_name: group.client.name,
       name: group.name,
       description: group.description,
-      member_count: group._count.members,
+      member_count: memberCount,
       created_at: group.createdAt.toISOString(),
       updated_at: group.updatedAt.toISOString(),
     };
@@ -123,7 +123,7 @@ export class GroupsService {
     });
 
     return {
-      items: groups.map((group) => this.mapGroup(group)),
+      items: groups.map((group) => this.mapGroup(group, group._count.members)),
       generated_at: new Date().toISOString(),
     };
   }
@@ -143,11 +143,6 @@ export class GroupsService {
         client: {
           select: {
             name: true,
-          },
-        },
-        _count: {
-          select: {
-            members: true,
           },
         },
         members: {
@@ -176,7 +171,7 @@ export class GroupsService {
     await this.accessPolicy.assertClientAccess(actor, group.clientId);
 
     return {
-      group: this.mapGroup(group),
+      group: this.mapGroup(group, group.members.length),
       members: group.members.map((member) => ({
         node_id: member.node.id,
         hostname: member.node.hostname,
@@ -240,7 +235,7 @@ export class GroupsService {
       this.nodesService.invalidateFiltersCache();
 
       return {
-        group: this.mapGroup(group),
+        group: this.mapGroup(group, group._count.members),
       };
     } catch (error) {
       if (
@@ -324,7 +319,7 @@ export class GroupsService {
       this.nodesService.invalidateFiltersCache();
 
       return {
-        group: this.mapGroup(group),
+        group: this.mapGroup(group, group._count.members),
       };
     } catch (error) {
       if (
@@ -459,7 +454,6 @@ export class GroupsService {
         where: { id: group.id },
         include: {
           client: { select: { name: true } },
-          _count: { select: { members: true } },
         },
       });
 
@@ -482,7 +476,7 @@ export class GroupsService {
     this.nodesService.invalidateFiltersCache();
 
     return {
-      group: this.mapGroup(updated),
+      group: this.mapGroup(updated, uniqueNodeIds.length),
       member_count: uniqueNodeIds.length,
       membership_revision: membershipRevision(uniqueNodeIds),
     };
