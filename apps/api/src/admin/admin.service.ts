@@ -1886,6 +1886,8 @@ export class AdminService {
     await this.withClientScope(scopeActor, clientId);
 
     await this.prisma.$transaction(async (tx) => {
+      // Cascading scopes must not change the previous-client set during registration.
+      await this.lockUserAdministration(tx);
       // The parent lock fences new sites. Site row locks also fence a node
       // INSERT's foreign-key check until the final count and DELETE commit.
       const [client] = await tx.$queryRaw<Array<{ id: string; name: string; code: string }>>`

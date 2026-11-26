@@ -969,6 +969,52 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.equal(await db.auditLog.count({ where: { targetId: { in: ids }, action: 'admin.client.create' } }), 2);
   });
 
+  await run('client creation keeps inherited access while another client is deleted', async t => {
+    const f = await clientCreationFixture(t);
+    const code = 'qa-removable-' + randomUUID();
+    const removable = await db.client.create({ data: { name: code, code } });
+    t.after(() => db.client.deleteMany({ where: { id: removable.id, code } }));
+    await db.userClientScope.create({ data: { userId: f.inherited, clientId: removable.id } });
+    const observed = f.gate(), release = f.gate();
+    const creatorDb = new Proxy(db, { get(target, key) {
+      if (key === '$transaction') return (work, options) => target.$transaction(tx => work(new Proxy(tx, {
+        get(client, operation) {
+          if (operation === 'client') return new Proxy(client.client, { get(model, method) {
+            if (method === 'findMany') return async args => {
+              const rows = await model.findMany(args);
+              observed.resolve();
+              await release.promise;
+              return rows;
+            };
+            return typeof model[method] === 'function' ? model[method].bind(model) : model[method];
+          } });
+          return typeof client[operation] === 'function' ? client[operation].bind(client) : client[operation];
+        },
+      })), options);
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    } });
+    const creation = f.track(f.create(f.service(creatorDb), 0));
+    await observed.promise;
+    const deletion = f.track(f.service(peer).deleteClient(removable.id, f.creator.userId, undefined, f.creator));
+    let waiter;
+    try {
+      for (let attempt = 0; attempt < 120; attempt++) {
+        [waiter] = await observer.$queryRaw`
+          SELECT query FROM pg_stat_activity
+          WHERE wait_event_type = 'Lock' AND query LIKE '%pg_advisory_xact_lock%'
+        `;
+        if (waiter) break;
+        await delay(10);
+      }
+    } finally {
+      release.resolve();
+    }
+    const [{ client }, removed] = await Promise.all([creation, deletion]);
+    assert.equal(removed.client_id, removable.id);
+    assert.equal(await db.userClientScope.count({ where: { userId: f.inherited, clientId: client.id } }), 1);
+    assert.match(waiter?.query ?? '', /pg_advisory_xact_lock/i);
+  });
+
   async function nodeCreationFixture(t) {
     const f = await fixture(t);
     const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
