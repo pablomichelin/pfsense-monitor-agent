@@ -28,7 +28,7 @@ export class EmailNotificationProvider implements NotificationProvider {
       `Subject: ${message.subject}`,
       'Content-Type: text/plain; charset=utf-8',
       '',
-      message.body.replace(/\r\n|\r|\n/g, '\r\n').replace(/^\./gm, '..'),
+      message.body.replace(/\r\n|\r|\n/g, '\r\n').replace(/(^|\r\n)\./g, '$1..'),
       '',
     ].join('\r\n');
 

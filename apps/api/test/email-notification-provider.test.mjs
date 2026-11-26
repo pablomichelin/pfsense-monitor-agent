@@ -184,8 +184,9 @@ test('SMTP normalizes mixed message line endings and transmits leading dots inta
   const result = await withSmtpServer(t, (socket) => {
     let buffered = '';
     let readingMessage = false;
+    socket.setEncoding('utf8');
     socket.on('data', (chunk) => {
-      buffered += chunk.toString();
+      buffered += chunk;
       if (!buffered.endsWith(readingMessage ? '\r\n.\r\n' : '\r\n')) return;
       const command = buffered.trimEnd();
       buffered = '';
@@ -204,11 +205,11 @@ test('SMTP normalizes mixed message line endings and transmits leading dots inta
     });
     socket.write('220 qa.example.test SMTP ready\r\n');
   }, (config) => new EmailNotificationProvider().send(config, {}, {
-    ...message, body: '.First\nSecond\rThird\r\n..Last',
+    ...message, body: '.First\nSecond\u2028.inside\rThird\u2029.inside\r\n..Last',
   }));
 
   assert.deepEqual(result, { ok: true });
-  assert.equal(receivedBody, '..First\r\nSecond\r\nThird\r\n...Last');
+  assert.equal(receivedBody, '..First\r\nSecond\u2028.inside\r\nThird\u2029.inside\r\n...Last');
 });
 
 test('SMTP bounds the full attempt even while the connection remains open', { timeout: 2000 }, async (t) => {
