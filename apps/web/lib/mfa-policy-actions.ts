@@ -25,23 +25,10 @@ function revalidateMfaPolicyPages() {
 }
 
 export async function updateMfaPolicyAction(
-  formData: FormData,
+  changes: Parameters<typeof updateMfaPolicy>[0],
 ): Promise<MfaPolicyActionResult> {
-  const enforcedRoles = formData
-    .getAll('enforced_roles')
-    .map((value) => String(value).trim())
-    .filter(Boolean);
-  const blockingRaw = String(formData.get('enforcement_blocking') ?? '').trim();
-  const enforcementBlocking =
-    blockingRaw === 'true' ? true : blockingRaw === 'false' ? false : undefined;
-
   try {
-    const data = await updateMfaPolicy({
-      enforced_roles: enforcedRoles,
-      ...(enforcementBlocking !== undefined
-        ? { enforcement_blocking: enforcementBlocking }
-        : {}),
-    });
+    const data = await updateMfaPolicy(changes);
     revalidateMfaPolicyPages();
     return { ok: true, data };
   } catch (error) {

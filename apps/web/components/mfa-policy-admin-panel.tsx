@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState, useTransition } from 'react';
+import { useState, useTransition, type FormEvent } from 'react';
 import { Button, Card } from '@/components/ui';
 import { updateMfaPolicyAction } from '@/lib/mfa-policy-actions';
 import {
@@ -23,23 +23,47 @@ export function MfaPolicyAdminPanel({ policy: initialPolicy, canManage }: Props)
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [draftRoles, setDraftRoles] = useState<Set<string>>();
+  const [draftBlocking, setDraftBlocking] = useState<boolean>();
 
-  const selectedRoles = useMemo(
-    () => new Set(policy.stored.enforced_roles),
-    [policy.stored.enforced_roles],
-  );
+  const savedRoles = policy.stored.enforced_roles;
+  const selectedRoles = draftRoles ?? new Set(savedRoles);
+  const blocking = draftBlocking ?? policy.stored.enforcement_blocking;
+  const rolesChanged = selectedRoles.size !== savedRoles.length || savedRoles.some((role) => !selectedRoles.has(role));
+  const blockingChanged = blocking !== policy.stored.enforcement_blocking;
+  const canSubmit = canManage && policy.editable && !pending && (rolesChanged || blockingChanged);
 
-  const handleSubmit = (formData: FormData) => {
+  function changeRole(role: string, enabled: boolean) {
+    setDraftRoles((current) => {
+      const next = new Set(current ?? savedRoles);
+      if (enabled) next.add(role);
+      else next.delete(role);
+      return next;
+    });
+  }
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSubmit) return;
     setMessage(null);
     setError(null);
     startTransition(async () => {
-      const result = await updateMfaPolicyAction(formData);
-      if (!result.ok) {
-        setError(result.error);
-        return;
+      try {
+        const result = await updateMfaPolicyAction({
+          enforced_roles: rolesChanged ? [...selectedRoles] : undefined,
+          enforcement_blocking: blockingChanged ? blocking : undefined,
+        });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setPolicy(result.data);
+        setDraftRoles(undefined);
+        setDraftBlocking(undefined);
+        setMessage('Politica MFA atualizada.');
+      } catch {
+        setError('Falha ao atualizar politica MFA');
       }
-      setPolicy(result.data);
-      setMessage('Politica MFA atualizada.');
     });
   };
 
@@ -133,7 +157,7 @@ export function MfaPolicyAdminPanel({ policy: initialPolicy, canManage }: Props)
           Soft: aviso e banner em /conta. Blocking: rotas /api/v1/admin bloqueadas ate enrollment.
         </p>
 
-        <form action={handleSubmit} className="mt-4 space-y-4">
+        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs">
               <thead className="text-slate-500">
@@ -152,7 +176,8 @@ export function MfaPolicyAdminPanel({ policy: initialPolicy, canManage }: Props)
                         type="checkbox"
                         name="enforced_roles"
                         value={role.code}
-                        defaultChecked={selectedRoles.has(role.code)}
+                        checked={selectedRoles.has(role.code)}
+                        onChange={(event) => changeRole(role.code, event.currentTarget.checked)}
                         disabled={!canManage || !policy.editable || pending}
                         className="h-4 w-4 rounded border-slate-600 bg-panel-soft"
                       />
@@ -180,7 +205,8 @@ export function MfaPolicyAdminPanel({ policy: initialPolicy, canManage }: Props)
               <span>Modo blocking</span>
               <select
                 name="enforcement_blocking"
-                defaultValue={String(policy.stored.enforcement_blocking)}
+                value={String(blocking)}
+                onChange={(event) => setDraftBlocking(event.currentTarget.value === 'true')}
                 disabled={!canManage || !policy.editable || pending}
                 className={inputClass}
               >
@@ -189,7 +215,7 @@ export function MfaPolicyAdminPanel({ policy: initialPolicy, canManage }: Props)
               </select>
             </label>
             {canManage && policy.editable ? (
-              <Button type="submit" disabled={pending}>
+              <Button type="submit" disabled={!canSubmit}>
                 {pending ? 'Salvando…' : 'Salvar politica'}
               </Button>
             ) : null}
