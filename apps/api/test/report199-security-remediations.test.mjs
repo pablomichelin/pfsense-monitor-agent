@@ -64,11 +64,14 @@ test('A03: authorized reset follows the planned command, create-only needs no re
 
 test('A04: client role cannot change detached scopes and getter reports real active binding', async () => {
   let writes = 0;
-  const admin = makeAdmin({
+  const prisma = {
+    $transaction: async (work) => work(prisma),
+    $queryRaw: async () => [{ id: ID }],
     user: { findUnique: async () => ({ id: ID, role: 'client', email: 'fixture@example.invalid', clientId: a,
       client: { id: a, name: 'Synthetic', code: 'SYN', status: 'active' } }) },
     userClientScope: { findMany: async () => { throw new Error('client must not query detached scopes'); } },
-  });
+  };
+  const admin = makeAdmin(prisma);
   admin.replaceUserClientScopes = async () => { writes++; };
   await assert.rejects(admin.setUserClientScopes(ID, { client_ids: [] }), error => error.getStatus() === 400);
   assert.equal(writes, 0);

@@ -9,6 +9,8 @@
   },
   "scripts": {
     "build": "nest build",
+    "pretest": "npm run build",
+    "test": "node test/run-unit.mjs",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
