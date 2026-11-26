@@ -286,38 +286,23 @@ export class AuthService {
     }
 
     const sessionTokenHash = this.hashValue(sessionToken);
-    const session = await this.prisma.userSession.findUnique({
-      where: {
-        sessionTokenHash,
-      },
-      include: {
-        user: true,
-      },
-    });
+    await this.prisma.$transaction(async (tx) => {
+      const [session] = await tx.userSession.updateManyAndReturn({
+        where: { sessionTokenHash, revokedAt: null },
+        data: { revokedAt: new Date() },
+        select: { user: { select: { id: true, role: true, email: true } } },
+      });
+      if (!session) return;
 
-    if (!session || session.revokedAt) {
-      return;
-    }
-
-    await this.prisma.userSession.update({
-      where: {
-        id: session.id,
-      },
-      data: {
-        revokedAt: new Date(),
-      },
-    });
-
-    await this.auditService.record({
-      actorId: session.user.id,
-      actorRole: session.user.role,
-      action: 'auth.logout',
-      targetType: 'user',
-      targetId: session.user.id,
-      ipAddress: actorIp,
-      metadataJson: {
-        email: session.user.email,
-      },
+      await this.auditService.record({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        action: 'auth.logout',
+        targetType: 'user',
+        targetId: session.user.id,
+        ipAddress: actorIp,
+        metadataJson: { email: session.user.email },
+      }, tx);
     });
   }
 

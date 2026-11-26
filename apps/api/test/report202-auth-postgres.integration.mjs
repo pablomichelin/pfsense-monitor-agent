@@ -230,6 +230,67 @@ test('R202 auth: PG17 budgets, rollback, own-session pagination and password res
     });
   }
 
+  for (const mode of ['concurrent requests', 'audit failure']) {
+    await runCase(`logout is atomic: ${mode}`, async () => {
+      const user = await makeUser(mode === 'audit failure' ? 'logout-audit' : 'logout-race');
+      const token = randomUUID();
+      const session = await a.userSession.create({
+        data: {
+          userId: user.id,
+          sessionTokenHash: hash(token),
+          csrfTokenHash: hash(randomUUID()),
+          expiresAt: new Date(Date.now() + 3_600_000),
+        },
+      });
+      const auth = db => new AuthService(db, new AuditService(db), {}, {});
+      const readSession = () => a.userSession.findUniqueOrThrow({ where: { id: session.id } });
+      const auditWhere = { action: 'auth.logout', targetType: 'user', targetId: user.id, actorId: user.id };
+
+      if (mode === 'audit failure') {
+        const failing = new AuthService(a, { record: async () => { throw new Error('synthetic logout audit failure'); } }, {}, {});
+        await assert.rejects(failing.logout(token), /synthetic logout audit failure/);
+        assert.equal((await readSession()).revokedAt, null);
+        assert.equal(await a.auditLog.count({ where: auditWhere }), 0);
+        await auth(b).logout(token, ip);
+      } else {
+        const release = gate();
+        const blocked = gate();
+        const locker = observer.$transaction(async tx => {
+          await tx.$queryRaw`SELECT id FROM user_sessions WHERE id = ${session.id}::uuid FOR UPDATE`;
+          blocked.resolve();
+          await release.promise;
+        }, { timeout: 15_000 });
+        await blocked.promise;
+        const requests = Promise.allSettled([auth(a).logout(token, ip), auth(b).logout(token, ip)]);
+        try {
+          const deadline = Date.now() + 5_000;
+          let waiting = 0;
+          while (Date.now() < deadline && waiting < 2) {
+            const [row] = await a.$queryRaw`SELECT count(*) AS count FROM pg_stat_activity
+              WHERE wait_event_type = 'Lock' AND query LIKE 'UPDATE %user_sessions%'`;
+            waiting = Number(row.count);
+            if (waiting < 2) await new Promise(resolve => setTimeout(resolve, 10));
+          }
+          assert.equal(waiting, 2);
+        } finally {
+          release.resolve();
+          await locker;
+          const results = await requests;
+          assert.ok(results.every(result => result.status === 'fulfilled'));
+        }
+      }
+
+      const revokedAt = (await readSession()).revokedAt;
+      assert.ok(revokedAt);
+      await auth(a).logout(token, ip);
+      assert.deepEqual((await readSession()).revokedAt, revokedAt);
+      const logs = await a.auditLog.findMany({ where: auditWhere });
+      assert.equal(logs.length, 1);
+      assert.equal(logs[0].ipAddress, ip);
+      assert.deepEqual(logs[0].metadataJson, { email: user.email });
+    });
+  }
+
   for (const mode of ['password-session', 'password-challenge', 'completed-mfa']) {
     await runCase(`reset commits after verification: ${mode} is fenced across connections`, async () => {
       const user = await makeUser(mode, { mfaEnabled: mode !== 'password-session' });
