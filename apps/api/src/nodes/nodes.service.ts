@@ -2,6 +2,7 @@ import { PackageReleaseService } from '../common/package-release.service';
 import { BackupFleetQueryDto, FleetScopeQueryDto } from './dto/backup-fleet-query.dto';
 import { BackupFleetItem, bootstrapBucket, compareBackupFleetItems } from './backup-fleet.util';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import {
   AlertStatus,
   ConfigBackupStatus,
@@ -776,6 +777,9 @@ export class NodesService {
       }>;
     };
   }> {
+    if (!isUUID(id)) {
+      throw new NotFoundException('node not found');
+    }
     const now = new Date();
     const node = await this.prisma.node.findUnique({
       where: {

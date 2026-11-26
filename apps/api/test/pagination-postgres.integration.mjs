@@ -445,6 +445,9 @@ async function runPg(t, url, cleanupOnly) {
       }
       assert.equal((await nodes.listNodes(actor, { site_id: f.sites[2].id })).total, 0);
       assert.equal((await nodes.listNodes(actor, { search: f.allNodes[COUNT].nodeUid })).total, 0);
+      await assert.rejects(nodes.getNodeById(actor, 'legacy-bookmark'), (e) => e.getStatus?.() === 404);
+      await assert.rejects(nodes.getNodeById(actor, randomUUID()), (e) => e.getStatus?.() === 404);
+      await assert.rejects(nodes.getNodeById(actor, f.allNodes[COUNT].id), (e) => e.getStatus?.() === 403);
       const first = await nodes.listNodes(actor, { limit: 50 });
       for (const changed of [{ search: m.target.node_uid }, { sort_by: 'backup' }, { sort_order: 'desc' }]) await assert.rejects(nodes.listNodes(actor, { ...changed, cursor: first.next_cursor }), (e) => e.getStatus?.() === 400);
       await assert.rejects(nodes.listNodes(clientActor, { cursor: first.next_cursor }), (e) => e.getStatus?.() === 400);
