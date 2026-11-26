@@ -77,34 +77,18 @@ request_with_status() {
   local path="$3"
   local body="${4:-}"
   local csrf_token
-  local csrf_args=()
+  local curl_args=(-skS -o "$RESPONSE_FILE" -w "%{http_code}"
+    -b "$cookie_jar" -c "$cookie_jar" -X "$method")
 
   csrf_token="$(csrf_header_for "$cookie_jar")"
   if [[ -n "$csrf_token" && "$method" != "GET" ]]; then
-    csrf_args=(-H "x-csrf-token: $csrf_token")
+    curl_args+=(-H "x-csrf-token: $csrf_token")
   fi
 
   if [[ -n "$body" ]]; then
-    curl -skS \
-      -o "$RESPONSE_FILE" \
-      -w "%{http_code}" \
-      -b "$cookie_jar" \
-      -c "$cookie_jar" \
-      -H "content-type: application/json" \
-      "${csrf_args[@]}" \
-      -X "$method" \
-      "$BASE_URL$path" \
-      --data "$body"
-  else
-    curl -skS \
-      -o "$RESPONSE_FILE" \
-      -w "%{http_code}" \
-      -b "$cookie_jar" \
-      -c "$cookie_jar" \
-      "${csrf_args[@]}" \
-      -X "$method" \
-      "$BASE_URL$path"
+    curl_args+=(-H "content-type: application/json" --data "$body")
   fi
+  curl "${curl_args[@]}" "$BASE_URL$path"
 }
 
 echo "[1/10] Abrindo duas sessoes humanas independentes"
