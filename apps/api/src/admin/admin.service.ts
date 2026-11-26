@@ -2276,47 +2276,52 @@ export class AdminService {
       throw new NotFoundException('node not found');
     }
 
-    const updatedNode = await this.prisma.node.update({
-      where: {
-        id: nodeId,
-      },
-      data: {
-        hostname: dto.hostname?.trim() || undefined,
-        displayName:
-          dto.display_name !== undefined
-            ? normalizeOptional(dto.display_name)
-            : undefined,
-        managementIp:
-          dto.management_ip !== undefined
-            ? normalizeOptional(dto.management_ip)
-            : undefined,
-        wanIp:
-          dto.wan_ip !== undefined ? normalizeOptional(dto.wan_ip) : undefined,
-        remoteAccessUrl:
-          dto.remote_access_url !== undefined
-            ? normalizeOptional(dto.remote_access_url) ?? null
-            : undefined,
-        haRole:
-          dto.ha_role !== undefined ? normalizeOptional(dto.ha_role) : undefined,
-      },
-    });
-
-    await this.writeAuditLog({
-      actorId,
-      action: 'admin.node.update',
-      targetType: 'node',
-      targetId: nodeId,
-      ipAddress: actorIp,
-      metadataJson: {
-        hostname: updatedNode.hostname,
-        display_name: updatedNode.displayName,
-        management_ip: updatedNode.managementIp,
-        wan_ip: updatedNode.wanIp,
-        remote_access_url: updatedNode.remoteAccessUrl,
-        pfsense_version: updatedNode.pfsenseVersion,
-        agent_version: updatedNode.agentVersion,
-        ha_role: updatedNode.haRole,
-      },
+    const updatedNode = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.node.update({
+        where: { id: nodeId },
+        data: {
+          hostname: dto.hostname?.trim() || undefined,
+          displayName:
+            dto.display_name !== undefined
+              ? normalizeOptional(dto.display_name)
+              : undefined,
+          managementIp:
+            dto.management_ip !== undefined
+              ? normalizeOptional(dto.management_ip)
+              : undefined,
+          wanIp:
+            dto.wan_ip !== undefined ? normalizeOptional(dto.wan_ip) : undefined,
+          remoteAccessUrl:
+            dto.remote_access_url !== undefined
+              ? normalizeOptional(dto.remote_access_url) ?? null
+              : undefined,
+          haRole:
+            dto.ha_role !== undefined ? normalizeOptional(dto.ha_role) : undefined,
+        },
+      }).catch((error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+          throw new NotFoundException('node not found');
+        }
+        throw error;
+      });
+      await this.writeAuditLog({
+        actorId,
+        action: 'admin.node.update',
+        targetType: 'node',
+        targetId: nodeId,
+        ipAddress: actorIp,
+        metadataJson: {
+          hostname: updated.hostname,
+          display_name: updated.displayName,
+          management_ip: updated.managementIp,
+          wan_ip: updated.wanIp,
+          remote_access_url: updated.remoteAccessUrl,
+          pfsense_version: updated.pfsenseVersion,
+          agent_version: updated.agentVersion,
+          ha_role: updated.haRole,
+        },
+      }, tx);
+      return updated;
     });
 
     return {

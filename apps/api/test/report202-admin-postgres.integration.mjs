@@ -1215,6 +1215,37 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.equal(f.realtime.getDashboardRevision(), 2);
   });
 
+  await run('firewall editing preserves data if audit fails', async t => {
+    const f = await nodeCreationFixture(t);
+    const site = await db.site.create({ data: { clientId: f.client.id, code: 'qa', name: f.run } });
+    const node = await db.node.create({ data: {
+      siteId: site.id, nodeUid: randomUUID(), hostname: 'previous.invalid',
+      displayName: 'Previous', remoteAccessUrl: 'https://previous.invalid',
+    } });
+    const failAudit = async () => { throw new Error('synthetic firewall edit audit failure'); };
+    const failingDb = new Proxy(db, { get(target, key) {
+      if (key === '$transaction') return (callback, options) => target.$transaction(tx =>
+        callback(new Proxy(tx, { get(client, property) {
+          if (property === 'auditLog') return { create: failAudit };
+          return typeof client[property] === 'function' ? client[property].bind(client) : client[property];
+        } })), options);
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    } });
+    const update = admin => admin.updateNode(node.id, {
+      hostname: 'next.invalid', display_name: 'Next', remote_access_url: '',
+    }, f.actor.userId, undefined, f.actor);
+    await assert.rejects(update(f.service(failingDb, { record: failAudit })), /synthetic firewall edit audit failure/);
+    const before = await db.node.findUnique({ where: { id: node.id } });
+    assert.deepEqual([before.hostname, before.displayName, before.remoteAccessUrl],
+      ['previous.invalid', 'Previous', 'https://previous.invalid']);
+    const saved = await update(f.service(db));
+    assert.deepEqual([saved.node.hostname, saved.node.display_name, saved.node.remote_access_url],
+      ['next.invalid', 'Next', null]);
+    const audit = await db.auditLog.findMany({ where: { action: 'admin.node.update', targetId: node.id } });
+    assert.equal(audit.length, 1);
+    assert.equal(audit[0].metadataJson.display_name, 'Next');
+  });
+
   await run('maintenance exit restores the observed health from stored telemetry', async t => {
     const f = await fixture(t);
     const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
