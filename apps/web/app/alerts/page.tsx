@@ -209,6 +209,9 @@ export default async function AlertsPage({
       {params.alert_notice === 'changed' ? (
         <Alert variant="warning">Este alerta já foi alterado. A lista foi atualizada.</Alert>
       ) : null}
+      {params.alert_notice === 'unavailable' ? (
+        <Alert variant="warning">Não foi possível confirmar a operação. A lista foi atualizada.</Alert>
+      ) : null}
 
       <PageSection
         title="Filtros"

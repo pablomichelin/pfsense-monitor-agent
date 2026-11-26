@@ -164,6 +164,51 @@ test('reconhecer e resolver em Todos preserva filtros e página de alertas', asy
   ]);
 });
 
+test('falha temporária em uma ação preserva a lista filtrada e a diferença de autorização', async () => {
+  class ApiError extends Error {
+    constructor(status) {
+      super('synthetic API response');
+      this.status = status;
+    }
+  }
+  let failure;
+  const revalidated = [];
+  const actions = sourceLoader({
+    'next/navigation': { redirect },
+    'next/cache': { revalidatePath: (path) => revalidated.push(path) },
+    './api': {
+      ApiError,
+      acknowledgeAlert: async () => { throw failure; },
+      resolveAlert: async () => { throw failure; },
+    },
+  })('lib/alerts.ts');
+  const form = new FormData();
+  form.set('alert_id', 'alert-synthetic');
+  form.set('return_to', '/alerts?page=2&view=all&severity=warning');
+
+  for (const [error, notice] of [
+    [new ApiError(503), 'unavailable'],
+    [new ApiError(408), 'unavailable'],
+    [new TypeError('synthetic network error'), 'unavailable'],
+    [new ApiError(404), 'changed'],
+    [new ApiError(409), 'changed'],
+  ]) {
+    failure = error;
+    await assert.rejects(actions.resolveAlertAction(form), (redirectError) => {
+      assert.equal(redirectError.message, 'NEXT_REDIRECT');
+      const url = new URL(redirectError.url, 'https://fixture.invalid');
+      assert.equal(url.pathname, '/alerts');
+      assert.deepEqual(Object.fromEntries(url.searchParams), {
+        page: '2', view: 'all', severity: 'warning', alert_notice: notice,
+      });
+      return true;
+    });
+  }
+  failure = new ApiError(403);
+  await assert.rejects(actions.acknowledgeAlertAction(form), (error) => error === failure);
+  assert.deepEqual(revalidated, Array(5).fill('/alerts'));
+});
+
 test('usuários sem gestão permanecem somente leitura e sessões são carregadas sob demanda', async (t) => {
   installBrowserFixture(t);
   for (const canManageUsers of [false, true]) {

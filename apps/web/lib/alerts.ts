@@ -25,12 +25,16 @@ async function runAlertAction(
   try {
     await execute(alertId);
   } catch (error) {
-    if (!(error instanceof ApiError) || error.status !== 409) {
+    const status = error instanceof ApiError ? error.status : undefined;
+    const changed = status === 404 || status === 409;
+    const unavailable = error instanceof TypeError
+      || status === 408 || status === 429 || (status != null && status >= 500);
+    if (!changed && !unavailable) {
       throw error;
     }
 
     const url = new URL(returnTo, 'https://internal.invalid');
-    url.searchParams.set('alert_notice', 'changed');
+    url.searchParams.set('alert_notice', changed ? 'changed' : 'unavailable');
     destination = `${url.pathname}${url.search}${url.hash}`;
   }
 
