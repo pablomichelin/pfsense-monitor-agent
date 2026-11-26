@@ -500,6 +500,7 @@ test('detalhe do firewall distingue falha de carga de histórico vazio/desligado
     assert.equal(tabs.props.metrics.type, 'NodeDetailMetricsTab');
     assert.equal(tabs.props.metrics.props.metricsHistory === null, failureStatus === 500);
     const commandHistory = elements(tabs.props.history).find((e) => e.type === 'NodeCommandHistoryPanel');
+    assert.ok(tabs.props.tabs.some((tab) => tab.id === 'history'));
     assert.equal(commandHistory.props.initialHistory === null, failureStatus === 500);
     assert.equal(commandHistory.props.unavailableSince, failureStatus === 500 ? 'synthetic-snapshot' : undefined);
   }

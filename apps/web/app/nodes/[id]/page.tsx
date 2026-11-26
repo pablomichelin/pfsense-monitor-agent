@@ -186,7 +186,7 @@ export default async function NodeDetailsPage({
     const tabs: { id: NodeDetailTabId; label: string }[] = [
       { id: 'overview', label: 'Resumo' },
       { id: 'operations', label: 'Operações' },
-      ...(commandHistory ? [{ id: 'history' as NodeDetailTabId, label: 'Histórico' }] : []),
+      { id: 'history', label: 'Histórico' },
       ...(canViewTechnicians && technicianAccounts ? [{ id: 'access' as NodeDetailTabId, label: 'Acessos' }] : []),
       { id: 'metrics', label: 'Métricas' },
       ...(isClientProfile ? [] : [{ id: 'alerts' as NodeDetailTabId, label: 'Alertas' }]),
