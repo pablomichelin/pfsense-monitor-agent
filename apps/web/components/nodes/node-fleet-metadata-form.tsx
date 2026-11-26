@@ -12,7 +12,7 @@ type Props = {
   criticality: NodeCriticality;
   selectedTagIds: string[];
   supportsTagChanges: boolean;
-  availableTags: FleetTagItem[];
+  availableTags: FleetTagItem[] | null;
 };
 
 export function NodeFleetMetadataForm({
@@ -30,7 +30,7 @@ export function NodeFleetMetadataForm({
   const [draftCriticality, setDraftCriticality] = useState<NodeCriticality>();
   const [draftTags, setDraftTags] = useState(() => new Map<string, boolean>());
 
-  const clientTags = availableTags.filter((tag) => tag.client_id === clientId);
+  const clientTags = availableTags?.filter((tag) => tag.client_id === clientId) ?? [];
   const availableTagIds = new Set(clientTags.map((tag) => tag.id));
   const selectedTags = new Set(selectedTagIds);
   const tagChanges = new Map([...draftTags].filter(([id, checked]) =>
@@ -127,7 +127,9 @@ export function NodeFleetMetadataForm({
 
         <div>
           <p className="text-xs uppercase tracking-wider text-slate-500">Tags</p>
-          {clientTags.length === 0 ? (
+          {availableTags === null ? (
+            <p className="mt-2 text-sm text-slate-400">Catálogo de tags temporariamente indisponível.</p>
+          ) : clientTags.length === 0 ? (
             <p className="mt-2 text-sm text-slate-500">
               Nenhuma tag cadastrada para este cliente. Crie tags em Admin → Grupos e tags.
             </p>
@@ -151,7 +153,7 @@ export function NodeFleetMetadataForm({
           )}
         </div>
 
-        {unavailableChanges ? (
+        {availableTags !== null && unavailableChanges ? (
           <Alert variant="warning" className="space-y-2">
             <p>Uma alteração de tag ficou indisponível. Você pode salvar as demais alterações.</p>
             <Button

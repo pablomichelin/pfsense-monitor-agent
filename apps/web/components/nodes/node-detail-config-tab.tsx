@@ -41,7 +41,7 @@ export function NodeDetailConfigTab({
   configBackupInstallMode: ConfigBackupInstallMode;
   releaseBaseUrl?: string;
   controllerUrl?: string;
-  availableTags?: FleetTagItem[];
+  availableTags?: FleetTagItem[] | null;
   canManageFleetMetadata?: boolean;
 }) {
   const testConnectionAuditHref = buildAuditHref({

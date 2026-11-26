@@ -359,8 +359,8 @@ export default async function NodeDetailsPage({
                 configBackupInstallMode={configBackupInstallMode}
                 releaseBaseUrl={releaseBaseUrl}
                 controllerUrl={controllerUrl}
-                availableTags={fleetTags?.items ?? []}
-                canManageFleetMetadata={canManageFleetMetadata && canViewTags && fleetTags !== null}
+                availableTags={fleetTags?.items ?? null}
+                canManageFleetMetadata={canManageFleetMetadata && canViewTags}
               />
             }
           />
