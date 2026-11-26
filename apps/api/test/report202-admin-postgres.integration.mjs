@@ -259,6 +259,88 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.equal(await db.auditLog.count({ where: { targetId: group.id, action: 'fleet.group.members.set' } }), 0);
   });
 
+  await run('node metadata rolls back criticality and tags when its audit fails', async t => {
+    const f = await fixture(t);
+    const { NodeFleetMetadataService } = loadServiceModule('fleet-org/node-fleet-metadata.service');
+    const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const site = await db.site.create({ data: { clientId: f.client.id, code: 'qa', name: f.run } });
+    const node = await db.node.create({ data: { siteId: site.id, nodeUid: randomUUID(), hostname: 'qa.invalid' } });
+    const [originalTag, replacement] = await Promise.all(['original', 'replacement'].map(name =>
+      db.tag.create({ data: { clientId: f.client.id, name } })));
+    await db.nodeTag.create({ data: { nodeId: node.id, tagId: originalTag.id } });
+    const actor = { userId: f.users[0].id, role: 'superadmin' };
+    const update = { criticality: 'critical', tag_ids: [replacement.id, replacement.id] };
+    const policy = new AccessPolicyService(db);
+    const failure = new NodeFleetMetadataService(db, policy, {
+      record: async () => { throw new Error('synthetic metadata audit failure'); },
+    });
+    await assert.rejects(failure.updateNodeFleetMetadata(actor, node.id, update, actor.userId), /synthetic metadata audit failure/);
+    const current = await db.node.findUniqueOrThrow({ where: { id: node.id }, include: { nodeTags: true } });
+    assert.deepEqual({ criticality: current.criticality, tags: current.nodeTags.map(link => link.tagId) }, {
+      criticality: node.criticality, tags: [originalTag.id],
+    });
+    const service = new NodeFleetMetadataService(db, policy, new AuditService(db));
+    const saved = await service.updateNodeFleetMetadata(actor, node.id, update, actor.userId);
+    assert.equal(saved.criticality, 'critical');
+    assert.deepEqual(saved.tags, [{ id: replacement.id, name: replacement.name }]);
+    const events = await db.auditLog.findMany({ where: { action: 'fleet.node_metadata.update', targetId: node.id } });
+    assert.equal(events.length, 1);
+    assert.deepEqual(events[0].metadataJson, {
+      previous_criticality: node.criticality,
+      criticality: 'critical',
+      previous_tag_ids: [originalTag.id],
+      tag_ids: [replacement.id],
+      node_status_unchanged: true,
+    });
+  });
+
+  await run('node metadata detects a tag removed while saving', async t => {
+    const f = await fixture(t);
+    const { NodeFleetMetadataService } = loadServiceModule('fleet-org/node-fleet-metadata.service');
+    const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const site = await db.site.create({ data: { clientId: f.client.id, code: 'qa', name: f.run } });
+    const node = await db.node.create({ data: { siteId: site.id, nodeUid: randomUUID(), hostname: 'qa.invalid' } });
+    const tag = await db.tag.create({ data: { clientId: f.client.id, name: 'remove-in-flight' } });
+    await db.nodeTag.create({ data: { nodeId: node.id, tagId: tag.id } });
+    const actor = { userId: f.users[0].id, role: 'superadmin' };
+    const deletingPid = f.gate(), allowDelete = f.gate();
+    const deletion = f.track(peer.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM tags WHERE id = ${tag.id}::uuid FOR UPDATE`;
+      const [connection] = await tx.$queryRaw`SELECT pg_backend_pid() AS pid`;
+      deletingPid.resolve(connection.pid);
+      await allowDelete.promise;
+      await tx.tag.delete({ where: { id: tag.id } });
+    }, { timeout: 15_000 }));
+    const pid = await deletingPid.promise;
+    const service = new NodeFleetMetadataService(db, new AccessPolicyService(db), new AuditService(db));
+    const save = f.track(service.updateNodeFleetMetadata(actor, node.id, {
+      criticality: 'critical', tag_ids: [tag.id],
+    }, actor.userId));
+    let blocked;
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        [blocked] = await observer.$queryRaw`
+          SELECT query FROM pg_stat_activity WHERE ${pid}::int = ANY(pg_blocking_pids(pg_stat_activity.pid))
+        `;
+        if (blocked) break;
+        await delay(10);
+      }
+    } finally {
+      allowDelete.resolve();
+    }
+    const [deleted, edited] = await Promise.allSettled([deletion, save]);
+    assert.equal(deleted.status, 'fulfilled', deleted.reason?.message);
+    assert.equal(edited.status, 'rejected');
+    assert.equal(edited.reason.getStatus?.(), 400, edited.reason?.message);
+    assert.match(blocked?.query ?? '', /FROM tags.*FOR KEY SHARE/is);
+    const current = await db.node.findUniqueOrThrow({ where: { id: node.id }, include: { nodeTags: true } });
+    assert.equal(current.criticality, node.criticality);
+    assert.deepEqual(current.nodeTags, []);
+    assert.equal(await db.auditLog.count({ where: { targetId: node.id, action: 'fleet.node_metadata.update' } }), 0);
+  });
+
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {
       const f = await fixture(t), locked = f.gate(), release = f.gate(), pid = f.gate(), atLock = f.gate();

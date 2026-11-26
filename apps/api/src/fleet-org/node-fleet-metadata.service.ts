@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { NodeCriticality } from '@prisma/client';
+import { NodeCriticality, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AccessActor } from '../auth/access-actor.type';
 import { AccessPolicyService } from '../auth/access-policy.service';
@@ -32,81 +32,73 @@ export class NodeFleetMetadataService {
   }> {
     const clientId = await this.accessPolicy.assertNodeAccess(actor, nodeId);
 
-    const existing = await this.prisma.node.findUnique({
-      where: { id: nodeId },
-      select: {
-        id: true,
-        criticality: true,
-        status: true,
-        nodeTags: {
-          include: {
-            tag: {
-              select: {
-                id: true,
-                name: true,
-                clientId: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!existing) {
-      throw new NotFoundException('node not found');
-    }
-
-    if (
-      dto.criticality === undefined &&
-      dto.tag_ids === undefined
-    ) {
+    if (dto.criticality === undefined && dto.tag_ids === undefined) {
       throw new BadRequestException('no fields to update');
     }
 
-    if (dto.tag_ids !== undefined) {
-      const uniqueTagIds = [...new Set(dto.tag_ids)];
-      if (uniqueTagIds.length > 0) {
-        const tags = await this.prisma.tag.findMany({
-          where: {
-            id: {
-              in: uniqueTagIds,
-            },
-            clientId,
-          },
-          select: {
-            id: true,
-          },
-        });
+    const updatedNode = await this.prisma.$transaction(async (tx) => {
+      // Lock parents before replacing links so concurrent deletes can cascade
+      // without waiting on a link this edit holds while awaiting its parent.
+      const [client] = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM clients WHERE id = ${clientId}::uuid FOR KEY SHARE
+      `;
+      if (!client) throw new NotFoundException('node not found');
+      const [locked] = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT n.id FROM nodes n JOIN sites s ON s.id = n.site_id
+        WHERE n.id = ${nodeId}::uuid AND s.client_id = ${clientId}::uuid
+        FOR NO KEY UPDATE OF n
+      `;
+      if (!locked) throw new NotFoundException('node not found');
 
+      const uniqueTagIds = dto.tag_ids === undefined ? undefined : [...new Set(dto.tag_ids)];
+      if (uniqueTagIds?.length) {
+        const tags = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM tags
+          WHERE id IN (${Prisma.join(uniqueTagIds.map((id) => Prisma.sql`${id}::uuid`))})
+            AND client_id = ${clientId}::uuid
+          ORDER BY id FOR KEY SHARE
+        `;
         if (tags.length !== uniqueTagIds.length) {
-          throw new BadRequestException(
-            'one or more tags are invalid or out of client scope',
-          );
+          throw new BadRequestException('one or more tags are invalid or out of client scope');
         }
       }
 
-      await this.prisma.$transaction([
-        this.prisma.nodeTag.deleteMany({
-          where: { nodeId },
-        }),
-        ...(uniqueTagIds.length > 0
-          ? [
-              this.prisma.nodeTag.createMany({
-                data: uniqueTagIds.map((tagId) => ({
-                  nodeId,
-                  tagId,
-                })),
-              }),
-            ]
-          : []),
-      ]);
-    }
+      const existing = await tx.node.findUniqueOrThrow({
+        where: { id: nodeId },
+        select: { criticality: true, status: true, nodeTags: { select: { tagId: true } } },
+      });
+      if (uniqueTagIds !== undefined) {
+        await tx.nodeTag.deleteMany({ where: { nodeId } });
+        if (uniqueTagIds.length > 0) {
+          await tx.nodeTag.createMany({ data: uniqueTagIds.map((tagId) => ({ nodeId, tagId })) });
+        }
+      }
+      return this.updateAndAudit(tx, existing, clientId, nodeId, dto.criticality, actorId, actorIp);
+    });
 
-    const updatedNode = await this.prisma.node.update({
+    return {
+      node_id: updatedNode.id,
+      criticality: updatedNode.criticality,
+      tags: updatedNode.nodeTags.map((entry) => ({
+        id: entry.tag.id,
+        name: entry.tag.name,
+      })),
+      updated_at: updatedNode.updatedAt.toISOString(),
+    };
+  }
+
+  private async updateAndAudit(
+    tx: Prisma.TransactionClient,
+    existing: { criticality: NodeCriticality; status: string; nodeTags: Array<{ tagId: string }> },
+    clientId: string,
+    nodeId: string,
+    criticality: NodeCriticality | undefined,
+    actorId?: string,
+    actorIp?: string,
+  ) {
+    const updated = await tx.node.update({
       where: { id: nodeId },
-      data: {
-        criticality: dto.criticality,
-      },
+      data: { criticality },
       select: {
         id: true,
         criticality: true,
@@ -139,21 +131,12 @@ export class NodeFleetMetadataService {
       ipAddress: actorIp,
       metadataJson: {
         previous_criticality: existing.criticality,
-        criticality: updatedNode.criticality,
-        previous_tag_ids: existing.nodeTags.map((entry) => entry.tag.id),
-        tag_ids: updatedNode.nodeTags.map((entry) => entry.tag.id),
-        node_status_unchanged: existing.status === updatedNode.status,
+        criticality: updated.criticality,
+        previous_tag_ids: existing.nodeTags.map((entry) => entry.tagId),
+        tag_ids: updated.nodeTags.map((entry) => entry.tag.id),
+        node_status_unchanged: existing.status === updated.status,
       },
-    });
-
-    return {
-      node_id: updatedNode.id,
-      criticality: updatedNode.criticality,
-      tags: updatedNode.nodeTags.map((entry) => ({
-        id: entry.tag.id,
-        name: entry.tag.name,
-      })),
-      updated_at: updatedNode.updatedAt.toISOString(),
-    };
+    }, tx);
+    return updated;
   }
 }
