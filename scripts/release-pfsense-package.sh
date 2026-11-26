@@ -70,6 +70,7 @@ if [[ "$PUBLISH_PREPARED" == true ]]; then
   python3 - "$ARTIFACT_PATH" "$SHA256_FILE" "$CONFIG_FILE" "$VERSION" <<'PYTHON'
 import hashlib
 from pathlib import Path
+import re
 import sys
 
 archive, sidecar, config = map(Path, sys.argv[1:4])
@@ -85,11 +86,21 @@ with archive.open("rb") as stream:
 sha256 = digest.hexdigest()
 if sidecar.read_text(encoding="ascii").split() != [sha256, archive.name]:
     sys.exit("Checksum do artefato preparado não confere.")
-manifest = config.read_text(encoding="utf-8").splitlines()
-expected = {"PACKAGE_RELEASE_VERSION": version, "PACKAGE_RELEASE_SHA256": sha256}
-if any([line for line in manifest if line.startswith(f"{key}=")] != [f"{key}={value}"]
-       for key, value in expected.items()):
+keys = {"PACKAGE_RELEASE_VERSION", "PACKAGE_RELEASE_SHA256", "PACKAGE_RELEASE_REPO_RAW_BASE"}
+manifest = {}
+for line in config.read_text(encoding="utf-8").splitlines():
+    key, separator, value = line.partition("=")
+    key = key.strip()
+    if not separator or key not in keys:
+        continue
+    if key in manifest:
+        sys.exit(f"Chave repetida no manifesto preparado: {key}")
+    manifest[key] = re.sub(r"""^["']|["']$""", "", value.strip()).strip()
+if (manifest.get("PACKAGE_RELEASE_VERSION") != version or
+        manifest.get("PACKAGE_RELEASE_SHA256") != sha256):
     sys.exit("Versão ou checksum do manifesto preparado não confere.")
+if not manifest.get("PACKAGE_RELEASE_REPO_RAW_BASE"):
+    sys.exit("URL do repositório ausente no manifesto preparado.")
 
 print(f"Artefato preparado verificado: {archive.name}")
 PYTHON

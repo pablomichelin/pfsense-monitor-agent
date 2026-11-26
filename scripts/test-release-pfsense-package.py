@@ -136,6 +136,23 @@ esac
         self.assertIn("Checksum do artefato preparado não confere", published.stderr)
         self.assertEqual(events, ["build 9.9.9"])
 
+    def test_prepared_manifest_rejects_duplicate_keys_and_requires_a_repository_url(self):
+        preparation, _ = self.run_release("--no-push")
+        self.assertEqual(preparation.returncode, 0, preparation.stderr)
+        manifest = self.root / "config/package-release.env"
+        original = manifest.read_text()
+        for changed, message in (
+            (original + " PACKAGE_RELEASE_VERSION = 1.0.0\n", "Chave repetida"),
+            ("\n".join(line for line in original.splitlines()
+                        if not line.startswith("PACKAGE_RELEASE_REPO_RAW_BASE=")), "URL do repositório ausente"),
+        ):
+            with self.subTest(message=message):
+                manifest.write_text(changed)
+                release, events = self.run_release("--publish-prepared")
+                self.assertNotEqual(release.returncode, 0)
+                self.assertIn(message, release.stderr)
+                self.assertEqual(events, ["build 9.9.9"])
+
     def test_conflicting_modes_stop_before_build_or_git(self):
         result, events = self.run_release("--no-push", "--publish-prepared")
         self.assertEqual(result.returncode, 2)
