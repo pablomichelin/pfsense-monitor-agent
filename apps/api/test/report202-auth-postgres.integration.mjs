@@ -189,7 +189,8 @@ test('R202 auth: PG17 budgets, rollback, own-session pagination and password res
         await assert.rejects(failing.revokeSession(target.id, actor), /synthetic audit failure/);
         assert.equal((await a.userSession.findUnique({ where: { id: target.id } })).revokedAt, null);
         assert.equal(await a.auditLog.count({ where: auditWhere }), 0);
-        await auth(b).revokeSession(target.id, actor);
+        const retried = await auth(b).revokeSession(target.id.toUpperCase(), actor);
+        assert.equal(retried.session_id, target.id);
       } else {
         const release = gate();
         const blocked = gate();

@@ -347,32 +347,33 @@ export class AuthService {
     return this.prisma.$transaction(async (tx) => {
       const target = { id: targetSessionId, userId: actor.userId };
       const revokedAt = new Date();
-      const changed = await tx.userSession.updateMany({
+      const [changed] = await tx.userSession.updateManyAndReturn({
         where: { ...target, revokedAt: null },
         data: { revokedAt },
+        select: { id: true },
       });
 
-      if (!changed.count) {
+      if (!changed) {
         const existing = await tx.userSession.findFirst({
           where: target,
-          select: { revokedAt: true },
+          select: { id: true, revokedAt: true },
         });
         if (!existing?.revokedAt) {
           throw new UnauthorizedException('session not found');
         }
-        return { ok: true, session_id: targetSessionId, revoked_at: existing.revokedAt.toISOString() };
+        return { ok: true, session_id: existing.id, revoked_at: existing.revokedAt.toISOString() };
       }
 
       await this.auditService.record({
         actorId: actor.userId,
         action: 'auth.session.revoke',
         targetType: 'user_session',
-        targetId: targetSessionId,
+        targetId: changed.id,
         ipAddress: actor.ipAddress,
-        metadataJson: { session_id: targetSessionId },
+        metadataJson: { session_id: changed.id },
       }, tx);
 
-      return { ok: true, session_id: targetSessionId, revoked_at: revokedAt.toISOString() };
+      return { ok: true, session_id: changed.id, revoked_at: revokedAt.toISOString() };
     });
   }
 
