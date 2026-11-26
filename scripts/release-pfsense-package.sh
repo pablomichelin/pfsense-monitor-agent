@@ -88,14 +88,16 @@ if sidecar.read_text(encoding="ascii").split() != [sha256, archive.name]:
     sys.exit("Checksum do artefato preparado não confere.")
 keys = {"PACKAGE_RELEASE_VERSION", "PACKAGE_RELEASE_SHA256", "PACKAGE_RELEASE_REPO_RAW_BASE"}
 manifest = {}
-for line in config.read_text(encoding="utf-8").splitlines():
+# Match the API's JavaScript trim() and LF-only line splitting.
+whitespace = "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+for line in config.read_bytes().decode("utf-8").split("\n"):
     key, separator, value = line.partition("=")
-    key = key.strip()
+    key = key.strip(whitespace)
     if not separator or key not in keys:
         continue
     if key in manifest:
         sys.exit(f"Chave repetida no manifesto preparado: {key}")
-    manifest[key] = re.sub(r"""^["']|["']$""", "", value.strip()).strip()
+    manifest[key] = re.sub(r"""^["']|["']$""", "", value.strip(whitespace)).strip(whitespace)
 if (manifest.get("PACKAGE_RELEASE_VERSION") != version or
         manifest.get("PACKAGE_RELEASE_SHA256") != sha256):
     sys.exit("Versão ou checksum do manifesto preparado não confere.")

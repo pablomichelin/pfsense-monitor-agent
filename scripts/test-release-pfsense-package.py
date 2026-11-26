@@ -143,6 +143,9 @@ esac
         original = manifest.read_text()
         for changed, message in (
             (original + " PACKAGE_RELEASE_VERSION = 1.0.0\n", "Chave repetida"),
+            (original + "\ufeffPACKAGE_RELEASE_VERSION=1.0.0\n", "Chave repetida"),
+            (original.replace("\n", "\u2028"), "Versão ou checksum"),
+            (original.replace("\n", "\r"), "Versão ou checksum"),
             ("\n".join(line for line in original.splitlines()
                         if not line.startswith("PACKAGE_RELEASE_REPO_RAW_BASE=")), "URL do repositório ausente"),
         ):
