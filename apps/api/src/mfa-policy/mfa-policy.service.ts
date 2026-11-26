@@ -4,7 +4,7 @@ import {
   Injectable,
   OnModuleInit,
 } from '@nestjs/common';
-import { EntityStatus } from '@prisma/client';
+import { EntityStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { SUPERADMIN_ROLE } from '../auth/role-codes';
 import { PrismaService } from '../prisma/prisma.service';
@@ -39,6 +39,8 @@ export type MfaPolicyComplianceUser = {
 
 @Injectable()
 export class MfaPolicyService implements OnModuleInit {
+  private policyRevision = 0;
+  private effectiveRevision = 0;
   private effectivePolicy = {
     enforcedRoles: [] as string[],
     enforcementBlocking: false,
@@ -69,12 +71,19 @@ export class MfaPolicyService implements OnModuleInit {
   }
 
   async refreshEffectivePolicy(): Promise<void> {
+    const revision = ++this.policyRevision;
     const stored = await this.getStoredPolicy();
-    this.effectivePolicy = resolveEffectiveMfaPolicy(stored, parseMfaEnvOverride());
+    this.applyEffectivePolicy(revision, resolveEffectiveMfaPolicy(stored, parseMfaEnvOverride()));
   }
 
-  async getStoredPolicy(): Promise<StoredMfaPolicy & { updated_at: string }> {
-    const row = await this.prisma.mfaPolicySettings.upsert({
+  private applyEffectivePolicy(revision: number, policy: StoredMfaPolicy): void {
+    if (revision < this.effectiveRevision) return;
+    this.effectivePolicy = policy;
+    this.effectiveRevision = revision;
+  }
+
+  async getStoredPolicy(db: Prisma.TransactionClient = this.prisma): Promise<StoredMfaPolicy & { updated_at: string }> {
+    const row = await db.mfaPolicySettings.upsert({
       where: { id: MFA_POLICY_SETTINGS_ID },
       create: {
         id: MFA_POLICY_SETTINGS_ID,
@@ -91,7 +100,7 @@ export class MfaPolicyService implements OnModuleInit {
     };
   }
 
-  async getPolicyView(): Promise<{
+  async getPolicyView(db: Prisma.TransactionClient = this.prisma): Promise<{
     effective: {
       enforced_roles: string[];
       enforcement_blocking: boolean;
@@ -128,16 +137,16 @@ export class MfaPolicyService implements OnModuleInit {
     };
   }> {
     const env = parseMfaEnvOverride();
-    const stored = await this.getStoredPolicy();
+    const stored = await this.getStoredPolicy(db);
     const effective = resolveEffectiveMfaPolicy(stored, env);
     const editable = !env.enforcedRolesDefined && !env.enforcementBlockingDefined;
 
     const [roles, activeUsers, recoveryCounts, superadminReadiness] = await Promise.all([
-      this.prisma.role.findMany({
+      db.role.findMany({
         select: { code: true, label: true },
         orderBy: { code: 'asc' },
       }),
-      this.prisma.user.findMany({
+      db.user.findMany({
         where: { status: EntityStatus.active },
         select: {
           id: true,
@@ -147,12 +156,12 @@ export class MfaPolicyService implements OnModuleInit {
         },
         orderBy: [{ role: 'asc' }, { email: 'asc' }],
       }),
-      this.prisma.mfaRecoveryCode.groupBy({
+      db.mfaRecoveryCode.groupBy({
         by: ['userId'],
         where: { usedAt: null },
         _count: { _all: true },
       }),
-      this.loadSuperadminReadiness(),
+      this.loadSuperadminReadiness(db),
     ]);
 
     const recoveryByUserId = new Map(
@@ -248,58 +257,58 @@ export class MfaPolicyService implements OnModuleInit {
       throw new BadRequestException('no policy fields provided');
     }
 
-    const stored = await this.getStoredPolicy();
-    const roles = await this.prisma.role.findMany({ select: { code: true } });
-    const allowedRoleCodes = roles.map((role) => role.code);
-    const superadminReadiness = await this.loadSuperadminReadiness();
+    const saved = await this.prisma.$transaction(async (tx) => {
+      const [locked] = await tx.$queryRaw<StoredMfaPolicy[]>`
+        SELECT enforced_roles AS "enforcedRoles", enforcement_blocking AS "enforcementBlocking"
+        FROM mfa_policy_settings WHERE id = ${MFA_POLICY_SETTINGS_ID} FOR UPDATE
+      `;
+      const stored = locked ?? await this.getStoredPolicy(tx);
+      const roles = await tx.role.findMany({ select: { code: true } });
+      const allowedRoleCodes = roles.map((role) => role.code);
+      const superadminReadiness = await this.loadSuperadminReadiness(tx);
 
-    const nextEnforcedRoles =
-      body.enforced_roles !== undefined
-        ? normalizeEnforcedRoles(body.enforced_roles, allowedRoleCodes)
-        : stored.enforcedRoles;
-    const nextBlocking =
-      body.enforcement_blocking !== undefined
-        ? body.enforcement_blocking
-        : stored.enforcementBlocking;
+      const nextEnforcedRoles =
+        body.enforced_roles !== undefined
+          ? normalizeEnforcedRoles(body.enforced_roles, allowedRoleCodes)
+          : stored.enforcedRoles;
+      const nextBlocking =
+        body.enforcement_blocking === undefined ? stored.enforcementBlocking : body.enforcement_blocking;
 
-    const validation = validatePolicyUpdate({
-      nextEnforcedRoles,
-      nextBlocking,
-      allowedRoleCodes,
-      activeSuperadmins: superadminReadiness.activeSuperadmins,
+      const validation = validatePolicyUpdate({
+        nextEnforcedRoles,
+        nextBlocking,
+        allowedRoleCodes,
+        activeSuperadmins: superadminReadiness.activeSuperadmins,
+      });
+      if (!validation.ok) {
+        throw new BadRequestException(validation.error);
+      }
+
+      const next = { enforcedRoles: nextEnforcedRoles, enforcementBlocking: nextBlocking };
+      await tx.mfaPolicySettings.update({ where: { id: MFA_POLICY_SETTINGS_ID }, data: next });
+      await this.auditService.record({
+        actorId: actor.userId,
+        actorRole: actor.role,
+        action: 'security.mfa_policy.update',
+        targetType: 'mfa_policy',
+        targetId: MFA_POLICY_SETTINGS_ID,
+        ipAddress,
+        metadataJson: {
+          enforced_roles: nextEnforcedRoles,
+          enforcement_blocking: nextBlocking,
+          mode: describeMfaMode(next),
+        },
+      }, tx);
+      const view = await this.getPolicyView(tx);
+      // Assign the revision while the row is locked; apply it only after commit.
+      return { view, next, revision: ++this.policyRevision };
     });
-    if (!validation.ok) {
-      throw new BadRequestException(validation.error);
-    }
 
-    await this.prisma.mfaPolicySettings.update({
-      where: { id: MFA_POLICY_SETTINGS_ID },
-      data: {
-        enforcedRoles: nextEnforcedRoles,
-        enforcementBlocking: nextBlocking,
-      },
-    });
-
-    await this.refreshEffectivePolicy();
-
-    await this.auditService.record({
-      actorId: actor.userId,
-      actorRole: actor.role,
-      action: 'security.mfa_policy.update',
-      targetType: 'mfa_policy',
-      targetId: MFA_POLICY_SETTINGS_ID,
-      ipAddress,
-      metadataJson: {
-        enforced_roles: nextEnforcedRoles,
-        enforcement_blocking: nextBlocking,
-        mode: describeMfaMode(this.effectivePolicy),
-      },
-    });
-
-    return this.getPolicyView();
+    this.applyEffectivePolicy(saved.revision, saved.next);
+    return saved.view;
   }
 
-  private async loadSuperadminReadiness(): Promise<{
+  private async loadSuperadminReadiness(db: Prisma.TransactionClient): Promise<{
     ready: boolean;
     reason: string | null;
     qualifiedCount: number;
@@ -308,7 +317,7 @@ export class MfaPolicyService implements OnModuleInit {
       recoveryCodesRemaining: number;
     }>;
   }> {
-    const superadmins = await this.prisma.user.findMany({
+    const superadmins = await db.user.findMany({
       where: {
         role: SUPERADMIN_ROLE,
         status: EntityStatus.active,
@@ -319,7 +328,7 @@ export class MfaPolicyService implements OnModuleInit {
       },
     });
 
-    const recoveryCounts = await this.prisma.mfaRecoveryCode.groupBy({
+    const recoveryCounts = await db.mfaRecoveryCode.groupBy({
       by: ['userId'],
       where: {
         usedAt: null,

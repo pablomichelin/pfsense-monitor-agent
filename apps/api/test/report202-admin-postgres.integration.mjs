@@ -501,6 +501,110 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.equal(new Set(alerts).size, 2);
   });
 
+  await run('MFA policy storage and effective state survive a failed audit', async t => {
+    const f = await fixture(t);
+    const { MfaPolicyService } = loadServiceModule('mfa-policy/mfa-policy.service');
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const where = { id: 'default' };
+    const before = await db.mfaPolicySettings.findUniqueOrThrow({ where });
+    assert.deepEqual([before.enforcedRoles, before.enforcementBlocking], [[], false]);
+    t.after(() => db.mfaPolicySettings.update({
+      where,
+      data: {
+        enforcedRoles: before.enforcedRoles,
+        enforcementBlocking: before.enforcementBlocking,
+        updatedAt: before.updatedAt,
+      },
+    }));
+    const actor = { userId: f.users[0].id, role: 'superadmin' };
+    const failure = new MfaPolicyService(db, {
+      record: async () => { throw new Error('synthetic MFA policy audit failure'); },
+    });
+    await failure.refreshEffectivePolicy();
+    const patch = { enforced_roles: ['readonly'] };
+    await assert.rejects(failure.updatePolicy(patch, actor), /synthetic MFA policy audit failure/);
+    const storedAfterError = await db.mfaPolicySettings.findUniqueOrThrow({ where });
+    const effectiveAfterError = failure.getEffectivePolicySync();
+    assert.deepEqual({
+      stored: [storedAfterError.enforcedRoles, storedAfterError.enforcementBlocking],
+      effective: [effectiveAfterError.enforcedRoles, effectiveAfterError.enforcementBlocking],
+    }, { stored: [[], false], effective: [[], false] });
+    const service = new MfaPolicyService(db, new AuditService(db));
+    const saved = await service.updatePolicy(patch, actor);
+    assert.deepEqual(saved.effective, {
+      enforced_roles: ['readonly'], enforcement_blocking: false, mode: 'soft',
+    });
+    assert.equal(service.isEnforcementRequired('readonly', false), true);
+    const events = await db.auditLog.findMany({
+      where: { actorId: actor.userId, action: 'security.mfa_policy.update' },
+    });
+    assert.equal(events.length, 1);
+    assert.deepEqual(events[0].metadataJson, {
+      enforced_roles: ['readonly'], enforcement_blocking: false, mode: 'soft',
+    });
+  });
+
+  await run('MFA policy concurrent partial saves keep both fields and the latest effective state', async t => {
+    const f = await fixture(t);
+    const { MfaPolicyService } = loadServiceModule('mfa-policy/mfa-policy.service');
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const where = { id: 'default' };
+    const before = await db.mfaPolicySettings.findUniqueOrThrow({ where });
+    assert.deepEqual([before.enforcedRoles, before.enforcementBlocking], [[], false]);
+    t.after(() => db.mfaPolicySettings.update({
+      where,
+      data: {
+        enforcedRoles: before.enforcedRoles,
+        enforcementBlocking: before.enforcementBlocking,
+        updatedAt: before.updatedAt,
+      },
+    }));
+    const actor = { userId: f.users[0].id, role: 'superadmin' };
+    await db.user.update({ where: { id: actor.userId }, data: { mfaEnabled: true } });
+    await db.mfaRecoveryCode.create({ data: { userId: actor.userId, codeHash: 'synthetic-only' } });
+    const observed = f.gate(), resume = f.gate();
+    let first = true;
+    async function pauseFirst() {
+      if (!first) return;
+      first = false;
+      observed.resolve();
+      await resume.promise;
+    }
+    const proxy = new Proxy(db, { get(target, key) {
+      if (key === '$transaction') return async (...args) => {
+        const result = await target.$transaction(...args);
+        await pauseFirst();
+        return result;
+      };
+      if (key === 'mfaPolicySettings') return new Proxy(target[key], { get(model, operation) {
+        if (operation === 'upsert') return async args => {
+          const row = await model.upsert(args);
+          await pauseFirst();
+          return row;
+        };
+        return typeof model[operation] === 'function' ? model[operation].bind(model) : model[operation];
+      } });
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    } });
+    const service = new MfaPolicyService(proxy, new AuditService(db));
+    const left = f.track(service.updatePolicy({ enforced_roles: ['readonly'] }, actor));
+    await observed.promise;
+    try {
+      await service.updatePolicy({ enforcement_blocking: true }, actor);
+    } finally {
+      resume.resolve();
+    }
+    await left;
+    const stored = await db.mfaPolicySettings.findUniqueOrThrow({ where });
+    assert.deepEqual([stored.enforcedRoles, stored.enforcementBlocking], [['readonly'], true]);
+    assert.deepEqual(service.getEffectivePolicySync(), { enforcedRoles: ['readonly'], enforcementBlocking: true });
+    const events = await db.auditLog.findMany({
+      where: { actorId: actor.userId, action: 'security.mfa_policy.update' },
+    });
+    assert.equal(events.length, 2);
+    assert.deepEqual(events.map(event => event.metadataJson.mode).sort(), ['blocking', 'soft']);
+  });
+
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {
       const f = await fixture(t), locked = f.gate(), release = f.gate(), pid = f.gate(), atLock = f.gate();
