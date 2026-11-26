@@ -135,6 +135,35 @@ test('revogação de sessão dispara nova busca ao mudar o identificador da aç�
   assert.deepEqual(fixture.fetched, ['u1', 'u1']);
 });
 
+test('páginas de usuários limpam a seleção e só consultam sessões de usuários visíveis', async (t) => {
+  installBrowserFixture(t);
+  const fixture = userFixture({
+    activeSection: 'user-sessions',
+    readSessions: async () => ({ ok: false, error: 'Consulta sintética indisponível' }),
+  });
+  const first = fixture.render({ nextCursor: 'qa-next', search: 'QA', showInactive: true });
+  const link = elements(first).find(element => element.type === 'a' && textOf(element) === 'Próxima página');
+  const next = new URL(link.props.href, 'https://example.test');
+  assert.deepEqual(Object.fromEntries(next.searchParams), {
+    showInactive: '1', search: 'QA', tab: 'sessoes', cursor: 'qa-next',
+  });
+  await settle();
+  assert.deepEqual(fixture.fetched, ['u1']);
+  const second = fixture.render({ users: [], initialUserId: 'u1', cursor: 'qa-next', search: 'QA' });
+  const picker = elements(second).find(element => element.type === 'select');
+  assert.equal(picker.props.value, '');
+  await settle();
+  const fresh = fixture.render({ users: [], initialUserId: 'u1', cursor: 'qa-next', search: 'QA' });
+  assert.deepEqual(fixture.fetched, ['u1']);
+  assert.match(textOf(fresh), /Selecione um usuário para carregar suas sessões/);
+  assert.doesNotMatch(textOf(fresh), /Consulta sintética indisponível|Nenhuma sessão registrada/);
+
+  const bookmarked = userFixture({ activeSection: 'user-sessions' });
+  bookmarked.render({ users: [], initialUserId: 'u1', cursor: 'qa-next' });
+  await settle();
+  assert.deepEqual(bookmarked.fetched, []);
+});
+
 test('trocar de usuário invalida a resposta antiga antes de executar o próximo efeito', async (t) => {
   installBrowserFixture(t);
   const first = deferred();

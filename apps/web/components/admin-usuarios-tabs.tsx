@@ -99,8 +99,9 @@ export function AdminUsuariosTabs({
 }) {
   const router = useRouter();
   const urlTab = initialTab === 'sessoes' || (!initialTab && activeSection === 'user-sessions') ? 'sessoes' : 'usuarios';
+  const initialSelection = users.find((user) => user.id === initialUserId)?.id ?? null;
   const [tab, setTab] = useState<'usuarios' | 'sessoes'>(urlTab);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(initialUserId ?? null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(initialSelection);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const draftGuard = useAdminDraftGuard(hasUnsavedChanges);
   const [scopeChanged, setScopeChanged] = useState(false);
@@ -120,10 +121,11 @@ export function AdminUsuariosTabs({
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const selectedUser = users.find((user) => user.id === selectedUserId) ?? null;
+  const sessionUserId = selectedUser?.id;
   const filteredUsers = users;
   const returnQuery = new URLSearchParams();
   if (showInactive) returnQuery.set('showInactive', '1');
-  if (selectedUserId) returnQuery.set('selected', selectedUserId);
+  if (sessionUserId) returnQuery.set('selected', sessionUserId);
   if (search) returnQuery.set('search', search);
   if (cursor) returnQuery.set('cursor', cursor);
   returnQuery.set('tab', tab);
@@ -135,8 +137,14 @@ export function AdminUsuariosTabs({
     query.set('tab', nextTab);
     return `/admin/usuarios?${query}`;
   };
+  const paginationHref = (next?: string) => {
+    const query = new URLSearchParams(returnQuery);
+    query.delete('selected');
+    if (next) query.set('cursor', next); else query.delete('cursor');
+    return `/admin/usuarios?${query}`;
+  };
   useEffect(() => {
-    const nextId = initialUserId ?? null;
+    const nextId = initialSelection;
     if (nextId === selectedUserId && urlTab === tab) return;
     if (draftGuard.current && !window.confirm('Descartar alterações não salvas deste usuário?')) {
       router.replace(navigationHref(selectedUserId), { scroll: false });
@@ -151,16 +159,16 @@ export function AdminUsuariosTabs({
     setSessionsLoading(urlTab === 'sessoes' && Boolean(nextId));
   // Somente mudanças externas da URL; as seleções locais a atualizam explicitamente.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialUserId, urlTab]);
+  }, [initialSelection, urlTab]);
 
   useEffect(() => {
     const generation = ++sessionGeneration.current;
     setMoreLoading(false);
-    if (tab !== 'sessoes' || !selectedUserId) return;
-    setSessionsLoading(true);
     setSessions([]); setSessionsCursor(null);
     setSessionsError(null);
-    getAdminUserSessionsAction(selectedUserId, { limit: 50 }).then((result) => {
+    setSessionsLoading(tab === 'sessoes' && Boolean(sessionUserId));
+    if (tab !== 'sessoes' || !sessionUserId) return;
+    getAdminUserSessionsAction(sessionUserId, { limit: 50 }).then((result) => {
       if (generation !== sessionGeneration.current) return;
       if (result.ok) { setSessions(result.items); setSessionsCursor(result.next_cursor); }
       else { setSessions([]); setSessionsError(result.error); }
@@ -173,14 +181,14 @@ export function AdminUsuariosTabs({
       if (generation === sessionGeneration.current) setSessionsLoading(false);
     });
     return invalidateSessionReads;
-  }, [selectedUserId, tab, sessionsRetry, sessionRevision, invalidateSessionReads]);
+  }, [sessionUserId, tab, sessionsRetry, sessionRevision, invalidateSessionReads]);
 
   const loadMoreSessions = async () => {
-    if (!selectedUserId || !sessionsCursor || moreLoading) return;
+    if (!sessionUserId || !sessionsCursor || moreLoading) return;
     const generation = sessionGeneration.current;
     setMoreLoading(true); setSessionsError(null);
     try {
-      const result = await getAdminUserSessionsAction(selectedUserId, { cursor: sessionsCursor, limit: 50 });
+      const result = await getAdminUserSessionsAction(sessionUserId, { cursor: sessionsCursor, limit: 50 });
       if (generation !== sessionGeneration.current) return;
       if (result.ok) {
         setSessions((current) => Array.from(new Map([...current, ...result.items].map((item) => [item.id, item])).values()));
@@ -336,8 +344,8 @@ export function AdminUsuariosTabs({
       </div>
 
       <nav aria-label="Paginação de usuários" className="flex items-center gap-4 pt-3 text-sm">
-        {cursor ? <Link href={`/admin/usuarios?${new URLSearchParams([...returnQuery].filter(([key]) => key !== 'cursor'))}`} className="text-primary">Início</Link> : null}
-        {nextCursor ? <Link href={`/admin/usuarios?${new URLSearchParams([...returnQuery].filter(([key]) => key !== 'cursor').concat([['cursor', nextCursor]]))}`} className="text-primary">Próxima página</Link> : null}
+        {cursor ? <Link href={paginationHref()} onClick={(event) => { if (!allowLeaveDraft()) event.preventDefault(); }} className="text-primary">Início</Link> : null}
+        {nextCursor ? <Link href={paginationHref(nextCursor)} onClick={(event) => { if (!allowLeaveDraft()) event.preventDefault(); }} className="text-primary">Próxima página</Link> : null}
         <span>{total} usuários no filtro</span>
       </nav>
 
@@ -478,7 +486,7 @@ export function AdminUsuariosTabs({
           <SectionMessage section="user-sessions" activeSection={activeSection} status={status} message={message} />
           <label className="block max-w-lg text-sm text-fg-muted">
             Usuário para consultar sessões
-            <select value={selectedUserId ?? ''} onChange={(event) => switchUser(event.target.value)}
+            <select value={sessionUserId ?? ''} onChange={(event) => switchUser(event.target.value)}
               className={`${selectClass} mt-1 w-full`}>
               <option value="">Selecione um usuário</option>
               {users.map((user) => <option key={user.id} value={user.id}>{user.display_name || user.email} ({user.email})</option>)}
