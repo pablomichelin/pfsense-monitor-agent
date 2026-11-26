@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { elements, sourceLoader, textOf, uiMocks } from './source-harness.mjs';
+import { elements, installBrowserFixture, sourceLoader, textOf, uiMocks } from './source-harness.mjs';
 
 class ApiError extends Error {
   constructor(status) {
@@ -65,4 +65,29 @@ test('inventory access keeps scope selectors and firewall links', async () => {
   assert.equal(elements(tree).find((item) => item.type === 'hero').props.aside.props.realtimeEnabled, true);
   assert.ok(elements(tree).some((item) => item.type === 'select' && item.props.name === 'client_id'));
   assert.ok(elements(tree).some((item) => item.type === 'a' && item.props.href === '/nodes/qa-node'));
+});
+
+test('alert error keeps the uncertain operation visible and only retries the redirected read', (t) => {
+  let query = new URLSearchParams('alert_notice=unavailable');
+  const { default: AlertsError } = sourceLoader({
+    ...uiMocks,
+    '../error': { __esModule: true, default: 'page-error' },
+    'next/navigation': { useSearchParams: () => query },
+  })('app/alerts/error.tsx');
+  const reset = () => {};
+  const error = new Error('synthetic outage');
+  const browser = installBrowserFixture(t);
+  let reloads = 0;
+  browser.location = { reload: () => { reloads++; } };
+  const render = () => AlertsError({ reset, error });
+  const pageError = (tree) => elements(tree).find(element => element.type === 'page-error');
+  const warning = /Não foi possível confirmar a operação nem recarregar a lista/;
+  const uncertain = render();
+  assert.match(textOf(uncertain), warning);
+  pageError(uncertain).props.reset();
+  assert.equal(reloads, 1);
+  query = new URLSearchParams();
+  const unrelated = render();
+  assert.doesNotMatch(textOf(unrelated), warning);
+  assert.equal(pageError(unrelated).props.reset, reset);
 });
