@@ -15,6 +15,8 @@ import {
   requestPfsenseUpgradeAction,
 } from '@/lib/pfsense-upgrade';
 import { formatDateTime } from '@/lib/format';
+import { useScopedRead } from '@/lib/use-scoped-read';
+import { useUpgradeReceipt } from '@/lib/use-upgrade-receipt';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -22,6 +24,48 @@ import { Card } from '@/components/ui/card';
 const ACTIVE_STATUSES = new Set(['pending', 'picked_up', 'running']);
 const POLL_INTERVAL_MS = 12_000;
 const REFRESH_POLL_INTERVAL_MS = 8_000;
+
+const firmwareCheckSettings = {
+  refresh: {
+    requestedKey: 'force_check_requested_at',
+    pendingKey: 'force_check_pending',
+    timeoutMessage: 'Ainda aguardando o agente. O próximo heartbeat deve concluir a checagem.',
+  },
+  repair: {
+    requestedKey: 'repair_requested_at',
+    pendingKey: 'repair_pending',
+    timeoutMessage: 'Ainda aguardando o agente concluir o reparo. O próximo heartbeat deve atualizar o status.',
+  },
+  branch: {
+    requestedKey: 'set_branch_requested_at',
+    pendingKey: 'set_branch_pending',
+    timeoutMessage: 'Ainda aguardando o agente apontar o branch. O próximo heartbeat deve atualizar o status.',
+  },
+} as const;
+
+type FirmwareCheck = { requestedAt: string; deadline: number } & (
+  | { kind: 'refresh' | 'repair' }
+  | { kind: 'branch'; target: PfsenseUpdateBranchTarget }
+);
+
+function firmwareCheckResult(check: FirmwareCheck, status: PfsenseUpgradeStatusResponse): string {
+  const version = status.target_version ?? 'versão nova';
+  const error = status.update_check_error;
+  switch (check.kind) {
+    case 'refresh':
+      if (status.update_available === true) return `Atualização encontrada: ${version}.`;
+      if (error) return `Checagem concluída com erro: ${error}`;
+      return 'Checagem concluída. O pfSense não anunciou atualização nova.';
+    case 'repair':
+      if (status.update_available === true) return `Reparo concluído. Atualização encontrada: ${version}.`;
+      if (error) return `Reparo concluído com erro: ${error}`;
+      return 'Reparo concluído. O pfSense não anunciou atualização nova.';
+    case 'branch':
+      if (status.update_available === true) return `Branch apontado. Atualização encontrada: ${version}.`;
+      if (error) return `Branch apontado com erro: ${error}`;
+      return `Branch atual: ${status.firmware_branch ?? check.target}. O pfSense ainda não anunciou atualização neste train.`;
+  }
+}
 
 function errorClassLabel(
   errorClass: string | null,
@@ -272,47 +316,62 @@ export function NodePfsenseUpgradeSection({
   );
   const [settingBranch, setSettingBranch] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [firmwareCheck, setFirmwareCheck] = useState<FirmwareCheck | null>(null);
+  const [pollFailed, setPollFailed] = useState(false);
+  const { receipt, rememberReceipt, observeStatus } = useUpgradeReceipt();
+  const readStatus = useScopedRead(nodeId, initialStatus);
 
-  const refreshStatus = useCallback(async () => {
-    try {
-      const next = await pollPfsenseUpgradeStatusAction(nodeId);
-      setStatus(next);
-    } catch {
-      // polling silencioso
-    }
-  }, [nodeId]);
+  const applyStatus = useCallback((next: PfsenseUpgradeStatusResponse) => {
+    setStatus(next);
+    observeStatus(next);
+    setPollFailed(false);
+  }, [observeStatus]);
+
+  useEffect(() => { applyStatus(initialStatus); }, [applyStatus, initialStatus]);
+
+  const refreshStatus = useCallback((replace = false) => readStatus(
+    () => pollPfsenseUpgradeStatusAction(nodeId),
+    applyStatus,
+    () => setPollFailed(true),
+    replace,
+  ), [applyStatus, nodeId, readStatus]);
+
+  const checkingFirmware = firmwareCheck != null || status.force_check_pending
+    || status.repair_pending || status.set_branch_pending;
+  const trackingUpgrade = receipt != null || (status.active_command != null
+    && ACTIVE_STATUSES.has(status.active_command.status));
+  const tracking = trackingUpgrade || checkingFirmware
+    || ['checking', 'waiting'].includes(status.update_details?.status ?? '');
 
   useEffect(() => {
-    const upgradeActive =
-      status.active_command != null &&
-      ACTIVE_STATUSES.has(status.active_command.status);
-    if (
-      !upgradeActive &&
-      !status.force_check_pending &&
-      !status.repair_pending &&
-      !status.set_branch_pending &&
-      !['checking', 'waiting'].includes(status.update_details?.status ?? '')
-    ) {
-      return;
-    }
+    if (!tracking || submitting) return;
 
     const timer = window.setInterval(() => {
       void refreshStatus();
-    }, status.force_check_pending ||
-      status.repair_pending ||
-      status.set_branch_pending
-      ? REFRESH_POLL_INTERVAL_MS
-      : POLL_INTERVAL_MS);
+    }, checkingFirmware ? REFRESH_POLL_INTERVAL_MS : POLL_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
-  }, [
-    refreshStatus,
-    status.active_command,
-    status.force_check_pending,
-    status.repair_pending,
-    status.set_branch_pending,
-    status.update_details?.status,
-  ]);
+  }, [checkingFirmware, refreshStatus, submitting, tracking]);
+
+  useEffect(() => {
+    if (!firmwareCheck) return;
+    const settings = firmwareCheckSettings[firmwareCheck.kind];
+    const checkedAt = status.update_checked_at;
+    if (status[settings.requestedKey] === firmwareCheck.requestedAt
+      && !status[settings.pendingKey]
+      && checkedAt
+      && Date.parse(checkedAt) > Date.parse(firmwareCheck.requestedAt)) {
+      setRefreshMessage(firmwareCheckResult(firmwareCheck, status));
+      setFirmwareCheck(null);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setRefreshMessage(settings.timeoutMessage);
+      setFirmwareCheck(null);
+    }, Math.max(0, firmwareCheck.deadline - Date.now()));
+    return () => window.clearTimeout(timeout);
+  }, [firmwareCheck, status]);
 
   const blockReason = useMemo(() => {
     if (!status.enabled) {
@@ -346,6 +405,7 @@ export function NodePfsenseUpgradeSection({
     status.enabled &&
     status.update_available === true &&
     !status.active_command &&
+    !receipt &&
     canRunUpgrade &&
     status.agent_version_supported &&
     !status.ha_blocked;
@@ -358,6 +418,9 @@ export function NodePfsenseUpgradeSection({
     confirmationMatches(status.hostname, confirmText) &&
     (!needsBackupOverride || ackNoBackup);
 
+  const checking = refreshingCheck || firmwareCheck?.kind === 'refresh';
+  const repairingRepo = repairing || firmwareCheck?.kind === 'repair';
+  const switchingBranch = settingBranch || firmwareCheck?.kind === 'branch';
   const refreshCheckTitle = !canRunUpgrade
     ? 'Sem permissão para disparar upgrade'
     : !status.refresh_check_supported
@@ -365,7 +428,7 @@ export function NodePfsenseUpgradeSection({
       : status.force_check_pending ||
           status.repair_pending ||
           status.set_branch_pending ||
-          refreshingCheck
+          checking
         ? 'Aguardando o agente atualizar os repositórios e rechecar'
         : undefined;
 
@@ -373,7 +436,7 @@ export function NodePfsenseUpgradeSection({
     ? 'Sem permissão para disparar upgrade'
     : !status.repair_supported
       ? `Agente ${status.repair_min_agent_version}+ necessário para reparar o repositório pkg`
-      : status.repair_pending || repairing
+      : status.repair_pending || repairingRepo
         ? 'Aguardando o agente executar o reparo oficial do repositório'
         : undefined;
 
@@ -381,7 +444,7 @@ export function NodePfsenseUpgradeSection({
     ? 'Sem permissão para disparar upgrade'
     : !status.set_branch_supported
       ? `Agente ${status.set_branch_min_agent_version}+ necessário para apontar o firmware branch`
-      : status.set_branch_pending || settingBranch
+      : status.set_branch_pending || switchingBranch
         ? 'Aguardando o agente apontar o branch e rechecar'
         : undefined;
 
@@ -389,20 +452,16 @@ export function NodePfsenseUpgradeSection({
     refreshingCheck ||
     repairing ||
     settingBranch ||
-    status.force_check_pending ||
-    status.repair_pending ||
-    status.set_branch_pending;
+    checkingFirmware;
 
   const handleRefreshCheck = async () => {
     setRefreshingCheck(true);
     setRefreshMessage(null);
     setError(null);
-    const previousCheckedAt = status.update_checked_at;
     try {
       const result = await requestPfsenseUpdateRefreshCheckAction(nodeId);
       if (!result.ok) {
         setError(result.error);
-        setRefreshingCheck(false);
         return;
       }
 
@@ -410,32 +469,11 @@ export function NodePfsenseUpgradeSection({
         'Pedido enviado. O agente vai atualizar os repositórios pkg no próximo heartbeat (~30s).',
       );
 
-      const deadline = Date.now() + 180_000;
-      while (Date.now() < deadline) {
-        await new Promise((resolve) =>
-          window.setTimeout(resolve, REFRESH_POLL_INTERVAL_MS),
-        );
-        const next = await pollPfsenseUpgradeStatusAction(nodeId);
-        setStatus(next);
-        const checkChanged =
-          next.update_checked_at != null &&
-          next.update_checked_at !== previousCheckedAt;
-        if (checkChanged && !next.force_check_pending) {
-          setRefreshMessage(
-            next.update_available === true
-              ? `Atualização encontrada: ${next.target_version ?? 'versão nova'}.`
-              : next.update_check_error
-                ? `Checagem concluída com erro: ${next.update_check_error}`
-                : 'Checagem concluída. O pfSense não anunciou atualização nova.',
-          );
-          setRefreshingCheck(false);
-          return;
-        }
-      }
-
-      setRefreshMessage(
-        'Ainda aguardando o agente. O próximo heartbeat deve concluir a checagem.',
-      );
+      setFirmwareCheck({
+        kind: 'refresh',
+        requestedAt: result.data.requested_at,
+        deadline: Date.now() + 180_000,
+      });
     } catch (refreshError) {
       setError(
         refreshError instanceof Error
@@ -456,12 +494,10 @@ export function NodePfsenseUpgradeSection({
     setRepairing(true);
     setRefreshMessage(null);
     setError(null);
-    const previousCheckedAt = status.update_checked_at;
     try {
       const result = await requestPfsenseRepoRepairAction(nodeId);
       if (!result.ok) {
         setError(result.error);
-        setRepairing(false);
         return;
       }
 
@@ -471,32 +507,11 @@ export function NodePfsenseUpgradeSection({
         'Reparo pedido. O agente vai limpar o cache pkg e reinstalar pfSense-repo / pfSense-upgrade no próximo heartbeat.',
       );
 
-      const deadline = Date.now() + 240_000;
-      while (Date.now() < deadline) {
-        await new Promise((resolve) =>
-          window.setTimeout(resolve, REFRESH_POLL_INTERVAL_MS),
-        );
-        const next = await pollPfsenseUpgradeStatusAction(nodeId);
-        setStatus(next);
-        const checkChanged =
-          next.update_checked_at != null &&
-          next.update_checked_at !== previousCheckedAt;
-        if (checkChanged && !next.repair_pending) {
-          setRefreshMessage(
-            next.update_available === true
-              ? `Reparo concluído. Atualização encontrada: ${next.target_version ?? 'versão nova'}.`
-              : next.update_check_error
-                ? `Reparo concluído com erro: ${next.update_check_error}`
-                : 'Reparo concluído. O pfSense não anunciou atualização nova.',
-          );
-          setRepairing(false);
-          return;
-        }
-      }
-
-      setRefreshMessage(
-        'Ainda aguardando o agente concluir o reparo. O próximo heartbeat deve atualizar o status.',
-      );
+      setFirmwareCheck({
+        kind: 'repair',
+        requestedAt: result.data.requested_at,
+        deadline: Date.now() + 240_000,
+      });
     } catch (repairError) {
       setError(
         repairError instanceof Error
@@ -517,12 +532,10 @@ export function NodePfsenseUpgradeSection({
     setSettingBranch(true);
     setRefreshMessage(null);
     setError(null);
-    const previousCheckedAt = status.update_checked_at;
     try {
       const result = await requestPfsenseSetBranchAction(nodeId, branchTarget);
       if (!result.ok) {
         setError(result.error);
-        setSettingBranch(false);
         return;
       }
 
@@ -532,32 +545,12 @@ export function NodePfsenseUpgradeSection({
         `Pedido enviado. O agente vai apontar o branch para ${branchTargetLabel(branchTarget)} e rechecar no próximo heartbeat.`,
       );
 
-      const deadline = Date.now() + 240_000;
-      while (Date.now() < deadline) {
-        await new Promise((resolve) =>
-          window.setTimeout(resolve, REFRESH_POLL_INTERVAL_MS),
-        );
-        const next = await pollPfsenseUpgradeStatusAction(nodeId);
-        setStatus(next);
-        const checkChanged =
-          next.update_checked_at != null &&
-          next.update_checked_at !== previousCheckedAt;
-        if (checkChanged && !next.set_branch_pending) {
-          setRefreshMessage(
-            next.update_available === true
-              ? `Branch apontado. Atualização encontrada: ${next.target_version ?? 'versão nova'}.`
-              : next.update_check_error
-                ? `Branch apontado com erro: ${next.update_check_error}`
-                : `Branch atual: ${next.firmware_branch ?? branchTarget}. O pfSense ainda não anunciou atualização neste train.`,
-          );
-          setSettingBranch(false);
-          return;
-        }
-      }
-
-      setRefreshMessage(
-        'Ainda aguardando o agente apontar o branch. O próximo heartbeat deve atualizar o status.',
-      );
+      setFirmwareCheck({
+        kind: 'branch',
+        requestedAt: result.data.requested_at,
+        deadline: Date.now() + 240_000,
+        target: branchTarget,
+      });
     } catch (branchError) {
       setError(
         branchError instanceof Error
@@ -573,8 +566,11 @@ export function NodePfsenseUpgradeSection({
     setSubmitting(true);
     setError(null);
     try {
-      const latest = await pollPfsenseUpgradeStatusAction(nodeId);
-      setStatus(latest);
+      const latest = await refreshStatus(true);
+      if (!latest) {
+        setError('Não foi possível confirmar o estado atual do pfSense. Tente novamente.');
+        return;
+      }
 
       if (latest.update_available !== true) {
         setError(
@@ -590,14 +586,15 @@ export function NodePfsenseUpgradeSection({
 
       if (!result.ok) {
         setError(result.error);
-        await refreshStatus();
+        await refreshStatus(true);
         return;
       }
 
+      rememberReceipt(result.data);
       setModalOpen(false);
       setConfirmText('');
       setAckNoBackup(false);
-      await refreshStatus();
+      await refreshStatus(true);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -651,6 +648,12 @@ export function NodePfsenseUpgradeSection({
 
         {activeLabel ? (
           <Alert variant="warning">{activeLabel}</Alert>
+        ) : null}
+        {receipt && !activeLabel ? (
+          <Alert variant="info">Solicitação aceita. Aguardando o status da atualização.</Alert>
+        ) : null}
+        {pollFailed && tracking ? (
+          <Alert variant="warning">Consulta temporariamente indisponível. O acompanhamento continua.</Alert>
         ) : null}
 
         {hasAlternativeFirmware(status) ? (
@@ -750,7 +753,7 @@ export function NodePfsenseUpgradeSection({
             title={refreshCheckTitle}
             onClick={() => void handleRefreshCheck()}
           >
-            {refreshingCheck || status.force_check_pending
+            {checking || status.force_check_pending
               ? 'Verificando...'
               : 'Atualizar verificação'}
           </Button>
@@ -765,7 +768,7 @@ export function NodePfsenseUpgradeSection({
               setRepairModalOpen(true);
             }}
           >
-            {repairing || status.repair_pending
+            {repairingRepo || status.repair_pending
               ? 'Reparando...'
               : 'Reparar repositório'}
           </Button>
@@ -781,7 +784,7 @@ export function NodePfsenseUpgradeSection({
               setBranchModalOpen(true);
             }}
           >
-            {settingBranch || status.set_branch_pending
+            {switchingBranch || status.set_branch_pending
               ? 'Apontando branch...'
               : 'Apontar branch'}
           </Button>
@@ -793,12 +796,7 @@ export function NodePfsenseUpgradeSection({
             title={!showUpgradeButton ? (blockReason ?? undefined) : undefined}
             onClick={async () => {
               setError(null);
-              try {
-                const latest = await pollPfsenseUpgradeStatusAction(nodeId);
-                setStatus(latest);
-              } catch {
-                // mantém status atual se o refresh falhar
-              }
+              await refreshStatus(true);
               setModalOpen(true);
             }}
           >

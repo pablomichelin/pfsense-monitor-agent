@@ -24,7 +24,10 @@ export function useScopedRead(key: string, snapshot?: unknown) {
     const isCurrent = () => current.current === scope && scope.active === token;
     try {
       const result = await load();
-      if (isCurrent()) onSuccess(result);
+      if (isCurrent()) {
+        onSuccess(result);
+        return result;
+      }
     } catch (error) {
       if (isCurrent()) onError(error);
     } finally {

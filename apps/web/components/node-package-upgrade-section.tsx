@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { PackageUpgradeRequestResponse, PackageUpgradeStatusResponse } from '@/lib/api';
+import type { PackageUpgradeStatusResponse } from '@/lib/api';
 import {
   pollPackageUpgradeStatusAction,
   requestPackageUpgradeAction,
 } from '@/lib/package-upgrade';
 import { formatDateTime } from '@/lib/format';
 import { useScopedRead } from '@/lib/use-scoped-read';
+import { useUpgradeReceipt } from '@/lib/use-upgrade-receipt';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -48,19 +49,15 @@ export function NodePackageUpgradeSection({
   const [confirmText, setConfirmText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [receipt, setReceipt] = useState<Pick<PackageUpgradeRequestResponse, 'command_id' | 'expires_at'> | null>(null);
+  const { receipt, rememberReceipt, observeStatus } = useUpgradeReceipt();
   const [pollFailed, setPollFailed] = useState(false);
   const readStatus = useScopedRead(nodeId, initialStatus);
 
   const applyStatus = useCallback((next: PackageUpgradeStatusResponse) => {
     setStatus(next);
-    setReceipt((current) => current && (
-      next.active_command?.command_id === current.command_id
-      || next.last_result?.command_id === current.command_id
-      || Date.parse(current.expires_at) <= Date.now()
-    ) ? null : current);
+    observeStatus(next);
     setPollFailed(false);
-  }, []);
+  }, [observeStatus]);
 
   useEffect(() => { applyStatus(initialStatus); }, [applyStatus, initialStatus]);
 
@@ -122,7 +119,7 @@ export function NodePackageUpgradeSection({
         return;
       }
 
-      setReceipt(result.data);
+      rememberReceipt(result.data);
       setModalOpen(false);
       setConfirmText('');
       await refreshStatus(true);

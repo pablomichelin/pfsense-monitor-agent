@@ -287,7 +287,7 @@ export function NodeUpdatesSection({
             label: 'pfSense OS',
             description: 'Sistema operacional',
             content: upgradeStatus ? (
-              <NodePfsenseUpgradeSection nodeId={node.id} nodeEffectiveStatus={node.effective_status} canRunUpgrade={canRunUpgrade} initialStatus={upgradeStatus} />
+              <NodePfsenseUpgradeSection key={node.id} nodeId={node.id} nodeEffectiveStatus={node.effective_status} canRunUpgrade={canRunUpgrade} initialStatus={upgradeStatus} />
             ) : <Alert variant="warning">A consulta do pfSense OS está indisponível.</Alert>,
           },
         ]}
