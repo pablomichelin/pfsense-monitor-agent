@@ -848,6 +848,54 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     });
   });
 
+  await run('maintenance saves atomically and refreshes the scoped dashboard after commit', async t => {
+    const f = await fixture(t);
+    const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const { DashboardService } = loadServiceModule('dashboard/dashboard.service');
+    const { RealtimeService } = loadServiceModule('realtime/realtime.service');
+    const site = await db.site.create({ data: { clientId: f.client.id, code: 'qa', name: f.run } });
+    const node = await db.node.create({ data: {
+      siteId: site.id, nodeUid: randomUUID(), hostname: 'qa.invalid', status: 'online', lastSeenAt: new Date(),
+    } });
+    const policy = new AccessPolicyService(db);
+    const realtime = new RealtimeService();
+    const service = (connection, audit = new AuditService(connection)) =>
+      new AdminService(connection, {}, {}, policy, {}, audit, {}, {}, {}, realtime);
+    const editor = { userId: f.users[0].id, role: 'superadmin' };
+    const reader = { userId: f.users[2].id, role: 'readonly' };
+    const dashboard = new DashboardService(db, policy, { getPublishedVersion: () => '0.5.35' }, realtime);
+    const read = async () => {
+      const summary = await dashboard.getSummary(reader);
+      return [summary.totals.online, summary.totals.maintenance];
+    };
+    assert.deepEqual(await read(), [1, 0]);
+    const failAudit = async () => { throw new Error('synthetic maintenance audit failure'); };
+    const failingConnection = new Proxy(db, { get(target, key) {
+      if (key === '$transaction') return (callback, options) => target.$transaction(tx =>
+        callback(new Proxy(tx, { get(client, property) {
+          if (property === 'auditLog') return { create: failAudit };
+          return typeof client[property] === 'function' ? client[property].bind(client) : client[property];
+        } })), options);
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    } });
+    const failed = service(failingConnection, { record: failAudit });
+    const save = (admin, enabled) => admin.setNodeMaintenance(node.id, enabled, editor.userId, undefined, editor);
+    await assert.rejects(save(failed, true), /synthetic maintenance audit failure/);
+    assert.equal((await db.node.findUniqueOrThrow({ where: { id: node.id } })).maintenanceMode, false);
+    assert.equal(realtime.getDashboardRevision(), 0);
+    const [first, second] = await Promise.all([save(service(db), true), save(service(peer), true)]);
+    assert.ok(first.maintenance_mode && second.maintenance_mode);
+    assert.deepEqual(await read(), [0, 1]);
+    assert.equal(realtime.getDashboardRevision(), 1);
+    await save(service(db), false);
+    assert.deepEqual(await read(), [1, 0]);
+    assert.equal(realtime.getDashboardRevision(), 2);
+    const events = await db.auditLog.findMany({ where: { actorId: editor.userId, targetId: node.id },
+      select: { action: true }, orderBy: { createdAt: 'asc' } });
+    assert.deepEqual(events.map(event => event.action), ['admin.node.maintenance.enable', 'admin.node.maintenance.disable']);
+  });
+
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {
       const f = await fixture(t), locked = f.gate(), release = f.gate(), pid = f.gate(), atLock = f.gate();

@@ -39,6 +39,7 @@ import { CreateRoleDto } from './dto/create-role.dto';
 import { SetRolePermissionsDto } from './dto/set-role-permissions.dto';
 import { NodesService } from '../nodes/nodes.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { CreateNodeDto } from './dto/create-node.dto';
 import { CreateSiteDto } from './dto/create-site.dto';
@@ -142,6 +143,7 @@ export class AdminService {
     private readonly permissionsService: PermissionsService,
     private readonly packageReleaseService: PackageReleaseService,
     private readonly mfaPolicyService: MfaPolicyService,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   private invalidateNodesFiltersCache(): void {
@@ -2340,47 +2342,33 @@ export class AdminService {
   }> {
     await this.withNodeScope(scopeActor, nodeId);
 
-    const node = await this.prisma.node.findUnique({
-      where: {
-        id: nodeId,
-      },
-      select: {
-        id: true,
-        maintenanceMode: true,
-      },
-    });
-    if (!node) {
-      throw new NotFoundException('node not found');
-    }
-
-    const updatedNode = await this.prisma.node.update({
-      where: {
-        id: nodeId,
-      },
-      data: {
-        maintenanceMode,
-      },
-      select: {
-        id: true,
-        maintenanceMode: true,
-        updatedAt: true,
-      },
-    });
-
-    if (node.maintenanceMode !== maintenanceMode) {
-      await this.writeAuditLog({
-        actorId,
-        action: maintenanceMode
-          ? 'admin.node.maintenance.enable'
-          : 'admin.node.maintenance.disable',
-        targetType: 'node',
-        targetId: nodeId,
-        ipAddress: actorIp,
-        metadataJson: {
-          maintenance_mode: maintenanceMode,
-        } as Prisma.JsonObject,
+    const { updatedNode, changed } = await this.prisma.$transaction(async (tx) => {
+      const [node] = await tx.$queryRaw<Array<{ maintenanceMode: boolean }>>`
+        SELECT maintenance_mode AS "maintenanceMode" FROM nodes
+        WHERE id = ${nodeId}::uuid FOR NO KEY UPDATE
+      `;
+      if (!node) {
+        throw new NotFoundException('node not found');
+      }
+      const updatedNode = await tx.node.update({
+        where: { id: nodeId },
+        data: { maintenanceMode },
+        select: { id: true, maintenanceMode: true, updatedAt: true },
       });
-    }
+      const changed = node.maintenanceMode !== maintenanceMode;
+      if (changed) {
+        await this.writeAuditLog({
+          actorId,
+          action: maintenanceMode ? 'admin.node.maintenance.enable' : 'admin.node.maintenance.disable',
+          targetType: 'node',
+          targetId: nodeId,
+          ipAddress: actorIp,
+          metadataJson: { maintenance_mode: maintenanceMode },
+        }, tx);
+      }
+      return { updatedNode, changed };
+    });
+    if (changed) this.realtimeService.invalidateDashboardCache();
 
     return {
       node_id: updatedNode.id,
