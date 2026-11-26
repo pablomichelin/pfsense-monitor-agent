@@ -410,6 +410,57 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     });
   });
 
+  await run('lifecycle reconciles other firewalls while one is locked', async t => {
+    const f = await fixture(t);
+    const { NodeLifecycleService } = loadServiceModule('nodes/node-lifecycle.service');
+    const { NodeCommandsService } = loadServiceModule('node-commands/node-commands.service');
+    const site = await db.site.create({ data: { clientId: f.client.id, code: 'qa', name: f.run } });
+    const lastSeenAt = new Date(Date.now() - 600_000);
+    const nodes = await Promise.all(['a-locked', 'b-unlocked'].map(hostname => db.node.create({
+      data: { siteId: site.id, nodeUid: randomUUID(), hostname, status: 'online', lastSeenAt },
+    })));
+    const ids = nodes.map(node => node.id);
+    const client = new Proxy(db, { get(target, key) {
+      if (key === 'node') return { findMany: args => target.node.findMany({
+        ...args, where: { id: { in: ids } }, orderBy: { hostname: 'asc' },
+      }) };
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    } });
+    const events = [], alerts = [];
+    const lifecycle = new NodeLifecycleService(client,
+      { publishDashboardRefresh: event => events.push(event.source) },
+      new NodeCommandsService(db, {}),
+      { dispatchForAlertIds: ids => alerts.push(...ids) });
+    const locked = f.gate(), release = f.gate();
+    const writer = f.track(peer.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM nodes WHERE id = ${ids[0]}::uuid FOR UPDATE`;
+      locked.resolve();
+      await release.promise;
+    }, { timeout: 10_000 }));
+    await locked.promise;
+    const reconcile = f.track(lifecycle.reconcileStatuses('interval'));
+    const read = async () => (await observer.node.findMany({
+      where: { id: { in: ids } }, orderBy: { hostname: 'asc' },
+      select: { status: true, _count: { select: { alerts: true } } },
+    })).map(node => [node.status, node._count.alerts]);
+    let during;
+    try {
+      const completed = await Promise.race([reconcile.then(() => true), delay(1500, false)]);
+      during = { completed, nodes: await read(), events: events.length, dispatched: alerts.length };
+    } finally {
+      release.resolve();
+    }
+    await writer;
+    await reconcile;
+    assert.deepEqual(during, {
+      completed: true, nodes: [['online', 0], ['offline', 1]], events: 1, dispatched: 1,
+    });
+    await lifecycle.reconcileStatuses('interval');
+    assert.deepEqual(await read(), [['offline', 1], ['offline', 1]]);
+    assert.deepEqual(events, ['node_reconciled', 'node_reconciled']);
+    assert.equal(new Set(alerts).size, 2);
+  });
+
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {
       const f = await fixture(t), locked = f.gate(), release = f.gate(), pid = f.gate(), atLock = f.gate();

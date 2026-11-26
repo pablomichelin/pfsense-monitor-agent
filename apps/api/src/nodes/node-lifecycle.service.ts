@@ -107,10 +107,10 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
             last_seen_at: Date | null;
           }>>`
             SELECT status, maintenance_mode, last_seen_at
-            FROM nodes WHERE id = ${node.id}::uuid FOR UPDATE
+            FROM nodes WHERE id = ${node.id}::uuid FOR UPDATE SKIP LOCKED
           `;
-          // The scan may have waited behind an accepted heartbeat or maintenance update.
-          // Leave that node for the next scan instead of publishing an obsolete state.
+          // Leave a busy node for the next scan so the rest of the fleet can progress.
+          // An already committed update can also make the scan snapshot obsolete.
           if (
             !current ||
             current.status !== node.status ||
