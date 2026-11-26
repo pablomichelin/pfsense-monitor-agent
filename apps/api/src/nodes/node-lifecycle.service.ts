@@ -17,6 +17,7 @@ import { NotificationsDispatcherService } from '../notifications/notifications.s
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { deriveEffectiveNodeStatus } from './node-status.util';
+import { calculateNodeStatusFromSnapshot } from './node-status-snapshot';
 
 @Injectable()
 export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
@@ -94,7 +95,8 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
         const isOffline = !node.maintenanceMode && effectiveStatus === NodeStatus.offline;
         const hasOpenHeartbeatAlert = !!heartbeatAlert && heartbeatAlert.status !== AlertStatus.resolved;
         const shouldKeepHeartbeatAlertOpen = isOffline && !activeUpgradeNodeIds.has(node.id);
-        const shouldUpdateNodeStatus = node.status !== effectiveStatus;
+        const recoverFromMaintenance = !node.maintenanceMode && effectiveStatus === NodeStatus.maintenance;
+        const shouldUpdateNodeStatus = node.status !== effectiveStatus || recoverFromMaintenance;
 
         if (!shouldUpdateNodeStatus && hasOpenHeartbeatAlert === shouldKeepHeartbeatAlertOpen) {
           continue;
@@ -126,12 +128,15 @@ export class NodeLifecycleService implements OnModuleInit, OnModuleDestroy {
           const keepHeartbeatAlertOpen = isOffline && !currentUpgradeIds?.has(node.id);
 
           if (shouldUpdateNodeStatus) {
+            const status = recoverFromMaintenance
+              ? await calculateNodeStatusFromSnapshot(tx, node.id)
+              : effectiveStatus;
             await tx.node.update({
               where: {
                 id: node.id,
               },
               data: {
-                status: effectiveStatus,
+                status,
               },
             });
           }

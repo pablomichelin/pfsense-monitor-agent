@@ -1050,6 +1050,47 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.equal(f.realtime.getDashboardRevision(), 3);
   });
 
+  await run('maintenance exit restores the observed health from stored telemetry', async t => {
+    const f = await fixture(t);
+    const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const { NodeLifecycleService } = loadServiceModule('nodes/node-lifecycle.service');
+    const { NodeCommandsService } = loadServiceModule('node-commands/node-commands.service');
+    const { RealtimeService } = loadServiceModule('realtime/realtime.service');
+    const site = await db.site.create({ data: { clientId: f.client.id, code: 'qa', name: f.run } });
+    const now = new Date();
+    const [healthy, degraded, expired, uncontacted, legacy] = await Promise.all([
+      ['qa-healthy', now, true], ['qa-degraded', now, true],
+      ['qa-expired', new Date(now.getTime() - 600_000), true],
+      ['qa-uncontacted', null, true], ['qa-legacy', now, false],
+    ].map(([hostname, lastSeenAt, maintenanceMode]) => db.node.create({
+      data: { siteId: site.id, nodeUid: randomUUID(), hostname,
+        status: 'maintenance', lastSeenAt, maintenanceMode },
+    })));
+    await db.nodeGatewayStatus.create({ data: {
+      nodeId: degraded.id, gatewayName: 'QA_WAN', status: 'down', lossPercent: 100, observedAt: now,
+    } });
+    await db.nodeServiceStatus.create({ data: {
+      nodeId: legacy.id, serviceName: 'openvpn', status: 'stopped', observedAt: now,
+    } });
+    const policy = new AccessPolicyService(db);
+    const realtime = new RealtimeService();
+    const admin = new AdminService(db, {}, {}, policy, {}, new AuditService(db), {}, {}, {}, realtime);
+    const actor = { userId: f.users[0].id, role: 'superadmin' };
+    const ids = [healthy, degraded, expired, uncontacted].map(node => node.id);
+    const before = await Promise.all(ids.map(id => admin.setNodeMaintenance(id, false, actor.userId, undefined, actor)));
+    assert.ok(before.every(result => !result.maintenance_mode));
+    const read = id => db.node.findUniqueOrThrow({ where: { id }, select: { status: true } }).then(node => node.status);
+    const immediately = await Promise.all(ids.map(read));
+    const lifecycle = new NodeLifecycleService(db, realtime, new NodeCommandsService(db, {}), { dispatchForAlertIds() {} });
+    await lifecycle.reconcileStatuses('interval');
+    const legacyStatus = await read(legacy.id);
+    assert.deepEqual({ immediately, legacyStatus }, {
+      immediately: ['online', 'degraded', 'offline', 'unknown'],
+      legacyStatus: 'degraded',
+    });
+  });
+
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {
       const f = await fixture(t), locked = f.gate(), release = f.gate(), pid = f.gate(), atLock = f.gate();

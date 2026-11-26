@@ -27,12 +27,12 @@ import {
 import {
   buildGatewayAlert,
   buildServiceAlert,
-  calculateNodeStatus,
   isGatewayProblem,
   isServiceProblem,
   mapGatewayStatus,
   mapServiceStatus,
 } from '../nodes/node-status.util';
+import { calculateNodeStatusFromSnapshot } from '../nodes/node-status-snapshot';
 import {
   mergeBackupSchedulePolicy,
   normalizeBackupSchedulePolicy,
@@ -680,47 +680,10 @@ export class IngestService {
       return NodeStatus.maintenance;
     }
 
-    // Heartbeat light: recalcular a partir do ultimo snapshot persistido em vez de
-    // preservar offline/degraded do lifecycle (comunicacao recente = node vivo).
-    let services = input.services;
-    let gateways = input.gateways;
-
-    if (!input.servicesProvided || !input.gatewaysProvided) {
-      const [persistedServices, persistedGateways] = await Promise.all([
-        input.servicesProvided
-          ? Promise.resolve([])
-          : tx.nodeServiceStatus.findMany({
-              where: { nodeId: input.nodeId },
-            }),
-        input.gatewaysProvided
-          ? Promise.resolve([])
-          : tx.nodeGatewayStatus.findMany({
-              where: { nodeId: input.nodeId },
-            }),
-      ]);
-
-      if (!input.servicesProvided) {
-        services = persistedServices.map((service) => ({
-          name: service.serviceName,
-          status: service.status,
-          message: service.message ?? undefined,
-        }));
-      }
-
-      if (!input.gatewaysProvided) {
-        gateways = persistedGateways.map((gateway) => ({
-          name: gateway.gatewayName,
-          status: gateway.status,
-          latency_ms: gateway.latencyMs ?? undefined,
-          loss_percent: gateway.lossPercent ?? undefined,
-        }));
-      }
-    }
-
-    return calculateNodeStatus({
-      maintenanceMode: input.maintenanceMode,
-      services,
-      gateways,
+    // O heartbeat parcial usa o último snapshot para os campos omitidos.
+    return calculateNodeStatusFromSnapshot(tx, input.nodeId, {
+      services: input.servicesProvided ? input.services : undefined,
+      gateways: input.gatewaysProvided ? input.gateways : undefined,
     });
   }
 
