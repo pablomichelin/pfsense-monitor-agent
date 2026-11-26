@@ -280,7 +280,7 @@ export class AlertsService {
     const acknowledgedAt = new Date();
     const acknowledgedBy = actor.email?.trim() || actor.userId || 'unknown';
 
-    await this.updateActiveAlert(alertId, {
+    const existing = await this.updateActiveAlert(alertId, {
       status: AlertStatus.acknowledged,
       acknowledgedAt,
       acknowledgedBy,
@@ -296,8 +296,8 @@ export class AlertsService {
     return {
       alert_id: alertId,
       status: AlertStatus.acknowledged,
-      acknowledged_at: acknowledgedAt.toISOString(),
-      acknowledged_by: acknowledgedBy,
+      acknowledged_at: (existing?.at ?? acknowledgedAt).toISOString(),
+      acknowledged_by: existing?.by ?? acknowledgedBy,
     };
   }
 
@@ -372,19 +372,32 @@ export class AlertsService {
     conflictMessage: string,
     audit: {
       actorId?: string;
-      action: string;
+      action: 'alert.acknowledge' | 'alert.resolve';
       ipAddress?: string;
       metadataJson: Prisma.JsonObject;
     },
-  ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+  ): Promise<{ at: Date; by: string } | undefined> {
+    const acknowledging = audit.action === 'alert.acknowledge';
+    return this.prisma.$transaction(async (tx) => {
       const updated = await tx.alert.updateMany({
-        where: { id: alertId, status: { not: AlertStatus.resolved } },
+        where: {
+          id: alertId,
+          status: acknowledging ? AlertStatus.open : { not: AlertStatus.resolved },
+        },
         data: changes,
       });
       if (updated.count === 0) {
-        const exists = await tx.alert.findUnique({ where: { id: alertId }, select: { id: true } });
-        if (!exists) throw new NotFoundException('alert not found');
+        const current = await tx.alert.findUnique({
+          where: { id: alertId },
+          select: { status: true, acknowledgedAt: true, acknowledgedBy: true },
+        });
+        if (!current) throw new NotFoundException('alert not found');
+        if (acknowledging && current.status === AlertStatus.acknowledged) {
+          if (current.acknowledgedAt && current.acknowledgedBy) {
+            return { at: current.acknowledgedAt, by: current.acknowledgedBy };
+          }
+          throw new ConflictException('alert already acknowledged');
+        }
         throw new ConflictException(conflictMessage);
       }
 
