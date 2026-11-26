@@ -494,47 +494,42 @@ export class AdminService {
       throw new BadRequestException('superadmin permissions are immutable');
     }
 
-    const role = await this.prisma.role.findUnique({
-      where: { code },
-      select: { code: true, status: true },
-    });
-
-    if (!role || role.status !== EntityStatus.active) {
-      throw new NotFoundException('role not found');
-    }
-
     const permissionIds = [...new Set(dto.permission_ids.map((id) => id.trim()))];
-    const known = await this.prisma.permission.findMany({
-      where: { id: { in: permissionIds } },
-      select: { id: true },
-    });
 
-    if (known.length !== permissionIds.length) {
-      throw new BadRequestException('unknown permission id');
-    }
+    await this.prisma.$transaction(async (tx) => {
+      const [role] = await tx.$queryRaw<Array<{ status: EntityStatus }>>`
+        SELECT status FROM roles WHERE code = ${code} FOR UPDATE
+      `;
+      if (!role || role.status !== EntityStatus.active) {
+        throw new NotFoundException('role not found');
+      }
 
-    await this.prisma.$transaction([
-      this.prisma.rolePermission.deleteMany({ where: { role: code } }),
-      this.prisma.rolePermission.createMany({
+      const known = await tx.permission.findMany({
+        where: { id: { in: permissionIds } },
+        select: { id: true },
+      });
+      if (known.length !== permissionIds.length) {
+        throw new BadRequestException('unknown permission id');
+      }
+
+      await tx.rolePermission.deleteMany({ where: { role: code } });
+      await tx.rolePermission.createMany({
         data: permissionIds.map((permissionId) => ({
           role: code,
           permissionId,
         })),
-      }),
-    ]);
+      });
 
-    this.permissionsService.invalidateRoleCache(code);
-
-    await this.auditService.record({
-      actorId,
-      ipAddress,
-      action: 'role.permissions.update',
-      targetType: 'role',
-      targetId: code,
-      metadataJson: {
-        permission_count: permissionIds.length,
-      },
+      await this.auditService.record({
+        actorId,
+        ipAddress,
+        action: 'role.permissions.update',
+        targetType: 'role',
+        targetId: code,
+        metadataJson: { permission_count: permissionIds.length },
+      }, tx);
     });
+    this.permissionsService.invalidateRoleCache(code);
 
     return {
       role: code,

@@ -605,6 +605,110 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.deepEqual(events.map(event => event.metadataJson.mode).sort(), ['blocking', 'soft']);
   });
 
+  async function rolePermissionsFixture(t) {
+    const f = await fixture(t);
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const { PermissionsService } = loadServiceModule('auth/permissions.service');
+    const role = 'qa-role-' + randomUUID();
+    const each = [role + '-one', role + '-two'];
+    await db.role.create({ data: { code: role, label: role } });
+    t.after(async () => {
+      await db.role.delete({ where: { code: role } });
+      await db.permission.deleteMany({ where: { id: { in: each } } });
+    });
+    await db.permission.createMany({ data: each.map(id => ({ id, description: id })) });
+    const permissions = new PermissionsService(db);
+    const service = (connection, audit = new AuditService(connection), cache = permissions) =>
+      new AdminService(connection, {}, {}, {}, {}, audit, cache, {}, {});
+    const save = (admin, list) => admin.setRolePermissions(role, { permission_ids: list }, f.users[0].id);
+    const read = () => observer.rolePermission.findMany({
+      where: { role }, orderBy: { permissionId: 'asc' }, select: { permissionId: true },
+    }).then(items => items.map(item => item.permissionId));
+    return { ...f, role, permissions, each, service, save, read, PermissionsService };
+  }
+
+  await run('role permissions rollback and cache follow a committed audit', async t => {
+    const f = await rolePermissionsFixture(t);
+    const [first, second] = f.each;
+    await db.rolePermission.create({ data: { role: f.role, permissionId: first } });
+    assert.deepEqual(await f.permissions.getPermissionsForRole(f.role), [first]);
+    const invalidated = t.mock.method(f.permissions, 'invalidateRoleCache');
+    const failure = f.service(db, { record: async () => { throw new Error('synthetic role audit failure'); } });
+    await assert.rejects(f.save(failure, [second]), /synthetic role audit failure/);
+    assert.deepEqual(await f.read(), [first]);
+    assert.equal(invalidated.mock.callCount(), 0);
+    assert.deepEqual(await f.permissions.getPermissionsForRole(f.role), [first]);
+    const ok = await f.save(f.service(db), [second, second]);
+    assert.deepEqual(ok, { role: f.role, permission_ids: [second] });
+    assert.equal(invalidated.mock.callCount(), 1);
+    assert.deepEqual(await f.permissions.getPermissionsForRole(f.role), [second]);
+    assert.equal(await db.auditLog.count({ where: { targetId: f.role, action: 'role.permissions.update' } }), 1);
+  });
+
+  await run('role permissions concurrent replacements produce one whole set', async t => {
+    const f = await rolePermissionsFixture(t);
+    const locked = f.gate(), release = f.gate();
+    const blocker = f.track(observer.$transaction(async tx => {
+      await tx.$queryRaw`SELECT code FROM roles WHERE code = ${f.role} FOR UPDATE`;
+      locked.resolve();
+      await release.promise;
+    }, { timeout: 10_000 }));
+    await locked.promise;
+    const left = f.track(f.save(f.service(db), [f.each[0]]));
+    const right = f.track(f.save(f.service(peer), [f.each[1]]));
+    let blocked = 0;
+    try {
+      for (let attempt = 0; attempt < 120; attempt++) {
+        const rows = await db.$queryRaw`
+          SELECT pid FROM pg_stat_activity
+          WHERE wait_event_type = 'Lock'
+            AND (query LIKE '%INSERT INTO "public"."role_permissions"%' OR query LIKE '%FROM roles WHERE code%')
+        `;
+        blocked = rows.length;
+        if (blocked === 2) break;
+        await delay(10);
+      }
+    } finally {
+      release.resolve();
+    }
+    await blocker;
+    const outcomes = await Promise.all([left, right]);
+    assert.equal(blocked, 2);
+    const final = await f.read();
+    assert.equal(final.length, 1, 'both requests must not produce a merged set');
+    assert.ok(outcomes.some(result => result.permission_ids[0] === final[0]));
+    assert.equal(await db.auditLog.count({ where: { targetId: f.role, action: 'role.permissions.update' } }), 2);
+  });
+
+  await run('role permissions invalidation discards an older lookup in flight', async t => {
+    const f = await rolePermissionsFixture(t);
+    const [first, second] = f.each;
+    await db.rolePermission.create({ data: { role: f.role, permissionId: first } });
+    const snapshot = f.gate(), release = f.gate();
+    let observedReads = 0;
+    const readingDb = { rolePermission: {
+      async findMany(args) {
+        const rows = await db.rolePermission.findMany(args);
+        if (++observedReads === 1) {
+          snapshot.resolve();
+          await release.promise;
+        }
+        return rows;
+      },
+    } };
+    const cache = new f.PermissionsService(readingDb);
+    const waiting = f.track(cache.getPermissionsForRole(f.role));
+    await snapshot.promise;
+    try {
+      await f.save(f.service(peer, undefined, cache), [second]);
+    } finally {
+      release.resolve();
+    }
+    assert.deepEqual(await waiting, [second]);
+    assert.deepEqual(await cache.getPermissionsForRole(f.role), [second]);
+    assert.equal(observedReads, 2);
+  });
+
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {
       const f = await fixture(t), locked = f.gate(), release = f.gate(), pid = f.gate(), atLock = f.gate();

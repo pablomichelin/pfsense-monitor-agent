@@ -8,6 +8,7 @@ import { isSuperadminRole } from './role-codes';
 export class PermissionsService {
   private readonly cache = new Map<string, { permissions: string[]; expiresAt: number }>();
   private readonly cacheTtlMs = 60_000;
+  private cacheRevision = 0;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -16,10 +17,12 @@ export class PermissionsService {
   }
 
   invalidateRoleCache(role: string): void {
+    this.cacheRevision += 1;
     this.cache.delete(role);
   }
 
   invalidateAllRoleCaches(): void {
+    this.cacheRevision += 1;
     this.cache.clear();
   }
 
@@ -37,11 +40,13 @@ export class PermissionsService {
       return cached.permissions;
     }
 
+    const revision = this.cacheRevision;
     const rows = await this.prisma.rolePermission.findMany({
       where: { role },
       select: { permissionId: true },
       orderBy: { permissionId: 'asc' },
     });
+    if (revision !== this.cacheRevision) return this.getPermissionsForRole(role);
 
     const permissions = rows.map((row) => row.permissionId);
     this.cache.set(role, {
