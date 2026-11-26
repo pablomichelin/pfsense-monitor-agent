@@ -22,6 +22,8 @@ type RealtimeRefreshProps = {
 };
 
 type StreamState = 'connecting' | 'live' | 'reconnecting' | 'closed';
+const INITIAL_RECONNECT_DELAY_MS = 2000;
+const MAX_RECONNECT_DELAY_MS = 60_000;
 
 const sourceLabel: Record<DashboardRefreshEvent['source'], string> = {
   heartbeat_ingested: 'heartbeat',
@@ -72,7 +74,9 @@ export function RealtimeRefresh({
     lastRefreshAtRef.current = 0;
     if (!realtimeEnabled) return;
 
-    const eventSource = new EventSource('/api/realtime/dashboard');
+    let retryTimer: number | null = null;
+    let retryDelay = INITIAL_RECONNECT_DELAY_MS;
+    let closeSource: (() => void) | undefined;
 
     const scheduleRefresh = (payload: DashboardRefreshEvent | null) => {
       if (payload && scope === 'node' && payload.node_id !== nodeId) {
@@ -90,6 +94,7 @@ export function RealtimeRefresh({
     };
 
     const handleConnected = () => {
+      retryDelay = INITIAL_RECONNECT_DELAY_MS;
       setStreamState('live');
       // Recupera mudanças entre o snapshot SSR e a primeira conexão.
       scheduleRefresh(null);
@@ -112,15 +117,39 @@ export function RealtimeRefresh({
       setStreamState('live');
     };
 
-    const handleError = () => {
-      setStreamState(eventSource.readyState === EventSource.CLOSED ? 'closed' : 'reconnecting');
-    };
+    const connect = () => {
+      const eventSource = new EventSource('/api/realtime/dashboard');
+      const handleError = () => {
+        if (eventSource.readyState !== EventSource.CLOSED) {
+          setStreamState('reconnecting');
+          return;
+        }
 
-    eventSource.addEventListener('open', handleConnected);
-    eventSource.addEventListener('connected', handleKeepalive);
-    eventSource.addEventListener('dashboard.refresh', handleRefresh as EventListener);
-    eventSource.addEventListener('keepalive', handleKeepalive);
-    eventSource.addEventListener('error', handleError);
+        setStreamState('closed');
+        if (retryTimer !== null) return;
+        retryTimer = window.setTimeout(() => {
+          retryTimer = null;
+          closeSource?.();
+          connect();
+        }, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, MAX_RECONNECT_DELAY_MS);
+      };
+
+      eventSource.addEventListener('open', handleConnected);
+      eventSource.addEventListener('connected', handleKeepalive);
+      eventSource.addEventListener('dashboard.refresh', handleRefresh as EventListener);
+      eventSource.addEventListener('keepalive', handleKeepalive);
+      eventSource.addEventListener('error', handleError);
+      closeSource = () => {
+        eventSource.removeEventListener('open', handleConnected);
+        eventSource.removeEventListener('connected', handleKeepalive);
+        eventSource.removeEventListener('dashboard.refresh', handleRefresh as EventListener);
+        eventSource.removeEventListener('keepalive', handleKeepalive);
+        eventSource.removeEventListener('error', handleError);
+        eventSource.close();
+      };
+    };
+    connect();
 
     return () => {
       if (refreshTimerRef.current !== null) {
@@ -128,15 +157,8 @@ export function RealtimeRefresh({
         refreshTimerRef.current = null;
       }
 
-      eventSource.removeEventListener('open', handleConnected);
-      eventSource.removeEventListener('connected', handleKeepalive);
-      eventSource.removeEventListener(
-        'dashboard.refresh',
-        handleRefresh as EventListener,
-      );
-      eventSource.removeEventListener('keepalive', handleKeepalive);
-      eventSource.removeEventListener('error', handleError);
-      eventSource.close();
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      closeSource?.();
     };
   }, [nodeId, realtimeEnabled, refreshPanel, scope]);
 

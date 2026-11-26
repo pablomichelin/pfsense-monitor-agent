@@ -125,11 +125,38 @@ test('RealtimeRefresh padrão abre SSE e oferece atualização manual apenas qua
   button.props.onClick();
   assert.equal(qa.refreshes(), 1);
   assert.equal(qa.sources.length, 1);
-  assert.equal(qa.timers.size, 0);
+  assert.deepEqual([...qa.timers.values()].map(({ delay }) => delay), [2000]);
   assert.match(textOf(qa.render()), /Tempo real desconectado/);
   qa.unmount();
   assert.equal(source.closeCalls, 1);
   assert.equal(source.listeners.size, 0);
+  assert.equal(qa.timers.size, 0);
+});
+
+test('RealtimeRefresh reabre uma conexão encerrada com espera limitada e restaura o tempo real', (t) => {
+  const qa = setup(t);
+  qa.render();
+  for (const delay of [2000, 4000, 8000, 16000, 32000, 60000, 60000]) {
+    const source = qa.sources.at(-1);
+    source.readyState = 2;
+    source.emit('error');
+    source.emit('error');
+    assert.equal(qa.timers.size, 1);
+    const [[id, retry]] = qa.timers;
+    assert.equal(retry.delay, delay);
+    qa.timers.delete(id);
+    retry.callback();
+    assert.equal(source.closeCalls, 1);
+    assert.equal(source.listeners.size, 0);
+  }
+  const restored = qa.sources.at(-1);
+  restored.readyState = 1;
+  restored.emit('open');
+  assert.match(textOf(qa.render()), /Tempo real ativo/);
+  assert.deepEqual([...qa.timers.values()].map(({ delay }) => delay), [1200]);
+  qa.unmount();
+  assert.equal(restored.closeCalls, 1);
+  assert.equal(qa.timers.size, 0);
 });
 
 test('RealtimeRefresh troca de modo limpando stream, listeners e timer', (t) => {
