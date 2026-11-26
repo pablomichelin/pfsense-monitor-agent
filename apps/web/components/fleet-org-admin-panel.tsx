@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { GroupMemberPicker } from './group-member-picker';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -22,7 +23,8 @@ type Props = {
   tags: FleetTagItem[];
   groups: FleetGroupItem[];
   clients: ClientOption[];
-  groupMemberIds: Record<string, string[]>;
+  selectedGroupId?: string;
+  groupMemberIds: string[] | null;
   canManageTags: boolean;
   canManageGroups: boolean;
   canEditGroupMembers: boolean;
@@ -116,6 +118,7 @@ export function FleetOrgAdminPanel({
   tags,
   groups,
   clients,
+  selectedGroupId,
   groupMemberIds,
   canManageTags,
   canManageGroups,
@@ -124,7 +127,6 @@ export function FleetOrgAdminPanel({
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedGroupId, setSelectedGroupId] = useState<string>(groups[0]?.id ?? '');
   const [pending, setPending] = useState(false);
 
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
@@ -287,13 +289,14 @@ export function FleetOrgAdminPanel({
                   <tr key={group.id} className="border-b border-slate-900/80 text-slate-200">
                     <td className="px-3 py-2">
                       {canEditGroupMembers ? (
-                        <button
-                          type="button"
+                        <Link
+                          href={`/admin/grupos?group=${encodeURIComponent(group.id)}`}
+                          prefetch={false}
+                          aria-current={group.id === selectedGroupId ? 'page' : undefined}
                           className="text-left hover:text-cyan-200"
-                          onClick={() => setSelectedGroupId(group.id)}
                         >
                           {group.name}
-                        </button>
+                        </Link>
                       ) : group.name}
                     </td>
                     <td className="px-3 py-2">{group.client_name}</td>
@@ -329,12 +332,21 @@ export function FleetOrgAdminPanel({
             </p>
           </div>
 
-          <GroupMemberPicker
-            key={`${selectedGroup.id}:${JSON.stringify(groupMemberIds[selectedGroup.id] ?? [])}`}
-            groupId={selectedGroup.id}
-            clientId={selectedGroup.client_id}
-            memberIds={groupMemberIds[selectedGroup.id] ?? []}
-          />
+          {groupMemberIds === null ? (
+            <div className="space-y-2">
+              <Alert variant="warning">Não foi possível consultar os membros deste grupo.</Alert>
+              <Button type="button" variant="secondary" size="sm" onClick={() => router.refresh()}>
+                Tentar novamente
+              </Button>
+            </div>
+          ) : (
+            <GroupMemberPicker
+              key={`${selectedGroup.id}:${JSON.stringify(groupMemberIds)}`}
+              groupId={selectedGroup.id}
+              clientId={selectedGroup.client_id}
+              memberIds={groupMemberIds}
+            />
+          )}
         </Card>
       ) : null}
     </div>

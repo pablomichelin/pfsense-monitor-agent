@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { elements, hookHarness, sourceLoader, textOf, uiMocks } from './source-harness.mjs';
 
-function fixture(permissions) {
+class ApiError extends Error {
+  constructor(status) {
+    super('QA error');
+    this.status = status;
+  }
+}
+
+function fixture(permissions, { groups = [{ id: 'group-1' }], groupDetailFailure } = {}) {
   const reads = [];
   const list = (name, items = []) => async () => {
     reads.push(name);
@@ -15,6 +22,7 @@ function fixture(permissions) {
     '@/lib/handle-page-api-error': { handlePageApiError: (error) => { throw error; } },
     'next/navigation': { redirect: (url) => { throw Object.assign(new Error('Redirect'), { url }); } },
     '@/lib/api': {
+      ApiError,
       getSession: async () => ({ permissions }),
       getNodesFilters: async () => {
         reads.push('inventory');
@@ -22,8 +30,12 @@ function fixture(permissions) {
         return { clients: [{ id: 'active', name: 'QA active', status: 'active' }] };
       },
       listFleetTags: list('tags', [{ id: 'tag-1' }]),
-      listFleetGroups: list('groups', [{ id: 'group-1' }]),
-      getFleetGroup: async () => { throw new Error('Group members must not be loaded for this profile'); },
+      listFleetGroups: list('groups', groups),
+      getFleetGroup: async (id) => {
+        reads.push(`group:${id}`);
+        if (groupDetailFailure) throw new ApiError(groupDetailFailure);
+        return { group: { id }, members: [{ node_id: `node-for-${id}` }] };
+      },
     },
     '@/lib/notifications': {
       getNotificationsStatus: async () => ({ enabled: false }),
@@ -47,7 +59,7 @@ test('notification readers can see their settings without inventory access', asy
 
 test('fleet organization renders the visible groups without inventory access', async () => {
   const { routes, reads } = fixture(['groups.view', 'groups.manage']);
-  const tree = await routes('app/admin/grupos/page.tsx').default();
+  const tree = await routes('app/admin/grupos/page.tsx').default({});
   const panel = elements(tree).find((item) => item.type === 'fleet-panel');
   assert.deepEqual(panel.props.groups, [{ id: 'group-1' }]);
   assert.deepEqual(panel.props.clients, []);
@@ -79,4 +91,32 @@ test('notification editor keeps a rule client that is outside the selectable lis
   const options = elements(select).filter((item) => item.type === 'option');
   assert.deepEqual(options.map((item) => item.props.value), ['', 'qa-archived', 'qa-active']);
   assert.match(textOf(options[1]), /QA archived client/);
+});
+
+
+test('group administration loads members only for the selected group', async () => {
+  const permissions = ['groups.view', 'groups.manage', 'firewalls.view'];
+  const groups = [{ id: 'group-1' }, { id: 'group-2' }, { id: 'group-3' }];
+  for (const selected of [undefined, 'group-2']) {
+    const { routes, reads } = fixture(permissions, { groups });
+    const tree = await routes('app/admin/grupos/page.tsx').default({
+      searchParams: Promise.resolve({ group: selected }),
+    });
+    const active = selected ?? 'group-1';
+    assert.deepEqual(reads, ['groups', 'inventory', `group:${active}`]);
+    const panel = elements(tree).find((element) => element.type === 'fleet-panel');
+    assert.equal(panel.props.selectedGroupId, active);
+    assert.deepEqual(panel.props.groupMemberIds, [`node-for-${active}`]);
+  }
+});
+
+test('one unavailable group detail keeps the list and does not present empty membership', async () => {
+  const permissions = ['groups.view', 'groups.manage', 'firewalls.view'];
+  const { routes, reads } = fixture(permissions, { groupDetailFailure: 503 });
+  const tree = await routes('app/admin/grupos/page.tsx').default({});
+  assert.deepEqual(reads, ['groups', 'inventory', 'group:group-1']);
+  const panel = elements(tree).find((element) => element.type === 'fleet-panel');
+  assert.deepEqual(panel.props.groups, [{ id: 'group-1' }]);
+  assert.equal(panel.props.selectedGroupId, 'group-1');
+  assert.equal(panel.props.groupMemberIds, null);
 });

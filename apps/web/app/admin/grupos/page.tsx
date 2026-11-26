@@ -4,6 +4,7 @@ import { FleetOrgAdminPanel } from '@/components/fleet-org-admin-panel';
 import { PageHero } from '@/components/page-hero';
 import { PageSection } from '@/components/ui';
 import {
+  ApiError,
   getFleetGroup,
   getNodesFilters,
   getSession,
@@ -16,7 +17,10 @@ import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminGruposPage() {
+export default async function AdminGruposPage({ searchParams }: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = (await searchParams) ?? {};
   let session;
 
   try {
@@ -54,13 +58,19 @@ export default async function AdminGruposPage() {
 
   const activeClients = (filterOptions?.clients ?? []).filter((client) => client.status === 'active');
 
-  const groupMemberIds: Record<string, string[]> = {};
-  if (canEditGroupMembers && groups.items.length > 0) {
-    const details = await Promise.all(
-      groups.items.map((group) => getFleetGroup(group.id)),
-    );
-    for (const detail of details) {
-      groupMemberIds[detail.group.id] = detail.members.map((member) => member.node_id);
+  const selectedGroupId = typeof params.group === 'string' ? params.group : groups.items[0]?.id;
+  const selectedGroup = canEditGroupMembers
+    ? groups.items.find((group) => group.id === selectedGroupId)
+    : undefined;
+  let groupMemberIds: string[] | null = null;
+  if (selectedGroup) {
+    try {
+      const detail = await getFleetGroup(selectedGroup.id);
+      groupMemberIds = detail.members.map((member) => member.node_id);
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        handlePageApiError(error);
+      }
     }
   }
 
@@ -91,6 +101,7 @@ export default async function AdminGruposPage() {
           id: client.id,
           name: client.name,
         }))}
+        selectedGroupId={selectedGroup?.id}
         groupMemberIds={groupMemberIds}
         canManageTags={canManageTags}
         canManageGroups={canManageGroups}
