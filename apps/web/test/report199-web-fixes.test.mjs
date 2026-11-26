@@ -8,6 +8,9 @@ test('bounded search input keeps complete Unicode characters and ignores repeate
   for (const limit of [FIREWALL_SEARCH_MAX_LENGTH, ALERT_SEARCH_MAX_LENGTH, AUDIT_ACTOR_SEARCH_MAX_LENGTH]) {
     const allowed = 'a'.repeat(limit - 1) + '🧪';
     assert.equal(readSearchParam(`  ${allowed}x  `, limit), allowed);
+    const presentation = '🛠️'.repeat(limit);
+    assert.equal(readSearchParam(presentation, limit), presentation);
+    assert.equal(readSearchParam(`${presentation}x`, limit), presentation);
     assert.equal(readSearchParam('  QA site   ', limit), 'QA site');
     assert.equal(readSearchParam(['qa', 'other'], limit), undefined);
     assert.equal(readSearchParam('  ', limit), undefined);

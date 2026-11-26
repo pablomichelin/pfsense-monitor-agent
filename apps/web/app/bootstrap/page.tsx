@@ -291,7 +291,6 @@ export default async function BootstrapPage({
           <input
             type="search"
             name="search"
-            maxLength={FIREWALL_SEARCH_MAX_LENGTH}
             aria-label="Buscar firewall"
             defaultValue={search ?? ''}
             placeholder="Buscar"

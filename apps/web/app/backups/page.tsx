@@ -156,7 +156,6 @@ export default async function BackupsPage({
             <input
               type="search"
               name="search" aria-label="Buscar firewalls"
-              maxLength={FIREWALL_SEARCH_MAX_LENGTH}
               defaultValue={search ?? ''}
               placeholder="Buscar por nome, hostname ou cliente"
               className="h-11 min-w-0 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"

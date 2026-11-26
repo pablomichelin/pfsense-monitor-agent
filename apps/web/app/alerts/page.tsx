@@ -287,7 +287,6 @@ export default async function AlertsPage({
               <input
                 type="search"
                 name="search" aria-label="Buscar alertas"
-                maxLength={ALERT_SEARCH_MAX_LENGTH}
                 defaultValue={search ?? ''}
                 placeholder="Buscar firewall, cliente ou descrição"
                 className={`${formInputClassName} min-h-11 min-w-0 xl:min-w-[16rem] xl:flex-1`}

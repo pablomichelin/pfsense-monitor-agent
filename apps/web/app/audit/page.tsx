@@ -188,7 +188,6 @@ export default async function AuditPage({
                 <input
                   type="search"
                   name="actor_email"
-                  maxLength={AUDIT_ACTOR_SEARCH_MAX_LENGTH}
                   defaultValue={actorEmail ?? ''}
                   placeholder="Buscar por e-mail"
                   className={`${inputClassName} w-full`}

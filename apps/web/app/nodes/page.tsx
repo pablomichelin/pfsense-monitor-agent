@@ -353,7 +353,6 @@ export default async function NodesPage({
           <input
             type="search"
             name="search"
-            maxLength={FIREWALL_SEARCH_MAX_LENGTH}
             defaultValue={search ?? ''}
             placeholder="Nome, hostname ou cliente"
             className="mt-1 h-11 w-full rounded-lg border border-border bg-surface-soft px-4 text-sm text-fg outline-none placeholder:text-fg-subtle"
