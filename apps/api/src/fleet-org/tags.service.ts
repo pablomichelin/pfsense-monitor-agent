@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NodesService } from '../nodes/nodes.service';
 import { CreateTagDto, ListTagsQueryDto, UpdateTagDto } from './dto/tags.dto';
 import { normalizeTagName } from './tag-name.util';
+import { lockFleetClient } from './fleet-client-lock';
 
 type TagRecord = {
   id: string;
@@ -120,36 +121,40 @@ export class TagsService {
     }
 
     try {
-      const tag = await this.prisma.tag.create({
-        data: {
-          clientId: dto.client_id,
-          name,
-        },
-        include: {
-          client: {
-            select: {
-              name: true,
+      const tag = await this.prisma.$transaction(async (tx) => {
+        if (!await lockFleetClient(tx, dto.client_id)) throw new NotFoundException('client not found');
+        const tag = await tx.tag.create({
+          data: {
+            clientId: dto.client_id,
+            name,
+          },
+          include: {
+            client: {
+              select: {
+                name: true,
+              },
+            },
+            _count: {
+              select: {
+                nodeTags: true,
+              },
             },
           },
-          _count: {
-            select: {
-              nodeTags: true,
-            },
-          },
-        },
-      });
+        });
 
-      await this.auditService.record({
-        actorId,
-        clientId: dto.client_id,
-        action: 'fleet.tag.create',
-        targetType: 'tag',
-        targetId: tag.id,
-        ipAddress: actorIp,
-        metadataJson: {
-          name: tag.name,
-          client_id: dto.client_id,
-        },
+        await this.auditService.record({
+          actorId,
+          clientId: dto.client_id,
+          action: 'fleet.tag.create',
+          targetType: 'tag',
+          targetId: tag.id,
+          ipAddress: actorIp,
+          metadataJson: {
+            name: tag.name,
+            client_id: dto.client_id,
+          },
+        }, tx);
+        return tag;
       });
 
       this.nodesService.invalidateFiltersCache();
@@ -178,9 +183,7 @@ export class TagsService {
     const existing = await this.prisma.tag.findUnique({
       where: { id: tagId },
       select: {
-        id: true,
         clientId: true,
-        name: true,
       },
     });
 
@@ -197,36 +200,40 @@ export class TagsService {
     }
 
     try {
-      const tag = await this.prisma.tag.update({
-        where: { id: tagId },
-        data: {
-          name,
-        },
-        include: {
-          client: {
-            select: {
-              name: true,
+      const tag = await this.prisma.$transaction(async (tx) => {
+        const previous = await this.lockTagForUpdate(tx, tagId, existing.clientId);
+        const tag = await tx.tag.update({
+          where: { id: tagId },
+          data: {
+            name,
+          },
+          include: {
+            client: {
+              select: {
+                name: true,
+              },
+            },
+            _count: {
+              select: {
+                nodeTags: true,
+              },
             },
           },
-          _count: {
-            select: {
-              nodeTags: true,
-            },
-          },
-        },
-      });
+        });
 
-      await this.auditService.record({
-        actorId,
-        clientId: existing.clientId,
-        action: 'fleet.tag.update',
-        targetType: 'tag',
-        targetId: tag.id,
-        ipAddress: actorIp,
-        metadataJson: {
-          previous_name: existing.name,
-          name: tag.name,
-        },
+        await this.auditService.record({
+          actorId,
+          clientId: existing.clientId,
+          action: 'fleet.tag.update',
+          targetType: 'tag',
+          targetId: tag.id,
+          ipAddress: actorIp,
+          metadataJson: {
+            previous_name: previous.name,
+            name: tag.name,
+          },
+        }, tx);
+        return tag;
       });
 
       this.nodesService.invalidateFiltersCache();
@@ -254,9 +261,7 @@ export class TagsService {
     const existing = await this.prisma.tag.findUnique({
       where: { id: tagId },
       select: {
-        id: true,
         clientId: true,
-        name: true,
       },
     });
 
@@ -266,20 +271,23 @@ export class TagsService {
 
     await this.accessPolicy.assertClientAccess(actor, existing.clientId);
 
-    await this.prisma.tag.delete({
-      where: { id: tagId },
-    });
+    await this.prisma.$transaction(async (tx) => {
+      const previous = await this.lockTagForUpdate(tx, tagId, existing.clientId);
+      await tx.tag.delete({
+        where: { id: tagId },
+      });
 
-    await this.auditService.record({
-      actorId,
-      clientId: existing.clientId,
-      action: 'fleet.tag.delete',
-      targetType: 'tag',
-      targetId: tagId,
-      ipAddress: actorIp,
-      metadataJson: {
-        name: existing.name,
-      },
+      await this.auditService.record({
+        actorId,
+        clientId: existing.clientId,
+        action: 'fleet.tag.delete',
+        targetType: 'tag',
+        targetId: tagId,
+        ipAddress: actorIp,
+        metadataJson: {
+          name: previous.name,
+        },
+      }, tx);
     });
 
     this.nodesService.invalidateFiltersCache();
@@ -289,4 +297,14 @@ export class TagsService {
       id: tagId,
     };
   }
+  private async lockTagForUpdate(tx: Prisma.TransactionClient, tagId: string, clientId: string) {
+    if (!await lockFleetClient(tx, clientId)) throw new NotFoundException('tag not found');
+    const [tag] = await tx.$queryRaw<Array<{ name: string }>>`
+      SELECT name FROM tags WHERE id = ${tagId}::uuid AND client_id = ${clientId}::uuid
+      FOR NO KEY UPDATE
+    `;
+    if (!tag) throw new NotFoundException('tag not found');
+    return tag;
+  }
+
 }

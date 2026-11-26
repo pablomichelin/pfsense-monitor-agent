@@ -341,6 +341,58 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.equal(await db.auditLog.count({ where: { targetId: node.id, action: 'fleet.node_metadata.update' } }), 0);
   });
 
+  for (const entity of [
+    { name: 'group', model: 'nodeGroup', service: 'GroupsService', module: 'groups.service', suffix: 'Group' },
+    { name: 'tag', model: 'tag', service: 'TagsService', module: 'tags.service', suffix: 'Tag' },
+  ]) {
+    for (const action of ['create', 'update', 'delete']) {
+      await run(`fleet catalog ${entity.name} ${action} rolls back on audit failure`, async t => {
+        const f = await fixture(t);
+        const { [entity.service]: CatalogService } = loadServiceModule(`fleet-org/${entity.module}`);
+        const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
+        const { AuditService } = loadServiceModule('audit/audit.service');
+        const policy = new AccessPolicyService(db);
+        const actor = { userId: f.users[0].id, role: 'superadmin' };
+        const model = db[entity.model];
+        const name = 'before';
+        const stays = await model.create({ data: { clientId: f.client.id, name } });
+        const snapshot = () => model.findMany({ where: { clientId: f.client.id }, orderBy: { id: 'asc' } });
+        const prior = await snapshot();
+        let invalidations = 0;
+        const nodes = { invalidateFiltersCache() { invalidations++; } };
+        const failure = new CatalogService(db, policy, {
+          record: async () => { throw new Error('synthetic catalog audit failure'); },
+        }, nodes);
+        const call = service => {
+          const method = service[action + entity.suffix].bind(service);
+          if (action === 'create') return method(actor, { client_id: f.client.id, name: ' after ' }, actor.userId);
+          if (action === 'update') return method(actor, stays.id, { name: ' after ' }, actor.userId);
+          return method(actor, stays.id, actor.userId);
+        };
+        await assert.rejects(call(failure), /synthetic catalog audit failure/);
+        assert.deepEqual(await snapshot(), prior);
+        assert.equal(invalidations, 0);
+        const success = new CatalogService(db, policy, new AuditService(db), nodes);
+        const response = await call(success);
+        assert.equal(invalidations, 1);
+        const events = await db.auditLog.findMany({ where: {
+          actorId: actor.userId, action: `fleet.${entity.name}.${action}`,
+        } });
+        assert.equal(events.length, 1);
+        if (action === 'delete') {
+          assert.deepEqual(response, { deleted: true, id: stays.id });
+          assert.deepEqual(await snapshot(), []);
+          assert.equal(events[0].metadataJson.name, name);
+        } else {
+          assert.equal(response[entity.name].name, 'after');
+          assert.equal(events[0].targetId, response[entity.name].id);
+          assert.equal(events[0].metadataJson.name, 'after');
+          if (action === 'update') assert.equal(events[0].metadataJson.previous_name, name);
+        }
+      });
+    }
+  }
+
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {
       const f = await fixture(t), locked = f.gate(), release = f.gate(), pid = f.gate(), atLock = f.gate();

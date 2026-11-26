@@ -18,6 +18,7 @@ import {
   UpdateGroupDto,
 } from './dto/groups.dto';
 import { normalizeGroupName } from './tag-name.util';
+import { lockFleetClient } from './fleet-client-lock';
 
 type GroupRecord = {
   id: string;
@@ -199,37 +200,41 @@ export class GroupsService {
     }
 
     try {
-      const group = await this.prisma.nodeGroup.create({
-        data: {
-          clientId: dto.client_id,
-          name,
-          description: dto.description?.trim() || null,
-        },
-        include: {
-          client: {
-            select: {
-              name: true,
+      const group = await this.prisma.$transaction(async (tx) => {
+        if (!await lockFleetClient(tx, dto.client_id)) throw new NotFoundException('client not found');
+        const group = await tx.nodeGroup.create({
+          data: {
+            clientId: dto.client_id,
+            name,
+            description: dto.description?.trim() || null,
+          },
+          include: {
+            client: {
+              select: {
+                name: true,
+              },
+            },
+            _count: {
+              select: {
+                members: true,
+              },
             },
           },
-          _count: {
-            select: {
-              members: true,
-            },
-          },
-        },
-      });
+        });
 
-      await this.auditService.record({
-        actorId,
-        clientId: dto.client_id,
-        action: 'fleet.group.create',
-        targetType: 'node_group',
-        targetId: group.id,
-        ipAddress: actorIp,
-        metadataJson: {
-          name: group.name,
-          client_id: dto.client_id,
-        },
+        await this.auditService.record({
+          actorId,
+          clientId: dto.client_id,
+          action: 'fleet.group.create',
+          targetType: 'node_group',
+          targetId: group.id,
+          ipAddress: actorIp,
+          metadataJson: {
+            name: group.name,
+            client_id: dto.client_id,
+          },
+        }, tx);
+        return group;
       });
 
       this.nodesService.invalidateFiltersCache();
@@ -258,10 +263,7 @@ export class GroupsService {
     const existing = await this.prisma.nodeGroup.findUnique({
       where: { id: groupId },
       select: {
-        id: true,
         clientId: true,
-        name: true,
-        description: true,
       },
     });
 
@@ -278,41 +280,45 @@ export class GroupsService {
     }
 
     try {
-      const group = await this.prisma.nodeGroup.update({
-        where: { id: groupId },
-        data: {
-          name,
-          description:
-            dto.description !== undefined
-              ? dto.description.trim() || null
-              : undefined,
-        },
-        include: {
-          client: {
-            select: {
-              name: true,
+      const group = await this.prisma.$transaction(async (tx) => {
+        const previous = await this.lockGroupForUpdate(tx, groupId, existing.clientId);
+        const group = await tx.nodeGroup.update({
+          where: { id: groupId },
+          data: {
+            name,
+            description:
+              dto.description !== undefined
+                ? dto.description.trim() || null
+                : undefined,
+          },
+          include: {
+            client: {
+              select: {
+                name: true,
+              },
+            },
+            _count: {
+              select: {
+                members: true,
+              },
             },
           },
-          _count: {
-            select: {
-              members: true,
-            },
-          },
-        },
-      });
+        });
 
-      await this.auditService.record({
-        actorId,
-        clientId: existing.clientId,
-        action: 'fleet.group.update',
-        targetType: 'node_group',
-        targetId: group.id,
-        ipAddress: actorIp,
-        metadataJson: {
-          previous_name: existing.name,
-          name: group.name,
-          description: group.description,
-        },
+        await this.auditService.record({
+          actorId,
+          clientId: existing.clientId,
+          action: 'fleet.group.update',
+          targetType: 'node_group',
+          targetId: group.id,
+          ipAddress: actorIp,
+          metadataJson: {
+            previous_name: previous.name,
+            name: group.name,
+            description: group.description,
+          },
+        }, tx);
+        return group;
       });
 
       this.nodesService.invalidateFiltersCache();
@@ -340,9 +346,7 @@ export class GroupsService {
     const existing = await this.prisma.nodeGroup.findUnique({
       where: { id: groupId },
       select: {
-        id: true,
         clientId: true,
-        name: true,
       },
     });
 
@@ -352,20 +356,23 @@ export class GroupsService {
 
     await this.accessPolicy.assertClientAccess(actor, existing.clientId);
 
-    await this.prisma.nodeGroup.delete({
-      where: { id: groupId },
-    });
+    await this.prisma.$transaction(async (tx) => {
+      const previous = await this.lockGroupForUpdate(tx, groupId, existing.clientId);
+      await tx.nodeGroup.delete({
+        where: { id: groupId },
+      });
 
-    await this.auditService.record({
-      actorId,
-      clientId: existing.clientId,
-      action: 'fleet.group.delete',
-      targetType: 'node_group',
-      targetId: groupId,
-      ipAddress: actorIp,
-      metadataJson: {
-        name: existing.name,
-      },
+      await this.auditService.record({
+        actorId,
+        clientId: existing.clientId,
+        action: 'fleet.group.delete',
+        targetType: 'node_group',
+        targetId: groupId,
+        ipAddress: actorIp,
+        metadataJson: {
+          name: previous.name,
+        },
+      }, tx);
     });
 
     this.nodesService.invalidateFiltersCache();
@@ -374,6 +381,16 @@ export class GroupsService {
       deleted: true,
       id: groupId,
     };
+  }
+
+  private async lockGroupForUpdate(tx: Prisma.TransactionClient, groupId: string, clientId: string) {
+    if (!await lockFleetClient(tx, clientId)) throw new NotFoundException('group not found');
+    const [group] = await tx.$queryRaw<Array<{ name: string }>>`
+      SELECT name FROM node_groups WHERE id = ${groupId}::uuid AND client_id = ${clientId}::uuid
+      FOR NO KEY UPDATE
+    `;
+    if (!group) throw new NotFoundException('group not found');
+    return group;
   }
 
   async setGroupMembers(
@@ -401,10 +418,7 @@ export class GroupsService {
     const uniqueNodeIds = [...new Set(dto.node_ids)];
     const updated = await this.prisma.$transaction(async (tx) => {
       // Client deletion acquires the parent lock before cascading to groups.
-      const [client] = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM clients WHERE id = ${group.clientId}::uuid FOR KEY SHARE
-      `;
-      if (!client) throw new NotFoundException('group not found');
+      if (!await lockFleetClient(tx, group.clientId)) throw new NotFoundException('group not found');
       const [locked] = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM node_groups WHERE id = ${group.id}::uuid FOR UPDATE
       `;

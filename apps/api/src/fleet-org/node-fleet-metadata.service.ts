@@ -9,6 +9,7 @@ import { AccessActor } from '../auth/access-actor.type';
 import { AccessPolicyService } from '../auth/access-policy.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateNodeFleetMetadataDto } from './dto/node-fleet-metadata.dto';
+import { lockFleetClient } from './fleet-client-lock';
 
 @Injectable()
 export class NodeFleetMetadataService {
@@ -39,10 +40,7 @@ export class NodeFleetMetadataService {
     const updatedNode = await this.prisma.$transaction(async (tx) => {
       // Lock parents before replacing links so concurrent deletes can cascade
       // without waiting on a link this edit holds while awaiting its parent.
-      const [client] = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM clients WHERE id = ${clientId}::uuid FOR KEY SHARE
-      `;
-      if (!client) throw new NotFoundException('node not found');
+      if (!await lockFleetClient(tx, clientId)) throw new NotFoundException('node not found');
       const [locked] = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT n.id FROM nodes n JOIN sites s ON s.id = n.site_id
         WHERE n.id = ${nodeId}::uuid AND s.client_id = ${clientId}::uuid
