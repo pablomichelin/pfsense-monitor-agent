@@ -81,7 +81,12 @@ test('cadastro mantém ações, retorno por seção e restrição de usuários',
 });
 
 test('atualizações saem da identidade e preservam permissões e dados por operação', () => {
+  let hooks = hookHarness();
   const { NodeDetailOverviewTab, NodeUpdatesSection } = sourceLoader({ ...uiMocks,
+    react: {
+      useState: (...args) => hooks.react.useState(...args),
+      useEffect: (...args) => hooks.react.useEffect(...args),
+    },
     '@/lib/admin': { setNodeMaintenanceAction: () => {} },
     '@/components/ui/action-tabs': { ActionTabs: 'task-tabs' },
     '@/components/node-package-upgrade-section': { NodePackageUpgradeSection: 'agent-update' },
@@ -91,23 +96,34 @@ test('atualizações saem da identidade e preservam permissões e dados por oper
     '@/components/nodes/node-pfsense-api-panel': { NodePfsenseApiPanel: 'aliases' },
   })('components/nodes/node-detail-overview-tab.tsx');
   const tree = NodeDetailOverviewTab({ node: { id: 'lab', client: { name: 'Test' }, site: { name: 'Test' } }, canManageNode: false });
-  const updateTree = NodeUpdatesSection({ node: { id: 'lab' }, canRunUpgrade: false, canRunPackageUpgrade: true, upgradeStatus: { marker: 'os' }, packageUpgradeStatus: { marker: 'agent' } });
-  const tabs = elements(updateTree).find((e) => e.type === 'task-tabs');
+  const renderUpdates = (props) => {
+    const shell = NodeUpdatesSection({ node: { id: 'lab' }, ...props });
+    const panels = elements(shell).find((item) => item.type?.name === 'NodeUpdatesStatusPanels');
+    assert.equal(panels.key, 'lab');
+    return hooks.render(panels.type, panels.props);
+  };
+  const props = { canRunUpgrade: false, canRunPackageUpgrade: true,
+    upgradeStatus: { marker: 'os' }, packageUpgradeStatus: { marker: 'agent' } };
+  const tabs = renderUpdates(props);
   assert.equal(tabs.props.tabs.length, 2);
   const [agent, os] = tabs.props.tabs.map((tab) => tab.content);
   assert.equal(agent.props.canRunPackageUpgrade, true);
   assert.equal(os.props.canRunUpgrade, false);
   assert.equal(os.props.initialStatus.marker, 'os');
+  const duringRevalidation = renderUpdates({ ...props, upgradeStatus: null, packageUpgradeStatus: null });
+  const retained = duringRevalidation.props.tabs.map((tab) => tab.content.props.initialStatus.marker);
+  assert.deepEqual(retained, ['agent', 'os']);
   const identity = elements(tree).find((e) => e.props?.title === 'Visão geral');
   assert.ok(identity);
   assert.ok(!elements(identity).some((e) => e.type === 'agent-update' || e.type === 'os-update'));
   for (const failedType of ['agent', 'os']) {
-    const updateWithFailure = NodeUpdatesSection({
-      node: { id: 'lab' }, canRunUpgrade: true, canRunPackageUpgrade: true,
+    hooks = hookHarness();
+    const updateWithFailure = renderUpdates({
+      canRunUpgrade: true, canRunPackageUpgrade: true,
       upgradeStatus: failedType === 'os' ? null : { marker: 'os' },
       packageUpgradeStatus: failedType === 'agent' ? null : { marker: 'agent' },
     });
-    const results = elements(updateWithFailure).find((e) => e.type === 'task-tabs').props.tabs;
+    const results = updateWithFailure.props.tabs;
     const failed = results.find((tab) => tab.id === failedType);
     const available = results.find((tab) => tab.id !== failedType);
     assert.match(textOf(failed.content), /consulta .* está indisponível/);

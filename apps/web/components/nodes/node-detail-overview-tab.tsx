@@ -1,16 +1,14 @@
 import { setNodeMaintenanceAction } from '@/lib/admin';
 import type { NodeCapabilitiesResponse, NodeDetailsResponse, PackageUpgradeStatusResponse, PfsenseApiStatusResponse, PfsenseUpgradeStatusResponse } from '@/lib/api';
-import { NodePackageUpgradeSection } from '@/components/node-package-upgrade-section';
 import { formatDateTime } from '@/lib/format';
 import { parseIps, isPublicIp } from '@/lib/node-detail-helpers';
-import { NodePfsenseUpgradeSection } from '@/components/node-pfsense-upgrade-section';
 import { NodeCertificatesPanel } from '@/components/nodes/node-certificates-panel';
 import { NodeCapabilitiesPanel } from '@/components/nodes/node-capabilities-panel';
 import { NodePfsenseApiPanel } from '@/components/nodes/node-pfsense-api-panel';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ActionTabs } from '@/components/ui/action-tabs';
+import { NodeUpdatesStatusPanels } from '@/components/nodes/node-updates-status-panels';
 import { PageSection } from '@/components/ui/page-section';
 
 type Node = NodeDetailsResponse['node'];
@@ -270,27 +268,14 @@ export function NodeUpdatesSection({
 }) {
   return (
     <PageSection title="Atualizações" description="Escolha entre o agente Monitor e o sistema operacional do firewall.">
-      <ActionTabs
-        id="node-updates"
-        label="Tipo de atualização"
-        tabs={[
-          {
-            id: 'agent',
-            label: 'Agente Monitor',
-            description: 'Pacote de monitoramento',
-            content: packageUpgradeStatus ? (
-              <NodePackageUpgradeSection key={node.id} nodeId={node.id} canRunPackageUpgrade={canRunPackageUpgrade} initialStatus={packageUpgradeStatus} />
-            ) : <Alert variant="warning">A consulta do agente Monitor está indisponível.</Alert>,
-          },
-          {
-            id: 'os',
-            label: 'pfSense OS',
-            description: 'Sistema operacional',
-            content: upgradeStatus ? (
-              <NodePfsenseUpgradeSection key={node.id} nodeId={node.id} nodeEffectiveStatus={node.effective_status} canRunUpgrade={canRunUpgrade} initialStatus={upgradeStatus} />
-            ) : <Alert variant="warning">A consulta do pfSense OS está indisponível.</Alert>,
-          },
-        ]}
+      <NodeUpdatesStatusPanels
+        key={node.id}
+        nodeId={node.id}
+        nodeEffectiveStatus={node.effective_status}
+        canRunPackageUpgrade={canRunPackageUpgrade}
+        canRunUpgrade={canRunUpgrade}
+        packageUpgradeStatus={packageUpgradeStatus}
+        upgradeStatus={upgradeStatus}
       />
     </PageSection>
   );
