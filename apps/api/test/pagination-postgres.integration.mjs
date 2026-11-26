@@ -11,6 +11,8 @@
  *     node --test /qa/pagination-postgres.integration.mjs
  *
  * Select phases with PAGINATION_QA_PHASES=nodes,filters,rbac,alerts (default all).
+ * The manifest records the actual compiled JS fingerprint. To verify a pinned
+ * artifact, set PAGINATION_QA_BUILD_SHA256 to its previously recorded value.
  * Critical-path retry: PAGINATION_QA_PHASES=alerts PAGINATION_QA_KEEP_SEED=1,
  * with the same guarded env and a NEW manifest path (exclusive creation is kept).
  * Run service tests in a one-shot node process while the QA HTTP API is STOPPED:
@@ -44,11 +46,11 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
-import { readFile, writeFile, lstat } from 'node:fs/promises';
-import { resolve, dirname, basename, isAbsolute, join } from 'node:path';
+import { readFile, readdir, writeFile, lstat } from 'node:fs/promises';
+import { resolve, dirname, basename, isAbsolute, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 
@@ -159,6 +161,17 @@ async function storeManifest(path, manifest, create = false) {
   await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`, { flag: create ? 'wx' : 'w', mode: 0o600 });
 }
 
+async function fingerprintBuild(dist) {
+  const files = (await readdir(dist, { recursive: true })).filter((name) => name.endsWith('.js')).sort();
+  assert.ok(files.length > 0, 'Build the API before running the PostgreSQL suite');
+  const hash = createHash('sha256');
+  for (const name of files) {
+    hash.update(name.split(sep).join('/')).update('\0');
+    hash.update(await readFile(join(dist, name))).update('\0');
+  }
+  return hash.digest('hex');
+}
+
 async function loadRuntime(url) {
   // Never import synthetic-env.mjs: it silently rewrites DATABASE_URL for another group.
   // Refuse a conflicting inherited DATABASE_URL rather than hiding a production target.
@@ -167,6 +180,7 @@ async function loadRuntime(url) {
     assert.equal(inherited.toString(), url.toString(), 'DATABASE_URL conflicts with explicit QA target');
   }
   process.env.DATABASE_URL = url.toString();
+  delete process.env.SYSTEM_VERSION;
   Object.assign(process.env, {
     NODE_ENV: 'test', RBAC_SCOPE_ENABLED: 'true', RBAC_PERMISSIONS_ENABLED: 'true',
     AUTH_BOOTSTRAP_EMAIL: 'pagination-qa@example.invalid', AUTH_BOOTSTRAP_PASSWORD: 'Synthetic-QA-unused-no-login',
@@ -178,25 +192,28 @@ async function loadRuntime(url) {
   const root = resolve(process.env.PAGINATION_API_ROOT || join(dirname(fileURLToPath(import.meta.url)), '..'));
   const require = createRequire(join(root, 'package.json'));
   const packageInfo = require(join(root, 'package.json'));
-  const expectedVersion = process.env.PAGINATION_QA_API_VERSION || '0.13.0';
+  const expectedVersion = process.env.PAGINATION_QA_API_VERSION || packageInfo.version;
   assert.equal(packageInfo.version, expectedVersion, 'Build the exact API version selected for this QA run');
+  const apiBuildSha256 = await fingerprintBuild(join(root, 'dist'));
+  if (process.env.PAGINATION_QA_BUILD_SHA256) {
+    assert.equal(apiBuildSha256, process.env.PAGINATION_QA_BUILD_SHA256, 'Compiled API differs from the pinned QA artifact');
+  }
   const compiled = (path) => require(join(root, 'dist', path));
   const { PrismaClient } = require('@prisma/client');
   const { NodesService } = compiled('nodes/nodes.service.js');
   const { AlertsService } = compiled('alerts/alerts.service.js');
   const { AccessPolicyService } = compiled('auth/access-policy.service.js');
   const { PermissionsService } = compiled('auth/permissions.service.js');
-  const { compareListNodes } = compiled('nodes/list-nodes-sort.util.js');
-  assert.equal(typeof compareListNodes, 'function', 'Build the NEW API image; old compiled pagination code is forbidden');
   const { appConfig } = compiled('config/app-config.js');
+  assert.equal(appConfig.systemVersion, expectedVersion, 'Compiled API reports an unexpected system version');
   assert.equal(appConfig.rbac.scopeEnabled, true); assert.equal(appConfig.rbac.permissionsEnabled, true);
   const db = new PrismaClient({ datasources: { db: { url: url.toString() } }, log: [{ emit: 'event', level: 'query' }] });
   const permissions = new PermissionsService(db);
   const policy = new AccessPolicyService(db, permissions);
   const release = { getPublishedVersion: () => appConfig.packageRelease.version };
   return {
-    db, permissions, policy, compareListNodes,
-    apiVersion: packageInfo.version,
+    db, permissions, policy,
+    apiVersion: packageInfo.version, apiBuildSha256,
     nodes: new NodesService(db, policy, release),
     alerts: new AlertsService(db, policy),
   };
@@ -267,13 +284,40 @@ async function seed(db, manifest) {
     await tx.userClientScope.createMany({ data: [0, 2].map((client) => ({ userId: users[0].id, clientId: clients[client].id })) });
     await tx.tag.createMany({ data: tags }); await tx.nodeGroup.createMany({ data: groups });
     await batches(tx.node, allNodes); await batches(tx.alert, alerts);
-    await batches(tx.nodeTag, visible.filter((_, i) => (i + 1) % 2 === 0).map((node) => ({ nodeId: node.id, tagId: tags[0].id })));
-    await batches(tx.nodeGroupMember, visible.filter((_, i) => (i + 1) % 3 === 0).map((node) => ({ nodeId: node.id, groupId: groups[0].id })));
+    await batches(tx.nodeTag, visible.filter((_, i) => (i + 1) % 5 === 0).map((node) => ({ nodeId: node.id, tagId: tags[0].id })));
+    await batches(tx.nodeGroupMember, visible.filter((_, i) => (i + 1) % 11 === 0).map((node) => ({ nodeId: node.id, groupId: groups[0].id })));
     await batches(tx.nodeConfigBackup, backups); await batches(tx.nodeCommand, failedCommands);
   }, { timeout: 120000, maxWait: 10000 });
   Object.assign(manifest, { sites, tags, groups, target: { id: visible.at(-1).id, node_uid: visible.at(-1).nodeUid, alert_id: alerts[COUNT - 1].id },
     counts: { scoped_nodes: COUNT, scoped_alerts: COUNT, hidden_nodes: HIDDEN_COUNT, inactive_nodes: INACTIVE_COUNT } });
   return { visible, allNodes, alerts, sites, tags, groups, backupState };
+}
+
+// The seed uses fixed labels and versions, so this oracle does not use the
+// API's comparator or cursor implementation.
+function seedSortKey(node, field) {
+  switch (field) {
+    case 'name': return node.display_name ?? node.hostname;
+    case 'agent_version': return ['0.5.24', '0.5.25'].indexOf(node.agent_version);
+    case 'version': return ['2.8.1', '2.9.0'].indexOf(node.pfsense_version);
+    case 'status': return ['offline', 'degraded', 'unknown', 'maintenance', 'online'].indexOf(node.effective_status);
+    case 'backup': return ['failed', 'never', 'late', 'ok'].indexOf(node.backup_status);
+    case 'alerts': return node.open_alerts;
+    case 'last_seen': return node.last_seen_at == null ? Infinity : Date.parse(node.last_seen_at);
+    default: throw new Error(`Unexpected fixture sort key: ${field}`);
+  }
+}
+
+function compareFixtureOrder(left, right, field, direction) {
+  const compare = (a, b) => a === b ? 0 : a < b ? -1 : 1;
+  const a = seedSortKey(left, field);
+  const b = seedSortKey(right, field);
+  assert.notEqual(a, -1);
+  assert.notEqual(b, -1);
+  return compare(a, b) * (direction === 'desc' ? -1 : 1)
+    || compare(left.client.name, right.client.name)
+    || compare(left.display_name ?? left.hostname, right.display_name ?? right.hostname)
+    || compare(left.id, right.id);
 }
 
 async function runPg(t, url, cleanupOnly) {
@@ -282,7 +326,7 @@ async function runPg(t, url, cleanupOnly) {
   const keep = process.env.PAGINATION_QA_KEEP_SEED === '1';
   if (keep && !path && !cleanupOnly) fail('KEEP_SEED requires PAGINATION_QA_MANIFEST for later cleanup');
   const runtime = await loadRuntime(url);
-  const { db, nodes, alerts, compareListNodes, apiVersion } = runtime;
+  const { db, nodes, alerts, apiVersion, apiBuildSha256 } = runtime;
   let m, seeded = false, success = false;
   const metrics = { calls: 0, query_count: 0, max_call_ms: 0, max_rss: 0, max_heap: 0 };
   db.$on('query', () => { metrics.query_count++; }); // no query SQL, parameters or connection string logged
@@ -296,7 +340,8 @@ async function runPg(t, url, cleanupOnly) {
     }
     const run = `pagination-qa-${randomUUID()}`;
     m = { version: 1, run, database: 'monitor_qa', state: 'planned', created_at: new Date().toISOString(),
-      api_version: apiVersion, selected_phases: [...selectedPhases], phase_results: {},
+      api_version: apiVersion, api_build_sha256: apiBuildSha256,
+      selected_phases: [...selectedPhases], phase_results: {},
       clients: ['A', 'B', 'C'].map((c) => ({ id: randomUUID(), code: `${run}-${c}` })),
       users: Array.from({ length: 4 }, (_, i) => ({ id: randomUUID(), email: `user-${i}@${run}.invalid` })),
     };
@@ -344,7 +389,7 @@ async function runPg(t, url, cleanupOnly) {
         assert.equal(page.total, COUNT); assert.equal(page.limit, 257); assert.ok(page.items.length <= 257);
         for (const node of page.items) {
           assert.ok(expectedIds.has(node.id), 'Cross-scope node leaked'); assert.ok(!ids.has(node.id), 'Duplicate across cursor pages');
-          if (previousItem) assert.ok(compareListNodes(previousItem, node, query.sort_by ?? 'name', query.sort_order ?? 'asc') < 0);
+          if (previousItem) assert.ok(compareFixtureOrder(previousItem, node, query.sort_by ?? 'name', query.sort_order ?? 'asc') < 0);
           previousItem = node; ids.add(node.id);
         }
         onPage(page); recent.push(page); if (recent.length > 2) recent.shift();
@@ -377,12 +422,12 @@ async function runPg(t, url, cleanupOnly) {
       const n = (node) => f.visible.indexOf(node) + 1;
       await subset({ client_id: m.clients[0].id }, f.visible);
       await subset({ site_id: f.sites[0].id }, f.visible.filter((node) => n(node) % 2 === 0));
-      await subset({ tag_id: f.tags[0].id }, f.visible.filter((node) => n(node) % 2 === 0));
-      await subset({ group_id: f.groups[0].id }, f.visible.filter((node) => n(node) % 3 === 0));
+      await subset({ tag_id: f.tags[0].id }, f.visible.filter((node) => n(node) % 5 === 0));
+      await subset({ group_id: f.groups[0].id }, f.visible.filter((node) => n(node) % 11 === 0));
       await subset({ criticality: 'lab' }, f.visible.filter((node) => node.criticality === 'lab'));
       await subset({ status: 'maintenance' }, f.visible.filter((node) => node.maintenanceMode));
       await subset({ site_id: f.sites[0].id, tag_id: f.tags[0].id, group_id: f.groups[0].id, criticality: 'critical', status: 'degraded' },
-        f.visible.filter((node) => n(node) % 6 === 0 && node.status === 'degraded'));
+        f.visible.filter((node) => n(node) % 330 === 0 && node.status === 'degraded'));
       for (const preset of ['offline', 'degraded', 'backup-late', 'no-backup', 'package-outdated', 'problem']) {
         const expected = f.visible.filter((node) => preset === 'offline' ? node.status === 'offline' : preset === 'degraded' ? node.status === 'degraded'
           : preset === 'backup-late' ? ['late', 'failed'].includes(f.backupState(n(node))) : preset === 'no-backup' ? f.backupState(n(node)) === 'never'

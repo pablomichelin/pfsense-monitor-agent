@@ -64,9 +64,13 @@ test('A03: authorized reset follows the planned command, create-only needs no re
 
 test('A04: client role cannot change detached scopes and getter reports real active binding', async () => {
   let writes = 0;
+  const lockedQueries = [];
   const prisma = {
     $transaction: async (work) => work(prisma),
-    $queryRaw: async () => [{ id: ID }],
+    $queryRaw: async (strings, ...values) => {
+      lockedQueries.push({ query: strings.join('?'), values });
+      return [{ id: ID }];
+    },
     user: { findUnique: async () => ({ id: ID, role: 'client', email: 'fixture@example.invalid', clientId: a,
       client: { id: a, name: 'Synthetic', code: 'SYN', status: 'active' } }) },
     userClientScope: { findMany: async () => { throw new Error('client must not query detached scopes'); } },
@@ -75,6 +79,10 @@ test('A04: client role cannot change detached scopes and getter reports real act
   admin.replaceUserClientScopes = async () => { writes++; };
   await assert.rejects(admin.setUserClientScopes(ID, { client_ids: [] }), error => error.getStatus() === 400);
   assert.equal(writes, 0);
+  assert.equal(lockedQueries.length, 2);
+  assert.match(lockedQueries[0].query, /pg_advisory_xact_lock/);
+  assert.match(lockedQueries[1].query, /FROM users WHERE id = \?::uuid FOR UPDATE/);
+  assert.deepEqual(lockedQueries[1].values, [ID]);
   const scope = await admin.listUserClientScopes(ID);
   assert.deepEqual(scope.client_ids, [a]);
   assert.deepEqual(scope.clients, [{ id: a, name: 'Synthetic', code: 'SYN' }]);

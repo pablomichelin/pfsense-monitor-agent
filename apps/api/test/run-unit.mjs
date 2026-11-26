@@ -9,12 +9,16 @@ const tests = readdirSync(testDir)
   .map((name) => fileURLToPath(new URL(name, testDir)));
 if (tests.length === 0) throw new Error('No API unit tests were found');
 
+const baseEnv = [
+  'PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'SystemRoot', 'USERPROFILE',
+  'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'CI', 'FORCE_COLOR', 'NO_COLOR',
+];
 const env = {
-  ...process.env,
+  ...Object.fromEntries(baseEnv.filter((key) => process.env[key] !== undefined)
+    .map((key) => [key, process.env[key]])),
   NODE_ENV: 'test',
   DATABASE_URL: 'postgresql://synthetic:synthetic@127.0.0.1:1/synthetic',
 };
-delete env.STABILIZATION_DATABASE_URL;
 
 const run = spawnSync(process.execPath, [
   '--unhandled-rejections=strict', '--test', '--test-concurrency=4',
