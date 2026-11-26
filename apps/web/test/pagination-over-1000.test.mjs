@@ -325,4 +325,8 @@ test('group editor keeps the draft on a version conflict and offers a reload', a
   assert.equal(refreshes, 0);
   button(conflict, 'Recarregar membros').props.onClick();
   assert.equal(refreshes, 1);
+  const reloadedWithSameRevision = render();
+  assert.equal(Boolean(button(reloadedWithSameRevision, 'Salvar membros').props.disabled), false);
+  assert.equal(button(reloadedWithSameRevision, 'Recarregar membros'), undefined);
+  assert.match(textOf(reloadedWithSameRevision), /2\s+membros selecionados/);
 });

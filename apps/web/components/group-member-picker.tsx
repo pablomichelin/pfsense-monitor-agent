@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { NodeBrowserControls } from './node-browser-controls';
 import { usePagedNodes } from '@/lib/use-paged-nodes';
@@ -15,6 +15,7 @@ export function GroupMemberPicker({ groupId, clientId, memberIds, membershipRevi
   const [selected, setSelected] = useState(() => new Set(memberIds));
   const [revision, setRevision] = useState(membershipRevision);
   const [pending, setPending] = useState(false);
+  const [refreshing, startRefresh] = useTransition();
   const [notice, setNotice] = useState<{ text: string; error?: boolean; conflict?: boolean } | null>(null);
   // All existing memberships survive paging/search. Only explicit toggles change them.
   return <div className="space-y-3">
@@ -22,7 +23,7 @@ export function GroupMemberPicker({ groupId, clientId, memberIds, membershipRevi
     <p className="text-sm text-fg-muted">{selected.size} membros selecionados, incluindo outras páginas.</p>
     <div className="grid max-h-72 gap-2 overflow-y-auto rounded-lg border border-border p-3 md:grid-cols-2">
       {(browser.result?.items ?? []).map((node) => <label key={node.id} className="flex items-center gap-2 text-sm text-fg">
-        <input type="checkbox" checked={selected.has(node.id)} disabled={pending || browser.loading} onChange={() => setSelected((current) => {
+        <input type="checkbox" checked={selected.has(node.id)} disabled={pending || refreshing || browser.loading} onChange={() => setSelected((current) => {
           const next = new Set(current);
           if (next.has(node.id)) next.delete(node.id); else next.add(node.id);
           return next;
@@ -31,10 +32,13 @@ export function GroupMemberPicker({ groupId, clientId, memberIds, membershipRevi
       </label>)}
     </div>
     {notice ? <Alert variant={notice.error ? 'error' : 'info'}>{notice.text}</Alert> : null}
-    {notice?.conflict ? <Button type="button" variant="secondary" onClick={() => router.refresh()}>
+    {notice?.conflict ? <Button type="button" variant="secondary" disabled={refreshing} onClick={() => startRefresh(() => {
+      router.refresh();
+      setNotice(null);
+    })}>
       Recarregar membros
     </Button> : null}
-    <Button type="button" disabled={pending || browser.loading || !!browser.error || notice?.conflict} onClick={async () => {
+    <Button type="button" disabled={pending || refreshing || browser.loading || !!browser.error || notice?.conflict} onClick={async () => {
       setPending(true); setNotice(null);
       try {
         const result = await updateGroupMembersAction(groupId, [...selected], revision);

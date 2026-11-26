@@ -422,6 +422,11 @@ export class GroupsService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      // Client deletion acquires the parent lock before cascading to groups.
+      const [client] = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM clients WHERE id = ${group.clientId}::uuid FOR KEY SHARE
+      `;
+      if (!client) throw new NotFoundException('group not found');
       const [locked] = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM node_groups WHERE id = ${group.id}::uuid FOR UPDATE
       `;

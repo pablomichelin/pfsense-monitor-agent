@@ -149,6 +149,59 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.equal(await db.auditLog.count({ where: { targetId: group.id, action: 'fleet.group.members.set' } }), 3);
   });
 
+  await run('group membership save uses the same client-first lock order as client deletion', async t => {
+    const f = await fixture(t);
+    const { GroupsService } = loadServiceModule('fleet-org/groups.service');
+    const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const client = await db.client.create({ data: { name: f.run, code: f.run + '-empty' } });
+    t.after(() => db.client.deleteMany({ where: { id: client.id } }));
+    const group = await db.nodeGroup.create({ data: { clientId: client.id, name: f.run } });
+    const actor = { userId: f.users[0].id, role: 'superadmin' };
+    const reachedAudit = f.gate();
+    const releaseAudit = f.gate();
+    const deletePid = f.gate();
+    const audit = new AuditService(db);
+    const groups = new GroupsService(db, new AccessPolicyService(db), {
+      async record(data, tx) {
+        reachedAudit.resolve();
+        await releaseAudit.promise;
+        await audit.record(data, tx);
+      },
+    }, { invalidateFiltersCache() {} });
+    const before = await groups.getGroupById(actor, group.id);
+    const save = f.track(groups.setGroupMembers(actor, group.id, {
+      node_ids: [], expected_revision: before.membership_revision,
+    }, actor.userId));
+    await reachedAudit.promise;
+    const deletion = f.track(peer.$transaction(async tx => {
+      const [connection] = await tx.$queryRaw`SELECT pg_backend_pid() AS pid`;
+      deletePid.resolve(connection.pid);
+      await tx.$queryRaw`SELECT id FROM clients WHERE id = ${client.id}::uuid FOR UPDATE`;
+      await tx.client.delete({ where: { id: client.id } });
+    }, { timeout: 15_000 }));
+    const pid = await deletePid.promise;
+    let blocked;
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        [blocked] = await observer.$queryRaw`
+          SELECT query FROM pg_stat_activity
+          WHERE pid = ${pid}::int AND cardinality(pg_blocking_pids(pid)) > 0
+        `;
+        if (blocked) break;
+        await delay(10);
+      }
+    } finally {
+      releaseAudit.resolve();
+    }
+    const outcomes = await Promise.allSettled([save, deletion]);
+    assert.deepEqual(outcomes.map(result => result.status === 'fulfilled'
+      ? 'fulfilled'
+      : (result.reason.code ?? result.reason.message)), ['fulfilled', 'fulfilled']);
+    assert.match(blocked?.query ?? '', /SELECT id FROM clients .* FOR UPDATE/i);
+    assert.equal(await db.nodeGroup.count({ where: { id: group.id } }), 0);
+  });
+
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {
       const f = await fixture(t), locked = f.gate(), release = f.gate(), pid = f.gate(), atLock = f.gate();
