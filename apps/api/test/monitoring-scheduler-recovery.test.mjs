@@ -116,12 +116,12 @@ test('the daily cycle fills the final UTC hour before reading aggregates', async
       findMany: async ({ where }) => {
         assert.equal(where.sampledAt.gte.getTime(), hourlyKey.getTime());
         return where.nodeId
-          ? [{ cpuPercent: 50, status: 'online', availabilityScore: 1 }]
+          ? [{ nodeId: 'synthetic-node', cpuPercent: 50, status: 'online', availabilityScore: 1 }]
           : [{ nodeId: 'synthetic-node' }];
       },
     },
     nodeMetricRollupHourly: {
-      createMany: async ({ data, skipDuplicates }) => {
+      createMany: async ({ data: [data], skipDuplicates }) => {
         assert.equal(data.nodeId, 'synthetic-node');
         assert.equal(data.bucketStart.getTime(), hourlyKey.getTime());
         assert.equal(data.sampleCount, 1);
@@ -148,7 +148,9 @@ test('daily availability counts only hourly rows with a measured availability', 
     const writes = [];
     const service = new MetricsRollupService({
       nodeMetricRollupHourly: {
-        findMany: async ({ where }) => where.nodeId ? hourly : [{ nodeId: 'synthetic-node' }],
+        findMany: async ({ where }) => where.nodeId
+          ? hourly.map((row) => ({ ...row, nodeId: 'synthetic-node' }))
+          : [{ nodeId: 'synthetic-node' }],
       },
       nodeMetricRollupDaily: {
         upsert: async (args) => { writes.push(args); },

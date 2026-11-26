@@ -4,6 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { appConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -18,6 +19,26 @@ import { SystemJobLockService } from '../common/system-job-lock.service';
 const HOURLY_LOCK_KEY = 'metrics_rollup_hourly';
 const DAILY_LOCK_KEY = 'metrics_rollup_daily';
 const ROLLUP_LOCK_TTL_MS = 10 * 60 * 1000;
+const ROLLUP_READ_BATCH_SIZE = 128;
+
+async function* loadRollupRowsByNode<Row extends { nodeId: string }>(
+  nodes: { nodeId: string }[],
+  load: (nodeIds: string[]) => Promise<Row[]>,
+): AsyncGenerator<[string, Row[]]> {
+  for (let offset = 0; offset < nodes.length; offset += ROLLUP_READ_BATCH_SIZE) {
+    const nodeIds = nodes.slice(offset, offset + ROLLUP_READ_BATCH_SIZE).map(({ nodeId }) => nodeId);
+    const grouped = new Map<string, Row[]>();
+    for (const row of await load(nodeIds)) {
+      const existing = grouped.get(row.nodeId);
+      if (existing) {
+        existing.push(row);
+      } else {
+        grouped.set(row.nodeId, [row]);
+      }
+    }
+    yield* grouped;
+  }
+}
 
 @Injectable()
 export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
@@ -180,17 +201,27 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
     });
 
     let upserts = 0;
+    const missingHourlyRows: Prisma.NodeMetricRollupHourlyCreateManyInput[] = [];
+    const insertMissingRows = async () => {
+      const result = await this.prisma.nodeMetricRollupHourly.createMany({
+        data: missingHourlyRows,
+        skipDuplicates: true,
+      });
+      upserts += result.count;
+      missingHourlyRows.length = 0;
+    };
 
-    for (const entry of nodeIds) {
-      const samples = await this.prisma.nodeMetricSample.findMany({
+    const samplesByNode = loadRollupRowsByNode(nodeIds, (batch) =>
+      this.prisma.nodeMetricSample.findMany({
         where: {
-          nodeId: entry.nodeId,
+          nodeId: { in: batch },
           sampledAt: {
             gte: bucketStart,
             lt: bucketEnd,
           },
         },
         select: {
+          nodeId: true,
           cpuPercent: true,
           memoryPercent: true,
           diskPercent: true,
@@ -198,14 +229,12 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
           status: true,
           availabilityScore: true,
         },
-      });
+      }),
+    );
 
-      if (samples.length === 0) {
-        continue;
-      }
-
+    for await (const [nodeId, samples] of samplesByNode) {
       const aggregate = aggregateMetricSamples(samples);
-      const key = { nodeId: entry.nodeId, bucketStart };
+      const key = { nodeId, bucketStart };
       const metrics = {
         sampleCount: aggregate.sampleCount,
         cpuAvg: aggregate.cpu.avg,
@@ -223,11 +252,10 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
         availabilityPct: aggregate.availabilityPct,
       };
       if (fillMissingOnly) {
-        const inserted = await this.prisma.nodeMetricRollupHourly.createMany({
-          data: { ...key, ...metrics },
-          skipDuplicates: true,
-        });
-        upserts += inserted.count;
+        missingHourlyRows.push({ ...key, ...metrics });
+        if (missingHourlyRows.length === ROLLUP_READ_BATCH_SIZE) {
+          await insertMissingRows();
+        }
         continue;
       }
 
@@ -240,6 +268,9 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
       upserts += 1;
     }
 
+    if (missingHourlyRows.length > 0) {
+      await insertMissingRows();
+    }
     return upserts;
   }
 
@@ -260,16 +291,17 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
 
     let upserts = 0;
 
-    for (const entry of nodeIds) {
-      const hourlyRows = await this.prisma.nodeMetricRollupHourly.findMany({
+    const hourlyRowsByNode = loadRollupRowsByNode(nodeIds, (batch) =>
+      this.prisma.nodeMetricRollupHourly.findMany({
         where: {
-          nodeId: entry.nodeId,
+          nodeId: { in: batch },
           bucketStart: {
             gte: bucketStart,
             lt: bucketEnd,
           },
         },
         select: {
+          nodeId: true,
           sampleCount: true,
           cpuAvg: true,
           cpuMin: true,
@@ -285,12 +317,10 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
           latencyMax: true,
           availabilityPct: true,
         },
-      });
+      }),
+    );
 
-      if (hourlyRows.length === 0) {
-        continue;
-      }
-
+    for await (const [nodeId, hourlyRows] of hourlyRowsByNode) {
       const metricAverage = (field: 'cpuAvg' | 'memoryAvg' | 'diskAvg' | 'latencyAvg' | 'availabilityPct') =>
         weightedAverage(hourlyRows.flatMap((row) => {
           const value = row[field];
@@ -312,7 +342,7 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
         latencyMax: maxNullable(hourlyRows.map((row) => row.latencyMax)),
         availabilityPct: metricAverage('availabilityPct'),
       };
-      const key = { nodeId: entry.nodeId, bucketStart };
+      const key = { nodeId, bucketStart };
 
       await this.prisma.nodeMetricRollupDaily.upsert({
         where: { nodeId_bucketStart: key },
