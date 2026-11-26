@@ -393,6 +393,23 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     }
   }
 
+  await run('audit attribution uses the current role after a role change', async t => {
+    const f = await fixture(t);
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const service = new AuditService(db);
+    const record = { actorId: f.users[2].id, targetType: 'synthetic', targetId: f.client.id };
+    await service.record({ ...record, action: 'qa.role.before' });
+    await peer.user.update({ where: { id: record.actorId }, data: { role: 'client' } });
+    await service.record({ ...record, action: 'qa.role.after' });
+    await service.record({ ...record, action: 'qa.role.explicit', actorRole: 'readonly' });
+    const events = await db.auditLog.findMany({ where: { actorId: record.actorId, targetId: record.targetId } });
+    assert.deepEqual(Object.fromEntries(events.map(event => [event.action, event.actorRole])), {
+      'qa.role.before': 'readonly',
+      'qa.role.after': 'client',
+      'qa.role.explicit': 'readonly',
+    });
+  });
+
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {
       const f = await fixture(t), locked = f.gate(), release = f.gate(), pid = f.gate(), atLock = f.gate();

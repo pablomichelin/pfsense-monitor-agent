@@ -19,8 +19,6 @@ export type AuditRecordInput = {
 
 @Injectable()
 export class AuditService {
-  private readonly actorRoleCache = new Map<string, string>();
-
   constructor(private readonly prisma: PrismaService) {}
 
   async resolveActorRole(actorId?: string, db: Prisma.TransactionClient = this.prisma): Promise<string | null> {
@@ -28,22 +26,12 @@ export class AuditService {
       return null;
     }
 
-    const cached = this.actorRoleCache.get(actorId);
-    if (cached) {
-      return cached;
-    }
-
     const user = await db.user.findUnique({
       where: { id: actorId },
       select: { role: true },
     });
 
-    if (!user) {
-      return null;
-    }
-
-    this.actorRoleCache.set(actorId, user.role);
-    return user.role;
+    return user?.role ?? null;
   }
 
   async record(input: AuditRecordInput, db: Prisma.TransactionClient = this.prisma): Promise<void> {
