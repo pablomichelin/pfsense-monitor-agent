@@ -269,12 +269,16 @@ export class AdminService {
     throw new ConflictException('unable to generate a unique client code');
   }
 
-  private async buildUniqueSiteCode(clientId: string, nameOrCode: string): Promise<string> {
+  private async buildUniqueSiteCode(
+    clientId: string,
+    nameOrCode: string,
+    db: Prisma.TransactionClient = this.prisma,
+  ): Promise<string> {
     const base = normalizeCode(nameOrCode || 'SITE');
 
     for (let attempt = 0; attempt < 1000; attempt++) {
       const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
-      const existing = await this.prisma.site.findFirst({
+      const existing = await db.site.findFirst({
         where: {
           clientId,
           code: candidate,
@@ -292,12 +296,12 @@ export class AdminService {
     throw new ConflictException('unable to generate a unique site code');
   }
 
-  private async buildUniqueNodeUid(seed: string): Promise<string> {
+  private async buildUniqueNodeUid(seed: string, db: Prisma.TransactionClient): Promise<string> {
     const base = this.ensureNonEmptySlug(seed, 'firewall');
 
     for (let attempt = 0; attempt < 1000; attempt++) {
       const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
-      const existing = await this.prisma.node.findUnique({
+      const existing = await db.node.findUnique({
         where: {
           nodeUid: candidate,
         },
@@ -2024,61 +2028,24 @@ export class AdminService {
       secret_hint: string;
     };
   }> {
-    const hasSiteId = Boolean(dto.site_id?.trim());
-    const hasClientId = Boolean(dto.client_id?.trim());
-    if (hasSiteId === hasClientId) {
+    const requestedSiteId = dto.site_id?.trim();
+    const requestedClientId = dto.client_id?.trim();
+    if (Boolean(requestedSiteId) === Boolean(requestedClientId)) {
       throw new BadRequestException(
         'Provide exactly one of site_id or client_id to create the firewall.',
       );
     }
 
-    let siteId: string;
-    if (hasSiteId) {
-      await this.withSiteScope(scopeActor, dto.site_id!);
-      const site = await this.prisma.site.findUnique({
-        where: { id: dto.site_id! },
-        select: { id: true },
-      });
-      if (!site) {
-        throw new NotFoundException('site not found');
-      }
-      siteId = site.id;
+    if (requestedSiteId) {
+      await this.withSiteScope(scopeActor, requestedSiteId);
     } else {
-      const clientId = dto.client_id!;
-      await this.withClientScope(scopeActor, clientId);
-      const client = await this.prisma.client.findUnique({
-        where: { id: clientId },
-        select: { id: true, sites: { select: { id: true } } },
-      });
-      if (!client) {
-        throw new NotFoundException('client not found');
-      }
-      const siteCount = client.sites.length;
-      if (siteCount === 0) {
-        const defaultSite = await this.prisma.site.create({
-          data: {
-            clientId: client.id,
-            name: 'Principal',
-            code: await this.buildUniqueSiteCode(client.id, 'default'),
-            status: EntityStatus.active,
-          },
-        });
-        siteId = defaultSite.id;
-      } else {
-        // 1+ sites: use first site so UX never needs to expose "site" to the operator
-        siteId = client.sites[0].id;
-      }
+      await this.withClientScope(scopeActor, requestedClientId!);
     }
 
     const hostnameRaw = dto.hostname?.trim();
     const generatedId =
       hostnameRaw ||
       `fw-${Math.random().toString(36).slice(2, 10)}`;
-    const nodeUid = await this.buildUniqueNodeUid(
-      dto.node_uid?.trim() || generatedId || dto.display_name?.trim() || 'firewall',
-    );
-    const hostname = hostnameRaw || nodeUid;
-
     const managementIp = normalizeOptional(dto.management_ip);
     const wanIp = normalizeOptional(dto.wan_ip);
     const remoteAccessUrl =
@@ -2092,11 +2059,40 @@ export class AdminService {
     const secretEncrypted = this.nodeSecretCrypto.encrypt(bootstrapSecret);
 
     const node = await this.prisma.$transaction(async (tx) => {
+      let siteId: string;
+      if (requestedSiteId) {
+        const [site] = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM sites WHERE id = ${requestedSiteId}::uuid FOR KEY SHARE
+        `;
+        if (!site) throw new NotFoundException('site not found');
+        siteId = site.id;
+      } else {
+        const [client] = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM clients WHERE id = ${requestedClientId!}::uuid FOR NO KEY UPDATE
+        `;
+        if (!client) throw new NotFoundException('client not found');
+        // Under the client lock, a parallel registration will reuse the first site.
+        const site = await tx.site.findFirst({ where: { clientId: client.id }, select: { id: true } });
+        const target = site ?? await tx.site.create({
+          data: {
+            clientId: client.id,
+            name: 'Principal',
+            code: await this.buildUniqueSiteCode(client.id, 'default', tx),
+            status: EntityStatus.active,
+          },
+          select: { id: true },
+        });
+        siteId = target.id;
+      }
+      const nodeUid = await this.buildUniqueNodeUid(
+        dto.node_uid?.trim() || generatedId || dto.display_name?.trim() || 'firewall',
+        tx,
+      );
       const createdNode = await tx.node.create({
         data: {
           siteId,
           nodeUid,
-          hostname,
+          hostname: hostnameRaw || nodeUid,
           displayName: normalizeOptional(dto.display_name),
           managementIp,
           wanIp,
@@ -2118,21 +2114,19 @@ export class AdminService {
         },
       });
 
+      await this.writeAuditLog({
+        actorId,
+        action: 'admin.node.create',
+        targetType: 'node',
+        targetId: createdNode.id,
+        ipAddress: actorIp,
+        metadataJson: { node_uid: createdNode.nodeUid, site_id: createdNode.siteId },
+      }, tx);
       return createdNode;
     });
 
-    await this.writeAuditLog({
-      actorId,
-      action: 'admin.node.create',
-      targetType: 'node',
-      targetId: node.id,
-      ipAddress: actorIp,
-      metadataJson: {
-        node_uid: node.nodeUid,
-        site_id: node.siteId,
-      },
-    });
     this.invalidateNodesFiltersCache();
+    this.realtimeService.invalidateDashboardCache();
 
     return {
       node: {

@@ -969,6 +969,87 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.equal(await db.auditLog.count({ where: { targetId: { in: ids }, action: 'admin.client.create' } }), 2);
   });
 
+  async function nodeCreationFixture(t) {
+    const f = await fixture(t);
+    const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
+    const { AuditService } = loadServiceModule('audit/audit.service');
+    const { RealtimeService } = loadServiceModule('realtime/realtime.service');
+    const actor = { userId: f.users[0].id, role: 'superadmin' };
+    const policy = new AccessPolicyService(db);
+    const realtime = new RealtimeService();
+    let invalidations = 0;
+    const service = (connection, audit = new AuditService(connection)) =>
+      new AdminService(connection, { encrypt: () => 'synthetic-encrypted-fixture' }, {}, policy,
+        { invalidateFiltersCache() { invalidations++; } }, audit, {}, {}, {}, realtime);
+    const count = async () => Promise.all([
+      db.site.count({ where: { clientId: f.client.id } }),
+      db.node.count({ where: { site: { clientId: f.client.id } } }),
+      db.nodeCredential.count({ where: { node: { site: { clientId: f.client.id } } } }),
+    ]);
+    const register = (admin, index, siteId) => admin.createNode({
+      ...(siteId ? { site_id: siteId } : { client_id: f.client.id }),
+      hostname: `qa-node-${index}.${f.run}.invalid`,
+    }, actor.userId, undefined, actor);
+    return { ...f, service, count, register, invalidations: () => invalidations, realtime };
+  }
+
+  await run('firewall registration removes its default site and credential on audit failure', async t => {
+    const f = await nodeCreationFixture(t);
+    const failAudit = async () => { throw new Error('synthetic firewall registration audit failure'); };
+    const failingDb = new Proxy(db, { get(target, key) {
+      if (key === '$transaction') return (callback, options) => target.$transaction(tx =>
+        callback(new Proxy(tx, { get(client, property) {
+          if (property === 'auditLog') return { create: failAudit };
+          return typeof client[property] === 'function' ? client[property].bind(client) : client[property];
+        } })), options);
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    } });
+    await assert.rejects(f.register(f.service(failingDb, { record: failAudit }), 1), /synthetic firewall registration audit failure/);
+    assert.deepEqual(await f.count(), [0, 0, 0]);
+    assert.equal(f.invalidations(), 0);
+    assert.equal(f.realtime.getDashboardRevision(), 0);
+    const created = await f.register(f.service(db), 1);
+    assert.ok(created.bootstrap.node_secret && created.bootstrap.secret_hint);
+    assert.deepEqual(await f.count(), [1, 1, 1]);
+    assert.equal(f.invalidations(), 1);
+    assert.equal(f.realtime.getDashboardRevision(), 1);
+    const audits = await db.auditLog.count({ where: { action: 'admin.node.create', targetId: created.node.id } });
+    assert.equal(audits, 1);
+  });
+
+  await run('firewall registration uses one default site under concurrent requests', async t => {
+    const f = await nodeCreationFixture(t);
+    const bothRead = f.gate();
+    let observed = 0;
+    const connection = db => new Proxy(db, { get(target, key) {
+      if (key === 'client') return new Proxy(target[key], { get(model, operation) {
+        if (operation === 'findUnique') return async args => {
+          const result = await model.findUnique(args);
+          if (args.select?.sites) {
+            if (++observed === 2) bothRead.resolve();
+            await bothRead.promise;
+          }
+          return result;
+        };
+        return typeof model[operation] === 'function' ? model[operation].bind(model) : model[operation];
+      } });
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    } });
+    const outcomes = await Promise.allSettled([
+      f.track(f.register(f.service(connection(db)), 0)),
+      f.track(f.register(f.service(connection(peer)), 1)),
+    ]);
+    assert.equal(outcomes.filter(result => result.status === 'fulfilled').length, 2);
+    assert.deepEqual(await f.count(), [1, 2, 2]);
+    const sites = new Set(outcomes.map(result => result.value.node.site_id));
+    assert.equal(sites.size, 1);
+    const [siteId] = sites;
+    const explicit = await f.register(f.service(db), 2, siteId);
+    assert.equal(explicit.node.site_id, siteId);
+    assert.deepEqual(await f.count(), [1, 3, 3]);
+    assert.equal(f.realtime.getDashboardRevision(), 3);
+  });
+
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {
       const f = await fixture(t), locked = f.gate(), release = f.gate(), pid = f.gate(), atLock = f.gate();
