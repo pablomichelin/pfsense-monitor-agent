@@ -323,9 +323,10 @@ export function NotificationsAdminPanel({
 
         {canManage && expandedPanel === 'channel-new' ? (
           <form
-            className="mb-4 space-y-3 rounded-lg border border-border/60 p-4"
+            className="mb-4 rounded-lg border border-border/60 p-4"
             onSubmit={(event) => {
               event.preventDefault();
+              if (pending) return;
               const formData = new FormData(event.currentTarget);
               runAction(
                 () => createNotificationChannelAction(formData),
@@ -333,39 +334,41 @@ export function NotificationsAdminPanel({
               );
             }}
           >
-            <p className="text-sm font-medium text-slate-200">Novo canal</p>
-            <div className="grid gap-3 md:grid-cols-2">
+            <fieldset disabled={pending} className="min-w-0 space-y-3">
+              <p className="text-sm font-medium text-slate-200">Novo canal</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="block">
+                  <span className={labelClass}>Nome</span>
+                  <input name="name" required minLength={2} className={inputClass} />
+                </label>
+                <label className="block">
+                  <span className={labelClass}>Tipo</span>
+                  <select
+                    name="type"
+                    value={newChannelType}
+                    onChange={(event) =>
+                      setNewChannelType(event.target.value as NotificationChannelType)
+                    }
+                    className={selectClass}
+                  >
+                    <option value="webhook">Webhook HTTP</option>
+                    <option value="email">E-mail (SMTP)</option>
+                    <option value="telegram">Telegram</option>
+                  </select>
+                </label>
+              </div>
               <label className="block">
-                <span className={labelClass}>Nome</span>
-                <input name="name" required minLength={2} className={inputClass} />
-              </label>
-              <label className="block">
-                <span className={labelClass}>Tipo</span>
-                <select
-                  name="type"
-                  value={newChannelType}
-                  onChange={(event) =>
-                    setNewChannelType(event.target.value as NotificationChannelType)
-                  }
-                  className={selectClass}
-                >
-                  <option value="webhook">Webhook HTTP</option>
-                  <option value="email">E-mail (SMTP)</option>
-                  <option value="telegram">Telegram</option>
+                <span className={labelClass}>Status</span>
+                <select name="status" defaultValue="active" className={selectClass}>
+                  <option value="active">Ativo</option>
+                  <option value="inactive">Inativo</option>
                 </select>
               </label>
-            </div>
-            <label className="block">
-              <span className={labelClass}>Status</span>
-              <select name="status" defaultValue="active" className={selectClass}>
-                <option value="active">Ativo</option>
-                <option value="inactive">Inativo</option>
-              </select>
-            </label>
-            <ChannelTypeFields type={newChannelType} />
-            <Button type="submit" disabled={pending}>
-              {pending ? 'Salvando…' : 'Criar canal'}
-            </Button>
+              <ChannelTypeFields type={newChannelType} />
+              <Button type="submit">
+                {pending ? 'Salvando…' : 'Criar canal'}
+              </Button>
+            </fieldset>
           </form>
         ) : null}
 
@@ -454,9 +457,10 @@ export function NotificationsAdminPanel({
 
                 {canManage && editingChannelId === channel.id ? (
                   <form
-                    className="space-y-3 p-4"
+                    className="p-4"
                     onSubmit={(event) => {
                       event.preventDefault();
+                      if (pending) return;
                       const formData = new FormData(event.currentTarget);
                       formData.set('type', channel.type);
                       runAction(
@@ -465,33 +469,35 @@ export function NotificationsAdminPanel({
                       );
                     }}
                   >
-                    <input type="hidden" name="type" value={channel.type} />
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className="block">
-                        <span className={labelClass}>Nome</span>
-                        <input
-                          name="name"
-                          required
-                          defaultValue={channel.name}
-                          className={inputClass}
-                        />
-                      </label>
-                      <label className="block">
-                        <span className={labelClass}>Status</span>
-                        <select
-                          name="status"
-                          defaultValue={channel.status}
-                          className={selectClass}
-                        >
-                          <option value="active">Ativo</option>
-                          <option value="inactive">Inativo</option>
-                        </select>
-                      </label>
-                    </div>
-                    <ChannelTypeFields type={channel.type} channel={channel} isEdit />
-                    <Button type="submit" size="sm" disabled={pending}>
-                      Salvar canal
-                    </Button>
+                    <fieldset disabled={pending} className="min-w-0 space-y-3">
+                      <input type="hidden" name="type" value={channel.type} />
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="block">
+                          <span className={labelClass}>Nome</span>
+                          <input
+                            name="name"
+                            required
+                            defaultValue={channel.name}
+                            className={inputClass}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className={labelClass}>Status</span>
+                          <select
+                            name="status"
+                            defaultValue={channel.status}
+                            className={selectClass}
+                          >
+                            <option value="active">Ativo</option>
+                            <option value="inactive">Inativo</option>
+                          </select>
+                        </label>
+                      </div>
+                      <ChannelTypeFields type={channel.type} channel={channel} isEdit />
+                      <Button type="submit" size="sm">
+                        Salvar canal
+                      </Button>
+                    </fieldset>
                   </form>
                 ) : null}
               </div>
@@ -525,20 +531,24 @@ export function NotificationsAdminPanel({
 
         {canManage && expandedPanel === 'rule-new' ? (
           <form
-            className="mb-4 space-y-3 rounded-lg border border-border/60 p-4"
+            className="mb-4 rounded-lg border border-border/60 p-4"
             onSubmit={(event) => {
               event.preventDefault();
+              if (pending) return;
+              const formData = new FormData(event.currentTarget);
               runAction(
-                () => createNotificationRuleAction(new FormData(event.currentTarget)),
+                () => createNotificationRuleAction(formData),
                 'Regra criada com sucesso.',
               );
             }}
           >
-            <p className="text-sm font-medium text-slate-200">Nova regra</p>
-            <RuleFormFields channels={channels} clients={clients} />
-            <Button type="submit" disabled={pending}>
-              {pending ? 'Salvando…' : 'Criar regra'}
-            </Button>
+            <fieldset disabled={pending} className="min-w-0 space-y-3">
+              <p className="text-sm font-medium text-slate-200">Nova regra</p>
+              <RuleFormFields channels={channels} clients={clients} />
+              <Button type="submit">
+                {pending ? 'Salvando…' : 'Criar regra'}
+              </Button>
+            </fieldset>
           </form>
         ) : null}
 
@@ -585,24 +595,27 @@ export function NotificationsAdminPanel({
 
                 {canManage && editingRuleId === rule.id ? (
                   <form
-                    className="space-y-3 p-4"
+                    className="p-4"
                     onSubmit={(event) => {
                       event.preventDefault();
+                      if (pending) return;
+                      const formData = new FormData(event.currentTarget);
                       runAction(
-                        () =>
-                          updateNotificationRuleAction(rule.id, new FormData(event.currentTarget)),
+                        () => updateNotificationRuleAction(rule.id, formData),
                         'Regra atualizada.',
                       );
                     }}
                   >
-                    <RuleFormFields
-                      channels={channels}
-                      clients={clients}
-                      rule={rule}
-                    />
-                    <Button type="submit" size="sm" disabled={pending}>
-                      Salvar regra
-                    </Button>
+                    <fieldset disabled={pending} className="min-w-0 space-y-3">
+                      <RuleFormFields
+                        channels={channels}
+                        clients={clients}
+                        rule={rule}
+                      />
+                      <Button type="submit" size="sm">
+                        Salvar regra
+                      </Button>
+                    </fieldset>
                   </form>
                 ) : null}
               </div>
