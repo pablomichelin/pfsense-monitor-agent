@@ -1,16 +1,18 @@
 # PROJECT STATUS — Monitor pfSense (pfs-monitor)
 
-Última atualização em **25/11/2026**.
+Última atualização em **26/11/2026**.
 
 ## Controlador candidato
 
-| Componente | Em execução, observado em 25/11 | Código candidato |
+| Componente | Em execução, observado em 26/11 | Candidato em QA |
 |---|---|---|
 | API | 0.14.3 | 0.14.4 |
 | Painel | 1.16.1 | 1.16.2 |
-| Package publicado | 0.5.35 | Sem publicação de package nesta etapa |
+| Package | 0.5.35 publicado | 0.5.39 em ramo separado, com validação nativa pendente |
 
-As correções de painel, monitoramento, comandos e backups foram verificadas em QA isolado. O ensaio de longa duração concluiu 264 ciclos com seis agentes sintéticos.
+Imagens do controlador de QA compiladas da revisão `960709a5f6d598fc869b408cb024bd3a3d650b9b`. Provas em PostgreSQL 17, HTTPS e Chromium com dados sintéticos. Foram validados separadamente heartbeat assinado, tempo real, sessões, auditoria, cadastros concorrentes, seletor de Grupos e Tags, isolamento de cliente e alertas. O candidato mantém as 44 migrations existentes.
+
+A migração aditiva de contagens por métrica integra somente o ensaio `b4d73da`. Recuperação do histórico e de retentativas de notificação após reinício continuam abertas. A preparação do controlador e do package não equivale à ativação em produção.
 
 ## Histórico de 02/11/2026
 

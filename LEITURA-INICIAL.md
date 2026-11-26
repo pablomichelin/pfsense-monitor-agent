@@ -1,5 +1,15 @@
 # Leitura Inicial
 
+## Candidato do controlador em 26/11/2026
+
+A revisão de qualidade integrou API 0.14.4 e painel 1.16.2. As imagens de QA foram obtidas da revisão de runtime `960709a5f6d598fc869b408cb024bd3a3d650b9b`. A revisão final de fonte inclui ajustes de teste e documentação. As instâncias observadas em produção usam API 0.14.3 e painel 1.16.1. O package publicado permanece 0.5.35.
+
+Foram validados em laboratório o monitoramento e o tempo real, a consistência entre cadastros e auditoria, a edição concorrente de Grupos e Tags, o isolamento entre clientes, os filtros do painel, a revogação de sessões e o tratamento de falhas transitórias. API 415/415. Painel com lint, verificação de tipos e builds aprovados. Dos 203 testes iniciais do painel, 201 passaram. As duas falhas eram fixtures desatualizadas e as duas suítes afetadas passaram 16/16 após o ajuste. A validação usou PostgreSQL 17, Chromium e dados sintéticos.
+
+O candidato do controlador mantém o esquema existente. Contagens válidas por métrica foram verificadas apenas no ramo de laboratório `codex/pfs-metric-counts-lab-20261126`. Recuperação de horas históricas e de retentativas de notificação após reinício ficaram para outra rodada. Retenção e restauração de backups ficaram fora desta revisão.
+
+O package 0.5.39 foi preparado como artefato de QA, separado do controlador. Falta validar em pfSense/FreeBSD nativo antes de tratar a distribuição. A implantação de API e painel exige uma rodada operacional própria.
+
 ## Candidato do controlador em 25/11/2026
 
 O código candidato usa API 0.14.4 e painel 1.16.2. Em QA, foram corrigidos os filtros de Cliente e Local, a ordenação por idade de backup, o tratamento de concorrência em alertas e a indisponibilidade parcial no detalhe do firewall. O painel recupera falhas transitórias na abertura do tempo real e oferece atualização manual quando a conexão fecha ou o perfil não permite o stream. A validação usou Chromium e dados sintéticos. As versões observadas em execução continuam API 0.14.3, painel 1.16.1 e package publicado 0.5.35. A implantação do controlador é uma etapa separada.
