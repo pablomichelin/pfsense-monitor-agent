@@ -19,7 +19,8 @@ import {
 
 type Props = {
   nodeId: string;
-  initialHistory: NodeCommandHistoryResponse;
+  initialHistory: NodeCommandHistoryResponse | null;
+  unavailableSince?: string;
   canCancelBackup: boolean;
   canCancelPfsenseUpgrade: boolean;
   canCancelPackageUpgrade: boolean;
@@ -56,6 +57,7 @@ function canCancelCommand(
 export function NodeCommandHistoryPanel({
   nodeId,
   initialHistory,
+  unavailableSince,
   canCancelBackup,
   canCancelPfsenseUpgrade,
   canCancelPackageUpgrade,
@@ -66,13 +68,17 @@ export function NodeCommandHistoryPanel({
   const [confirmedCancellations, setConfirmedCancellations] = useState(() => new Set<string>());
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const readHistory = useScopedRead(nodeId, initialHistory);
+  const [recoveredSnapshot, setRecoveredSnapshot] = useState<string>();
+  const historyUnavailable = unavailableSince !== undefined && recoveredSnapshot !== unavailableSince;
+  const readHistory = useScopedRead(nodeId, unavailableSince ?? initialHistory);
 
   // Next.js may stream a new server snapshot into the mounted client component.
   // Adopt it even when the previous snapshot contained no active commands.
   useEffect(() => {
-    setHistory(initialHistory);
-    setError(null);
+    if (initialHistory) {
+      setHistory(initialHistory);
+      setError(null);
+    }
   }, [initialHistory, nodeId]);
 
   const refresh = useCallback((afterCancellation = false) => readHistory(
@@ -80,15 +86,16 @@ export function NodeCommandHistoryPanel({
     (next) => {
       setHistory(next);
       setError(null);
+      setRecoveredSnapshot(unavailableSince);
     },
     (error) => setError(error instanceof Error ? error.message : 'Falha ao atualizar histórico'),
     afterCancellation,
-  ), [nodeId, readHistory]);
+  ), [nodeId, readHistory, unavailableSince]);
 
-  const hasActive = history.items.some((item) => item.progress.is_active);
+  const shouldRefresh = historyUnavailable || history?.items.some((item) => item.progress.is_active);
 
   useEffect(() => {
-    if (!hasActive) {
+    if (!shouldRefresh) {
       return;
     }
 
@@ -97,9 +104,9 @@ export function NodeCommandHistoryPanel({
     }, 15_000);
 
     return () => clearInterval(timer);
-  }, [hasActive, refresh]);
+  }, [shouldRefresh, refresh]);
 
-  const items = history.items.map((item) => {
+  const items = (history?.items ?? []).map((item) => {
     if (!confirmedCancellations.has(item.command_id) || item.status === 'cancelled') {
       return item;
     }
@@ -127,8 +134,11 @@ export function NodeCommandHistoryPanel({
       description="Histórico de comandos allowlistados enviados ao agente via heartbeat."
     >
       {error ? <Alert variant="error">{error}</Alert> : null}
+      {historyUnavailable ? (
+        <Alert variant="warning">Consulta do histórico indisponível. O painel tentará novamente.</Alert>
+      ) : null}
 
-      <Card className="overflow-x-auto">
+      {history ? <Card className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500">
             <tr>
@@ -195,7 +205,7 @@ export function NodeCommandHistoryPanel({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        disabled={pending}
+                        disabled={pending || historyUnavailable}
                         onClick={() => {
                           startTransition(async () => {
                             try {
@@ -223,7 +233,7 @@ export function NodeCommandHistoryPanel({
             )}
           </tbody>
         </table>
-      </Card>
+      </Card> : null}
     </PageSection>
   );
 }

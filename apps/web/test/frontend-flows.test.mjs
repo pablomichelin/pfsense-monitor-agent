@@ -482,7 +482,7 @@ test('detalhe do firewall distingue falha de carga de histórico vazio/desligado
   ]) componentMocks[`@/components/${file}`] = { [symbol]: symbol };
   for (const failureStatus of [null, 500, 401]) {
     const api = {
-      ApiError, getNodeDetails: async () => ({ node }), getSession: async () => ({ user: { role: 'readonly' }, permissions: [] }),
+      ApiError, getNodeDetails: async () => ({ node, generated_at: 'synthetic-snapshot' }), getSession: async () => ({ user: { role: 'readonly' }, permissions: [] }),
       getNodeConfigBackups: async () => ({}), getPfsenseUpgradeStatus: async () => ({}), getPackageUpgradeStatus: async () => ({}),
       getNodeMetricsHistory: async () => { if (failureStatus) throw new ApiError(failureStatus); return { enabled: false, points: [] }; },
       getNodeCommandHistory: async () => { if (failureStatus === 500) throw new ApiError(500); return { items: [] }; },
@@ -499,7 +499,9 @@ test('detalhe do firewall distingue falha de carga de histórico vazio/desligado
     assert.equal(textOf(tree).includes('Não foi possível carregar'), failureStatus === 500);
     assert.equal(tabs.props.metrics.type, 'NodeDetailMetricsTab');
     assert.equal(tabs.props.metrics.props.metricsHistory === null, failureStatus === 500);
-    assert.equal(elements(tabs.props.history).some((e) => e.type === 'NodeCommandHistoryPanel'), failureStatus !== 500);
+    const commandHistory = elements(tabs.props.history).find((e) => e.type === 'NodeCommandHistoryPanel');
+    assert.equal(commandHistory.props.initialHistory === null, failureStatus === 500);
+    assert.equal(commandHistory.props.unavailableSince, failureStatus === 500 ? 'synthetic-snapshot' : undefined);
   }
 });
 

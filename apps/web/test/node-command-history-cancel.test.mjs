@@ -22,7 +22,7 @@ function snapshot(status, commandIds = [commandId]) {
   };
 }
 
-function historyPanel(t, { cancelResponse, historyResponses, initialHistory = snapshot('running') }) {
+function historyPanel(t, { cancelResponse, historyResponses, initialHistory = snapshot('running'), unavailableSince }) {
   const requests = [];
   t.mock.method(globalThis, 'fetch', async (resource, init) => {
     const url = new URL(resource);
@@ -66,8 +66,8 @@ function historyPanel(t, { cancelResponse, historyResponses, initialHistory = sn
     else process.env.MONITOR_API_BASE_URL = previousApiUrl;
   }
 
-  const render = () => hooks.render(Panel, {
-    nodeId, initialHistory, canCancelServiceRestart: true,
+  const render = (updated = {}) => hooks.render(Panel, {
+    nodeId, initialHistory, unavailableSince, canCancelServiceRestart: true, ...updated,
   });
   const cancelButton = (tree) => elements(tree).find((element) => element.type === 'button' && textOf(element) === 'Cancelar');
   return {
@@ -116,6 +116,33 @@ test('cancelamento aceito permanece Cancelado após a primeira leitura falhar e 
   assert.deepEqual(panel.requests, [
     ['POST', cancelPath], ['GET', historyPath], ['GET', historyPath], ['GET', historyPath],
   ]);
+});
+
+test('histórico indisponível informa a falha e se recupera sem recarregar a página', async (t) => {
+  const panel = historyPanel(t, {
+    initialHistory: null,
+    unavailableSince: 'failed-snapshot',
+    historyResponses: [() => Response.json(snapshot('cancelled'))],
+  });
+  const initial = panel.render();
+  assert.match(textOf(initial), /Consulta do histórico indisponível/);
+  assert.doesNotMatch(textOf(initial), /Nenhum comando registrado/);
+  const restored = await panel.poll();
+  assert.equal(panel.status(restored), 'cancelled');
+  assert.doesNotMatch(textOf(restored), /Consulta do histórico indisponível/);
+  assert.equal(panel.timers.size, 0);
+});
+
+test('nova falha de snapshot conserva a confirmação já recebida no histórico', async (t) => {
+  const panel = historyPanel(t, {
+    cancelResponse: () => Response.json({ ok: true, command_id: commandId, status: 'cancelled' }, { status: 201 }),
+    historyResponses: [() => Response.json({ message: 'Indisponível' }, { status: 503 })],
+  });
+  await panel.cancel();
+  const tree = panel.render({ initialHistory: null, unavailableSince: 'failed-snapshot' });
+  assert.equal(panel.status(tree), 'cancelled');
+  assert.equal(panel.cancelButton(tree), undefined);
+  assert.equal(panel.timers.size, 1);
 });
 
 test('cancelamento recusado mantém o estado e o controle indicados pelo histórico', async (t) => {

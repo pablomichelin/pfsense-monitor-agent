@@ -306,17 +306,19 @@ export default async function NodeDetailsPage({
                   />
                 ) : null}
             </div>}
-            history={<>                {commandHistory ? <NodeCommandHistoryPanel
-                  key={node.id}
-                  nodeId={node.id}
-                  initialHistory={commandHistory}
-                  canCancelBackup={canRequestBackup}
-                  canCancelPfsenseUpgrade={canRunUpgrade}
-                  canCancelPackageUpgrade={canRunPackageUpgrade}
-                  canCancelServiceRestart={canRestartService}
-                  canCancelNodeReboot={canRebootNode}
-                /> : null}
-</>}
+            history={(
+              <NodeCommandHistoryPanel
+                key={node.id}
+                nodeId={node.id}
+                initialHistory={commandHistory}
+                unavailableSince={commandHistory == null ? response.generated_at : undefined}
+                canCancelBackup={canRequestBackup}
+                canCancelPfsenseUpgrade={canRunUpgrade}
+                canCancelPackageUpgrade={canRunPackageUpgrade}
+                canCancelServiceRestart={canRestartService}
+                canCancelNodeReboot={canRebootNode}
+              />
+            )}
             access={<>                {canViewTechnicians && technicianAccounts ? (
                   <NodeTechnicianAccountsPanel
                     items={technicianAccounts.items}
