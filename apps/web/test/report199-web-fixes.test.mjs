@@ -2,6 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sourceLoader, uiMocks, hookHarness, elements, textOf, settle, deferred } from './source-harness.mjs';
 
+test('bounded search input keeps complete Unicode characters and ignores repeated parameters', () => {
+  const { readSearchParam, FIREWALL_SEARCH_MAX_LENGTH, ALERT_SEARCH_MAX_LENGTH, AUDIT_ACTOR_SEARCH_MAX_LENGTH } =
+    sourceLoader()('lib/search-param.ts');
+  for (const limit of [FIREWALL_SEARCH_MAX_LENGTH, ALERT_SEARCH_MAX_LENGTH, AUDIT_ACTOR_SEARCH_MAX_LENGTH]) {
+    const allowed = 'a'.repeat(limit - 1) + '🧪';
+    assert.equal(readSearchParam(`  ${allowed}x  `, limit), allowed);
+    assert.equal(readSearchParam('  QA site   ', limit), 'QA site');
+    assert.equal(readSearchParam(['qa', 'other'], limit), undefined);
+    assert.equal(readSearchParam('  ', limit), undefined);
+  }
+});
+
 test('F03 login next is always same-origin and cannot reach an external host', () => {
   const { sanitizeInternalPath } = sourceLoader()('lib/internal-path.ts');
   for (const candidate of ['/\\outside.example/path', '//outside.example', '/\u0000outside',

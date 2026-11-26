@@ -14,6 +14,7 @@ import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { formInputClassName, formSelectClassName } from '@/lib/form-field-styles';
 import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
 import { formatDateTime, formatRelativeAge } from '@/lib/format';
+import { ALERT_SEARCH_MAX_LENGTH, readSearchParam } from '@/lib/search-param';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,7 +109,7 @@ export default async function AlertsPage({
   const status = typeof params.status === 'string' ? params.status || undefined : params.view === 'all' ? undefined : 'open';
   const severity = typeof params.severity === 'string' ? params.severity : undefined;
   const type = typeof params.type === 'string' ? params.type : undefined;
-  const search = typeof params.search === 'string' ? params.search : undefined;
+  const search = readSearchParam(params.search, ALERT_SEARCH_MAX_LENGTH);
   const page = Math.min(parsePage(params.page), 1000000);
   const perPage = typeof params.per_page === 'string' && ['10', '25', '50'].includes(params.per_page) ? Number(params.per_page) : 25;
 
@@ -286,6 +287,7 @@ export default async function AlertsPage({
               <input
                 type="search"
                 name="search" aria-label="Buscar alertas"
+                maxLength={ALERT_SEARCH_MAX_LENGTH}
                 defaultValue={search ?? ''}
                 placeholder="Buscar firewall, cliente ou descrição"
                 className={`${formInputClassName} min-h-11 min-w-0 xl:min-w-[16rem] xl:flex-1`}

@@ -8,6 +8,7 @@ import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { getBackupFilters, getBackupFleetList, getSession } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
 import { isClientRole } from '@/lib/client-profile';
+import { FIREWALL_SEARCH_MAX_LENGTH, readSearchParam } from '@/lib/search-param';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ export default async function BackupsPage({
   const backupStatus =
     ['ok', 'late', 'failed', 'never'].includes(String(params.backup_status))
       ? params.backup_status as 'ok' | 'late' | 'failed' | 'never' : undefined;
-  const search = typeof params.search === 'string' ? params.search : undefined;
+  const search = readSearchParam(params.search, FIREWALL_SEARCH_MAX_LENGTH);
   const sortBy =
     typeof params.sort_by === 'string' &&
     ['name', 'backup_priority', 'backup_age'].includes(params.sort_by)
@@ -155,6 +156,7 @@ export default async function BackupsPage({
             <input
               type="search"
               name="search" aria-label="Buscar firewalls"
+              maxLength={FIREWALL_SEARCH_MAX_LENGTH}
               defaultValue={search ?? ''}
               placeholder="Buscar por nome, hostname ou cliente"
               className="h-11 min-w-0 rounded-lg border border-slate-600/80 bg-panel-soft px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500"

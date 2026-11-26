@@ -12,6 +12,7 @@ import { ApiError, getNodesFilters, getNodesList, getPackageRelease, getSession 
 import { isClientRole } from '@/lib/client-profile';
 import { hasPermission } from '@/lib/authz';
 import { isInventorySortBy } from '@/lib/nodes-inventory-sort';
+import { FIREWALL_SEARCH_MAX_LENGTH, readSearchParam } from '@/lib/search-param';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +47,7 @@ export default async function NodesPage({
     ['critical', 'standard', 'lab'].includes(params.criticality)
       ? (params.criticality as 'critical' | 'standard' | 'lab')
       : undefined;
-  const search = typeof params.search === 'string' ? params.search : undefined;
+  const search = readSearchParam(params.search, FIREWALL_SEARCH_MAX_LENGTH);
   const deletedNotice = params.deleted === '1';
   const deletedBatch =
     typeof params.deleted_batch === 'string' ? params.deleted_batch : undefined;
@@ -352,6 +353,7 @@ export default async function NodesPage({
           <input
             type="search"
             name="search"
+            maxLength={FIREWALL_SEARCH_MAX_LENGTH}
             defaultValue={search ?? ''}
             placeholder="Nome, hostname ou cliente"
             className="mt-1 h-11 w-full rounded-lg border border-border bg-surface-soft px-4 text-sm text-fg outline-none placeholder:text-fg-subtle"

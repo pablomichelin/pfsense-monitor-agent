@@ -16,6 +16,7 @@ import { getAuditLogs, getSession } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { adminNavLinkClassName } from '@/lib/admin-nav-styles';
+import { AUDIT_ACTOR_SEARCH_MAX_LENGTH, readSearchParam } from '@/lib/search-param';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,7 +60,7 @@ export default async function AuditPage({
   const targetType = typeof params.target_type === 'string' ? params.target_type : undefined;
   const targetId = typeof params.target_id === 'string' ? params.target_id : undefined;
   const result = typeof params.result === 'string' ? params.result : undefined;
-  const actorEmail = typeof params.actor_email === 'string' ? params.actor_email : undefined;
+  const actorEmail = readSearchParam(params.actor_email, AUDIT_ACTOR_SEARCH_MAX_LENGTH);
   const period = typeof params.period === 'string' ? params.period : undefined;
   const fromParam = typeof params.from === 'string' ? params.from : undefined;
   const toParam = typeof params.to === 'string' ? params.to : undefined;
@@ -187,6 +188,7 @@ export default async function AuditPage({
                 <input
                   type="search"
                   name="actor_email"
+                  maxLength={AUDIT_ACTOR_SEARCH_MAX_LENGTH}
                   defaultValue={actorEmail ?? ''}
                   placeholder="Buscar por e-mail"
                   className={`${inputClassName} w-full`}

@@ -24,6 +24,7 @@ import { hasPermission } from '@/lib/authz';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
 import { formatDateTime, formatRelativeAge } from '@/lib/format';
 import { buildBootstrapHref, buildPfSensePrecheckBlock, buildBootstrapEvidenceBlock, shellQuote } from '@/lib/bootstrap-command-helpers';
+import { FIREWALL_SEARCH_MAX_LENGTH, readSearchParam } from '@/lib/search-param';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,7 +80,7 @@ export default async function BootstrapPage({
   const cursor = typeof params.cursor === 'string' ? params.cursor : undefined;
   const clientId = typeof params.client_id === 'string' ? params.client_id : undefined;
   const siteId = typeof params.site_id === 'string' ? params.site_id : undefined;
-  const search = typeof params.search === 'string' ? params.search : undefined;
+  const search = readSearchParam(params.search, FIREWALL_SEARCH_MAX_LENGTH);
   const bucket: BootstrapBucket | undefined = typeof params.bucket === 'string' && ['pending', 'active', 'blocked'].includes(params.bucket) ? params.bucket as BootstrapBucket : undefined;
   const selectedNodeId = typeof params.node_id === 'string' ? params.node_id : undefined;
   const releaseBaseUrl =
@@ -290,6 +291,7 @@ export default async function BootstrapPage({
           <input
             type="search"
             name="search"
+            maxLength={FIREWALL_SEARCH_MAX_LENGTH}
             aria-label="Buscar firewall"
             defaultValue={search ?? ''}
             placeholder="Buscar"
