@@ -201,7 +201,7 @@ export async function loginMfaAction(formData: FormData): Promise<void> {
   redirect(nextPath ?? '/dashboard');
 }
 
-export async function logoutAction(): Promise<void> {
+export async function logoutAction(): Promise<string | null> {
   const requestHeaders = await headers();
   const cookieStore = await cookies();
   const cookieHeader = cookieStore
@@ -211,18 +211,33 @@ export async function logoutAction(): Promise<void> {
 
   const csrfToken = cookieStore.get(csrfCookieName)?.value;
 
-  const response = await fetch(`${requireEnv(apiBaseUrl, 'MONITOR_API_BASE_URL')}/api/v1/auth/logout`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Cookie: cookieHeader,
-      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
-      ...(requestHeaders.get('cf-connecting-ip')
-        ? { 'CF-Connecting-IP': requestHeaders.get('cf-connecting-ip') as string }
-        : {}),
-    },
-    cache: 'no-store',
-  });
+  const failure = 'Não foi possível encerrar a sessão. Tente novamente.';
+  let response: Response;
+  try {
+    response = await fetch(`${requireEnv(apiBaseUrl, 'MONITOR_API_BASE_URL')}/api/v1/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: cookieHeader,
+        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+        ...(requestHeaders.get('cf-connecting-ip')
+          ? { 'CF-Connecting-IP': requestHeaders.get('cf-connecting-ip') as string }
+          : {}),
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(28_000),
+    });
+  } catch {
+    return failure;
+  }
+  if (!response.ok) {
+    if (response.status !== 401 && response.status !== 403) return failure;
+    const payload: { message?: string } | null = await response.json().catch(() => null);
+    const sessionUnavailable = response.status === 401
+      ? payload?.message === 'invalid session' || payload?.message === 'authentication required'
+      : payload?.message === 'user is inactive';
+    if (!sessionUnavailable) return failure;
+  }
 
   await syncCookiesFromApi(response);
   cookieStore.delete(sessionCookieName);

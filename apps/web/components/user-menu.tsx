@@ -1,12 +1,13 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useActionState, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { logoutAction } from '@/lib/auth';
 
 export function UserMenu({ userEmail }: { userEmail: string }) {
   const [open, setOpen] = useState(false);
+  const [logoutError, submitLogout, logoutPending] = useActionState(logoutAction, null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -51,8 +52,16 @@ export function UserMenu({ userEmail }: { userEmail: string }) {
           <div className="my-2 border-t border-border" />
           <div className="px-3 py-2"><ThemeToggle compact /></div>
           <div className="my-2 border-t border-border" />
-          <form action={logoutAction}>
-            <button type="submit" className="flex w-full rounded-lg px-3 py-2 text-left text-sm text-danger-fg hover:bg-danger-muted">Sair</button>
+          <form action={submitLogout}>
+            <button
+              type="submit"
+              aria-disabled={logoutPending}
+              onClick={(event) => { if (logoutPending) event.preventDefault(); }}
+              className="flex w-full rounded-lg px-3 py-2 text-left text-sm text-danger-fg hover:bg-danger-muted"
+            >
+              {logoutPending ? 'Encerrando sessão…' : 'Sair'}
+            </button>
+            {logoutError && <p role="alert" className="px-3 py-2 text-xs text-danger-fg">{logoutError}</p>}
           </form>
         </div>
       ) : null}

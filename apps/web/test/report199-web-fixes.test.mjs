@@ -15,6 +15,55 @@ test('F03 login next is always same-origin and cannot reach an external host', (
   }
 });
 
+test('logout waits for the API and preserves cookies when revocation cannot be confirmed', async (t) => {
+  const oldBase = process.env.MONITOR_API_BASE_URL;
+  process.env.MONITOR_API_BASE_URL = 'https://synthetic.invalid';
+  t.after(() => {
+    if (oldBase === undefined) delete process.env.MONITOR_API_BASE_URL;
+    else process.env.MONITOR_API_BASE_URL = oldBase;
+  });
+  const deleted = [];
+  const revalidated = [];
+  const cookieStore = {
+    getAll: () => [{ name: 'qa_session', value: 'synthetic' }],
+    get: () => ({ value: 'synthetic-csrf' }),
+    delete: (name) => deleted.push(name),
+  };
+  const { logoutAction } = sourceLoader({
+    'next/headers': { cookies: async () => cookieStore, headers: async () => new Headers() },
+    'next/navigation': { redirect: (url) => { throw Object.assign(new Error('Redirect'), { url }); } },
+    'next/cache': { revalidatePath: (path) => revalidated.push(path) },
+    './api': { revokeAuthSession: () => { throw new Error('unexpected call'); } },
+    './auth-cookie-names': { sessionCookieName: 'qa_session', csrfCookieName: 'qa_csrf' },
+  })('lib/auth.ts');
+  let reply;
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, 'https://synthetic.invalid/api/v1/auth/logout');
+    assert.equal(options.headers['X-CSRF-Token'], 'synthetic-csrf');
+    if (reply instanceof Error) throw reply;
+    return reply;
+  });
+  for (const failure of [
+    new Error('synthetic outage'),
+    new Response(null, { status: 503 }),
+    Response.json({ message: 'invalid csrf token' }, { status: 401 }),
+  ]) {
+    reply = failure;
+    assert.match(await logoutAction(), /Tente novamente/);
+    assert.deepEqual(deleted, []);
+    assert.deepEqual(revalidated, []);
+  }
+  for (const success of [
+    Response.json({ ok: true }, { status: 201 }),
+    Response.json({ message: 'invalid session' }, { status: 401 }),
+  ]) {
+    reply = success;
+    await assert.rejects(logoutAction(), error => error.url === '/login');
+    assert.deepEqual(deleted.splice(0), ['qa_session', 'qa_csrf']);
+    assert.ok(revalidated.includes('/sessions'));
+  }
+});
+
 test('node list cursor errors return to page one with the rest of the URL intact', () => {
   class ApiError extends Error {
     constructor(message, status, code) { super(message); this.status = status; this.code = code; }
