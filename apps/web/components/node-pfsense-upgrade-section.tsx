@@ -44,7 +44,8 @@ const firmwareCheckSettings = {
 } as const;
 
 type FirmwareCheck = { requestedAt: string; deadline: number } & (
-  | { kind: 'refresh' | 'repair' }
+  | { kind: 'refresh' }
+  | { kind: 'repair'; previousCheckedAt: string | null }
   | { kind: 'branch'; target: PfsenseUpdateBranchTarget }
 );
 
@@ -374,11 +375,19 @@ export function NodePfsenseUpgradeSection({
       setFirmwareCheck(null);
       return;
     }
-    if (firmwareCheck.kind === 'repair' && Date.parse(status.set_branch_requested_at ?? '') > requestedAt) {
-      setRefreshMessage(null);
-      setError('A execução do reparo ficou sem confirmação após um pedido de mudança de branch.');
-      setFirmwareCheck(null);
-      return;
+    if (firmwareCheck.kind === 'repair') {
+      const branchRequestedAt = Date.parse(status.set_branch_requested_at ?? '');
+      const previousCheckedAt = Date.parse(firmwareCheck.previousCheckedAt ?? '');
+      if (Number.isFinite(branchRequestedAt) && (
+        branchRequestedAt >= requestedAt
+        || !Number.isFinite(previousCheckedAt)
+        || branchRequestedAt >= previousCheckedAt
+      )) {
+        setRefreshMessage(null);
+        setError('A execução do reparo ficou sem confirmação por causa de uma mudança de branch próxima ao pedido.');
+        setFirmwareCheck(null);
+        return;
+      }
     }
     const checkedAt = status.update_checked_at;
     if (statusRequest === firmwareCheck.requestedAt
@@ -540,6 +549,7 @@ export function NodePfsenseUpgradeSection({
         kind: 'repair',
         requestedAt: result.data.requested_at,
         deadline: Date.now() + 240_000,
+        previousCheckedAt: status.update_checked_at,
       });
     } catch (repairError) {
       setError(
