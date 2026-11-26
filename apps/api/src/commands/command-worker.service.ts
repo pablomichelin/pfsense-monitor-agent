@@ -134,7 +134,8 @@ export class CommandWorkerService implements OnModuleInit, OnModuleDestroy {
             where: {
               id: command.id, status: NodeCommandStatus.failed,
               retryCount: command.retryCount, runningAt: command.runningAt,
-              resultJson: { equals: command.resultJson ?? Prisma.JsonNull },
+              // Prisma reads both SQL NULL and the JSON value null as null.
+              resultJson: { equals: command.resultJson ?? Prisma.AnyNull },
             },
             data: { resultJson: {
               ...result, retry_exhausted: true,

@@ -53,11 +53,11 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
   assert.ok(!url.searchParams.has('host'), 'socket/host overrides are forbidden');
   assert.ok(!url.searchParams.has('schema'), 'schema overrides are forbidden');
   const selectedCase = process.env.COMMAND_RECOVERY_PG_CASE;
-  assert.ok(!selectedCase || ['disconnect', 'capacity', 'batch-sweep', 'capacity-queue'].includes(selectedCase), 'unknown PG case selector');
+  assert.ok(!selectedCase || ['disconnect', 'capacity', 'batch-sweep', 'capacity-queue', 'legacy-retry'].includes(selectedCase), 'unknown PG case selector');
   url.searchParams.set('connection_limit', '4');
   url.searchParams.set('connect_timeout', '5');
   url.searchParams.set('pool_timeout', '5');
-  const { PrismaClient } = appRequire('@prisma/client');
+  const { Prisma, PrismaClient } = appRequire('@prisma/client');
   const a = new PrismaClient({ datasourceUrl: url.toString() });
   const b = new PrismaClient({ datasourceUrl: url.toString() });
   let rootClient, technician, scratch;
@@ -165,8 +165,45 @@ test('PG17 durable recovery: real database transactions and concurrent connectio
     if (selectedCase === 'capacity' && !name.startsWith('upgrade capacity')) return Promise.resolve();
     if (selectedCase === 'batch-sweep' && !name.startsWith('periodic batch sweep')) return Promise.resolve();
     if (selectedCase === 'capacity-queue' && !name.startsWith('queued upgrade')) return Promise.resolve();
+    if (selectedCase === 'legacy-retry' && !name.startsWith('legacy failed commands')) return Promise.resolve();
     return t.test(name, work);
   };
+
+  await runCase('legacy failed commands without a result cannot block the retry queue', async () => {
+    const node = await a.node.create({
+      data: { siteId: site.id, nodeUid: randomUUID(), hostname: 'legacy-result.synthetic.invalid' },
+    });
+    const oldest = new Date(Date.now() - 60_000);
+    const legacy = Array.from({ length: 51 }, (_, index) => ({
+      id: randomUUID(), nodeId: node.id, type: 'package_upgrade', status: 'failed',
+      requestedAt: oldest, runningAt: oldest, completedAt: new Date(oldest.getTime() + index),
+      expiresAt: expiresAt(), retryCount: 0, maxRetries: 1,
+      resultJson: index < 50 ? Prisma.DbNull : Prisma.JsonNull,
+    }));
+    await a.nodeCommand.createMany({ data: legacy });
+    const next = await a.nodeCommand.create({ data: {
+      nodeId: node.id, type: 'config_backup_now', status: 'failed', maxRetries: 1,
+      completedAt: new Date(), expiresAt: expiresAt(), resultJson: { error_message: 'synthetic' },
+    } });
+    const worker = new CommandWorkerService(a, {}, sa.orchestrator);
+    await worker.processRetries();
+    await worker.processRetries();
+    const observed = await a.nodeCommand.findMany({
+      where: { id: { in: legacy.map(command => command.id) } },
+      select: { status: true, retryCount: true, resultJson: true },
+    });
+    const nextResult = await a.nodeCommand.findUniqueOrThrow({ where: { id: next.id } });
+    assert.deepEqual({
+      classified: observed.filter(row => row.resultJson?.retry_blocked_reason === 'execution_intent_committed').length,
+      nextStatus: nextResult.status,
+      nextAttempt: nextResult.retryCount,
+    }, { classified: legacy.length, nextStatus: 'pending', nextAttempt: 1 });
+    assert.equal(observed.length, legacy.length);
+    assert.ok(observed.every(row => row.status === 'failed' && row.retryCount === 0));
+    assert.equal(await a.auditLog.count({ where: {
+      targetId: { in: legacy.map(command => command.id) }, action: 'package.upgrade.request_retry_blocked',
+    } }), legacy.length);
+  });
 
   await runCase('periodic batch sweep progresses beyond legacy empty and long-running batches', async () => {
     const old = new Date(Date.now() - 300_000);
