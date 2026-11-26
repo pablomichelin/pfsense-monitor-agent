@@ -20,14 +20,14 @@ export class HealthController {
   }> {
     try {
       await this.prisma.$queryRaw`SELECT 1`;
-    } catch (error) {
+    } catch {
       throw new ServiceUnavailableException({
         ok: false,
         database: 'down',
         service: 'monitor-pfsense-api',
         version: appConfig.systemVersion,
         time: new Date().toISOString(),
-        error: error instanceof Error ? error.message : 'database unavailable',
+        error: 'database unavailable',
       });
     }
 
