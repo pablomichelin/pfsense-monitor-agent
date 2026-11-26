@@ -405,43 +405,29 @@ export class AdminService {
       throw new ConflictException('role code reserved for system profile');
     }
 
-    const existing = await this.prisma.role.findUnique({ where: { code } });
-    if (existing) {
-      throw new ConflictException('role already exists');
+    try {
+      const role = await this.prisma.$transaction(async (tx) => {
+        const role = await tx.role.create({
+          data: { code, label: dto.label.trim(), isSystem: false, status: EntityStatus.active },
+          select: { code: true, label: true, isSystem: true },
+        });
+        await this.auditService.record({
+          actorId,
+          ipAddress,
+          action: 'role.create',
+          targetType: 'role',
+          targetId: role.code,
+          metadataJson: { label: role.label },
+        }, tx);
+        return role;
+      });
+      return { role: { code: role.code, label: role.label, is_system: role.isSystem } };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('role already exists');
+      }
+      throw error;
     }
-
-    const role = await this.prisma.role.create({
-      data: {
-        code,
-        label: dto.label.trim(),
-        isSystem: false,
-        status: EntityStatus.active,
-      },
-      select: {
-        code: true,
-        label: true,
-        isSystem: true,
-      },
-    });
-
-    await this.auditService.record({
-      actorId,
-      ipAddress,
-      action: 'role.create',
-      targetType: 'role',
-      targetId: role.code,
-      metadataJson: {
-        label: role.label,
-      },
-    });
-
-    return {
-      role: {
-        code: role.code,
-        label: role.label,
-        is_system: role.isSystem,
-      },
-    };
   }
 
   async deleteRole(
@@ -449,37 +435,31 @@ export class AdminService {
     actorId?: string,
     ipAddress?: string,
   ): Promise<{ deleted: true; code: string }> {
-    const role = await this.prisma.role.findUnique({
-      where: { code },
-      select: {
-        code: true,
-        isSystem: true,
-        _count: { select: { users: true } },
-      },
+    await this.prisma.$transaction(async (tx) => {
+      const [role] = await tx.$queryRaw<Array<{ isSystem: boolean }>>`
+        SELECT is_system AS "isSystem" FROM roles WHERE code = ${code} FOR UPDATE
+      `;
+      if (!role) {
+        throw new NotFoundException('role not found');
+      }
+      if (role.isSystem) {
+        throw new BadRequestException('system roles cannot be deleted');
+      }
+      const users = await tx.user.count({ where: { role: code } });
+      if (users > 0) {
+        throw new ConflictException('role is assigned to users');
+      }
+
+      await tx.role.delete({ where: { code } });
+      await this.auditService.record({
+        actorId,
+        ipAddress,
+        action: 'role.delete',
+        targetType: 'role',
+        targetId: code,
+      }, tx);
     });
-
-    if (!role) {
-      throw new NotFoundException('role not found');
-    }
-
-    if (role.isSystem) {
-      throw new BadRequestException('system roles cannot be deleted');
-    }
-
-    if (role._count.users > 0) {
-      throw new ConflictException('role is assigned to users');
-    }
-
-    await this.prisma.role.delete({ where: { code } });
     this.permissionsService.invalidateRoleCache(code);
-
-    await this.auditService.record({
-      actorId,
-      ipAddress,
-      action: 'role.delete',
-      targetType: 'role',
-      targetId: code,
-    });
 
     return { deleted: true, code };
   }

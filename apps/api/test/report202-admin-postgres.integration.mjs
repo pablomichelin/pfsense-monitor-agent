@@ -613,7 +613,7 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     const each = [role + '-one', role + '-two'];
     await db.role.create({ data: { code: role, label: role } });
     t.after(async () => {
-      await db.role.delete({ where: { code: role } });
+      await db.role.deleteMany({ where: { code: role } });
       await db.permission.deleteMany({ where: { id: { in: each } } });
     });
     await db.permission.createMany({ data: each.map(id => ({ id, description: id })) });
@@ -707,6 +707,40 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.deepEqual(await waiting, [second]);
     assert.deepEqual(await cache.getPermissionsForRole(f.role), [second]);
     assert.equal(observedReads, 2);
+  });
+
+  await run('role catalog creation rolls back on audit failure', async t => {
+    const f = await rolePermissionsFixture(t);
+    const code = 'qa-new-role-' + randomUUID();
+    t.after(() => db.role.deleteMany({ where: { code } }));
+    const create = admin => admin.createRole({ code, label: ' QA Role ' }, f.users[0].id);
+    const failing = f.service(db, { record: async () => { throw new Error('synthetic role catalog audit'); } });
+    await assert.rejects(create(failing), /synthetic role catalog audit/);
+    assert.equal(await db.role.findUnique({ where: { code } }), null);
+    const created = await create(f.service(db));
+    assert.deepEqual(created, { role: { code, label: 'QA Role', is_system: false } });
+    await assert.rejects(create(f.service(peer)), error => error.getStatus() === 409);
+    assert.equal(await db.auditLog.count({ where: { targetId: code, action: 'role.create' } }), 1);
+  });
+
+  await run('role catalog deletion keeps the role and links on failed audit', async t => {
+    const f = await rolePermissionsFixture(t);
+    const permissionId = f.each[0];
+    await db.rolePermission.create({ data: { role: f.role, permissionId } });
+    assert.deepEqual(await f.permissions.getPermissionsForRole(f.role), [permissionId]);
+    const invalidated = t.mock.method(f.permissions, 'invalidateRoleCache');
+    const remove = admin => admin.deleteRole(f.role, f.users[0].id);
+    const failing = f.service(db, { record: async () => { throw new Error('synthetic role catalog audit'); } });
+    await assert.rejects(remove(failing), /synthetic role catalog audit/);
+    assert.ok(await db.role.findUnique({ where: { code: f.role } }));
+    assert.deepEqual(await f.read(), [permissionId]);
+    assert.equal(invalidated.mock.callCount(), 0);
+    const removed = await remove(f.service(db));
+    assert.deepEqual(removed, { deleted: true, code: f.role });
+    assert.equal(invalidated.mock.callCount(), 1);
+    assert.deepEqual(await f.permissions.getPermissionsForRole(f.role), []);
+    assert.deepEqual(await f.read(), []);
+    assert.equal(await db.auditLog.count({ where: { targetId: f.role, action: 'role.delete' } }), 1);
   });
 
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
