@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 
@@ -21,6 +22,7 @@ class PackageBuildTest(unittest.TestCase):
         scripts.mkdir()
         packages = root / "packages"
         shutil.copytree(ROOT / "packages/pfsense-package", packages / "pfsense-package")
+        self.package = packages / "pfsense-package"
         self.script = scripts / "build-pfsense-package-artifact.sh"
         shutil.copy2(ROOT / "scripts" / self.script.name, self.script)
         makefile = (packages / "pfsense-package/Makefile").read_text()
@@ -58,6 +60,16 @@ class PackageBuildTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assert_valid_artifact()
 
+    def test_excludes_mac_metadata_and_stamps_the_archive(self):
+        (self.package / "files/.DS_Store").write_text("synthetic Finder metadata")
+        (self.package / "files/._metadata").write_text("synthetic resource fork")
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with tarfile.open(self.dist / self.name) as archive:
+            self.assertFalse(any(Path(name).name.startswith(("._", ".DS_Store")) for name in archive.getnames()))
+            self.assertEqual(archive.extractfile("pfsense-package/VERSION").read().strip(),
+                             f"v{self.version}".encode())
+
     def test_archive_failure_leaves_no_final_file_and_can_retry(self):
         self.tar_shim("""
 while [[ $# -gt 1 ]]; do
@@ -77,6 +89,48 @@ exit 8
         retry = self.run_script(self.version)
         self.assertEqual(retry.returncode, 0, retry.stderr)
         self.assert_valid_artifact()
+
+    def test_interrupted_publication_finishes_the_same_artifact_on_retry(self):
+        # Exit immediately after the archive link, before Python can run any cleanup.
+        (self.shims / "sitecustomize.py").write_text("""
+import os
+from pathlib import Path
+
+original_link = os.link
+name = os.environ["QUALITY_TEST_ARTIFACT_NAME"]
+
+def interrupt_after_publish(source, destination, *args, **kwargs):
+    result = original_link(source, destination, *args, **kwargs)
+    if Path(destination).name == name:
+        os._exit(91)
+    return result
+
+os.link = interrupt_after_publish
+""")
+        failed = subprocess.run(
+            [str(self.script), self.version],
+            env={**self.env, "PYTHONPATH": str(self.shims), "QUALITY_TEST_ARTIFACT_NAME": self.name},
+            capture_output=True, text=True, timeout=20,
+        )
+        self.assertEqual(failed.returncode, 91, failed.stderr)
+        archive = self.dist / self.name
+        original = archive.read_bytes()
+        self.assertFalse((self.dist / f"{self.name}.sha256").exists())
+        retry = self.run_script(self.version)
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(archive.read_bytes(), original)
+        self.assert_valid_artifact()
+        self.assertFalse(list(self.dist.glob("*.pending")))
+
+    def test_unknown_incomplete_artifact_is_not_overwritten_or_signed(self):
+        self.dist.mkdir(parents=True)
+        archive = self.dist / self.name
+        archive.write_bytes(b"unknown artifact")
+        result = self.run_script(self.version)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no matching staged checksum", result.stderr)
+        self.assertEqual(archive.read_bytes(), b"unknown artifact")
+        self.assertFalse((self.dist / f"{self.name}.sha256").exists())
 
     def test_simultaneous_builds_cannot_overwrite_the_same_version(self):
         self.tar_shim("""

@@ -70,6 +70,10 @@ echo "Suite de smoke iniciada"
 echo "BASE_URL=$BASE_URL"
 echo
 
+run_smoke() {
+  BASE_URL="$BASE_URL" AUTH_EMAIL="${AUTH_EMAIL:-}" AUTH_PASSWORD="${AUTH_PASSWORD:-}" "$@"
+}
+
 for script_name in "${SUITE[@]}"; do
   script_path="$SCRIPTS_DIR/$script_name"
 
@@ -83,7 +87,11 @@ for script_name in "${SUITE[@]}"; do
   fi
 
   echo "==> Executando $script_name"
-  BASE_URL="$BASE_URL" AUTH_EMAIL="${AUTH_EMAIL:-}" AUTH_PASSWORD="${AUTH_PASSWORD:-}" "$script_path"
+  if [[ "$script_name" == "smoke-agent-release.sh" ]]; then
+    run_smoke "$script_path" --candidate
+  else
+    run_smoke "$script_path"
+  fi
   echo "<== OK $script_name"
   echo
 done

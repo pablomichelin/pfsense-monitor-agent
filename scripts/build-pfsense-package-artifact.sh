@@ -7,6 +7,13 @@ PACKAGE_DIR="$ROOT_DIR/packages/pfsense-package"
 DIST_DIR="$ROOT_DIR/dist/pfsense-package"
 MAKEFILE_VERSION="$(grep -E '^PORTVERSION=' "$PACKAGE_DIR/Makefile" | sed 's/^PORTVERSION=[[:space:]]*//' | tr -d '\r')"
 VERSION="${1:-$MAKEFILE_VERSION}"
+if [[ "$#" -gt 1 ]]; then
+  if [[ "$#" -ne 3 || "${2:-}" != "--output-dir" || -z "${3:-}" ]]; then
+    echo "Usage: $0 [version] [--output-dir directory]" >&2
+    exit 2
+  fi
+  DIST_DIR="$3"
+fi
 INC_FILE="$PACKAGE_DIR/files/usr/local/pkg/systemup_monitor.inc"
 INC_AGENT_VERSION="$(grep 'define("SYSTEMUP_MONITOR_AGENT_VERSION"' "$INC_FILE" | sed 's/.*"\([^"]*\)".*/\1/')"
 if [[ "$INC_AGENT_VERSION" != "$MAKEFILE_VERSION" ]]; then
@@ -22,7 +29,7 @@ ARTIFACT_NAME="monitor-pfsense-package-v${VERSION}.tar.gz"
 ARTIFACT_PATH="$DIST_DIR/$ARTIFACT_NAME"
 CHECKSUM_PATH="$DIST_DIR/${ARTIFACT_NAME}.sha256"
 
-if [[ -e "$ARTIFACT_PATH" || -e "$CHECKSUM_PATH" ]]; then
+if [[ -e "$ARTIFACT_PATH" && -e "$CHECKSUM_PATH" ]]; then
   echo "Release $VERSION already exists; use a new version (immutable artifacts)." >&2
   exit 1
 fi
@@ -59,10 +66,12 @@ PY
 done
 
 # Use portable headers so macOS file metadata cannot break extraction on pfSense.
-COPYFILE_DISABLE=1 tar --format ustar -C "$STAGE_DIR" -czf "$STAGE_DIR/$ARTIFACT_NAME" pfsense-package
+COPYFILE_DISABLE=1 tar --format ustar --exclude=.DS_Store --exclude='._*' \
+  -C "$STAGE_DIR" -czf "$STAGE_DIR/$ARTIFACT_NAME" pfsense-package
 
-# Publish only complete files. Hard links reject concurrent builds of the same version.
+# Publish only complete files. The staged checksum also makes an interrupted publish resumable.
 python3 - "$STAGE_DIR" "$DIST_DIR" "$ARTIFACT_NAME" <<'PYTHON'
+import fcntl
 import hashlib
 import os
 from pathlib import Path
@@ -73,24 +82,37 @@ name = sys.argv[3]
 archive = stage_dir / name
 sidecar = stage_dir / f"{name}.sha256"
 published = dist_dir / name
+published_checksum = dist_dir / sidecar.name
+pending_checksum = dist_dir / f".{sidecar.name}.pending"
 
-digest = hashlib.sha256()
-with archive.open("rb") as stream:
-    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-        digest.update(chunk)
-sidecar.write_text(f"{digest.hexdigest()}  {name}\n", encoding="ascii")
+def checksum_content(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return f"{digest.hexdigest()}  {name}\n".encode("ascii")
 
-linked_archive = False
+sidecar.write_bytes(checksum_content(archive))
+directory = os.open(dist_dir, os.O_RDONLY)
 try:
-    os.link(archive, published)
-    linked_archive = True
-    os.link(sidecar, dist_dir / sidecar.name)
-except OSError as error:
-    if linked_archive and published.exists() and published.samefile(archive):
-        published.unlink()
-    if isinstance(error, FileExistsError):
+    fcntl.flock(directory, fcntl.LOCK_EX)
+    if published_checksum.exists():
         sys.exit(f"Release artifact {name} already exists; use a new version.")
-    raise
+    if published.exists():
+        if not pending_checksum.is_file() or pending_checksum.read_bytes() != checksum_content(published):
+            sys.exit(f"Incomplete release artifact {name} has no matching staged checksum.")
+        os.link(pending_checksum, published_checksum)
+        pending_checksum.unlink()
+        print(f"Resumed interrupted release artifact {name}.")
+    else:
+        # A previous builder may have stopped before linking its archive.
+        pending_checksum.unlink(missing_ok=True)
+        os.link(sidecar, pending_checksum)
+        os.link(archive, published)
+        os.link(pending_checksum, published_checksum)
+        pending_checksum.unlink()
+finally:
+    os.close(directory)
 PYTHON
 
 echo "Artifact created: $ARTIFACT_PATH"
