@@ -384,6 +384,14 @@ test('SSE distingue conexão/reconexão/fim, filtra node e mantém refresh final
   assert.equal(timers.size, 1);
   fireTimer();
   assert.equal(refreshed, 2);
+  now += 1000;
+  source.emit('dashboard.refresh', { ...payload, node_id: undefined });
+  source.emit('dashboard.refresh', { ...payload, source: 'node_reconciled', node_id: 'other' });
+  assert.equal(timers.size, 0, 'heartbeats anônimos e eventos de outro firewall seguem filtrados');
+  source.emit('dashboard.refresh', { ...payload, source: 'node_reconciled', node_id: undefined });
+  assert.equal([...timers.values()][0]?.delay, 29000);
+  fireTimer();
+  assert.equal(refreshed, 3);
   source.readyState = 0;
   source.emit('error');
   assert.match(textOf(render()), /reconectando/);

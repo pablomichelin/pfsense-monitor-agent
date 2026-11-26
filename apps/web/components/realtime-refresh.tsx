@@ -78,11 +78,7 @@ export function RealtimeRefresh({
     let retryDelay = INITIAL_RECONNECT_DELAY_MS;
     let closeSource: (() => void) | undefined;
 
-    const scheduleRefresh = (payload: DashboardRefreshEvent | null) => {
-      if (payload && scope === 'node' && payload.node_id !== nodeId) {
-        return;
-      }
-
+    const scheduleRefresh = () => {
       if (refreshTimerRef.current !== null) {
         return;
       }
@@ -97,17 +93,18 @@ export function RealtimeRefresh({
       retryDelay = INITIAL_RECONNECT_DELAY_MS;
       setStreamState('live');
       // Recupera mudanças entre o snapshot SSR e a primeira conexão.
-      scheduleRefresh(null);
+      scheduleRefresh();
     };
 
     const handleRefresh = (event: MessageEvent<string>) => {
       try {
         const payload = JSON.parse(event.data) as DashboardRefreshEvent;
         if (!payload || !['heartbeat_ingested', 'node_reconciled'].includes(payload.source) || !Number.isFinite(Date.parse(payload.occurred_at))) return;
-        if (scope === 'node' && payload.node_id !== nodeId) return;
+        const fleetReconciled = payload.source === 'node_reconciled' && payload.node_id == null;
+        if (scope === 'node' && payload.node_id !== nodeId && !fleetReconciled) return;
         setStreamState('live');
         setLastEvent(payload);
-        scheduleRefresh(payload);
+        scheduleRefresh();
       } catch {
         // Eventos incompletos não devem gerar uma atualização nem quebrar a UI.
       }
