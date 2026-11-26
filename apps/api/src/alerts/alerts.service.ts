@@ -14,6 +14,7 @@ import {
 import { AccessActor } from '../auth/access-actor.type';
 import { AccessPolicyService } from '../auth/access-policy.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { ListAlertsQueryDto } from './dto/list-alerts-query.dto';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class AlertsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   async listAlerts(actor: AccessActor, query: ListAlertsQueryDto): Promise<{
@@ -387,7 +389,7 @@ export class AlertsService {
     },
   ): Promise<{ at: Date; by: string } | undefined> {
     const acknowledging = audit.action === 'alert.acknowledge';
-    return this.prisma.$transaction(async (tx) => {
+    const existing = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.alert.updateMany({
         where: {
           id: alertId,
@@ -422,5 +424,7 @@ export class AlertsService {
         },
       });
     });
+    if (!existing) this.realtimeService.invalidateDashboardCache();
+    return existing;
   }
 }

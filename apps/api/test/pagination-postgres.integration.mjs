@@ -202,6 +202,7 @@ async function loadRuntime(url) {
   const { PrismaClient } = require('@prisma/client');
   const { NodesService } = compiled('nodes/nodes.service.js');
   const { AlertsService } = compiled('alerts/alerts.service.js');
+  const { RealtimeService } = compiled('realtime/realtime.service.js');
   const { AccessPolicyService } = compiled('auth/access-policy.service.js');
   const { PermissionsService } = compiled('auth/permissions.service.js');
   const { appConfig } = compiled('config/app-config.js');
@@ -215,7 +216,7 @@ async function loadRuntime(url) {
     db, permissions, policy,
     apiVersion: packageInfo.version, apiBuildSha256,
     nodes: new NodesService(db, policy, release),
-    alerts: new AlertsService(db, policy),
+    alerts: new AlertsService(db, policy, new RealtimeService()),
   };
 }
 

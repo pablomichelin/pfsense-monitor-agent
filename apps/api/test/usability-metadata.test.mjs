@@ -7,11 +7,12 @@ const require=createRequire(import.meta.url);
 const ts=require('typescript');
 const previous=require.extensions['.ts'];
 require.extensions['.ts']=(mod,file)=>mod._compile(ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,experimentalDecorators:true,emitDecoratorMetadata:true,esModuleInterop:true}}).outputText,file);
-let AlertsService,PackageReleaseService,DashboardService;
+let AlertsService,PackageReleaseService,DashboardService,RealtimeService;
 try {
  ({AlertsService}=require('../src/alerts/alerts.service.ts'));
  ({PackageReleaseService}=require('../src/common/package-release.service.ts'));
  ({DashboardService}=require('../src/dashboard/dashboard.service.ts'));
+ ({RealtimeService}=require('../src/realtime/realtime.service.ts'));
 } finally {if(previous)require.extensions['.ts']=previous;else delete require.extensions['.ts'];}
 
 test('críticos pendentes excluem resolvidos sem perder contadores históricos ou escopo',async()=>{
@@ -23,7 +24,7 @@ test('críticos pendentes excluem resolvidos sem perder contadores históricos o
  {status:'resolved',severity:'critical',_count:{_all:8}},
  {status:'resolved',severity:'warning',_count:{_all:4}},
  ];},findMany:async(q)=>{seen.push(q.where);assert.equal(q.take,10);return [];}}};
- const service=new AlertsService({$transaction:async(fn)=>fn(tx)},{assertRequestedClientFilter:async()=>{},mergeAlertWhere:async()=>scoped});
+ const service=new AlertsService({$transaction:async(fn)=>fn(tx)},{assertRequestedClientFilter:async()=>{},mergeAlertWhere:async()=>scoped},new RealtimeService());
  const result=await service.listAlerts({},{page:1,limit:10,sort_by:'attention',severity:'critical'});
  assert.deepEqual(seen,[scoped,scoped]);assert.equal(result.totals.critical_pending,5);assert.equal(result.totals.critical_resolved,8);
  assert.equal(result.totals.critical,13);assert.equal(result.totals.resolved,12);assert.equal(result.total,17);assert.equal(result.total_pages,2);

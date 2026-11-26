@@ -2,6 +2,7 @@ import './synthetic-env.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AlertsService } from '../dist/alerts/alerts.service.js';
+import { RealtimeService } from '../dist/realtime/realtime.service.js';
 
 const actor = { userId: 'synthetic-user', email: 'user@qa.invalid', role: 'synthetic' };
 const alert = { id: 'synthetic-alert', nodeId: 'synthetic-node', status: 'open' };
@@ -16,6 +17,7 @@ function transitionFixture({
 } = {}) {
   const audits = [];
   const changes = [];
+  const realtime = new RealtimeService();
   const tx = {
     alert: {
       updateMany: async ({ where, data }) => {
@@ -30,10 +32,10 @@ function transitionFixture({
     },
     auditLog: { create: async ({ data }) => { audits.push(data); } },
   };
-  return { changes, audits, service: new AlertsService({
+  return { changes, audits, realtime, service: new AlertsService({
     alert: { findUnique: async () => alert },
     $transaction: async work => work(tx),
-  }, accessPolicy) };
+  }, accessPolicy, realtime) };
 }
 
 for (const [action, mutate] of [
@@ -41,18 +43,20 @@ for (const [action, mutate] of [
   ['resolve', (service) => service.resolveAlert(actor, alert.id, { resolution_note: 'QA' }, actor)],
 ]) {
   test(`${action} refuses to overwrite a resolution after it checked access`, async () => {
-    const { audits, service } = transitionFixture({ updated: 0 });
+    const { audits, realtime, service } = transitionFixture({ updated: 0 });
     await assert.rejects(mutate(service), { status: 409 });
     assert.deepEqual(audits, []);
+    assert.equal(realtime.getDashboardRevision(), 0);
   });
 
   test(`${action} records exactly one audit in the transaction when it wins`, async () => {
-    const { audits, changes, service } = transitionFixture();
+    const { audits, changes, realtime, service } = transitionFixture();
     const result = await mutate(service);
     assert.equal(result.status, changes[0].status);
     assert.equal(audits.length, 1);
     assert.equal(audits[0].action, `alert.${action}`);
     assert.equal(audits[0].targetId, alert.id);
+    assert.equal(realtime.getDashboardRevision(), 1);
   });
 }
 
@@ -65,7 +69,7 @@ test('a deleted alert returns 404 if it disappears before the conditional update
 test('an acknowledgement retry returns the first recorded operator and emits no duplicate audit', async () => {
   const acknowledgedAt = new Date('2026-11-25T11:00:00Z');
   const acknowledgedBy = 'first-operator@qa.invalid';
-  const { audits, service } = transitionFixture({
+  const { audits, realtime, service } = transitionFixture({
     updated: 0, current: { status: 'acknowledged', acknowledgedAt, acknowledgedBy },
   });
   assert.deepEqual(await service.acknowledgeAlert(actor, alert.id, actor), {
@@ -75,4 +79,5 @@ test('an acknowledgement retry returns the first recorded operator and emits no 
     acknowledged_by: acknowledgedBy,
   });
   assert.deepEqual(audits, []);
+  assert.equal(realtime.getDashboardRevision(), 0);
 });

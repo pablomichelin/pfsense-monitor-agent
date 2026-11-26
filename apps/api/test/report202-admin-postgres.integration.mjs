@@ -743,6 +743,42 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.equal(await db.auditLog.count({ where: { targetId: f.role, action: 'role.delete' } }), 1);
   });
 
+  await run('dashboard alert counters refresh after manual acknowledgement and resolution', async t => {
+    const f = await fixture(t);
+    const { AlertsService } = loadServiceModule('alerts/alerts.service');
+    const { DashboardService } = loadServiceModule('dashboard/dashboard.service');
+    const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
+    const { RealtimeService } = loadServiceModule('realtime/realtime.service');
+    const site = await db.site.create({ data: { clientId: f.client.id, code: 'qa', name: f.run } });
+    const node = await db.node.create({ data: { siteId: site.id, nodeUid: randomUUID(), hostname: 'qa.invalid' } });
+    const [first, second] = await Promise.all(['critical', 'warning'].map(severity => db.alert.create({
+      data: {
+        nodeId: node.id, type: 'gateway_down', severity, status: 'open', fingerprint: randomUUID(),
+        title: 'Synthetic alarm', description: 'Synthetic dashboard counter', openedAt: new Date(),
+      },
+    })));
+    const policy = new AccessPolicyService(db);
+    const realtime = new RealtimeService();
+    const alerts = new AlertsService(db, policy, realtime);
+    const dashboard = new DashboardService(db, policy, { getPublishedVersion: () => '0.5.35' }, realtime);
+    const reader = { userId: f.users[2].id, role: 'readonly' };
+    const editor = { userId: f.users[0].id, role: 'superadmin' };
+    const read = async () => {
+      const [summary, fleet] = await Promise.all([dashboard.getSummary(reader), dashboard.getFleet(reader)]);
+      return [summary.totals.open_alerts, fleet.totals.open_alerts, fleet.totals.critical_alerts];
+    };
+    const before = await read();
+    const acknowledgement = await alerts.acknowledgeAlert(editor, first.id, editor);
+    const afterAck = await read();
+    const duplicate = await alerts.acknowledgeAlert(editor, first.id, editor);
+    await alerts.resolveAlert(editor, second.id, { resolution_note: 'synthetic' }, editor);
+    const afterResolve = await read();
+    assert.deepEqual(duplicate, acknowledgement);
+    assert.deepEqual({ before, afterAck, afterResolve, revisions: realtime.getDashboardRevision() }, {
+      before: [2, 2, 1], afterAck: [1, 1, 0], afterResolve: [0, 0, 0], revisions: 2,
+    });
+  });
+
   for (const pair of [['inactive', 'inactive'], ['demote', 'delete'], ['delete', 'delete']]) {
     await run(`race ${pair.join('/')}`, async t => {
       const f = await fixture(t), locked = f.gate(), release = f.gate(), pid = f.gate(), atLock = f.gate();

@@ -26,10 +26,14 @@ export class RealtimeService {
     return this.dashboardRevision;
   }
 
+  invalidateDashboardCache(): void {
+    this.dashboardRevision += 1;
+  }
+
   publishDashboardRefresh(
     event: Omit<DashboardRefreshEvent, 'event_id'>,
   ): void {
-    this.dashboardRevision += 1;
+    this.invalidateDashboardCache();
     this.dashboardEvents.next({
       event_id: this.buildEventId('dashboard'),
       ...event,
