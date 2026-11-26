@@ -6,7 +6,7 @@ import { AdminUsuariosTabs } from '@/components/admin-usuarios-tabs';
 import { Card, PageSection } from '@/components/ui';
 import {
   ApiError,
-  getAdminClientsList,
+  getActiveAdminClientOptions,
   getRolesList,
   getSession,
   getUsersList,
@@ -51,18 +51,13 @@ export default async function AdminUsuariosPage({
   }
 
   try {
-    const [usersResponse, firstClients, rolesResponse] = await Promise.all([
+    const [usersResponse, clientOptions, rolesResponse] = await Promise.all([
       getUsersList({ status: showInactive ? 'inactive' : 'active', search, cursor, limit: 50 }),
-      getAdminClientsList({ status: 'active', page: 1, limit: 100 }),
+      getActiveAdminClientOptions(),
       getRolesList(),
     ]);
     users = usersResponse;
-    clients = firstClients.items.map(({ id, name, code }) => ({ id, name, code }));
-    // O seletor de escopo não pode perder clientes após a primeira página.
-    for (let page = 2; page <= firstClients.total_pages; page++) {
-      const result = await getAdminClientsList({ status: 'active', page, limit: 100 });
-      clients.push(...result.items.map(({ id, name, code }) => ({ id, name, code })));
-    }
+    clients = clientOptions;
     roles = rolesResponse.items.map((role) => ({
       code: role.code,
       label: role.label,

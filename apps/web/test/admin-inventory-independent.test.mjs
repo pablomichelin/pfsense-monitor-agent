@@ -29,6 +29,11 @@ function fixture(permissions, { groups = [{ id: 'group-1' }], groupDetailFailure
         if (!permissions.includes('firewalls.view')) throw new Error('QA inventory 403');
         return { clients: [{ id: 'active', name: 'QA active', status: 'active' }] };
       },
+      getActiveAdminClientOptions: async () => {
+        reads.push('clients');
+        assert.ok(permissions.includes('clients.view'));
+        return [{ id: 'qa-client', name: 'QA client', code: 'qa-client' }];
+      },
       listFleetTags: list('tags', [{ id: 'tag-1' }]),
       listFleetGroups: list('groups', groups),
       getFleetGroup: async (id) => {
@@ -66,6 +71,22 @@ test('fleet organization renders the visible groups without inventory access', a
   assert.equal(panel.props.canManageGroups, true);
   assert.equal(panel.props.canEditGroupMembers, false);
   assert.deepEqual(reads, ['groups']);
+});
+
+test('authorized client readers can use management selectors without loading inventory', async () => {
+  const expected = { id: 'qa-client', name: 'QA client', code: 'qa-client' };
+  const organization = fixture(['groups.view', 'groups.manage', 'clients.view']);
+  const groups = await organization.routes('app/admin/grupos/page.tsx').default({});
+  const fleetPanel = elements(groups).find((item) => item.type === 'fleet-panel');
+  assert.deepEqual(fleetPanel.props.clients, [{ id: expected.id, name: expected.name }]);
+  assert.equal(fleetPanel.props.canEditGroupMembers, false);
+  assert.deepEqual(organization.reads, ['groups', 'clients']);
+
+  const notifications = fixture(['notifications.view', 'notifications.manage', 'clients.view']);
+  const rules = await notifications.routes('app/admin/notificacoes/page.tsx').default();
+  const notificationPanel = elements(rules).find((item) => item.type === 'notifications-panel');
+  assert.deepEqual(notificationPanel.props.clients, [expected]);
+  assert.deepEqual(notifications.reads, ['channels', 'rules', 'deliveries', 'clients']);
 });
 
 test('notification editor keeps a rule client that is outside the selectable list', () => {

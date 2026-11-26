@@ -5,6 +5,7 @@ import { PageHero } from '@/components/page-hero';
 import { PageSection } from '@/components/ui';
 import {
   ApiError,
+  getActiveAdminClientOptions,
   getFleetGroup,
   getNodesFilters,
   getSession,
@@ -40,23 +41,26 @@ export default async function AdminGruposPage({ searchParams }: {
   const canManageTags = hasPermission(permissions, 'tags.manage');
   const canManageGroups = hasPermission(permissions, 'groups.manage');
   const canViewFirewalls = hasPermission(permissions, 'firewalls.view');
+  const canViewClients = hasPermission(permissions, 'clients.view');
   const canEditGroupMembers = canManageGroups && canViewFirewalls;
 
   let tags;
   let groups;
-  let filterOptions;
+  let activeClients;
 
   try {
-    [tags, groups, filterOptions] = await Promise.all([
+    [tags, groups, activeClients] = await Promise.all([
       canViewTags ? listFleetTags() : Promise.resolve({ items: [], generated_at: '' }),
       canViewGroups ? listFleetGroups() : Promise.resolve({ items: [], generated_at: '' }),
-      (canManageTags || canManageGroups) && canViewFirewalls ? getNodesFilters() : null,
+      canManageTags || canManageGroups
+        ? canViewFirewalls
+          ? getNodesFilters().then(({ clients }) => clients.filter((client) => client.status === 'active'))
+          : canViewClients ? getActiveAdminClientOptions() : []
+        : [],
     ]);
   } catch (error) {
     handlePageApiError(error);
   }
-
-  const activeClients = (filterOptions?.clients ?? []).filter((client) => client.status === 'active');
 
   const selectedGroupId = typeof params.group === 'string' ? params.group : groups.items[0]?.id;
   const selectedGroup = canEditGroupMembers

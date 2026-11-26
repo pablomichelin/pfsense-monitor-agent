@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { NotificationsAdminPanel } from '@/components/notifications-admin-panel';
 import { PageHero } from '@/components/page-hero';
 import { PageSection } from '@/components/ui';
-import { getNodesFilters, getSession } from '@/lib/api';
+import { getActiveAdminClientOptions, getNodesFilters, getSession } from '@/lib/api';
 import { hasPermission } from '@/lib/authz';
 import { handlePageApiError } from '@/lib/handle-page-api-error';
 import {
@@ -37,21 +37,23 @@ export default async function AdminNotificacoesPage() {
   let channels;
   let rules;
   let deliveries;
-  let filterOptions;
+  let activeClients;
 
   try {
-    [status, channels, rules, deliveries, filterOptions] = await Promise.all([
+    [status, channels, rules, deliveries, activeClients] = await Promise.all([
       getNotificationsStatus(),
       listNotificationChannels(),
       listNotificationRules(),
       listNotificationDeliveries(),
-      canManage && hasPermission(permissions, 'firewalls.view') ? getNodesFilters() : null,
+      canManage
+        ? hasPermission(permissions, 'firewalls.view')
+          ? getNodesFilters().then(({ clients }) => clients.filter((client) => client.status === 'active'))
+          : hasPermission(permissions, 'clients.view') ? getActiveAdminClientOptions() : []
+        : [],
     ]);
   } catch (error) {
     handlePageApiError(error);
   }
-
-  const activeClients = (filterOptions?.clients ?? []).filter((client) => client.status === 'active');
 
   return (
     <div className="space-y-section">

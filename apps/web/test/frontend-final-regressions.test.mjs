@@ -223,7 +223,7 @@ test('usuarios/page nega não-superadmin antes de qualquer leitura administrativ
       '@/lib/api': {
         ApiError: class extends Error {},
         getSession: async () => ({ user: { role, id: 'synthetic' }, permissions: ['users.view'] }),
-        getUsersList: () => read({ items: [] }), getAdminClientsList: () => read({ items: [], total_pages: 1 }), getRolesList: () => read({ items: [] }),
+        getUsersList: () => read({ items: [] }), getActiveAdminClientOptions: () => read([]), getRolesList: () => read({ items: [] }),
       },
       'next/navigation': { redirect: (url) => { const error = new Error('Synthetic redirect'); error.url = url; throw error; } },
     })('app/admin/usuarios/page.tsx').default;

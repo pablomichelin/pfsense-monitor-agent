@@ -1124,6 +1124,16 @@ export async function getAdminClientsList(query: {
   return apiFetch<AdminClientsListResponse>(`/api/v1/admin/clients?${params}`);
 }
 
+export async function getActiveAdminClientOptions(): Promise<Array<{ id: string; name: string; code: string }>> {
+  const firstPage = await getAdminClientsList({ status: 'active', page: 1, limit: 100 });
+  const clients = firstPage.items.map(({ id, name, code }) => ({ id, name, code }));
+  for (let page = 2; page <= firstPage.total_pages; page++) {
+    const result = await getAdminClientsList({ status: 'active', page, limit: 100 });
+    clients.push(...result.items.map(({ id, name, code }) => ({ id, name, code })));
+  }
+  return clients;
+}
+
 export async function getNodeDetails(id: string): Promise<NodeDetailsResponse> {
   return apiFetch<NodeDetailsResponse>(`/api/v1/nodes/${id}`);
 }
