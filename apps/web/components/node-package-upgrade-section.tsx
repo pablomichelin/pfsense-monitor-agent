@@ -20,6 +20,7 @@ type Props = {
   nodeId: string;
   canRunPackageUpgrade: boolean;
   initialStatus: PackageUpgradeStatusResponse;
+  unavailableSince?: string;
 };
 
 function getActiveCommandLabel(status: PackageUpgradeStatusResponse): string | null {
@@ -43,6 +44,7 @@ export function NodePackageUpgradeSection({
   nodeId,
   canRunPackageUpgrade,
   initialStatus,
+  unavailableSince,
 }: Props) {
   const [status, setStatus] = useState(initialStatus);
   const [modalOpen, setModalOpen] = useState(false);
@@ -51,7 +53,9 @@ export function NodePackageUpgradeSection({
   const [error, setError] = useState<string | null>(null);
   const { receipt, rememberReceipt, observeStatus } = useUpgradeReceipt();
   const [pollFailed, setPollFailed] = useState(false);
-  const readStatus = useScopedRead(nodeId, initialStatus);
+  const [recoveredSnapshot, setRecoveredSnapshot] = useState<string>();
+  const statusUnavailable = unavailableSince !== undefined && recoveredSnapshot !== unavailableSince;
+  const readStatus = useScopedRead(nodeId, unavailableSince ?? initialStatus);
 
   const applyStatus = useCallback((next: PackageUpgradeStatusResponse) => {
     setStatus(next);
@@ -63,12 +67,15 @@ export function NodePackageUpgradeSection({
 
   const refreshStatus = useCallback((afterSubmission = false) => readStatus(
     () => pollPackageUpgradeStatusAction(nodeId),
-    applyStatus,
+    (next) => {
+      applyStatus(next);
+      setRecoveredSnapshot(unavailableSince);
+    },
     () => setPollFailed(true),
     afterSubmission,
-  ), [applyStatus, nodeId, readStatus]);
+  ), [applyStatus, nodeId, readStatus, unavailableSince]);
 
-  const tracking = receipt != null || (status.active_command != null
+  const tracking = statusUnavailable || receipt != null || (status.active_command != null
     && ACTIVE_STATUSES.has(status.active_command.status));
   useEffect(() => {
     if (!tracking) {
@@ -83,6 +90,7 @@ export function NodePackageUpgradeSection({
   }, [refreshStatus, tracking]);
 
   const blockReason = useMemo(() => {
+    if (statusUnavailable) return 'Aguardando uma consulta atualizada do agente Monitor';
     if (!status.enabled) {
       return 'Upgrade remoto desabilitado no controlador';
     }
@@ -96,19 +104,21 @@ export function NodePackageUpgradeSection({
       return `Requer agente ${status.min_agent_version}+ (primeira instalação manual necessária)`;
     }
     return null;
-  }, [canRunPackageUpgrade, status]);
+  }, [canRunPackageUpgrade, status, statusUnavailable]);
 
   const showUpgradeButton =
     status.enabled &&
     status.update_available &&
     !status.active_command &&
     !receipt &&
+    !statusUnavailable &&
     canRunPackageUpgrade &&
     status.agent_version_supported;
 
   const confirmEnabled = confirmText.trim().toUpperCase() === 'CONFIRMAR';
 
   const handleRequest = async () => {
+    if (statusUnavailable) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -170,7 +180,7 @@ export function NodePackageUpgradeSection({
         {receipt && !activeLabel ? (
           <Alert variant="info">Solicitação aceita. Aguardando o status da atualização.</Alert>
         ) : null}
-        {pollFailed && tracking ? (
+        {statusUnavailable || (pollFailed && tracking) ? (
           <Alert variant="warning">Consulta temporariamente indisponível. O acompanhamento continua.</Alert>
         ) : null}
 
@@ -183,6 +193,9 @@ export function NodePackageUpgradeSection({
 
         {status.last_result?.status === 'succeeded' ? (
           <Alert variant="success">Última atualização de package concluída com sucesso.</Alert>
+        ) : null}
+        {status.last_result?.status === 'cancelled' ? (
+          <Alert variant="warning">Última atualização de package cancelada.</Alert>
         ) : null}
 
         {blockReason && !showUpgradeButton ? (
@@ -247,7 +260,7 @@ export function NodePackageUpgradeSection({
               </button>
               <button
                 type="button"
-                disabled={submitting || !confirmEnabled}
+                disabled={submitting || !confirmEnabled || statusUnavailable}
                 onClick={() => void handleRequest()}
                 className="rounded-lg border border-cyan-500/60 bg-cyan-500/20 px-4 py-2 text-sm font-medium text-cyan-200 hover:bg-cyan-500/30 disabled:opacity-50"
               >

@@ -81,6 +81,7 @@ export class PackageUpgradeService {
             NodeCommandStatus.succeeded,
             NodeCommandStatus.failed,
             NodeCommandStatus.expired,
+            NodeCommandStatus.cancelled,
           ],
         },
       },

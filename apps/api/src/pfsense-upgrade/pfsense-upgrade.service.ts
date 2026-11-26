@@ -93,6 +93,7 @@ export class PfsenseUpgradeService {
             NodeCommandStatus.succeeded,
             NodeCommandStatus.failed,
             NodeCommandStatus.expired,
+            NodeCommandStatus.cancelled,
           ],
         },
       },

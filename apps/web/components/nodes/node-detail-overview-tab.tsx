@@ -255,12 +255,14 @@ export function NodeDetailOverviewTab({
 
 export function NodeUpdatesSection({
   node,
+  renderedAt,
   canRunUpgrade,
   canRunPackageUpgrade,
   upgradeStatus,
   packageUpgradeStatus,
 }: {
   node: Node;
+  renderedAt: string;
   canRunUpgrade: boolean;
   canRunPackageUpgrade: boolean;
   upgradeStatus: PfsenseUpgradeStatusResponse | null;
@@ -272,6 +274,7 @@ export function NodeUpdatesSection({
         key={node.id}
         nodeId={node.id}
         nodeEffectiveStatus={node.effective_status}
+        renderedAt={renderedAt}
         canRunPackageUpgrade={canRunPackageUpgrade}
         canRunUpgrade={canRunUpgrade}
         packageUpgradeStatus={packageUpgradeStatus}

@@ -97,7 +97,7 @@ test('atualizações saem da identidade e preservam permissões e dados por oper
   })('components/nodes/node-detail-overview-tab.tsx');
   const tree = NodeDetailOverviewTab({ node: { id: 'lab', client: { name: 'Test' }, site: { name: 'Test' } }, canManageNode: false });
   const renderUpdates = (props) => {
-    const shell = NodeUpdatesSection({ node: { id: 'lab' }, ...props });
+    const shell = NodeUpdatesSection({ node: { id: 'lab' }, renderedAt: 'failed-snapshot', ...props });
     const panels = elements(shell).find((item) => item.type?.name === 'NodeUpdatesStatusPanels');
     assert.equal(panels.key, 'lab');
     return hooks.render(panels.type, panels.props);
@@ -113,6 +113,7 @@ test('atualizações saem da identidade e preservam permissões e dados por oper
   const duringRevalidation = renderUpdates({ ...props, upgradeStatus: null, packageUpgradeStatus: null });
   const retained = duringRevalidation.props.tabs.map((tab) => tab.content.props.initialStatus.marker);
   assert.deepEqual(retained, ['agent', 'os']);
+  assert.ok(duringRevalidation.props.tabs.every((tab) => tab.content.props.unavailableSince === 'failed-snapshot'));
   const identity = elements(tree).find((e) => e.props?.title === 'Visão geral');
   assert.ok(identity);
   assert.ok(!elements(identity).some((e) => e.type === 'agent-update' || e.type === 'os-update'));

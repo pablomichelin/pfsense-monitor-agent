@@ -18,6 +18,7 @@ function useLastAvailableStatus<T>(snapshot: T | null): T | null {
 export function NodeUpdatesStatusPanels({
   nodeId,
   nodeEffectiveStatus,
+  renderedAt,
   canRunUpgrade,
   canRunPackageUpgrade,
   upgradeStatus,
@@ -25,6 +26,7 @@ export function NodeUpdatesStatusPanels({
 }: {
   nodeId: string;
   nodeEffectiveStatus: string;
+  renderedAt: string;
   canRunUpgrade: boolean;
   canRunPackageUpgrade: boolean;
   upgradeStatus: PfsenseUpgradeStatusResponse | null;
@@ -47,6 +49,7 @@ export function NodeUpdatesStatusPanels({
               nodeId={nodeId}
               canRunPackageUpgrade={canRunPackageUpgrade}
               initialStatus={agent}
+              unavailableSince={packageUpgradeStatus == null ? renderedAt : undefined}
             />
           ) : <Alert variant="warning">A consulta do agente Monitor está indisponível.</Alert>,
         },
@@ -60,6 +63,7 @@ export function NodeUpdatesStatusPanels({
               nodeEffectiveStatus={nodeEffectiveStatus}
               canRunUpgrade={canRunUpgrade}
               initialStatus={firmware}
+              unavailableSince={upgradeStatus == null ? renderedAt : undefined}
             />
           ) : <Alert variant="warning">A consulta do pfSense OS está indisponível.</Alert>,
         },

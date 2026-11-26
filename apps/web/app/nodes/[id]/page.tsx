@@ -292,7 +292,7 @@ export default async function NodeDetailsPage({
               </>
             }
             operations={<div className="space-y-4">
-              <NodeUpdatesSection node={node} canRunUpgrade={canRunUpgrade} canRunPackageUpgrade={canRunPackageUpgrade} upgradeStatus={upgradeStatus} packageUpgradeStatus={packageUpgradeStatus} />
+              <NodeUpdatesSection node={node} renderedAt={response.generated_at} canRunUpgrade={canRunUpgrade} canRunPackageUpgrade={canRunPackageUpgrade} upgradeStatus={upgradeStatus} packageUpgradeStatus={packageUpgradeStatus} />
                 {(canRestartService || canRebootNode) && operationalStatus?.enabled ? (
                   <NodeOperationalActionsSection
                     key={node.id}

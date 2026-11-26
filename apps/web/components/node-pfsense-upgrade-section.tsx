@@ -140,6 +140,7 @@ type Props = {
   nodeEffectiveStatus: string;
   canRunUpgrade: boolean;
   initialStatus: PfsenseUpgradeStatusResponse;
+  unavailableSince?: string;
 };
 
 function confirmationMatches(hostname: string, value: string): boolean {
@@ -236,6 +237,9 @@ function getLastResultAlert(
       text: `Último upgrade falhou: ${last.error_message ?? 'erro desconhecido'}`,
     };
   }
+  if (last.status === 'cancelled') {
+    return { variant: 'warning', text: 'Último upgrade cancelado.' };
+  }
 
   if (last.status !== 'succeeded') {
     return null;
@@ -297,6 +301,7 @@ export function NodePfsenseUpgradeSection({
   nodeEffectiveStatus,
   canRunUpgrade,
   initialStatus,
+  unavailableSince,
 }: Props) {
   const [status, setStatus] = useState(initialStatus);
   const [modalOpen, setModalOpen] = useState(false);
@@ -319,7 +324,9 @@ export function NodePfsenseUpgradeSection({
   const [firmwareCheck, setFirmwareCheck] = useState<FirmwareCheck | null>(null);
   const [pollFailed, setPollFailed] = useState(false);
   const { receipt, rememberReceipt, observeStatus } = useUpgradeReceipt();
-  const readStatus = useScopedRead(nodeId, initialStatus);
+  const [recoveredSnapshot, setRecoveredSnapshot] = useState<string>();
+  const statusUnavailable = unavailableSince !== undefined && recoveredSnapshot !== unavailableSince;
+  const readStatus = useScopedRead(nodeId, unavailableSince ?? initialStatus);
 
   const applyStatus = useCallback((next: PfsenseUpgradeStatusResponse) => {
     setStatus(next);
@@ -331,16 +338,19 @@ export function NodePfsenseUpgradeSection({
 
   const refreshStatus = useCallback((replace = false) => readStatus(
     () => pollPfsenseUpgradeStatusAction(nodeId),
-    applyStatus,
+    (next) => {
+      applyStatus(next);
+      setRecoveredSnapshot(unavailableSince);
+    },
     () => setPollFailed(true),
     replace,
-  ), [applyStatus, nodeId, readStatus]);
+  ), [applyStatus, nodeId, readStatus, unavailableSince]);
 
   const checkingFirmware = firmwareCheck != null || status.force_check_pending
     || status.repair_pending || status.set_branch_pending;
   const trackingUpgrade = receipt != null || (status.active_command != null
     && ACTIVE_STATUSES.has(status.active_command.status));
-  const tracking = trackingUpgrade || checkingFirmware
+  const tracking = statusUnavailable || trackingUpgrade || checkingFirmware
     || ['checking', 'waiting'].includes(status.update_details?.status ?? '');
 
   useEffect(() => {
@@ -356,11 +366,25 @@ export function NodePfsenseUpgradeSection({
   useEffect(() => {
     if (!firmwareCheck) return;
     const settings = firmwareCheckSettings[firmwareCheck.kind];
+    const requestedAt = Date.parse(firmwareCheck.requestedAt);
+    const statusRequest = status[settings.requestedKey];
+    if (Date.parse(statusRequest ?? '') > requestedAt) {
+      setRefreshMessage(null);
+      setError('Este pedido foi substituído por uma solicitação mais recente.');
+      setFirmwareCheck(null);
+      return;
+    }
+    if (firmwareCheck.kind === 'repair' && Date.parse(status.set_branch_requested_at ?? '') > requestedAt) {
+      setRefreshMessage(null);
+      setError('A execução do reparo ficou sem confirmação após um pedido de mudança de branch.');
+      setFirmwareCheck(null);
+      return;
+    }
     const checkedAt = status.update_checked_at;
-    if (status[settings.requestedKey] === firmwareCheck.requestedAt
+    if (statusRequest === firmwareCheck.requestedAt
       && !status[settings.pendingKey]
       && checkedAt
-      && Date.parse(checkedAt) > Date.parse(firmwareCheck.requestedAt)) {
+      && Date.parse(checkedAt) > requestedAt) {
       setRefreshMessage(firmwareCheckResult(firmwareCheck, status));
       setFirmwareCheck(null);
       return;
@@ -374,6 +398,7 @@ export function NodePfsenseUpgradeSection({
   }, [firmwareCheck, status]);
 
   const blockReason = useMemo(() => {
+    if (statusUnavailable) return 'Aguardando uma consulta atualizada do pfSense';
     if (!status.enabled) {
       return 'Upgrade remoto desabilitado no controlador';
     }
@@ -399,13 +424,14 @@ export function NodePfsenseUpgradeSection({
       return 'Nenhuma atualização disponível';
     }
     return null;
-  }, [canRunUpgrade, status]);
+  }, [canRunUpgrade, status, statusUnavailable]);
 
   const showUpgradeButton =
     status.enabled &&
     status.update_available === true &&
     !status.active_command &&
     !receipt &&
+    !statusUnavailable &&
     canRunUpgrade &&
     status.agent_version_supported &&
     !status.ha_blocked;
@@ -449,12 +475,14 @@ export function NodePfsenseUpgradeSection({
         : undefined;
 
   const busyUpdateAction =
+    statusUnavailable ||
     refreshingCheck ||
     repairing ||
     settingBranch ||
     checkingFirmware;
 
   const handleRefreshCheck = async () => {
+    if (statusUnavailable) return;
     setRefreshingCheck(true);
     setRefreshMessage(null);
     setError(null);
@@ -486,6 +514,7 @@ export function NodePfsenseUpgradeSection({
   };
 
   const handleRepairRepo = async () => {
+    if (statusUnavailable) return;
     if (!confirmationMatches(status.hostname, repairConfirmText)) {
       setError('Digite o hostname ou CONFIRMAR para reparar o repositório.');
       return;
@@ -524,6 +553,7 @@ export function NodePfsenseUpgradeSection({
   };
 
   const handleSetBranch = async () => {
+    if (statusUnavailable) return;
     if (!confirmationMatches(status.hostname, branchConfirmText)) {
       setError('Digite o hostname ou CONFIRMAR para apontar o firmware branch.');
       return;
@@ -563,6 +593,7 @@ export function NodePfsenseUpgradeSection({
   };
 
   const handleRequest = async () => {
+    if (statusUnavailable) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -652,7 +683,7 @@ export function NodePfsenseUpgradeSection({
         {receipt && !activeLabel ? (
           <Alert variant="info">Solicitação aceita. Aguardando o status da atualização.</Alert>
         ) : null}
-        {pollFailed && tracking ? (
+        {statusUnavailable || (pollFailed && tracking) ? (
           <Alert variant="warning">Consulta temporariamente indisponível. O acompanhamento continua.</Alert>
         ) : null}
 
@@ -880,7 +911,7 @@ export function NodePfsenseUpgradeSection({
               </button>
               <button
                 type="button"
-                disabled={submitting || !confirmEnabled}
+                disabled={submitting || !confirmEnabled || statusUnavailable}
                 onClick={() => void handleRequest()}
                 className="rounded-lg border border-amber-500/60 bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-200 hover:bg-amber-500/30 disabled:opacity-50"
               >
@@ -934,7 +965,7 @@ export function NodePfsenseUpgradeSection({
               <button
                 type="button"
                 disabled={
-                  repairing ||
+                  statusUnavailable || repairing ||
                   !confirmationMatches(status.hostname, repairConfirmText)
                 }
                 onClick={() => void handleRepairRepo()}
@@ -1008,7 +1039,7 @@ export function NodePfsenseUpgradeSection({
               <button
                 type="button"
                 disabled={
-                  settingBranch ||
+                  statusUnavailable || settingBranch ||
                   !confirmationMatches(status.hostname, branchConfirmText)
                 }
                 onClick={() => void handleSetBranch()}

@@ -182,3 +182,40 @@ test('upgrade do pfSense aceito permanece em acompanhamento após falha na consu
   assert.equal(panel.intervals.size, 0);
   assert.deepEqual(panel.submissions, ['upgrade']);
 });
+
+test('uma solicitação mais recente encerra a espera pela checagem anterior', async (t) => {
+  const panel = fixture(t);
+  panel.button(panel.render(), 'Atualizar verificação').props.onClick();
+  await settle();
+  panel.render();
+  panel.tick();
+  panel.reads[0].resolve({ ...initialStatus, force_check_requested_at: '2026-11-25T19:02:00Z' });
+  await settle();
+  panel.render();
+  assert.match(textOf(panel.render()), /pedido foi substituído/);
+  assert.equal(panel.intervals.size, 0);
+  assert.deepEqual(panel.submissions, ['refresh']);
+});
+
+test('um branch posterior não aparece como confirmação de reparo', async (t) => {
+  const panel = fixture(t);
+  panel.button(panel.render(), 'Reparar repositório').props.onClick();
+  elements(panel.render()).find((item) => item.type === 'input' && item.props.type === 'text')
+    .props.onChange({ target: { value: 'CONFIRMAR' } });
+  panel.button(panel.render(), 'Confirmar reparo').props.onClick();
+  await settle();
+  panel.render();
+  panel.tick();
+  panel.reads[0].resolve({
+    ...initialStatus,
+    repair_requested_at: requestedAt,
+    set_branch_requested_at: '2026-11-25T19:02:00Z',
+    update_checked_at: '2026-11-25T19:04:00Z',
+  });
+  await settle();
+  panel.render();
+  const completed = textOf(panel.render());
+  assert.match(completed, /reparo ficou sem confirmação/);
+  assert.doesNotMatch(completed, /Reparo concluído/);
+  assert.equal(panel.intervals.size, 0);
+});
