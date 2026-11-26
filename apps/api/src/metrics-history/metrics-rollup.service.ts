@@ -354,6 +354,11 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
       ${row.latencyAvg}::float8, ${row.latencyMin}::float8, ${row.latencyMax}::float8,
       ${row.availabilityPct}::float8
     )`);
+    // Hourly samples only accumulate during a bucket. An older read must not
+    // replace a more complete aggregate written by another worker.
+    const hourlyCountGuard = granularity === 'hourly'
+      ? Prisma.sql`WHERE stored.sample_count <= EXCLUDED.sample_count`
+      : Prisma.empty;
     const conflictAction = fillMissingOnly ? Prisma.sql`DO NOTHING` : Prisma.sql`
       DO UPDATE SET
         sample_count = EXCLUDED.sample_count,
@@ -363,10 +368,11 @@ export class MetricsRollupService implements OnModuleInit, OnModuleDestroy {
         latency_avg = EXCLUDED.latency_avg, latency_min = EXCLUDED.latency_min, latency_max = EXCLUDED.latency_max,
         availability_pct = EXCLUDED.availability_pct,
         updated_at = EXCLUDED.updated_at
+      ${hourlyCountGuard}
     `;
     // Exclude nodes removed since the read and hold each surviving FK row until the write commits.
     return this.prisma.$executeRaw`
-      INSERT INTO ${table} (
+      INSERT INTO ${table} AS stored (
         node_id, bucket_start, sample_count,
         cpu_avg, cpu_min, cpu_max, memory_avg, memory_min, memory_max,
         disk_avg, disk_min, disk_max, latency_avg, latency_min, latency_max,
