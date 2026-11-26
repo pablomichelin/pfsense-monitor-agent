@@ -24,6 +24,8 @@ import { Card } from '@/components/ui/card';
 const ACTIVE_STATUSES = new Set(['pending', 'picked_up', 'running']);
 const POLL_INTERVAL_MS = 12_000;
 const REFRESH_POLL_INTERVAL_MS = 8_000;
+// Mirror the API's PFSENSE_UPDATE_FORCE_CHECK_TTL_MS when comparing older requests.
+const BRANCH_REQUEST_TTL_MS = 24 * 60 * 60_000;
 
 const firmwareCheckSettings = {
   refresh: {
@@ -378,7 +380,7 @@ export function NodePfsenseUpgradeSection({
     if (firmwareCheck.kind === 'repair') {
       const branchRequestedAt = Date.parse(status.set_branch_requested_at ?? '');
       const previousCheckedAt = Date.parse(firmwareCheck.previousCheckedAt ?? '');
-      if (Number.isFinite(branchRequestedAt) && (
+      if (branchRequestedAt >= requestedAt - BRANCH_REQUEST_TTL_MS && (
         branchRequestedAt >= requestedAt
         || !Number.isFinite(previousCheckedAt)
         || branchRequestedAt >= previousCheckedAt

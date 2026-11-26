@@ -24,7 +24,7 @@ const initialStatus = {
   last_result: null,
 };
 
-function fixture(t) {
+function fixture(t, { previousCheckedAt = initialStatus.update_checked_at } = {}) {
   const timeouts = new Set();
   const intervals = new Set();
   const previousWindow = globalThis.window;
@@ -76,7 +76,10 @@ function fixture(t) {
       },
     },
   })('components/node-pfsense-upgrade-section.tsx');
-  const props = { nodeId, nodeEffectiveStatus: 'online', canRunUpgrade: true, initialStatus };
+  const props = {
+    nodeId, nodeEffectiveStatus: 'online', canRunUpgrade: true,
+    initialStatus: { ...initialStatus, update_checked_at: previousCheckedAt },
+  };
   const render = () => harness.render(NodePfsenseUpgradeSection, props);
   const button = (tree, label) => elements(tree).find((item) => item.type === 'button'
     && textOf(item).trim() === label);
@@ -197,13 +200,14 @@ test('uma solicitação mais recente encerra a espera pela checagem anterior', a
   assert.deepEqual(panel.submissions, ['refresh']);
 });
 
-for (const [label, branchAt, confirmed] of [
+for (const [label, branchAt, confirmed, previousCheckedAt] of [
   ['posterior ao pedido', '2026-11-25T19:02:00Z', false],
   ['anterior e ainda sem checagem', '2026-11-25T19:00:30Z', false],
   ['anterior e já verificado', '2026-11-25T18:59:00Z', true],
+  ['expirado antes do reparo', '2026-11-24T18:59:00Z', true, '2026-11-24T14:00:00Z'],
 ]) {
   test('classifica o reparo quando o branch é ' + label, async (t) => {
-    const panel = fixture(t);
+    const panel = fixture(t, { previousCheckedAt });
     panel.button(panel.render(), 'Reparar repositório').props.onClick();
     elements(panel.render()).find((item) => item.type === 'input' && item.props.type === 'text')
       .props.onChange({ target: { value: 'CONFIRMAR' } });
