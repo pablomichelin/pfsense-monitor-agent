@@ -28,8 +28,9 @@ fi
 ARTIFACT_NAME="monitor-pfsense-package-v${VERSION}.tar.gz"
 ARTIFACT_PATH="$DIST_DIR/$ARTIFACT_NAME"
 CHECKSUM_PATH="$DIST_DIR/${ARTIFACT_NAME}.sha256"
+PENDING_CHECKSUM_PATH="$DIST_DIR/.${ARTIFACT_NAME}.sha256.pending"
 
-if [[ -e "$ARTIFACT_PATH" && -e "$CHECKSUM_PATH" ]]; then
+if [[ -e "$ARTIFACT_PATH" && -e "$CHECKSUM_PATH" && ! -e "$PENDING_CHECKSUM_PATH" ]]; then
   echo "Release $VERSION already exists; use a new version (immutable artifacts)." >&2
   exit 1
 fi
@@ -97,8 +98,17 @@ directory = os.open(dist_dir, os.O_RDONLY)
 try:
     fcntl.flock(directory, fcntl.LOCK_EX)
     if published_checksum.exists():
-        sys.exit(f"Release artifact {name} already exists; use a new version.")
-    if published.exists():
+        if (
+            published.is_file()
+            and pending_checksum.is_file()
+            and pending_checksum.samefile(published_checksum)
+            and pending_checksum.read_bytes() == checksum_content(published)
+        ):
+            pending_checksum.unlink()
+            print(f"Finished interrupted release artifact {name}.")
+        else:
+            sys.exit(f"Release artifact {name} already exists; use a new version.")
+    elif published.exists():
         if not pending_checksum.is_file() or pending_checksum.read_bytes() != checksum_content(published):
             sys.exit(f"Incomplete release artifact {name} has no matching staged checksum.")
         os.link(pending_checksum, published_checksum)

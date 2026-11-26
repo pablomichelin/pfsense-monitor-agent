@@ -90,8 +90,8 @@ exit 8
         self.assertEqual(retry.returncode, 0, retry.stderr)
         self.assert_valid_artifact()
 
-    def test_interrupted_publication_finishes_the_same_artifact_on_retry(self):
-        # Exit immediately after the archive link, before Python can run any cleanup.
+    def interrupt_after_link(self, filename):
+        # Exit before the build program can run any cleanup.
         (self.shims / "sitecustomize.py").write_text("""
 import os
 from pathlib import Path
@@ -107,11 +107,14 @@ def interrupt_after_publish(source, destination, *args, **kwargs):
 
 os.link = interrupt_after_publish
 """)
-        failed = subprocess.run(
+        return subprocess.run(
             [str(self.script), self.version],
-            env={**self.env, "PYTHONPATH": str(self.shims), "QUALITY_TEST_ARTIFACT_NAME": self.name},
+            env={**self.env, "PYTHONPATH": str(self.shims), "QUALITY_TEST_ARTIFACT_NAME": filename},
             capture_output=True, text=True, timeout=20,
         )
+
+    def test_interrupted_publication_finishes_the_same_artifact_on_retry(self):
+        failed = self.interrupt_after_link(self.name)
         self.assertEqual(failed.returncode, 91, failed.stderr)
         archive = self.dist / self.name
         original = archive.read_bytes()
@@ -121,6 +124,20 @@ os.link = interrupt_after_publish
         self.assertEqual(archive.read_bytes(), original)
         self.assert_valid_artifact()
         self.assertFalse(list(self.dist.glob("*.pending")))
+
+    def test_interruption_after_the_checksum_clears_the_marker_on_retry(self):
+        failed = self.interrupt_after_link(f"{self.name}.sha256")
+        self.assertEqual(failed.returncode, 91, failed.stderr)
+        self.assert_valid_artifact()
+        archive = self.dist / self.name
+        original = archive.read_bytes()
+        self.assertTrue(list(self.dist.glob("*.pending")))
+        retry = self.run_script(self.version)
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(archive.read_bytes(), original)
+        self.assert_valid_artifact()
+        self.assertFalse(list(self.dist.glob("*.pending")))
+        self.assertNotEqual(self.run_script(self.version).returncode, 0)
 
     def test_unknown_incomplete_artifact_is_not_overwritten_or_signed(self):
         self.dist.mkdir(parents=True)

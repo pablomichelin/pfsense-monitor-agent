@@ -85,7 +85,10 @@ fi
 ARTIFACT_PATH="$DIST_DIR/$ARTIFACT_NAME"
 CHECKSUM_PATH="$DIST_DIR/${ARTIFACT_NAME}.sha256"
 if [[ "$SOURCE_BUILD" == "0" && ( ! -f "$ARTIFACT_PATH" || ! -f "$CHECKSUM_PATH" ) ]]; then
-  "$ROOT_DIR/scripts/build-pfsense-package-artifact.sh" "$VERSION"
+  if ! "$ROOT_DIR/scripts/build-pfsense-package-artifact.sh" "$VERSION"; then
+    # Another builder may have completed the immutable release in the meantime.
+    [[ -f "$ARTIFACT_PATH" && -f "$CHECKSUM_PATH" ]]
+  fi
 fi
 
 echo "[2/9] Validando arquivos de release e checksum"
