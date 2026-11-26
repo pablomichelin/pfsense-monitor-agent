@@ -1835,33 +1835,40 @@ export class AdminService {
 
     await this.withClientScope(scopeActor, clientId);
 
-    const client = await this.prisma.client.update({
-      where: {
-        id: clientId,
-      },
-      data: {
-        name: dto.name?.trim() || undefined,
-        code: dto.code ? normalizeCode(dto.code) : undefined,
-        status:
-          dto.status === undefined
-            ? undefined
-            : dto.status === 'inactive'
-              ? EntityStatus.inactive
-              : EntityStatus.active,
-      },
-    });
-
-    await this.writeAuditLog({
-      actorId,
-      action: 'admin.client.update',
-      targetType: 'client',
-      targetId: client.id,
-      ipAddress: actorIp,
-      metadataJson: {
-        name: client.name,
-        code: client.code,
-        status: client.status,
-      },
+    const client = await this.prisma.$transaction(async (tx) => {
+      await this.lockUserAdministration(tx);
+      const client = await tx.client.update({
+        where: { id: clientId },
+        data: {
+          name: dto.name?.trim() || undefined,
+          code: dto.code ? normalizeCode(dto.code) : undefined,
+          status:
+            dto.status === undefined
+              ? undefined
+              : dto.status === 'inactive'
+                ? EntityStatus.inactive
+                : EntityStatus.active,
+        },
+      }).catch((error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          if (error.code === 'P2002') throw new ConflictException('client code already exists');
+          if (error.code === 'P2025') throw new NotFoundException('client not found');
+        }
+        throw error;
+      });
+      await this.writeAuditLog({
+        actorId,
+        action: 'admin.client.update',
+        targetType: 'client',
+        targetId: client.id,
+        ipAddress: actorIp,
+        metadataJson: {
+          name: client.name,
+          code: client.code,
+          status: client.status,
+        },
+      }, tx);
+      return client;
     });
     this.invalidateNodesFiltersCache();
 

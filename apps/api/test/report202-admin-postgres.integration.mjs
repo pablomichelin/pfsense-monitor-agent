@@ -1015,6 +1015,34 @@ test('R202 admin PG17 guarded integration', { skip: !raw, timeout: 120000 }, asy
     assert.match(waiter?.query ?? '', /pg_advisory_xact_lock/i);
   });
 
+  await run('client editing keeps the row and audit atomic and refuses duplicate codes', async t => {
+    const f = await clientCreationFixture(t);
+    const failAudit = async () => { throw new Error('synthetic client edit audit failure'); };
+    const failingDb = new Proxy(db, { get(target, key) {
+      if (key === '$transaction') return (callback, options) => target.$transaction(tx =>
+        callback(new Proxy(tx, { get(client, property) {
+          if (property === 'auditLog') return { create: failAudit };
+          return typeof client[property] === 'function' ? client[property].bind(client) : client[property];
+        } })), options);
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    } });
+    const failed = f.service(failingDb, { record: failAudit });
+    const update = (admin, id, dto) => admin.updateClient(id, dto, f.creator.userId, undefined, f.creator);
+    await assert.rejects(update(failed, f.client.id, { name: 'Renamed', status: 'inactive' }), /synthetic client edit audit failure/);
+    const previous = await db.client.findUnique({ where: { id: f.client.id } });
+    assert.deepEqual([previous.name, previous.status], [f.client.name, f.client.status]);
+    assert.equal(f.invalidations(), 0);
+    const admin = f.service(db);
+    const created = await f.create(admin, 0);
+    await assert.rejects(update(admin, f.client.id, { code: created.client.code, name: 'Renamed' }),
+      error => error.getStatus?.() === 409);
+    assert.equal((await db.client.findUnique({ where: { id: f.client.id } })).name, f.client.name);
+    const saved = await update(admin, f.client.id, { name: 'Renamed', status: 'inactive' });
+    assert.deepEqual([saved.client.name, saved.client.status], ['Renamed', 'inactive']);
+    assert.equal(f.invalidations(), 2);
+    assert.equal(await db.auditLog.count({ where: { action: 'admin.client.update', targetId: f.client.id } }), 1);
+  });
+
   async function nodeCreationFixture(t) {
     const f = await fixture(t);
     const { AccessPolicyService } = loadServiceModule('auth/access-policy.service');
